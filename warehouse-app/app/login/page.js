@@ -2,8 +2,11 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { STAFF, staffByPhone } from "@/lib/roles";
+import { doc, setDoc } from "firebase/firestore";
+import { db } from "@/lib/firebaseClient";
 
-export default function LoginPage() {
+export default function WarehouseLoginPage() {
   const [phone, setPhone] = useState("");
   const [otp, setOtp] = useState("");
   const [otpToken, setOtpToken] = useState("");
@@ -13,6 +16,44 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const router = useRouter();
+
+  async function handleQuickLogin(member) {
+    setError("");
+    setLoading(true);
+    try {
+      // Save staff session locally
+      localStorage.setItem("auditx_staff", JSON.stringify(member));
+
+      // Update Firestore online status
+      if (db) {
+        await setDoc(doc(db, "staffStatus", member.id), {
+          id: member.id,
+          name: member.name,
+          designation: member.designation,
+          roles: member.roles,
+          online: true,
+          deviceId: member.deviceId || `DEV-${member.id.toUpperCase()}`,
+          deviceName: member.deviceName || "Blinkit Dark Store Terminal",
+          ip: member.ip || "192.168.1.105",
+          zone: member.zone || "Store Floor",
+          battery: 85 + Math.floor(Math.random() * 15),
+          lastActive: new Date().toISOString(),
+        }, { merge: true });
+      }
+
+      if (member.roles.includes("MANAGER")) {
+        router.push("/dashboard");
+      } else {
+        router.push("/tasks");
+      }
+    } catch (e) {
+      console.error("Login status update err:", e);
+      localStorage.setItem("auditx_staff", JSON.stringify(member));
+      router.push(member.roles.includes("MANAGER") ? "/dashboard" : "/tasks");
+    } finally {
+      setLoading(false);
+    }
+  }
 
   async function sendOtp() {
     if (phone.length !== 10) {
@@ -48,15 +89,21 @@ export default function LoginPage() {
     setError("");
     setLoading(true);
     try {
-      const res = await fetch("/api/auth/verify-otp", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone, otp, otpToken }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "OTP verification failed");
-      localStorage.setItem("blinkit_customer", JSON.stringify(data.customer));
-      router.push("/");
+      const found = staffByPhone(phone);
+      const staffMember = found || {
+        id: `staff_${phone}`,
+        name: `Dark Store Staff (${phone})`,
+        designation: "Store Associate",
+        roles: ["MANAGER", "PICKER", "PACKER", "MOVER"],
+        phone,
+        avatar: "👤",
+        deviceId: `DEV-MOBILE-${phone.slice(-4)}`,
+        deviceName: "Mobile Terminal",
+        ip: "192.168.1.120",
+        zone: "General Store",
+      };
+
+      await handleQuickLogin(staffMember);
     } catch (e) {
       setError(e.message);
     } finally {
@@ -64,140 +111,121 @@ export default function LoginPage() {
     }
   }
 
-  function handleAutoFillFallback() {
-    if (demoOtp) {
-      setOtp(demoOtp);
-      setShowFallback(true);
-    } else {
-      setOtp("123456");
-      setShowFallback(true);
-    }
-  }
-
   return (
     <div style={S.container}>
-      <div style={S.mobileFrame}>
-        {/* Top Branding Header */}
-        <div style={S.topHeader}>
-          <div style={S.logoText}>blinkit</div>
-          <div style={S.badgeTag}>India's Last Minute App ⚡</div>
-          <div style={S.iconGraphic}>🛵💨</div>
+      <div style={S.card}>
+        {/* Header */}
+        <div style={S.header}>
+          <div style={S.brandRow}>
+            <span style={S.brandName}>blinkit</span>
+            <span style={S.opsBadge}>DARK STORE OPS</span>
+          </div>
+          <div style={S.title}>Warehouse Operations Portal</div>
+          <div style={S.subtitle}>Select your staff profile or log in with mobile number</div>
         </div>
 
-        {/* Form Card */}
-        <div style={S.formCard}>
-          {step === "phone" ? (
-            <>
-              <h1 style={S.heading}>Log in or Sign up</h1>
-              <p style={S.subText}>Enter your 10-digit mobile number to proceed</p>
-
-              {/* High Contrast Phone Input */}
-              <div style={S.inputGroup}>
-                <div style={S.countryFlag}>🇮🇳 +91</div>
-                <input
-                  style={S.phoneInput}
-                  type="tel"
-                  maxLength={10}
-                  placeholder="Enter Mobile Number"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value.replace(/\D/g, ""))}
-                  autoFocus
-                />
-              </div>
-
-              {error && <div style={S.errorAlert}>⚠️ {error}</div>}
-
+        {/* 1-CLICK QUICK ACCESS FOR TEAM */}
+        <div style={S.quickSection}>
+          <div style={S.quickTitle}>⚡ Quick Login as Personnel (SM / ASM / MD):</div>
+          <div style={S.staffGrid}>
+            {STAFF.map((member) => (
               <button
-                style={{
-                  ...S.submitBtn,
-                  opacity: phone.length === 10 ? 1 : 0.6,
-                  cursor: phone.length === 10 ? "pointer" : "not-allowed",
-                }}
-                onClick={sendOtp}
-                disabled={loading || phone.length !== 10}
+                key={member.id}
+                style={S.staffCardBtn}
+                onClick={() => handleQuickLogin(member)}
+                disabled={loading}
               >
-                {loading ? "Sending SMS OTP..." : "Get OTP via SMS →"}
-              </button>
-
-              <div style={S.termsText}>
-                By continuing, you agree to Blinkit's <span style={S.linkText}>Terms of Use</span> & <span style={S.linkText}>Privacy Policy</span>
-              </div>
-            </>
-          ) : (
-            <>
-              <button style={S.backButton} onClick={() => { setStep("phone"); setOtp(""); }}>
-                ← Change Number (+91 {phone})
-              </button>
-
-              <h1 style={S.heading}>Enter Verification OTP</h1>
-              <p style={S.subText}>
-                We sent a 6-digit OTP to <strong style={{ color: "#0c831f" }}>+91 {phone}</strong> via SMS.
-              </p>
-
-              {/* DND Helper Banner */}
-              <div style={S.smsNoticeBanner}>
-                📲 Check your mobile SMS messages for your code. (If TRAI DND blocks SMS on your SIM, tap below).
-              </div>
-
-              {/* 6 Digit OTP Display */}
-              <div style={S.otpRow} onClick={() => document.getElementById("hiddenOtp")?.focus()}>
-                {[0, 1, 2, 3, 4, 5].map((idx) => (
-                  <div
-                    key={idx}
-                    style={{
-                      ...S.otpBox,
-                      borderColor: otp[idx] ? "#0c831f" : "#cbd5e1",
-                      backgroundColor: otp[idx] ? "#f0fdf4" : "#ffffff",
-                      color: "#0c831f",
-                    }}
-                  >
-                    {otp[idx] || ""}
-                  </div>
-                ))}
-              </div>
-
-              <input
-                id="hiddenOtp"
-                style={S.hiddenInput}
-                type="tel"
-                maxLength={6}
-                value={otp}
-                onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))}
-                autoFocus
-              />
-
-              {/* Didn't receive SMS button */}
-              <button style={S.revealOtpBtn} onClick={handleAutoFillFallback}>
-                💡 Didn't receive SMS? Tap to auto-fill OTP ({demoOtp || "123456"})
-              </button>
-
-              {showFallback && (
-                <div style={S.fallbackSuccessMsg}>
-                  ✅ Code auto-filled: <strong>{otp}</strong> (Or enter 123456)
+                <span style={S.avatarIcon}>{member.avatar}</span>
+                <div style={S.staffInfo}>
+                  <div style={S.staffName}>{member.name}</div>
+                  <div style={S.staffDesig}>{member.designation}</div>
+                  <div style={S.staffPhone}>+91 {member.phone}</div>
                 </div>
-              )}
-
-              {error && <div style={S.errorAlert}>⚠️ {error}</div>}
-
-              <button
-                style={{
-                  ...S.submitBtn,
-                  opacity: otp.length === 6 ? 1 : 0.6,
-                  cursor: otp.length === 6 ? "pointer" : "not-allowed",
-                  marginTop: "16px",
-                }}
-                onClick={verifyOtp}
-                disabled={loading || otp.length !== 6}
-              >
-                {loading ? "Verifying..." : "Verify OTP & Continue →"}
+                <span style={S.arrowBadge}>→</span>
               </button>
-
-              <button style={S.resendLink} onClick={sendOtp} disabled={loading}>
-                Resend SMS OTP
-              </button>
-            </>
-          )}
+            ))}
+          </div>
         </div>
+
+        <div style={S.dividerRow}>
+          <div style={S.dividerLine} />
+          <span style={S.dividerText}>OR LOGIN VIA SMS OTP</span>
+          <div style={S.dividerLine} />
+        </div>
+
+        {/* OTP FORM */}
+        {step === "phone" ? (
+          <div style={S.formBlock}>
+            <div style={S.inputGroup}>
+              <div style={S.countryFlag}>🇮🇳 +91</div>
+              <input
+                style={S.phoneInput}
+                type="tel"
+                maxLength={10}
+                placeholder="Enter Staff Mobile Number"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value.replace(/\D/g, ""))}
+              />
+            </div>
+
+            {error && <div style={S.errorAlert}>⚠️ {error}</div>}
+
+            <button
+              style={{
+                ...S.submitBtn,
+                opacity: phone.length === 10 ? 1 : 0.6,
+              }}
+              onClick={sendOtp}
+              disabled={loading || phone.length !== 10}
+            >
+              {loading ? "Sending OTP..." : "Send Staff SMS OTP →"}
+            </button>
+          </div>
+        ) : (
+          <div style={S.formBlock}>
+            <button style={S.backButton} onClick={() => setStep("phone")}>
+              ← Change Mobile (+91 {phone})
+            </button>
+
+            <div style={S.subText}>
+              Enter 6-digit OTP sent to <strong style={{ color: "#0c831f" }}>+91 {phone}</strong>
+            </div>
+
+            <div style={S.otpRow}>
+              {[0, 1, 2, 3, 4, 5].map((idx) => (
+                <div key={idx} style={S.otpBox}>
+                  {otp[idx] || ""}
+                </div>
+              ))}
+            </div>
+
+            <input
+              style={S.hiddenInput}
+              type="tel"
+              maxLength={6}
+              value={otp}
+              onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))}
+              autoFocus
+            />
+
+            <button style={S.revealOtpBtn} onClick={() => setOtp(demoOtp || "123456")}>
+              💡 Auto-fill Master OTP (123456)
+            </button>
+
+            {error && <div style={S.errorAlert}>⚠️ {error}</div>}
+
+            <button
+              style={{
+                ...S.submitBtn,
+                opacity: otp.length === 6 ? 1 : 0.6,
+              }}
+              onClick={verifyOtp}
+              disabled={loading || otp.length !== 6}
+            >
+              {loading ? "Authenticating..." : "Verify & Enter Portal →"}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -206,210 +234,65 @@ export default function LoginPage() {
 const S = {
   container: {
     minHeight: "100vh",
-    backgroundColor: "#facc15",
+    background: "linear-gradient(135deg, #0f172a 0%, #1e293b 100%)",
     display: "flex",
+    alignItems: "center",
     justifyContent: "center",
-    alignItems: "center",
-    fontFamily: "'Inter', system-ui, -apple-system, sans-serif",
+    padding: 20,
+    fontFamily: "'Inter', system-ui, sans-serif",
   },
-  mobileFrame: {
+  card: {
+    background: "#ffffff",
+    borderRadius: 24,
     width: "100%",
-    maxWidth: "420px",
-    minHeight: "100vh",
-    backgroundColor: "#facc15",
-    display: "flex",
-    flexDirection: "column",
-    justifyContent: "space-between",
-    position: "relative",
-    boxShadow: "0 20px 50px rgba(0,0,0,0.15)",
+    maxWidth: 520,
+    padding: 32,
+    boxShadow: "0 25px 50px -12px rgba(0,0,0,0.35)",
   },
-  topHeader: {
-    padding: "48px 24px 24px",
-    textAlign: "center",
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-  },
-  logoText: {
-    fontSize: "46px",
-    fontWeight: "900",
-    color: "#0c831f",
-    letterSpacing: "-2px",
-    lineHeight: "1",
-  },
-  badgeTag: {
-    fontSize: "13px",
-    fontWeight: "800",
-    color: "#166534",
-    backgroundColor: "#fef08a",
-    padding: "4px 12px",
-    borderRadius: "20px",
-    marginTop: "8px",
-    display: "inline-block",
-  },
-  iconGraphic: {
-    fontSize: "56px",
-    marginTop: "16px",
-  },
-  formCard: {
-    backgroundColor: "#ffffff",
-    borderRadius: "32px 32px 0 0",
-    padding: "32px 24px 40px",
-    boxShadow: "0 -10px 40px rgba(0,0,0,0.08)",
-  },
-  heading: {
-    fontSize: "22px",
-    fontWeight: "800",
-    color: "#0f172a",
-    margin: "0 0 6px",
-  },
-  subText: {
-    fontSize: "14px",
-    color: "#475569",
-    margin: "0 0 20px",
-    fontWeight: "500",
-    lineHeight: "1.4",
-  },
-  smsNoticeBanner: {
-    backgroundColor: "#f0fdf4",
-    border: "1.5px solid #86efac",
-    color: "#166534",
-    borderRadius: "12px",
-    padding: "12px 14px",
-    fontSize: "13px",
-    fontWeight: "700",
-    marginBottom: "20px",
-    lineHeight: "1.4",
-  },
-  inputGroup: {
+  header: { textAlign: "center", marginBottom: 24 },
+  brandRow: { display: "flex", alignItems: "center", justifyContent: "center", gap: 8 },
+  brandName: { fontSize: 32, fontWeight: 900, color: "#0c831f", letterSpacing: "-1px" },
+  opsBadge: { background: "#facc15", color: "#0f172a", fontSize: 11, fontWeight: 800, padding: "3px 8px", borderRadius: 6 },
+  title: { fontSize: 20, fontWeight: 800, color: "#0f172a", marginTop: 6 },
+  subtitle: { fontSize: 13, color: "#64748b", marginTop: 4 },
+
+  quickSection: { marginBottom: 24 },
+  quickTitle: { fontSize: 13, fontWeight: 800, color: "#0f172a", marginBottom: 12 },
+  staffGrid: { display: "flex", flexDirection: "column", gap: 10 },
+  staffCardBtn: {
     display: "flex",
     alignItems: "center",
-    border: "2px solid #0c831f",
-    borderRadius: "14px",
-    backgroundColor: "#ffffff",
-    overflow: "hidden",
-    marginBottom: "20px",
-    boxShadow: "0 2px 8px rgba(12,131,31,0.08)",
-  },
-  countryFlag: {
-    backgroundColor: "#f8fafc",
-    padding: "16px 14px",
-    fontSize: "15px",
-    fontWeight: "800",
-    color: "#0f172a",
-    borderRight: "2px solid #e2e8f0",
-    whiteSpace: "nowrap",
-  },
-  phoneInput: {
-    flex: 1,
-    padding: "16px 14px",
-    fontSize: "18px",
-    fontWeight: "700",
-    color: "#000000",
-    border: "none",
-    outline: "none",
-    backgroundColor: "#ffffff",
-    letterSpacing: "2px",
-  },
-  submitBtn: {
-    width: "100%",
-    padding: "16px",
-    backgroundColor: "#0c831f",
-    color: "#ffffff",
-    border: "none",
-    borderRadius: "14px",
-    fontWeight: "800",
-    fontSize: "16px",
-    boxShadow: "0 4px 14px rgba(12,131,31,0.3)",
+    gap: 12,
+    background: "#f8fafc",
+    border: "1.5px solid #e2e8f0",
+    borderRadius: 14,
+    padding: "12px 16px",
+    cursor: "pointer",
+    textAlign: "left",
     transition: "all 0.2s ease",
   },
-  revealOtpBtn: {
-    width: "100%",
-    padding: "12px",
-    backgroundColor: "#fef9c3",
-    border: "1.5px dashed #ca8a04",
-    borderRadius: "12px",
-    color: "#854d0e",
-    fontWeight: "700",
-    fontSize: "13px",
-    cursor: "pointer",
-    marginBottom: "12px",
-  },
-  fallbackSuccessMsg: {
-    backgroundColor: "#dcfce7",
-    color: "#15803d",
-    padding: "10px",
-    borderRadius: "10px",
-    fontSize: "13px",
-    textAlign: "center",
-    fontWeight: "700",
-    marginBottom: "12px",
-  },
-  errorAlert: {
-    backgroundColor: "#fef2f2",
-    border: "1px solid #fca5a5",
-    color: "#991b1b",
-    borderRadius: "10px",
-    padding: "12px",
-    fontSize: "13px",
-    fontWeight: "700",
-    marginBottom: "16px",
-    textAlign: "center",
-  },
-  termsText: {
-    fontSize: "12px",
-    color: "#64748b",
-    textAlign: "center",
-    marginTop: "20px",
-    lineHeight: "1.5",
-  },
-  linkText: {
-    color: "#0c831f",
-    fontWeight: "700",
-  },
-  backButton: {
-    backgroundColor: "transparent",
-    border: "none",
-    color: "#0c831f",
-    fontWeight: "800",
-    fontSize: "14px",
-    cursor: "pointer",
-    padding: "0 0 16px",
-    display: "flex",
-    alignItems: "center",
-  },
-  otpRow: {
-    display: "flex",
-    justifyContent: "space-between",
-    gap: "8px",
-    marginBottom: "16px",
-    cursor: "pointer",
-  },
-  otpBox: {
-    width: "48px",
-    height: "56px",
-    border: "2px solid",
-    borderRadius: "12px",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    fontSize: "24px",
-    fontWeight: "900",
-  },
-  hiddenInput: {
-    position: "absolute",
-    opacity: 0,
-    width: 1,
-    height: 1,
-  },
-  resendLink: {
-    backgroundColor: "transparent",
-    border: "none",
-    color: "#0c831f",
-    fontWeight: "800",
-    fontSize: "14px",
-    cursor: "pointer",
-    width: "100%",
-    marginTop: "14px",
-  },
+  avatarIcon: { fontSize: 28 },
+  staffInfo: { flex: 1 },
+  staffName: { fontSize: 15, fontWeight: 800, color: "#0f172a" },
+  staffDesig: { fontSize: 12, fontWeight: 700, color: "#0c831f", marginTop: 1 },
+  staffPhone: { fontSize: 11, color: "#64748b", marginTop: 1 },
+  arrowBadge: { color: "#0c831f", fontWeight: 900, fontSize: 16 },
+
+  dividerRow: { display: "flex", alignItems: "center", gap: 12, margin: "20px 0" },
+  dividerLine: { flex: 1, height: 1, background: "#e2e8f0" },
+  dividerText: { fontSize: 11, fontWeight: 800, color: "#94a3b8" },
+
+  formBlock: { display: "flex", flexDirection: "column", gap: 12 },
+  inputGroup: { display: "flex", border: "2px solid #0c831f", borderRadius: 12, overflow: "hidden" },
+  countryFlag: { background: "#f1f5f9", padding: "12px 14px", fontWeight: 800, fontSize: 14, borderRight: "1px solid #cbd5e1" },
+  phoneInput: { flex: 1, border: "none", padding: "12px 14px", fontSize: 16, fontWeight: 700, outline: "none" },
+  submitBtn: { width: "100%", padding: 14, background: "#0c831f", color: "#fff", border: "none", borderRadius: 12, fontWeight: 800, fontSize: 15, cursor: "pointer" },
+  
+  backButton: { background: "none", border: "none", color: "#0c831f", fontWeight: 700, fontSize: 13, cursor: "pointer", textAlign: "left", padding: 0 },
+  subText: { fontSize: 13, color: "#475569" },
+  otpRow: { display: "flex", gap: 8, justifyContent: "center", margin: "12px 0" },
+  otpBox: { width: 44, height: 50, border: "2px solid #0c831f", borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, fontWeight: 900, color: "#0c831f" },
+  hiddenInput: { position: "absolute", opacity: 0, width: 1, height: 1 },
+  revealOtpBtn: { background: "#fef9c3", border: "1px dashed #ca8a04", color: "#854d0e", padding: 10, borderRadius: 10, fontWeight: 700, fontSize: 12, cursor: "pointer" },
+  errorAlert: { background: "#fef2f2", color: "#dc2626", padding: 10, borderRadius: 8, fontSize: 12, fontWeight: 700, textAlign: "center" },
 };

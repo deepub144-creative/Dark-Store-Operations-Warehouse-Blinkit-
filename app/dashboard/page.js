@@ -56,7 +56,7 @@ export default function WarehouseDashboardPage() {
   const [staff, setStaff] = useState(null);
   const [orders, setOrders] = useState([]);
   const [staffStatus, setStaffStatus] = useState([]);
-  const [activeTab, setActiveTab] = useState("overview"); // overview | orderCap | complaints | devices | orders
+  const [activeTab, setActiveTab] = useState("overview");
 
   // Order Cap States
   const [orderCapLimit, setOrderCapLimit] = useState(400);
@@ -70,19 +70,14 @@ export default function WarehouseDashboardPage() {
 
   // Complaints State
   const [complaints, setComplaints] = useState(INITIAL_COMPLAINTS);
-  const [selectedComplaint, setSelectedComplaint] = useState(null);
   const [actionSuccess, setActionSuccess] = useState("");
-
-  // Device Ping State
   const [pingedDevice, setPingedDevice] = useState("");
 
   const router = useRouter();
 
-  // Load local staff session
   useEffect(() => {
     const raw = localStorage.getItem("auditx_staff");
     if (!raw) {
-      // Default auto-login as Bhasker N S (SM) for easy viewing
       const defaultSM = STAFF.find((s) => s.id === "bhasker");
       localStorage.setItem("auditx_staff", JSON.stringify(defaultSM));
       setStaff(defaultSM);
@@ -91,7 +86,6 @@ export default function WarehouseDashboardPage() {
     }
   }, []);
 
-  // Listen to Firestore Orders and Staff Sessions
   useEffect(() => {
     if (!staff) return;
 
@@ -117,7 +111,6 @@ export default function WarehouseDashboardPage() {
     };
   }, [staff]);
 
-  // Switch Staff Member on the fly
   function switchStaff(member) {
     localStorage.setItem("auditx_staff", JSON.stringify(member));
     setStaff(member);
@@ -130,7 +123,6 @@ export default function WarehouseDashboardPage() {
     router.push("/login");
   }
 
-  // Order Cap Actions
   function toggleStorePause() {
     const nextState = !isStorePaused;
     setIsStorePaused(nextState);
@@ -146,7 +138,6 @@ export default function WarehouseDashboardPage() {
     setCapLogs((prev) => [{ id: Date.now(), time: new Date().toLocaleTimeString(), msg: logMsg }, ...prev]);
   }
 
-  // Complaint Actions
   function resolveComplaint(id, refund = false) {
     setComplaints((prev) =>
       prev.map((c) => {
@@ -156,12 +147,10 @@ export default function WarehouseDashboardPage() {
         return c;
       })
     );
-    setSelectedComplaint(null);
     setActionSuccess(refund ? `✅ Refund issued & Complaint ${id} resolved!` : `✅ Complaint ${id} marked as resolved.`);
     setTimeout(() => setActionSuccess(""), 3500);
   }
 
-  // Ping Staff Device
   function handlePingDevice(deviceName) {
     setPingedDevice(deviceName);
     setTimeout(() => setPingedDevice(""), 3000);
@@ -169,13 +158,11 @@ export default function WarehouseDashboardPage() {
 
   if (!staff) return null;
 
-  // Real-Time Metrics Calculations
-  const currentOrdersCount = Math.max(orders.length, 348); // realistic baseline orders
+  const currentOrdersCount = Math.max(orders.length, 348);
   const capacityPercent = Math.min(100, Math.round((currentOrdersCount / orderCapLimit) * 100));
   const openComplaintsCount = complaints.filter((c) => c.status !== "RESOLVED").length;
   const criticalComplaintsCount = complaints.filter((c) => c.severity === "CRITICAL" && c.status !== "RESOLVED").length;
 
-  // Merged Staff Roster (STAFF list + live Firestore sessions)
   const fullRoster = STAFF.map((s) => {
     const liveDoc = staffStatus.find((ls) => ls.id === s.id);
     return {
@@ -203,7 +190,6 @@ export default function WarehouseDashboardPage() {
           </div>
         </div>
 
-        {/* Personnel Profile & Quick Staff Switcher */}
         <div style={S.headerRight}>
           <div style={S.staffSwitcherBlock}>
             <span style={S.switcherLabel}>Logged in Personnel:</span>
@@ -215,7 +201,6 @@ export default function WarehouseDashboardPage() {
               </div>
             </div>
 
-            {/* Quick Switch Dropdown */}
             <select
               style={S.switchSelect}
               value={staff.id}
@@ -239,7 +224,6 @@ export default function WarehouseDashboardPage() {
         </div>
       </header>
 
-      {/* Action Notification Alert */}
       {actionSuccess && <div style={S.actionAlert}>{actionSuccess}</div>}
       {pingedDevice && <div style={S.pingAlert}>🔔 Pinging terminal "{pingedDevice}"... High-pitch chime sent to device speaker!</div>}
 
@@ -279,13 +263,10 @@ export default function WarehouseDashboardPage() {
         })}
       </div>
 
-      {/* ── MAIN CONTENT AREA ── */}
       <main style={S.main}>
-
         {/* OVERVIEW TAB */}
         {activeTab === "overview" && (
           <div>
-            {/* Top Metric Cards */}
             <div style={S.statsGrid}>
               <div style={S.statCard}>
                 <div style={S.statHeader}>
@@ -339,7 +320,6 @@ export default function WarehouseDashboardPage() {
               </div>
             </div>
 
-            {/* Quick Actions Bar for SM / ASM / MD */}
             <div style={S.quickControlBar}>
               <div style={S.controlTitle}>⚡ Management Quick Controls ({staff.name} - {staff.designation}):</div>
               <div style={S.controlBtns}>
@@ -364,9 +344,7 @@ export default function WarehouseDashboardPage() {
               </div>
             </div>
 
-            {/* Roster & Live Order Dual Panels */}
             <div style={S.twoColGrid}>
-              {/* Personnel Roster */}
               <div style={S.panel}>
                 <div style={S.panelHeader}>
                   <span style={S.panelTitle}>👥 Personnel & Active Devices Today</span>
@@ -391,7 +369,6 @@ export default function WarehouseDashboardPage() {
                 </div>
               </div>
 
-              {/* Complaints Quick Feed */}
               <div style={S.panel}>
                 <div style={S.panelHeader}>
                   <span style={S.panelTitle}>⚠️ Complaints & Quality Escalations</span>
@@ -442,7 +419,6 @@ export default function WarehouseDashboardPage() {
               </button>
             </div>
 
-            {/* Capacity Meter */}
             <div style={S.capMeterCard}>
               <div style={S.capMeterHeader}>
                 <div>
@@ -470,9 +446,7 @@ export default function WarehouseDashboardPage() {
               </div>
             </div>
 
-            {/* Controls Grid */}
             <div style={S.capControlsGrid}>
-              {/* Cap Selector */}
               <div style={S.capControlBox}>
                 <div style={S.boxTitle}>Adjust Max Hourly Order Cap</div>
                 <div style={S.capBtnGroup}>
@@ -491,7 +465,6 @@ export default function WarehouseDashboardPage() {
                 </div>
               </div>
 
-              {/* Auto Throttling Switch */}
               <div style={S.capControlBox}>
                 <div style={S.boxTitle}>Surge Throttling Mode</div>
                 <div style={S.toggleRow}>
@@ -512,7 +485,6 @@ export default function WarehouseDashboardPage() {
               </div>
             </div>
 
-            {/* Cap Event Audit Log */}
             <div style={S.panel}>
               <div style={S.panelTitle}>📋 Order Cap Audit Event Stream</div>
               <div style={S.logList}>
@@ -561,7 +533,6 @@ export default function WarehouseDashboardPage() {
               </button>
             </div>
 
-            {/* Complaints Grid */}
             <div style={S.complaintsGrid}>
               {complaints.map((c) => (
                 <div key={c.id} style={S.complaintCard}>
@@ -712,7 +683,6 @@ export default function WarehouseDashboardPage() {
             </div>
           </div>
         )}
-
       </main>
     </div>
   );
