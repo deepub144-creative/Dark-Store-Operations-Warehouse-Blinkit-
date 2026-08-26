@@ -27,11 +27,11 @@ export const STAGE_SEQUENCE = [
 // Demo staff directory. phone is used for OTP login.
 // roles: array of role codes this person can be auto-assigned to.
 export const STAFF = [
-  { id: "bhaskar", name: "Bhaskar N S", phone: "9000000001", roles: [ROLES.MANAGER] },
-  { id: "deepu", name: "Deepu B", phone: "9000000002", roles: [ROLES.PICKER, ROLES.AUDIT, ROLES.INVENTORY_AUDIT] },
-  { id: "harshitha", name: "A B Harshitha", phone: "9000000003", roles: [ROLES.EXP_AUDIT, ROLES.INVENTORY_AUDIT, ROLES.PICKER] },
+  { id: "bhaskar", name: "Bhaskar N S (SM)", phone: "8431453058", roles: [ROLES.MANAGER, ROLES.PUTAWAY, ROLES.PICKER, ROLES.AUDIT, ROLES.PACKER, ROLES.MOVER] },
+  { id: "deepu", name: "Deepu B (ASM)", phone: "8050475078", roles: [ROLES.MANAGER, ROLES.PUTAWAY, ROLES.PICKER, ROLES.AUDIT, ROLES.PACKER, ROLES.MOVER, ROLES.INVENTORY_AUDIT] },
+  { id: "harshitha", name: "A B Harshitha (MD)", phone: "8971720997", roles: [ROLES.MANAGER, ROLES.EXP_AUDIT, ROLES.INVENTORY_AUDIT, ROLES.PICKER, ROLES.AUDIT, ROLES.PACKER, ROLES.MOVER] },
   { id: "thrupthi", name: "Thrupthi K S", phone: "9000000004", roles: [ROLES.FNV, ROLES.AUDIT, ROLES.INVENTORY_AUDIT, ROLES.PACKER, ROLES.PICKER] },
-  { id: "sinchana", name: "Sinchana B R", phone: "9000000005", roles: [ROLES.INVENTORY_AUDIT, ROLES.MOVER, ROLES.PICKER] },
+  { id: "sinchana", name: "Sinchana B R", phone: "9000000005", roles: [ROLES.INVENTORY_AUDIT, ROLES.MOVER, ROLES.PICKER, ROLES.PUTAWAY] },
 ];
 
 export function staffForRole(role) {
