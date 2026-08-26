@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # AuditX — Dark Store Warehouse Operations (Demo)
 
 Two connected apps built with Next.js + Firebase, deployable free on Vercel:
@@ -162,3 +163,6 @@ auditx-project/
 ├── firestore.rules
 └── README.md               # you are here
 ```
+=======
+# Dark-Store-Operations-Warehouse-Blinkit-
+>>>>>>> 4ff5b90bbb01d3ccad53b39ae70bbc5c9e937e5a
