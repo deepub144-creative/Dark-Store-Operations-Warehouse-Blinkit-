@@ -3,6 +3,13 @@ import { adminDb } from "@/lib/firebaseAdmin";
 import { STAGE_SEQUENCE } from "@/lib/roles";
 
 export async function POST(req) {
+  if (!adminDb) {
+    return NextResponse.json(
+      { error: "Firebase credentials missing. Please set FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, and FIREBASE_PRIVATE_KEY in Vercel Environment Variables." },
+      { status: 500 }
+    );
+  }
+
   const { orderId, sku, scannedCode, staffId } = await req.json();
 
   const ref = adminDb.collection("orders").doc(orderId);

@@ -10,6 +10,10 @@ import { STAGE_SEQUENCE, staffForRole } from "@/lib/roles";
 // this keeps everything on Vercel + Firestore free tier.
 
 export async function POST() {
+  if (!adminDb) {
+    return NextResponse.json({ success: false, error: "Firebase credentials missing in Vercel" });
+  }
+
   const pendingSnap = await adminDb
     .collection("orders")
     .where("stageStatus", "==", "PENDING_ASSIGN")

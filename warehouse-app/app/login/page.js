@@ -21,7 +21,13 @@ export default function LoginPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ phone }),
       });
-      const data = await res.json();
+      const text = await res.text();
+      let data = {};
+      try {
+        data = JSON.parse(text);
+      } catch (err) {
+        throw new Error("Server configuration error. Check Firebase keys in Vercel settings.");
+      }
       if (!res.ok) throw new Error(data.error || "Failed to send OTP");
       setDemoOtp(data.otp);
       setStep("otp");
@@ -41,7 +47,13 @@ export default function LoginPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ phone, otp }),
       });
-      const data = await res.json();
+      const text = await res.text();
+      let data = {};
+      try {
+        data = JSON.parse(text);
+      } catch (err) {
+        throw new Error("Server configuration error. Check Firebase keys in Vercel settings.");
+      }
       if (!res.ok) throw new Error(data.error || "OTP verification failed");
 
       localStorage.setItem("auditx_staff", JSON.stringify(data.staff));

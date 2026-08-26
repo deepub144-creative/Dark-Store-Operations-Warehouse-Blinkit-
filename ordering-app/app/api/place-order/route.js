@@ -3,6 +3,13 @@ import { adminDb } from "@/lib/firebaseAdmin";
 import { CATALOG } from "@/lib/items";
 
 export async function POST(req) {
+  if (!adminDb) {
+    return NextResponse.json(
+      { error: "Firebase credentials missing. Please set FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, and FIREBASE_PRIVATE_KEY in Vercel Environment Variables." },
+      { status: 500 }
+    );
+  }
+
   const { customerName, cart } = await req.json();
 
   if (!customerName || !cart || cart.length === 0) {

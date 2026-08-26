@@ -10,6 +10,13 @@ import { staffByPhone } from "@/lib/roles";
 // and stop returning `otp` in the response.
 
 export async function POST(req) {
+  if (!adminDb) {
+    return NextResponse.json(
+      { error: "Firebase credentials missing. Please set FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, and FIREBASE_PRIVATE_KEY in Vercel Environment Variables." },
+      { status: 500 }
+    );
+  }
+
   const { phone } = await req.json();
 
   if (!phone) {
