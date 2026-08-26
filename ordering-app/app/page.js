@@ -19,7 +19,7 @@ export default function BlinkitReferenceApp() {
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [toastMessage, setToastMessage] = useState("");
   const [locationLabel, setLocationLabel] = useState("28, Siddi Vinayaka Rd, Kamath Layout");
-  const [activeTab, setActiveTab] = useState("home"); // 'home' | 'account'
+  const [activeTab, setActiveTab] = useState("home"); // 'home' | 'categories' | 'print' | 'profile'
   const router = useRouter();
 
   useEffect(() => {
@@ -57,7 +57,7 @@ export default function BlinkitReferenceApp() {
       );
     }
 
-    const timer = setTimeout(() => setLoading(false), 800);
+    const timer = setTimeout(() => setLoading(false), 600);
     return () => clearTimeout(timer);
   }, [router]);
 
@@ -163,13 +163,12 @@ export default function BlinkitReferenceApp() {
   }
 
   return (
-    <div style={S.app}>
+    <div className="app-container">
       {toastMessage && <div style={S.toastBox}>{toastMessage}</div>}
 
-      {/* ── TOP HEADER MATCHING BLINKIT REFERENCE VIDEO ── */}
-      <header style={S.header}>
+      {/* ── DESKTOP HEADER (FULL SIZE LAPTOP/DESKTOP MODE) ── */}
+      <header style={S.headerDesktop} className="desktop-only">
         <div style={S.headerInner}>
-          {/* Logo */}
           <div
             style={S.logoWrap}
             onClick={() => { setActiveTab("home"); setSelectedCategory("All"); setSearchQuery(""); }}
@@ -178,13 +177,11 @@ export default function BlinkitReferenceApp() {
             <span style={{ color: "#0c831f", fontWeight: 900, fontSize: 32, letterSpacing: "-1.5px" }}>it</span>
           </div>
 
-          {/* Delivery SLA Widget */}
           <div style={S.deliveryWidget} onClick={() => triggerToast(`📍 Delivering to: ${locationLabel}`)}>
             <div style={S.slaTitle}>Delivery in 13 minutes</div>
-            <div style={S.addressSub}>{locationLabel.slice(0, 32)}... ▾</div>
+            <div style={S.addressSub}>{locationLabel.slice(0, 34)}... ▾</div>
           </div>
 
-          {/* Center Search Input Bar */}
           <div style={S.searchContainer}>
             <span style={S.searchIcon}>🔍</span>
             <input
@@ -202,7 +199,6 @@ export default function BlinkitReferenceApp() {
             )}
           </div>
 
-          {/* Right Action Buttons */}
           <div style={S.headerRight}>
             <button
               style={S.loginLinkBtn}
@@ -229,21 +225,67 @@ export default function BlinkitReferenceApp() {
         </div>
       </header>
 
-      {/* ── SEARCH OVERLAY DRILL-DOWN (AS SEEN IN REFERENCE VIDEO FRAME 3 & 4) ── */}
+      {/* ── MOBILE HEADER (ANDROID & IOS MODE) ── */}
+      <header style={S.headerMobile} className="mobile-only">
+        <div style={S.mobileHeaderTopRow}>
+          <div
+            style={S.mobileLogoWrap}
+            onClick={() => { setActiveTab("home"); setSelectedCategory("All"); setSearchQuery(""); }}
+          >
+            <span style={{ color: "#f7d108", fontWeight: 900, fontSize: 24, letterSpacing: "-1px" }}>blink</span>
+            <span style={{ color: "#0c831f", fontWeight: 900, fontSize: 24, letterSpacing: "-1px" }}>it</span>
+            <span style={S.mobileSlaPill}>⚡ 13 MINS</span>
+          </div>
+
+          <div style={S.mobileAddrWidget} onClick={() => triggerToast(`📍 Delivering to: ${locationLabel}`)}>
+            <div style={S.mobileAddrTitle}>HOME - Kamath Layout ▾</div>
+            <div style={S.mobileAddrText}>{locationLabel.slice(0, 24)}...</div>
+          </div>
+
+          <button
+            style={S.mobileUserBtn}
+            onClick={() => setActiveTab(activeTab === "profile" ? "home" : "profile")}
+          >
+            👤
+          </button>
+        </div>
+
+        {/* Mobile Sticky Search Bar */}
+        <div style={S.mobileSearchContainer}>
+          <span style={{ fontSize: 15, color: "#64748b" }}>🔍</span>
+          <input
+            style={S.mobileSearchInput}
+            placeholder='Search "paneer", "milk", "chips"...'
+            value={searchQuery}
+            onChange={(e) => {
+              setSearchQuery(e.target.value);
+              setIsSearching(true);
+              setTimeout(() => setIsSearching(false), 200);
+            }}
+          />
+          {searchQuery ? (
+            <button style={S.clearSearch} onClick={() => setSearchQuery("")}>✕</button>
+          ) : (
+            <span style={{ fontSize: 14, color: "#64748b" }}>🎙️</span>
+          )}
+        </div>
+      </header>
+
+      {/* ── SEARCH OVERLAY DRILL-DOWN ── */}
       {searchQuery.length > 0 && (
-        <div style={S.searchOverlayWrap}>
+        <div className="search-overlay-wrap">
           <div style={S.searchQueryHeader}>
             Showing results for <strong>"{searchQuery}"</strong> ({filteredCatalog.length} items)
           </div>
 
           {isSearching ? (
-            <div style={S.skeletonGrid}>
+            <div className="product-grid">
               {[1, 2, 3, 4, 5, 6].map((i) => (
                 <div key={i} style={S.skeletonCard} />
               ))}
             </div>
           ) : (
-            <div style={S.referenceGrid}>
+            <div className="product-grid">
               {filteredCatalog.map((item) => {
                 const qty = cart[item.sku] || 0;
                 const discount = Math.round(((item.mrp - item.price) / item.mrp) * 100);
@@ -280,44 +322,43 @@ export default function BlinkitReferenceApp() {
         </div>
       )}
 
-      {/* ── MAIN CONTENT PAGE (WHEN NOT SEARCHING) ── */}
+      {/* ── MAIN CONTENT PAGE (HOME TAB) ── */}
       {searchQuery.length === 0 && activeTab === "home" && (
-        <main style={S.mainContent}>
-
-          {/* 3 PROMO CARDS (MATCHING REFERENCE VIDEO FRAME 1) */}
-          <div style={S.promoGrid}>
-            <div style={{ ...S.promoCard, background: "linear-gradient(135deg, #0d9488, #0f766e)" }}>
-              <div style={S.promoTitle}>Pharmacy at your doorstep!</div>
-              <div style={S.promoSub}>Cough syrups, pain relief sprays & more</div>
+        <main className="main-content-wrap">
+          {/* 3 PROMO BANNERS (DESKTOP 3-COL / MOBILE HORIZONTAL SWIPE) */}
+          <div className="promo-grid no-scrollbar">
+            <div className="promo-card-item" style={{ ...S.promoCard, background: "linear-gradient(135deg, #0d9488, #0f766e)" }}>
+              <div style={S.promoTitle}>Pharmacy at your doorstep! 💊</div>
+              <div style={S.promoSub}>Cough syrups, pain relief sprays & essentials</div>
               <button style={S.promoBtn} onClick={() => triggerToast("Opened Pharmacy Dept")}>Order Now</button>
             </div>
 
-            <div style={{ ...S.promoCard, background: "linear-gradient(135deg, #eab308, #ca8a04)" }}>
-              <div style={S.promoTitle}>Pet care supplies at your door</div>
-              <div style={S.promoSub}>Food, treats, toys & dog food</div>
+            <div className="promo-card-item" style={{ ...S.promoCard, background: "linear-gradient(135deg, #eab308, #ca8a04)" }}>
+              <div style={S.promoTitle}>Pet care supplies at your door 🐾</div>
+              <div style={S.promoSub}>Food, treats, toys & dog chew sticks</div>
               <button style={S.promoBtn} onClick={() => triggerToast("Opened Pet Care Dept")}>Order Now</button>
             </div>
 
-            <div style={{ ...S.promoCard, background: "linear-gradient(135deg, #3b82f6, #1d4ed8)" }}>
-              <div style={S.promoTitle}>No time for a diaper run?</div>
-              <div style={S.promoSub}>Get baby care essentials delivered</div>
+            <div className="promo-card-item" style={{ ...S.promoCard, background: "linear-gradient(135deg, #3b82f6, #1d4ed8)" }}>
+              <div style={S.promoTitle}>No time for a diaper run? 👶</div>
+              <div style={S.promoSub}>Get baby care wipes & diapers delivered fast</div>
               <button style={S.promoBtn} onClick={() => triggerToast("Opened Baby Care Dept")}>Order Now</button>
             </div>
           </div>
 
-          {/* CATEGORIES GRID (MATCHING REFERENCE VIDEO 20 DEPARTMENTS) */}
-          <div style={S.categoryGridSection}>
+          {/* 20 CATEGORY DEPARTMENTS GRID */}
+          <div className="category-grid">
             {[
               { id: "Paan Corner", title: "Paan Corner", icon: "🍃" },
-              { id: "Dairy & Breakfast", title: "Dairy, Bread & Eggs", icon: "🥛" },
-              { id: "Vegetables & Fruits", title: "Fruits & Vegetables", icon: "🥦" },
-              { id: "Snacks & Drinks", title: "Cold Drinks & Juices", icon: "🧃" },
-              { id: "Snacks & Drinks", title: "Snacks & Munchies", icon: "🍿" },
+              { id: "Dairy & Breakfast", title: "Dairy & Eggs", icon: "🥛" },
+              { id: "Vegetables & Fruits", title: "Fruits & Veggies", icon: "🥦" },
+              { id: "Snacks & Drinks", title: "Cold Drinks", icon: "🧃" },
+              { id: "Snacks & Drinks", title: "Snacks", icon: "🍿" },
               { id: "Ice Creams & Frozen", title: "Sweet Tooth", icon: "🍫" },
-              { id: "Dairy & Breakfast", title: "Bakery & Biscuits", icon: "🍞" },
+              { id: "Dairy & Breakfast", title: "Bakery", icon: "🍞" },
               { id: "Dairy & Breakfast", title: "Tea & Coffee", icon: "☕" },
-              { id: "Dairy & Breakfast", title: "Atta, Rice & Dal", icon: "🌾" },
-              { id: "Festive & Gifts", title: "Festive & Gifts", icon: "🎁" },
+              { id: "Dairy & Breakfast", title: "Atta & Dal", icon: "🌾" },
+              { id: "Festive & Gifts", title: "Gifts & Hampers", icon: "🎁" },
             ].map((cat, idx) => (
               <div
                 key={idx}
@@ -328,7 +369,7 @@ export default function BlinkitReferenceApp() {
                 }}
                 onClick={() => {
                   setSelectedCategory(cat.id);
-                  triggerToast(`Filtered category: ${cat.title}`);
+                  triggerToast(`Filtered: ${cat.title}`);
                 }}
               >
                 <div style={S.catTileIcon}>{cat.icon}</div>
@@ -337,7 +378,7 @@ export default function BlinkitReferenceApp() {
             ))}
           </div>
 
-          {/* PRODUCT CAROUSEL SECTIONS BY CATEGORY (MATCHING REFERENCE VIDEO FRAME 1 & 2) */}
+          {/* CATEGORY PRODUCT CAROUSELS */}
           {categoriesList.map((sec) => {
             const secItems = CATALOG.filter((c) => c.category === sec.name);
             if (secItems.length === 0) return null;
@@ -353,7 +394,7 @@ export default function BlinkitReferenceApp() {
                   </button>
                 </div>
 
-                <div style={S.horizontalScrollRow}>
+                <div style={S.horizontalScrollRow} className="no-scrollbar">
                   {secItems.map((item) => {
                     const qty = cart[item.sku] || 0;
                     const discount = Math.round(((item.mrp - item.price) / item.mrp) * 100);
@@ -392,9 +433,68 @@ export default function BlinkitReferenceApp() {
         </main>
       )}
 
+      {/* ── CATEGORIES TAB (MOBILE/DESKTOP) ── */}
+      {searchQuery.length === 0 && activeTab === "categories" && (
+        <main className="main-content-wrap">
+          <div style={{ fontSize: 20, fontWeight: 900, marginBottom: 16 }}>All Categories & Departments</div>
+          <div className="product-grid">
+            {CATALOG.map((item) => {
+              const qty = cart[item.sku] || 0;
+              const discount = Math.round(((item.mrp - item.price) / item.mrp) * 100);
+              return (
+                <div key={item.sku} style={S.refProductCard}>
+                  {discount > 0 && <div style={S.refDiscountBadge}>{discount}% OFF</div>}
+                  <div style={S.refImgWrap} onClick={() => setSelectedProduct(item)}>
+                    <img src={item.image} alt={item.name} style={S.refImg} />
+                  </div>
+                  <div style={S.refSlaTag}>⏱️ 13 MINS</div>
+                  <div style={S.refTitle} onClick={() => setSelectedProduct(item)}>{item.name}</div>
+                  <div style={S.refWeight}>{item.weight}</div>
+                  <div style={S.refPriceRow}>
+                    <div>
+                      <span style={S.refPrice}>₹{item.price}</span>
+                      {item.mrp > item.price && <span style={S.refMrp}>₹{item.mrp}</span>}
+                    </div>
+
+                    {qty === 0 ? (
+                      <button style={S.refAddBtn} onClick={() => updateQty(item.sku, 1)}>ADD</button>
+                    ) : (
+                      <div style={S.refCounter}>
+                        <button style={S.refCounterBtn} onClick={() => updateQty(item.sku, -1)}>−</button>
+                        <span style={S.refCounterNum}>{qty}</span>
+                        <button style={S.refCounterBtn} onClick={() => updateQty(item.sku, 1)}>+</button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </main>
+      )}
+
+      {/* ── PRINT STORE TAB ── */}
+      {searchQuery.length === 0 && activeTab === "print" && (
+        <main className="main-content-wrap" style={{ maxWidth: 640 }}>
+          <div style={{ background: "#ffffff", padding: 24, borderRadius: 20, border: "1px solid #e2e8f0", textAlign: "center" }}>
+            <div style={{ fontSize: 42, marginBottom: 12 }}>🖨️</div>
+            <div style={{ fontSize: 22, fontWeight: 900, color: "#0f172a" }}>Blinkit Print Store</div>
+            <div style={{ fontSize: 13, color: "#64748b", margin: "8px 0 20px" }}>
+              Get black & white or color document prints delivered to your door in 10 minutes!
+            </div>
+            <button
+              style={{ ...S.checkoutBtn, width: "100%" }}
+              onClick={() => triggerToast("Upload PDF function ready")}
+            >
+              Upload Document PDF →
+            </button>
+          </div>
+        </main>
+      )}
+
       {/* ── PROFILE ACCOUNT TAB ── */}
       {activeTab === "profile" && (
-        <main style={{ ...S.mainContent, maxWidth: 600 }}>
+        <main className="main-content-wrap" style={{ maxWidth: 600 }}>
           <div style={S.profileCard}>
             <div style={S.profileAvatar}>👤</div>
             <div style={{ flex: 1 }}>
@@ -411,6 +511,108 @@ export default function BlinkitReferenceApp() {
         </main>
       )}
 
+      {/* ── MOBILE FLOATING CART BAR (ANDROID & IOS MODE) ── */}
+      {totalItems > 0 && !showCart && (
+        <div className="mobile-cart-float-bar mobile-only" onClick={() => setShowCart(true)}>
+          <div style={{ display: "flex", flexDirection: "column" }}>
+            <span style={{ fontSize: 13, fontWeight: 900 }}>{totalItems} item(s) • ₹{totalPrice}</span>
+            <span style={{ fontSize: 10, opacity: 0.85 }}>Extra ₹25 savings on cart</span>
+          </div>
+          <div style={{ fontSize: 13, fontWeight: 900, display: "flex", alignItems: "center", gap: 4 }}>
+            View Cart 🛒 →
+          </div>
+        </div>
+      )}
+
+      {/* ── MOBILE BOTTOM NAVIGATION BAR (ANDROID & IOS MODE) ── */}
+      <nav className="mobile-bottom-nav mobile-only">
+        <button
+          className={`mobile-nav-item ${activeTab === "home" ? "active" : ""}`}
+          onClick={() => { setActiveTab("home"); setSelectedCategory("All"); setSearchQuery(""); }}
+        >
+          <span style={{ fontSize: 20 }}>🏠</span>
+          <span>Home</span>
+        </button>
+
+        <button
+          className={`mobile-nav-item ${activeTab === "categories" ? "active" : ""}`}
+          onClick={() => { setActiveTab("categories"); setSearchQuery(""); }}
+        >
+          <span style={{ fontSize: 20 }}>🗂️</span>
+          <span>Categories</span>
+        </button>
+
+        <button
+          className={`mobile-nav-item ${activeTab === "print" ? "active" : ""}`}
+          onClick={() => { setActiveTab("print"); setSearchQuery(""); }}
+        >
+          <span style={{ fontSize: 20 }}>🖨️</span>
+          <span>Print Store</span>
+        </button>
+
+        <button
+          className={`mobile-nav-item ${activeTab === "profile" ? "active" : ""}`}
+          onClick={() => { setActiveTab("profile"); setSearchQuery(""); }}
+        >
+          <span style={{ fontSize: 20 }}>👤</span>
+          <span>Account</span>
+        </button>
+
+        <button
+          className="mobile-nav-item"
+          onClick={() => setShowCart(true)}
+        >
+          <span style={{ fontSize: 20, position: "relative" }}>
+            🛒
+            {totalItems > 0 && (
+              <span style={S.navCartBadge}>{totalItems}</span>
+            )}
+          </span>
+          <span>Cart</span>
+        </button>
+      </nav>
+
+      {/* ── PRODUCT DETAIL POPUP MODAL ── */}
+      {selectedProduct && (
+        <div style={S.drawerOverlay} onClick={() => setSelectedProduct(null)}>
+          <div style={S.productModalCard} onClick={(e) => e.stopPropagation()}>
+            <button style={S.modalCloseBtn} onClick={() => setSelectedProduct(null)}>✕</button>
+            <div style={{ textAlign: "center" }}>
+              <img src={selectedProduct.image} alt={selectedProduct.name} style={{ height: 160, objectFit: "contain", marginBottom: 12 }} />
+            </div>
+            <div style={{ fontSize: 11, fontWeight: 800, color: "#64748b" }}>⏱️ DELIVERED IN 13 MINS</div>
+            <div style={{ fontSize: 18, fontWeight: 900, color: "#0f172a", marginTop: 4 }}>{selectedProduct.name}</div>
+            <div style={{ fontSize: 13, color: "#94a3b8", marginBottom: 12 }}>{selectedProduct.weight} • Aisle {selectedProduct.aisle}</div>
+
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 16 }}>
+              <div>
+                <span style={{ fontSize: 20, fontWeight: 900, color: "#0f172a" }}>₹{selectedProduct.price}</span>
+                {selectedProduct.mrp > selectedProduct.price && (
+                  <span style={{ fontSize: 13, color: "#94a3b8", textDecoration: "line-through", marginLeft: 6 }}>
+                    ₹{selectedProduct.mrp}
+                  </span>
+                )}
+              </div>
+
+              {(cart[selectedProduct.sku] || 0) === 0 ? (
+                <button
+                  style={S.refAddBtn}
+                  onClick={() => { updateQty(selectedProduct.sku, 1); setSelectedProduct(null); }}
+                >
+                  ADD TO CART
+                </button>
+              ) : (
+                <div style={S.refCounter}>
+                  <button style={S.refCounterBtn} onClick={() => updateQty(selectedProduct.sku, -1)}>−</button>
+                  <span style={S.refCounterNum}>{cart[selectedProduct.sku]}</span>
+                  <button style={S.refCounterBtn} onClick={() => updateQty(selectedProduct.sku, 1)}>+</button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── CART DRAWER MODAL ── */}
       {showCart && (
         <div style={S.drawerOverlay} onClick={() => setShowCart(false)}>
@@ -421,37 +623,47 @@ export default function BlinkitReferenceApp() {
             </div>
 
             <div style={{ padding: 20 }}>
-              {cartEntries.map(([sku, qty]) => {
-                const item = CATALOG.find((c) => c.sku === sku);
-                if (!item) return null;
-                return (
-                  <div key={sku} style={S.cartRow}>
-                    <img src={item.image} alt={item.name} style={S.cartItemImg} />
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 14, fontWeight: 800 }}>{item.name}</div>
-                      <div style={{ fontSize: 13, color: "#0c831f", fontWeight: 700 }}>₹{item.price * qty}</div>
-                    </div>
-                    <div style={S.refCounter}>
-                      <button style={S.refCounterBtn} onClick={() => updateQty(sku, -1)}>−</button>
-                      <span style={S.refCounterNum}>{qty}</span>
-                      <button style={S.refCounterBtn} onClick={() => updateQty(sku, 1)}>+</button>
+              {cartEntries.length === 0 ? (
+                <div style={{ textAlign: "center", padding: "40px 0", color: "#64748b" }}>
+                  <div style={{ fontSize: 48 }}>🛍️</div>
+                  <div style={{ fontSize: 16, fontWeight: 800, marginTop: 8 }}>Your cart is empty</div>
+                  <div style={{ fontSize: 13 }}>Explore items and add them to your cart!</div>
+                </div>
+              ) : (
+                <>
+                  {cartEntries.map(([sku, qty]) => {
+                    const item = CATALOG.find((c) => c.sku === sku);
+                    if (!item) return null;
+                    return (
+                      <div key={sku} style={S.cartRow}>
+                        <img src={item.image} alt={item.name} style={S.cartItemImg} />
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: 14, fontWeight: 800 }}>{item.name}</div>
+                          <div style={{ fontSize: 13, color: "#0c831f", fontWeight: 700 }}>₹{item.price * qty}</div>
+                        </div>
+                        <div style={S.refCounter}>
+                          <button style={S.refCounterBtn} onClick={() => updateQty(sku, -1)}>−</button>
+                          <span style={S.refCounterNum}>{qty}</span>
+                          <button style={S.refCounterBtn} onClick={() => updateQty(sku, 1)}>+</button>
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  <div style={S.billSummary}>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 900, fontSize: 16 }}>
+                      <span>Total Bill</span>
+                      <span>₹{totalPrice}</span>
                     </div>
                   </div>
-                );
-              })}
 
-              <div style={S.billSummary}>
-                <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 900, fontSize: 16 }}>
-                  <span>Total Bill</span>
-                  <span>₹{totalPrice}</span>
-                </div>
-              </div>
+                  {error && <div style={{ color: "#dc2626", fontWeight: 700, margin: "10px 0" }}>{error}</div>}
 
-              {error && <div style={{ color: "#dc2626", fontWeight: 700, margin: "10px 0" }}>{error}</div>}
-
-              <button style={S.checkoutBtn} onClick={placeOrder} disabled={placingOrder}>
-                {placingOrder ? "Placing Order..." : `Pay ₹${totalPrice} & Checkout →`}
-              </button>
+                  <button style={S.checkoutBtn} onClick={placeOrder} disabled={placingOrder}>
+                    {placingOrder ? "Placing Order..." : `Pay ₹${totalPrice} & Checkout →`}
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -466,10 +678,10 @@ const S = {
   splashLogo: { fontSize: 48, fontWeight: 900 },
   splashStatus: { color: "#0c831f", fontWeight: 800, marginTop: 12 },
 
-  app: { minHeight: "100vh", background: "#ffffff", fontFamily: "system-ui, sans-serif" },
   toastBox: { position: "fixed", top: 20, left: "50%", transform: "translateX(-50%)", background: "#1e293b", color: "#fff", padding: "10px 20px", borderRadius: 20, fontWeight: 800, fontSize: 13, zIndex: 100 },
 
-  header: { background: "#ffffff", borderBottom: "1px solid #e2e8f0", position: "sticky", top: 0, zIndex: 40, padding: "12px 24px" },
+  // Desktop Header
+  headerDesktop: { background: "#ffffff", borderBottom: "1px solid #e2e8f0", position: "sticky", top: 0, zIndex: 40, padding: "12px 24px" },
   headerInner: { maxWidth: 1280, margin: "0 auto", display: "flex", alignItems: "center", gap: 24 },
   logoWrap: { cursor: "pointer", display: "flex", alignItems: "center" },
 
@@ -488,23 +700,27 @@ const S = {
   myCartBtn: { background: "#f1f5f9", border: "none", padding: "10px 18px", borderRadius: 12, fontWeight: 800, fontSize: 14, color: "#0f172a", cursor: "pointer", display: "flex", alignItems: "center", gap: 8 },
   myCartBtnActive: { background: "#0c831f", color: "#ffffff" },
 
-  searchOverlayWrap: { maxWidth: 1280, margin: "20px auto", padding: "0 24px" },
-  searchQueryHeader: { fontSize: 18, marginBottom: 16, color: "#0f172a" },
+  // Mobile Header
+  headerMobile: { background: "#ffffff", borderBottom: "1px solid #e2e8f0", position: "sticky", top: 0, zIndex: 40, padding: "10px 14px", flexDirection: "column", gap: 8 },
+  mobileHeaderTopRow: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 },
+  mobileLogoWrap: { display: "flex", alignItems: "center", gap: 6, cursor: "pointer" },
+  mobileSlaPill: { background: "#f0fdf4", color: "#0c831f", fontSize: 10, fontWeight: 900, padding: "2px 6px", borderRadius: 6, border: "1px solid #bbf7d0" },
+  mobileAddrWidget: { flex: 1, textAlign: "center", cursor: "pointer" },
+  mobileAddrTitle: { fontSize: 12, fontWeight: 900, color: "#0f172a" },
+  mobileAddrText: { fontSize: 10, color: "#64748b" },
+  mobileUserBtn: { background: "#f1f5f9", border: "none", width: 34, height: 34, borderRadius: "50%", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" },
 
-  skeletonGrid: { display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 16 },
+  mobileSearchContainer: { background: "#f1f5f9", borderRadius: 12, padding: "8px 12px", display: "flex", alignItems: "center", gap: 8, border: "1px solid #e2e8f0" },
+  mobileSearchInput: { flex: 1, border: "none", background: "transparent", outline: "none", fontSize: 13, fontWeight: 600, color: "#0f172a" },
+
+  searchQueryHeader: { fontSize: 18, marginBottom: 16, color: "#0f172a" },
   skeletonCard: { height: 220, background: "#f1f5f9", borderRadius: 12 },
 
-  referenceGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 16 },
-
-  mainContent: { maxWidth: 1280, margin: "24px auto", padding: "0 24px" },
-
-  promoGrid: { display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16, marginBottom: 28 },
-  promoCard: { padding: 20, borderRadius: 16, color: "#ffffff" },
+  promoCard: { padding: 20, borderRadius: 16, color: "#ffffff", display: "flex", flexDirection: "column", justifyContent: "space-between" },
   promoTitle: { fontSize: 18, fontWeight: 900 },
   promoSub: { fontSize: 12, opacity: 0.9, marginTop: 4, height: 32 },
-  promoBtn: { marginTop: 14, background: "#0f172a", color: "#fff", border: "none", padding: "8px 16px", borderRadius: 8, fontWeight: 800, fontSize: 12, cursor: "pointer" },
+  promoBtn: { marginTop: 14, background: "#0f172a", color: "#fff", border: "none", padding: "8px 16px", borderRadius: 8, fontWeight: 800, fontSize: 12, cursor: "pointer", width: "fit-content" },
 
-  categoryGridSection: { display: "grid", gridTemplateColumns: "repeat(10, 1fr)", gap: 10, marginBottom: 32 },
   catTileCard: { borderRadius: 12, border: "1px solid", padding: 10, textAlign: "center", cursor: "pointer", transition: "all 0.15s ease" },
   catTileIcon: { fontSize: 26, marginBottom: 4 },
   catTileTitle: { fontSize: 11, fontWeight: 800, color: "#1e293b", lineHeight: 1.2 },
@@ -516,9 +732,9 @@ const S = {
 
   horizontalScrollRow: { display: "flex", gap: 16, overflowX: "auto", paddingBottom: 8 },
 
-  refProductCard: { minWidth: 180, maxWidth: 180, background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: 14, padding: 12, position: "relative", display: "flex", flexDirection: "column", justifyContent: "space-between" },
+  refProductCard: { minWidth: 160, background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: 14, padding: 12, position: "relative", display: "flex", flexDirection: "column", justifyContent: "space-between" },
   refDiscountBadge: { position: "absolute", top: 8, left: 8, background: "#2563eb", color: "#ffffff", fontSize: 9, fontWeight: 900, padding: "2px 6px", borderRadius: 4, zIndex: 5 },
-  refImgWrap: { height: 110, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", marginBottom: 6 },
+  refImgWrap: { height: 100, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", marginBottom: 6 },
   refImg: { maxHeight: "100%", maxWidth: "100%", objectFit: "contain" },
   refSlaTag: { fontSize: 10, fontWeight: 800, color: "#64748b", marginBottom: 4 },
   refTitle: { fontSize: 13, fontWeight: 800, color: "#0f172a", height: 34, overflow: "hidden", lineHeight: 1.3, cursor: "pointer" },
@@ -532,16 +748,21 @@ const S = {
   refCounterBtn: { background: "none", border: "none", color: "#fff", fontWeight: 900, fontSize: 15, width: 22, height: 22, cursor: "pointer" },
   refCounterNum: { color: "#fff", fontWeight: 900, fontSize: 12, padding: "0 4px" },
 
-  profileCard: { background: "#f8fafc", padding: 20, borderRadius: 16, display: "flex", alignItems: "center", gap: 16, marginBottom: 16 },
+  navCartBadge: { position: "absolute", top: -4, right: -6, background: "#0c831f", color: "#fff", fontSize: 9, fontWeight: 900, borderRadius: "50%", width: 15, height: 15, display: "flex", alignItems: "center", justifyContent: "center" },
+
+  profileCard: { background: "#ffffff", padding: 20, borderRadius: 16, border: "1px solid #e2e8f0", display: "flex", alignItems: "center", gap: 16, marginBottom: 16 },
   profileAvatar: { fontSize: 32 },
   logoutBtn: { background: "#fee2e2", border: "none", color: "#dc2626", padding: "8px 16px", borderRadius: 8, fontWeight: 800, cursor: "pointer" },
 
   walletCard: { background: "linear-gradient(135deg, #0c831f, #15803d)", padding: 24, borderRadius: 16, color: "#fff" },
 
-  drawerOverlay: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 60, display: "flex", justifyContent: "flex-end" },
+  drawerOverlay: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 120, display: "flex", justifyContent: "flex-end" },
   drawerCard: { width: "100%", maxWidth: 440, background: "#ffffff", height: "100vh", overflowY: "auto" },
   drawerHeader: { padding: 20, borderBottom: "1px solid #e2e8f0", display: "flex", justifyContent: "space-between", alignItems: "center" },
   drawerCloseBtn: { border: "none", background: "#f1f5f9", width: 32, height: 32, borderRadius: "50%", fontWeight: 800, cursor: "pointer" },
+
+  productModalCard: { width: "90%", maxWidth: 420, background: "#ffffff", borderRadius: 24, padding: 24, margin: "auto", position: "relative" },
+  modalCloseBtn: { position: "absolute", top: 16, right: 16, background: "#f1f5f9", border: "none", width: 32, height: 32, borderRadius: "50%", fontWeight: 800, cursor: "pointer" },
 
   cartRow: { display: "flex", alignItems: "center", gap: 12, marginBottom: 14 },
   cartItemImg: { width: 48, height: 48, borderRadius: 8, objectFit: "contain" },
