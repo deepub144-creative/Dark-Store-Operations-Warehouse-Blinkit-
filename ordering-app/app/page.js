@@ -266,7 +266,7 @@ export default function BlinkitFigmaApp() {
 
               <div className="figma-product-card">
                 <div className="product-img-wrap">
-                  <img src="/assets/figma-ui/Chips & Namkeens.png" alt="Bikaji Bhujia" className="product-img-file" />
+                  <img src="/assets/figma-assets/cat_biscuits.png" alt="Bikaji Bhujia" className="product-img-file" />
                 </div>
                 <div className="product-name-title">Bikaji Bhujia</div>
                 <div className="product-sla-tag">⏱️ 16 MINS</div>
@@ -346,7 +346,7 @@ export default function BlinkitFigmaApp() {
             <div className="section-title">Snacks & Drinks</div>
             <div className="category-cards-grid">
               <div className="mint-category-card">
-                <img src="/assets/figma-ui/Chips & Namkeens.png" alt="Chips & Namkeens" className="mint-card-img" />
+                <img src="/assets/figma-assets/cat_biscuits.png" alt="Chips & Namkeens" className="mint-card-img" />
                 <div className="mint-card-title">Chips & Namkeens</div>
               </div>
               <div className="mint-category-card">
