@@ -1,8 +1,8 @@
 import "./globals.css";
 
 export const metadata = {
-  title: "AuditX - Dark Store Warehouse Ops",
-  description: "IoT-based dark store warehouse operations demo",
+  title: "blinkit — Everything delivered in 14 minutes",
+  description: "India's Last Minute App - Quick Commerce Grocery & Dark Store Ordering",
 };
 
 export default function RootLayout({ children }) {
