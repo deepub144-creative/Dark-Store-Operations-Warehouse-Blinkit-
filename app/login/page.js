@@ -1,5 +1,7 @@
 "use client";
 
+export const dynamic = "force-dynamic";
+
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { STAFF, staffByPhone } from "@/lib/roles";
@@ -115,7 +117,7 @@ export default function WarehouseLoginPage() {
           </div>
           <div style={S.title}>Warehouse Operations Portal</div>
           <div style={S.subtitle}>
-            Enter your registered staff mobile number to access Dark Store Control Tower
+            Enter registered staff mobile number to access Dark Store Control Tower
           </div>
         </div>
 
