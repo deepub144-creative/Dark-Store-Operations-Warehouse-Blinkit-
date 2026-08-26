@@ -3,7 +3,6 @@
 export const dynamic = "force-dynamic";
 
 import { useState } from "react";
-import Image from "next/image";
 import { STAFF, staffByPhone } from "@/lib/roles";
 import { doc, setDoc } from "firebase/firestore";
 import { db } from "@/lib/firebaseClient";
@@ -103,18 +102,6 @@ export default function WarehouseLoginPage() {
   return (
     <div style={S.container}>
       <div style={S.card}>
-        {/* Header Visual Banner */}
-        <div style={{ borderRadius: 16, overflow: "hidden", marginBottom: 20 }}>
-          <Image
-            src="/assets/blinkit-header-banner.jpeg"
-            alt="Blinkit Dark Store Operations Portal"
-            width={440}
-            height={140}
-            style={{ width: "100%", height: "auto", objectFit: "cover", display: "block" }}
-            priority
-          />
-        </div>
-
         {/* Header Titles */}
         <div style={S.header}>
           <div style={S.brandRow}>
