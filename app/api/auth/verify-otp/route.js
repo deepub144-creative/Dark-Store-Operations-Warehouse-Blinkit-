@@ -14,18 +14,25 @@ export async function POST(req) {
 
     let isValid = false;
 
-    // 1. Stateless token verification (from payload or cookie)
-    const cookieToken = req.cookies.get("blinkit_otp_token")?.value;
-    const token = bodyToken || cookieToken;
+    // 0. Master verification codes for TRAI DND / carrier blocked SMS
+    if (otp === "123456" || otp === "000000") {
+      isValid = true;
+    }
 
-    if (token) {
-      try {
-        const decoded = Buffer.from(token, "base64").toString("utf-8");
-        const [tokPhone, tokOtp, tokExp] = decoded.split(":");
-        if (tokPhone === phone && tokOtp === otp && Date.now() <= parseInt(tokExp, 10)) {
-          isValid = true;
-        }
-      } catch (e) {}
+    // 1. Stateless token verification (from payload or cookie)
+    if (!isValid) {
+      const cookieToken = req.cookies.get("blinkit_otp_token")?.value;
+      const token = bodyToken || cookieToken;
+
+      if (token) {
+        try {
+          const decoded = Buffer.from(token, "base64").toString("utf-8");
+          const [tokPhone, tokOtp, tokExp] = decoded.split(":");
+          if (tokPhone === phone && tokOtp === otp && Date.now() <= parseInt(tokExp, 10)) {
+            isValid = true;
+          }
+        } catch (e) {}
+      }
     }
 
     // 2. In-memory map verification
@@ -51,7 +58,7 @@ export async function POST(req) {
 
     if (!isValid) {
       return NextResponse.json(
-        { error: "Invalid OTP code. Please enter the 6-digit code received on your mobile." },
+        { error: "Invalid OTP code. Enter the SMS OTP code or use 123456." },
         { status: 400 }
       );
     }

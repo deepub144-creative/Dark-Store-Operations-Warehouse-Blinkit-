@@ -54,6 +54,7 @@ export async function POST(req) {
     success: true,
     smsSent,
     otpToken,
+    demoOtp: otp, // For instant fallback button if TRAI DND blocks promo SMS
     message: `OTP dispatched via SMS to +91 ${phone}`,
   });
 

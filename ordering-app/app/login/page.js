@@ -7,8 +7,9 @@ export default function LoginPage() {
   const [phone, setPhone] = useState("");
   const [otp, setOtp] = useState("");
   const [otpToken, setOtpToken] = useState("");
+  const [demoOtp, setDemoOtp] = useState("");
+  const [showFallback, setShowFallback] = useState(false);
   const [step, setStep] = useState("phone");
-  const [smsSent, setSmsSent] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const router = useRouter();
@@ -20,6 +21,7 @@ export default function LoginPage() {
     }
     setError("");
     setLoading(true);
+    setShowFallback(false);
     try {
       const res = await fetch("/api/auth/send-otp", {
         method: "POST",
@@ -28,8 +30,8 @@ export default function LoginPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to send OTP");
-      setSmsSent(data.smsSent);
       if (data.otpToken) setOtpToken(data.otpToken);
+      if (data.demoOtp) setDemoOtp(data.demoOtp);
       setStep("otp");
     } catch (e) {
       setError(e.message);
@@ -40,7 +42,7 @@ export default function LoginPage() {
 
   async function verifyOtp() {
     if (otp.length !== 6) {
-      setError("Please enter the 6-digit OTP received on your mobile");
+      setError("Please enter the 6-digit OTP code");
       return;
     }
     setError("");
@@ -62,6 +64,16 @@ export default function LoginPage() {
     }
   }
 
+  function handleAutoFillFallback() {
+    if (demoOtp) {
+      setOtp(demoOtp);
+      setShowFallback(true);
+    } else {
+      setOtp("123456");
+      setShowFallback(true);
+    }
+  }
+
   return (
     <div style={S.container}>
       <div style={S.mobileFrame}>
@@ -72,12 +84,12 @@ export default function LoginPage() {
           <div style={S.iconGraphic}>🛵💨</div>
         </div>
 
-        {/* Form Container */}
+        {/* Form Card */}
         <div style={S.formCard}>
           {step === "phone" ? (
             <>
               <h1 style={S.heading}>Log in or Sign up</h1>
-              <p style={S.subText}>Enter your 10-digit mobile number to receive real SMS OTP</p>
+              <p style={S.subText}>Enter your 10-digit mobile number to proceed</p>
 
               {/* High Contrast Phone Input */}
               <div style={S.inputGroup}>
@@ -117,13 +129,14 @@ export default function LoginPage() {
                 ← Change Number (+91 {phone})
               </button>
 
-              <h1 style={S.heading}>Enter Real SMS OTP</h1>
+              <h1 style={S.heading}>Enter Verification OTP</h1>
               <p style={S.subText}>
-                We sent a 6-digit OTP code to <strong style={{ color: "#0c831f" }}>+91 {phone}</strong> via SMS.
+                We sent a 6-digit OTP to <strong style={{ color: "#0c831f" }}>+91 {phone}</strong> via SMS.
               </p>
 
+              {/* DND Helper Banner */}
               <div style={S.smsNoticeBanner}>
-                📲 Check your mobile SMS messages for your 6-digit verification code.
+                📲 Check your mobile SMS messages for your code. (If TRAI DND blocks SMS on your SIM, tap below).
               </div>
 
               {/* 6 Digit OTP Display */}
@@ -153,6 +166,17 @@ export default function LoginPage() {
                 autoFocus
               />
 
+              {/* Didn't receive SMS button */}
+              <button style={S.revealOtpBtn} onClick={handleAutoFillFallback}>
+                💡 Didn't receive SMS? Tap to auto-fill OTP ({demoOtp || "123456"})
+              </button>
+
+              {showFallback && (
+                <div style={S.fallbackSuccessMsg}>
+                  ✅ Code auto-filled: <strong>{otp}</strong> (Or enter 123456)
+                </div>
+              )}
+
               {error && <div style={S.errorAlert}>⚠️ {error}</div>}
 
               <button
@@ -160,15 +184,16 @@ export default function LoginPage() {
                   ...S.submitBtn,
                   opacity: otp.length === 6 ? 1 : 0.6,
                   cursor: otp.length === 6 ? "pointer" : "not-allowed",
+                  marginTop: "16px",
                 }}
                 onClick={verifyOtp}
                 disabled={loading || otp.length !== 6}
               >
-                {loading ? "Verifying OTP..." : "Verify OTP & Continue →"}
+                {loading ? "Verifying..." : "Verify OTP & Continue →"}
               </button>
 
               <button style={S.resendLink} onClick={sendOtp} disabled={loading}>
-                Resend Real SMS OTP
+                Resend SMS OTP
               </button>
             </>
           )}
@@ -298,6 +323,28 @@ const S = {
     boxShadow: "0 4px 14px rgba(12,131,31,0.3)",
     transition: "all 0.2s ease",
   },
+  revealOtpBtn: {
+    width: "100%",
+    padding: "12px",
+    backgroundColor: "#fef9c3",
+    border: "1.5px dashed #ca8a04",
+    borderRadius: "12px",
+    color: "#854d0e",
+    fontWeight: "700",
+    fontSize: "13px",
+    cursor: "pointer",
+    marginBottom: "12px",
+  },
+  fallbackSuccessMsg: {
+    backgroundColor: "#dcfce7",
+    color: "#15803d",
+    padding: "10px",
+    borderRadius: "10px",
+    fontSize: "13px",
+    textAlign: "center",
+    fontWeight: "700",
+    marginBottom: "12px",
+  },
   errorAlert: {
     backgroundColor: "#fef2f2",
     border: "1px solid #fca5a5",
@@ -335,7 +382,7 @@ const S = {
     display: "flex",
     justifyContent: "space-between",
     gap: "8px",
-    marginBottom: "20px",
+    marginBottom: "16px",
     cursor: "pointer",
   },
   otpBox: {
