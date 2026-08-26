@@ -2,25 +2,24 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import Image from "next/image";
 import { CATALOG } from "@/lib/items";
 
 const WALLET_LIMIT = 1000000;
 
-export default function BlinkitApp() {
+export default function BlinkitReferenceApp() {
   const [customer, setCustomer] = useState(null);
   const [cart, setCart] = useState({});
-  const [activeTab, setActiveTab] = useState("home");
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [searchQuery, setSearchQuery] = useState("");
+  const [isSearching, setIsSearching] = useState(false);
   const [loading, setLoading] = useState(true);
   const [placingOrder, setPlacingOrder] = useState(false);
   const [error, setError] = useState("");
   const [showCart, setShowCart] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [toastMessage, setToastMessage] = useState("");
-  const [locationLabel, setLocationLabel] = useState("Muniswamappa Layout, Bengaluru");
-  const [activeAccountSection, setActiveAccountSection] = useState(null); // 'orders' | 'addresses' | 'payments' | 'support' | 'coupons'
+  const [locationLabel, setLocationLabel] = useState("28, Siddi Vinayaka Rd, Kamath Layout");
+  const [activeTab, setActiveTab] = useState("home"); // 'home' | 'account'
   const router = useRouter();
 
   useEffect(() => {
@@ -46,26 +45,25 @@ export default function BlinkitApp() {
             const label =
               addr.neighbourhood ||
               addr.suburb ||
-              addr.village ||
               addr.road ||
-              "Muniswamappa Layout, Bengaluru";
+              "28, Siddi Vinayaka Rd, Kamath Layout";
             setLocationLabel(label);
           } catch {
-            setLocationLabel("Muniswamappa Layout, Bengaluru");
+            setLocationLabel("28, Siddi Vinayaka Rd, Kamath Layout");
           }
         },
-        () => setLocationLabel("Muniswamappa Layout, Bengaluru"),
+        () => setLocationLabel("28, Siddi Vinayaka Rd, Kamath Layout"),
         { timeout: 8000 }
       );
     }
 
-    const timer = setTimeout(() => setLoading(false), 1200);
+    const timer = setTimeout(() => setLoading(false), 800);
     return () => clearTimeout(timer);
   }, [router]);
 
   function triggerToast(msg) {
     setToastMessage(msg);
-    setTimeout(() => setToastMessage(""), 2500);
+    setTimeout(() => setToastMessage(""), 2200);
   }
 
   function updateQty(sku, delta) {
@@ -100,6 +98,15 @@ export default function BlinkitApp() {
       selectedCategory === "All" || item.category === selectedCategory;
     return matchesSearch && matchesCategory;
   });
+
+  // Group items by category for section carousels
+  const categoriesList = [
+    { name: "Dairy & Breakfast", title: "Dairy, Bread & Eggs", icon: "🥛" },
+    { name: "Snacks & Drinks", title: "Snacks & Munchies", icon: "🍿" },
+    { name: "Vegetables & Fruits", title: "Fruits & Vegetables", icon: "🥦" },
+    { name: "Ice Creams & Frozen", title: "Sweet Tooth & Frozen", icon: "🍦" },
+    { name: "Festive & Gifts", title: "Festive & Gift Hampers", icon: "🎁" },
+  ];
 
   async function placeOrder() {
     if (!customer) { router.push("/login"); return; }
@@ -149,8 +156,7 @@ export default function BlinkitApp() {
             <span style={{ color: "#f7d108" }}>blink</span>
             <span style={{ color: "#0c831f" }}>it</span>
           </div>
-          <div style={S.splashTag}>India's Last Minute App</div>
-          <div style={S.splashStatus}>Delivering in 8-14 minutes...</div>
+          <div style={S.splashStatus}>Loading Store...</div>
         </div>
       </div>
     );
@@ -160,325 +166,257 @@ export default function BlinkitApp() {
     <div style={S.app}>
       {toastMessage && <div style={S.toastBox}>{toastMessage}</div>}
 
-      {/* ── OFFICIAL BLINKIT HEADER ── */}
+      {/* ── TOP HEADER MATCHING BLINKIT REFERENCE VIDEO ── */}
       <header style={S.header}>
-        <div style={S.headerTop}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <div style={S.brandLogo}>
-              <span style={{ color: "#f7d108" }}>blink</span>
-              <span style={{ color: "#0c831f" }}>it</span>
-            </div>
-            <div style={S.locationPill} onClick={() => triggerToast(`📍 Location: ${locationLabel}`)}>
-              <div style={S.slaTime}>Delivery in 8 MINS</div>
-              <div style={S.addressText}>{locationLabel} ▾</div>
-            </div>
+        <div style={S.headerInner}>
+          {/* Logo */}
+          <div
+            style={S.logoWrap}
+            onClick={() => { setActiveTab("home"); setSelectedCategory("All"); setSearchQuery(""); }}
+          >
+            <span style={{ color: "#f7d108", fontWeight: 900, fontSize: 32, letterSpacing: "-1.5px" }}>blink</span>
+            <span style={{ color: "#0c831f", fontWeight: 900, fontSize: 32, letterSpacing: "-1.5px" }}>it</span>
           </div>
 
-          <div style={S.headerActions}>
-            <div style={S.walletBadge} onClick={() => setActiveTab("profile")}>
-              <span style={S.walletIcon}>💚</span>
-              <span style={S.walletAmt}>₹{walletBalance.toLocaleString("en-IN")}</span>
-            </div>
+          {/* Delivery SLA Widget */}
+          <div style={S.deliveryWidget} onClick={() => triggerToast(`📍 Delivering to: ${locationLabel}`)}>
+            <div style={S.slaTitle}>Delivery in 13 minutes</div>
+            <div style={S.addressSub}>{locationLabel.slice(0, 32)}... ▾</div>
+          </div>
+
+          {/* Center Search Input Bar */}
+          <div style={S.searchContainer}>
+            <span style={S.searchIcon}>🔍</span>
+            <input
+              style={S.searchInput}
+              placeholder='Search "paneer", "milk", "chocolates", "chips"...'
+              value={searchQuery}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setIsSearching(true);
+                setTimeout(() => setIsSearching(false), 200);
+              }}
+            />
+            {searchQuery && (
+              <button style={S.clearSearch} onClick={() => setSearchQuery("")}>✕</button>
+            )}
+          </div>
+
+          {/* Right Action Buttons */}
+          <div style={S.headerRight}>
             <button
-              style={S.accountBtn}
-              onClick={() => setActiveTab("profile")}
+              style={S.loginLinkBtn}
+              onClick={() => setActiveTab(activeTab === "profile" ? "home" : "profile")}
             >
-              Account
+              {activeTab === "profile" ? "Home" : "Account"}
+            </button>
+
+            <button
+              style={{
+                ...S.myCartBtn,
+                ...(totalItems > 0 ? S.myCartBtnActive : {}),
+              }}
+              onClick={() => setShowCart(true)}
+            >
+              <span style={{ fontSize: 16 }}>🛒</span>
+              {totalItems > 0 ? (
+                <span>{totalItems} item • ₹{totalPrice}</span>
+              ) : (
+                <span>My Cart</span>
+              )}
             </button>
           </div>
         </div>
-
-        {/* Search Bar */}
-        <div style={S.searchRow}>
-          <span style={S.searchIcon}>🔍</span>
-          <input
-            style={S.searchInput}
-            placeholder='Search "milk, bread, rakhi, snacks, curd..."'
-            value={searchQuery}
-            onChange={(e) => {
-              setSearchQuery(e.target.value);
-              if (activeTab !== "home") setActiveTab("home");
-            }}
-          />
-          {searchQuery && (
-            <button style={S.clearSearch} onClick={() => setSearchQuery("")}>✕</button>
-          )}
-        </div>
-
-        {/* Category Pills */}
-        <div style={S.pills}>
-          {[
-            { id: "All", label: "All 🏷️" },
-            { id: "Vegetables & Fruits", label: "🥦 Veggies & Fruits" },
-            { id: "Dairy & Breakfast", label: "🥛 Dairy & Eggs" },
-            { id: "Ice Creams & Frozen", label: "🍦 Ice Creams & Frozen" },
-            { id: "Snacks & Drinks", label: "🍿 Snacks & Drinks" },
-            { id: "Festive & Gifts", label: "🎁 Festive & Gifts" },
-          ].map((cat) => {
-            const isActive = selectedCategory === cat.id;
-            return (
-              <button
-                key={cat.id}
-                style={{ ...S.pill, ...(isActive ? S.pillActive : {}) }}
-                onClick={() => {
-                  setSelectedCategory(cat.id);
-                  if (activeTab !== "home") setActiveTab("home");
-                }}
-              >
-                {cat.label}
-              </button>
-            );
-          })}
-        </div>
       </header>
 
-      {/* ── MAIN CONTAINER ── */}
-      <main style={S.main}>
+      {/* ── SEARCH OVERLAY DRILL-DOWN (AS SEEN IN REFERENCE VIDEO FRAME 3 & 4) ── */}
+      {searchQuery.length > 0 && (
+        <div style={S.searchOverlayWrap}>
+          <div style={S.searchQueryHeader}>
+            Showing results for <strong>"{searchQuery}"</strong> ({filteredCatalog.length} items)
+          </div>
 
-        {/* HOME TAB */}
-        {activeTab === "home" && (
-          <div>
-            <div
-              style={S.bannerCard}
-              onClick={() => { setSelectedCategory("Festive & Gifts"); triggerToast("🎁 Festive Collection!"); }}
-            >
-              <Image
-                src="/assets/blinkit-festive-hero.jpeg"
-                alt="Festive Special Banner"
-                width={480}
-                height={160}
-                style={{ width: "100%", height: "160px", objectFit: "cover", borderRadius: 16 }}
-              />
+          {isSearching ? (
+            <div style={S.skeletonGrid}>
+              {[1, 2, 3, 4, 5, 6].map((i) => (
+                <div key={i} style={S.skeletonCard} />
+              ))}
             </div>
-
-            <div style={S.sectionHeaderRow}>
-              <div style={S.sectionTitle}>{selectedCategory === "All" ? "Fresh Store Essentials" : selectedCategory}</div>
-              <div style={S.resultCountBadge}>{filteredCatalog.length} Items</div>
-            </div>
-
-            <div style={S.productGrid}>
+          ) : (
+            <div style={S.referenceGrid}>
               {filteredCatalog.map((item) => {
                 const qty = cart[item.sku] || 0;
                 const discount = Math.round(((item.mrp - item.price) / item.mrp) * 100);
                 return (
-                  <div key={item.sku} style={S.productCard}>
-                    <div style={S.imageWrap} onClick={() => setSelectedProduct(item)}>
-                      <img src={item.image} alt={item.name} style={S.productImage} />
-                      <span style={S.deliveryChip}>⏱️ {item.delivery}</span>
-                      {discount > 0 && <span style={S.discountChip}>{discount}% OFF</span>}
+                  <div key={item.sku} style={S.refProductCard}>
+                    {discount > 0 && <div style={S.refDiscountBadge}>{discount}% OFF</div>}
+                    <div style={S.refImgWrap} onClick={() => setSelectedProduct(item)}>
+                      <img src={item.image} alt={item.name} style={S.refImg} />
                     </div>
-
-                    <div style={S.productInfo}>
-                      <div style={S.productWeight}>{item.weight} • {item.aisle}</div>
-                      <div style={S.productName} onClick={() => setSelectedProduct(item)}>{item.name}</div>
-
-                      <div style={S.priceRow}>
-                        <div>
-                          <span style={S.salePrice}>₹{item.price}</span>
-                          {item.mrp > item.price && <span style={S.mrpPrice}>₹{item.mrp}</span>}
-                        </div>
-
-                        {qty === 0 ? (
-                          <button style={S.addBtn} onClick={() => updateQty(item.sku, 1)}>ADD</button>
-                        ) : (
-                          <div style={S.counter}>
-                            <button style={S.counterBtn} onClick={() => updateQty(item.sku, -1)}>−</button>
-                            <span style={S.counterNum}>{qty}</span>
-                            <button style={S.counterBtn} onClick={() => updateQty(item.sku, 1)}>+</button>
-                          </div>
-                        )}
+                    <div style={S.refSlaTag}>⏱️ 13 MINS</div>
+                    <div style={S.refTitle} onClick={() => setSelectedProduct(item)}>{item.name}</div>
+                    <div style={S.refWeight}>{item.weight}</div>
+                    <div style={S.refPriceRow}>
+                      <div>
+                        <span style={S.refPrice}>₹{item.price}</span>
+                        {item.mrp > item.price && <span style={S.refMrp}>₹{item.mrp}</span>}
                       </div>
+
+                      {qty === 0 ? (
+                        <button style={S.refAddBtn} onClick={() => updateQty(item.sku, 1)}>ADD</button>
+                      ) : (
+                        <div style={S.refCounter}>
+                          <button style={S.refCounterBtn} onClick={() => updateQty(item.sku, -1)}>−</button>
+                          <span style={S.refCounterNum}>{qty}</span>
+                          <button style={S.refCounterBtn} onClick={() => updateQty(item.sku, 1)}>+</button>
+                        </div>
+                      )}
                     </div>
                   </div>
                 );
               })}
             </div>
-          </div>
-        )}
-
-        {/* CATEGORIES TAB */}
-        {activeTab === "categories" && (
-          <div style={S.categoriesWrap}>
-            <div style={S.sectionTitle}>All Store Departments</div>
-            <div style={S.catDepartmentGrid}>
-              {[
-                { cat: "Vegetables & Fruits", icon: "🥦", bg: "#f0fdf4", color: "#166534" },
-                { cat: "Dairy & Breakfast", icon: "🥛", bg: "#eff6ff", color: "#1e40af" },
-                { cat: "Ice Creams & Frozen", icon: "🍦", bg: "#fefce8", color: "#854d0e" },
-                { cat: "Snacks & Drinks", icon: "🍿", bg: "#faf5ff", color: "#6b21a8" },
-                { cat: "Festive & Gifts", icon: "🎁", bg: "#fdf2f8", color: "#9d174d" },
-              ].map(({ cat, icon, bg, color }) => (
-                <div
-                  key={cat}
-                  style={{ ...S.catDepartmentCard, background: bg }}
-                  onClick={() => { setSelectedCategory(cat); setActiveTab("home"); }}
-                >
-                  <div style={S.catCardIcon}>{icon}</div>
-                  <div style={{ flex: 1, fontWeight: 800, color }}>{cat}</div>
-                  <div style={{ color }}>→</div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* OFFICIAL BLINKIT ACCOUNT / PROFILE TAB */}
-        {activeTab === "profile" && (
-          <div style={S.profilePageWrap}>
-            {/* Header User Card */}
-            <div style={S.accountProfileCard}>
-              <div style={S.userAvatar}>👤</div>
-              <div style={{ flex: 1 }}>
-                <div style={S.userName}>{customer.name || `Customer ${customer.phone}`}</div>
-                <div style={S.userPhone}>+91 {customer.phone}</div>
-              </div>
-              <button style={S.editProfileBtn} onClick={() => triggerToast("Editing account profile...")}>
-                ✏️ Edit
-              </button>
-            </div>
-
-            {/* Blink Cash / Wallet Card */}
-            <div style={S.blinkWalletCard}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <div>
-                  <div style={S.bwLabel}>Blinkit Money & Wallet</div>
-                  <div style={S.bwBalance}>₹{walletBalance.toLocaleString("en-IN")}</div>
-                </div>
-                <button style={S.topUpBtn} onClick={() => triggerToast("Wallet auto-recharged!")}>
-                  + Add Money
-                </button>
-              </div>
-            </div>
-
-            {/* Grouped Account Options */}
-            <div style={S.accountGroupCard}>
-              <div style={S.accountGroupHeading}>YOUR INFORMATION</div>
-
-              {[
-                { id: "orders", icon: "📦", title: "Your Orders", desc: "View order history & track deliveries" },
-                { id: "addresses", icon: "📍", title: "Saved Addresses", desc: locationLabel },
-                { id: "payments", icon: "💳", title: "Payment Settings", desc: "Blinkit Wallet & Saved Cards" },
-              ].map((row) => (
-                <div
-                  key={row.id}
-                  style={S.accountRow}
-                  onClick={() => setActiveAccountSection(row.id)}
-                >
-                  <span style={S.rowIcon}>{row.icon}</span>
-                  <div style={{ flex: 1 }}>
-                    <div style={S.rowTitle}>{row.title}</div>
-                    <div style={S.rowDesc}>{row.desc}</div>
-                  </div>
-                  <span style={S.rowChevron}>›</span>
-                </div>
-              ))}
-            </div>
-
-            <div style={S.accountGroupCard}>
-              <div style={S.accountGroupHeading}>OFFERS & SUPPORT</div>
-
-              {[
-                { id: "coupons", icon: "🎁", title: "Offers & Coupons", desc: "1 Active ₹100 Discount Voucher" },
-                { id: "support", icon: "🎧", title: "Customer Support & Help", desc: "24/7 SLA Resolution Assistance" },
-              ].map((row) => (
-                <div
-                  key={row.id}
-                  style={S.accountRow}
-                  onClick={() => setActiveAccountSection(row.id)}
-                >
-                  <span style={S.rowIcon}>{row.icon}</span>
-                  <div style={{ flex: 1 }}>
-                    <div style={S.rowTitle}>{row.title}</div>
-                    <div style={S.rowDesc}>{row.desc}</div>
-                  </div>
-                  <span style={S.rowChevron}>›</span>
-                </div>
-              ))}
-            </div>
-
-            <button style={S.logoutAccountBtn} onClick={logout}>Log Out Account</button>
-          </div>
-        )}
-      </main>
-
-      {/* ── ACCOUNT SECTION MODAL DRAWER ── */}
-      {activeAccountSection && (
-        <div style={S.drawerOverlay} onClick={() => setActiveAccountSection(null)}>
-          <div style={S.drawerCard} onClick={(e) => e.stopPropagation()}>
-            <div style={S.drawerHeader}>
-              <div style={S.drawerTitle}>
-                {activeAccountSection === "orders" && "📦 Your Orders History"}
-                {activeAccountSection === "addresses" && "📍 Saved Delivery Addresses"}
-                {activeAccountSection === "payments" && "💳 Payment Methods"}
-                {activeAccountSection === "coupons" && "🎁 Offers & Coupons"}
-                {activeAccountSection === "support" && "🎧 Customer Support & SLA Help"}
-              </div>
-              <button style={S.drawerCloseBtn} onClick={() => setActiveAccountSection(null)}>✕</button>
-            </div>
-
-            <div style={{ padding: 20 }}>
-              {activeAccountSection === "orders" && (
-                <div>
-                  <div style={S.orderHistoryItem}>
-                    <div style={{ fontWeight: 800, color: "#0c831f" }}>Order #ORD-9821 • Delivered in 11 Mins</div>
-                    <div style={{ fontSize: 13, color: "#64748b", marginTop: 4 }}>1x Nandini Milk (500ml), 1x Brown Bread</div>
-                    <div style={{ fontWeight: 900, marginTop: 6 }}>Total: ₹72 • Paid via Blinkit Wallet</div>
-                  </div>
-                </div>
-              )}
-
-              {activeAccountSection === "addresses" && (
-                <div>
-                  <div style={S.addressItem}>
-                    <div style={{ fontWeight: 800 }}>🏠 Home</div>
-                    <div style={{ fontSize: 13, color: "#475569", marginTop: 2 }}>{locationLabel}</div>
-                    <span style={S.defaultTag}>DEFAULT ADDRESS</span>
-                  </div>
-                </div>
-              )}
-
-              {activeAccountSection === "payments" && (
-                <div>
-                  <div style={S.paymentRow}>
-                    <span>💚 Blinkit Wallet (Instant)</span>
-                    <span style={{ fontWeight: 800, color: "#0c831f" }}>₹{walletBalance.toLocaleString("en-IN")}</span>
-                  </div>
-                </div>
-              )}
-
-              {activeAccountSection === "coupons" && (
-                <div>
-                  <div style={S.couponCard}>
-                    <div style={{ fontWeight: 900, color: "#0c831f" }}>CODE: BLINKIT100</div>
-                    <div style={{ fontSize: 13, color: "#475569", marginTop: 2 }}>Flat ₹100 OFF on orders above ₹299</div>
-                  </div>
-                </div>
-              )}
-
-              {activeAccountSection === "support" && (
-                <div>
-                  <div style={{ fontSize: 14, color: "#334155", lineHeight: 1.5 }}>
-                    Need help with an order or quality refund? Our Dark Store Customer Support team is online 24/7!
-                  </div>
-                  <button
-                    style={{ ...S.placeOrderBtn, marginTop: 16 }}
-                    onClick={() => { triggerToast("Connecting to support chat..."); setActiveAccountSection(null); }}
-                  >
-                    💬 Start Instant Live Chat
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
+          )}
         </div>
       )}
 
-      {/* ── CART DRAWER ── */}
+      {/* ── MAIN CONTENT PAGE (WHEN NOT SEARCHING) ── */}
+      {searchQuery.length === 0 && activeTab === "home" && (
+        <main style={S.mainContent}>
+
+          {/* 3 PROMO CARDS (MATCHING REFERENCE VIDEO FRAME 1) */}
+          <div style={S.promoGrid}>
+            <div style={{ ...S.promoCard, background: "linear-gradient(135deg, #0d9488, #0f766e)" }}>
+              <div style={S.promoTitle}>Pharmacy at your doorstep!</div>
+              <div style={S.promoSub}>Cough syrups, pain relief sprays & more</div>
+              <button style={S.promoBtn} onClick={() => triggerToast("Opened Pharmacy Dept")}>Order Now</button>
+            </div>
+
+            <div style={{ ...S.promoCard, background: "linear-gradient(135deg, #eab308, #ca8a04)" }}>
+              <div style={S.promoTitle}>Pet care supplies at your door</div>
+              <div style={S.promoSub}>Food, treats, toys & dog food</div>
+              <button style={S.promoBtn} onClick={() => triggerToast("Opened Pet Care Dept")}>Order Now</button>
+            </div>
+
+            <div style={{ ...S.promoCard, background: "linear-gradient(135deg, #3b82f6, #1d4ed8)" }}>
+              <div style={S.promoTitle}>No time for a diaper run?</div>
+              <div style={S.promoSub}>Get baby care essentials delivered</div>
+              <button style={S.promoBtn} onClick={() => triggerToast("Opened Baby Care Dept")}>Order Now</button>
+            </div>
+          </div>
+
+          {/* CATEGORIES GRID (MATCHING REFERENCE VIDEO 20 DEPARTMENTS) */}
+          <div style={S.categoryGridSection}>
+            {[
+              { id: "Paan Corner", title: "Paan Corner", icon: "🍃" },
+              { id: "Dairy & Breakfast", title: "Dairy, Bread & Eggs", icon: "🥛" },
+              { id: "Vegetables & Fruits", title: "Fruits & Vegetables", icon: "🥦" },
+              { id: "Snacks & Drinks", title: "Cold Drinks & Juices", icon: "🧃" },
+              { id: "Snacks & Drinks", title: "Snacks & Munchies", icon: "🍿" },
+              { id: "Ice Creams & Frozen", title: "Sweet Tooth", icon: "🍫" },
+              { id: "Dairy & Breakfast", title: "Bakery & Biscuits", icon: "🍞" },
+              { id: "Dairy & Breakfast", title: "Tea & Coffee", icon: "☕" },
+              { id: "Dairy & Breakfast", title: "Atta, Rice & Dal", icon: "🌾" },
+              { id: "Festive & Gifts", title: "Festive & Gifts", icon: "🎁" },
+            ].map((cat, idx) => (
+              <div
+                key={idx}
+                style={{
+                  ...S.catTileCard,
+                  borderColor: selectedCategory === cat.id ? "#0c831f" : "#f1f5f9",
+                  background: selectedCategory === cat.id ? "#f0fdf4" : "#ffffff",
+                }}
+                onClick={() => {
+                  setSelectedCategory(cat.id);
+                  triggerToast(`Filtered category: ${cat.title}`);
+                }}
+              >
+                <div style={S.catTileIcon}>{cat.icon}</div>
+                <div style={S.catTileTitle}>{cat.title}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* PRODUCT CAROUSEL SECTIONS BY CATEGORY (MATCHING REFERENCE VIDEO FRAME 1 & 2) */}
+          {categoriesList.map((sec) => {
+            const secItems = CATALOG.filter((c) => c.category === sec.name);
+            if (secItems.length === 0) return null;
+            return (
+              <div key={sec.name} style={S.sectionBlock}>
+                <div style={S.sectionHeadRow}>
+                  <div style={S.sectionHeadTitle}>{sec.title}</div>
+                  <button
+                    style={S.seeAllBtn}
+                    onClick={() => { setSelectedCategory(sec.name); triggerToast(`Browsing ${sec.title}`); }}
+                  >
+                    see all →
+                  </button>
+                </div>
+
+                <div style={S.horizontalScrollRow}>
+                  {secItems.map((item) => {
+                    const qty = cart[item.sku] || 0;
+                    const discount = Math.round(((item.mrp - item.price) / item.mrp) * 100);
+                    return (
+                      <div key={item.sku} style={S.refProductCard}>
+                        {discount > 0 && <div style={S.refDiscountBadge}>{discount}% OFF</div>}
+                        <div style={S.refImgWrap} onClick={() => setSelectedProduct(item)}>
+                          <img src={item.image} alt={item.name} style={S.refImg} />
+                        </div>
+                        <div style={S.refSlaTag}>⏱️ 13 MINS</div>
+                        <div style={S.refTitle} onClick={() => setSelectedProduct(item)}>{item.name}</div>
+                        <div style={S.refWeight}>{item.weight}</div>
+                        <div style={S.refPriceRow}>
+                          <div>
+                            <span style={S.refPrice}>₹{item.price}</span>
+                            {item.mrp > item.price && <span style={S.refMrp}>₹{item.mrp}</span>}
+                          </div>
+
+                          {qty === 0 ? (
+                            <button style={S.refAddBtn} onClick={() => updateQty(item.sku, 1)}>ADD</button>
+                          ) : (
+                            <div style={S.refCounter}>
+                              <button style={S.refCounterBtn} onClick={() => updateQty(item.sku, -1)}>−</button>
+                              <span style={S.refCounterNum}>{qty}</span>
+                              <button style={S.refCounterBtn} onClick={() => updateQty(item.sku, 1)}>+</button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </main>
+      )}
+
+      {/* ── PROFILE ACCOUNT TAB ── */}
+      {activeTab === "profile" && (
+        <main style={{ ...S.mainContent, maxWidth: 600 }}>
+          <div style={S.profileCard}>
+            <div style={S.profileAvatar}>👤</div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 20, fontWeight: 900 }}>{customer.name || `Customer ${customer.phone}`}</div>
+              <div style={{ fontSize: 13, color: "#64748b" }}>+91 {customer.phone}</div>
+            </div>
+            <button style={S.logoutBtn} onClick={logout}>Log Out</button>
+          </div>
+
+          <div style={S.walletCard}>
+            <div style={{ fontSize: 14, fontWeight: 700, opacity: 0.9 }}>💚 Blinkit Wallet Balance</div>
+            <div style={{ fontSize: 32, fontWeight: 900, marginTop: 4 }}>₹{walletBalance.toLocaleString("en-IN")}</div>
+          </div>
+        </main>
+      )}
+
+      {/* ── CART DRAWER MODAL ── */}
       {showCart && (
         <div style={S.drawerOverlay} onClick={() => setShowCart(false)}>
           <div style={S.drawerCard} onClick={(e) => e.stopPropagation()}>
             <div style={S.drawerHeader}>
-              <div style={S.drawerTitle}>Your Cart ({totalItems} items)</div>
+              <div style={{ fontSize: 18, fontWeight: 900 }}>My Cart ({totalItems} items)</div>
               <button style={S.drawerCloseBtn} onClick={() => setShowCart(false)}>✕</button>
             </div>
 
@@ -487,182 +425,126 @@ export default function BlinkitApp() {
                 const item = CATALOG.find((c) => c.sku === sku);
                 if (!item) return null;
                 return (
-                  <div key={sku} style={S.cartItemRow}>
+                  <div key={sku} style={S.cartRow}>
                     <img src={item.image} alt={item.name} style={S.cartItemImg} />
                     <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: 800, fontSize: 13 }}>{item.name}</div>
-                      <div style={{ color: "#0c831f", fontWeight: 700, fontSize: 12 }}>₹{item.price * qty}</div>
+                      <div style={{ fontSize: 14, fontWeight: 800 }}>{item.name}</div>
+                      <div style={{ fontSize: 13, color: "#0c831f", fontWeight: 700 }}>₹{item.price * qty}</div>
                     </div>
-                    <div style={S.counter}>
-                      <button style={S.counterBtn} onClick={() => updateQty(sku, -1)}>−</button>
-                      <span style={S.counterNum}>{qty}</span>
-                      <button style={S.counterBtn} onClick={() => updateQty(sku, 1)}>+</button>
+                    <div style={S.refCounter}>
+                      <button style={S.refCounterBtn} onClick={() => updateQty(sku, -1)}>−</button>
+                      <span style={S.refCounterNum}>{qty}</span>
+                      <button style={S.refCounterBtn} onClick={() => updateQty(sku, 1)}>+</button>
                     </div>
                   </div>
                 );
               })}
 
-              <div style={S.billCard}>
+              <div style={S.billSummary}>
                 <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 900, fontSize: 16 }}>
-                  <span>To Pay</span>
+                  <span>Total Bill</span>
                   <span>₹{totalPrice}</span>
                 </div>
               </div>
 
-              {error && <div style={S.errorBox}>{error}</div>}
+              {error && <div style={{ color: "#dc2626", fontWeight: 700, margin: "10px 0" }}>{error}</div>}
 
-              <button style={S.placeOrderBtn} onClick={placeOrder} disabled={placingOrder}>
-                {placingOrder ? "Processing..." : `Pay ₹${totalPrice} & Confirm →`}
+              <button style={S.checkoutBtn} onClick={placeOrder} disabled={placingOrder}>
+                {placingOrder ? "Placing Order..." : `Pay ₹${totalPrice} & Checkout →`}
               </button>
             </div>
           </div>
         </div>
       )}
-
-      {/* ── FLOATING CART BAR ── */}
-      {totalItems > 0 && !showCart && (
-        <div style={S.cartBar} onClick={() => setShowCart(true)}>
-          <div>
-            <div style={{ fontSize: 11, opacity: 0.9 }}>{totalItems} ITEMS</div>
-            <div style={{ fontSize: 18, fontWeight: 900 }}>₹{totalPrice}</div>
-          </div>
-          <div style={{ fontWeight: 900, fontSize: 14 }}>View Cart →</div>
-        </div>
-      )}
-
-      {/* ── BOTTOM NAVIGATION ── */}
-      <nav style={S.bottomNav}>
-        {[
-          { id: "home", icon: "🏠", label: "Home" },
-          { id: "categories", icon: "🔲", label: "Categories" },
-          { id: "profile", icon: "👤", label: "Account" },
-        ].map((tab) => {
-          const active = activeTab === tab.id;
-          return (
-            <button
-              key={tab.id}
-              style={{ ...S.navTab, color: active ? "#0c831f" : "#64748b" }}
-              onClick={() => setActiveTab(tab.id)}
-            >
-              {active && <div style={S.navActiveBar} />}
-              <span style={{ fontSize: 20 }}>{tab.icon}</span>
-              <span style={{ fontSize: 11, marginTop: 2, fontWeight: active ? 800 : 600 }}>{tab.label}</span>
-            </button>
-          );
-        })}
-      </nav>
     </div>
   );
 }
 
 const S = {
-  splash: { minHeight: "100vh", background: "#ffffff", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "system-ui, sans-serif" },
+  splash: { minHeight: "100vh", background: "#ffffff", display: "flex", alignItems: "center", justifyContent: "center" },
   splashContent: { textAlign: "center" },
-  splashLogo: { fontSize: 56, fontWeight: 900, letterSpacing: "-2px" },
-  splashTag: { fontSize: 16, color: "#1c1c1c", fontWeight: 700, marginTop: 4 },
-  splashStatus: { fontSize: 14, color: "#0c831f", fontWeight: 800, marginTop: 20 },
+  splashLogo: { fontSize: 48, fontWeight: 900 },
+  splashStatus: { color: "#0c831f", fontWeight: 800, marginTop: 12 },
 
-  app: { minHeight: "100vh", background: "#f4f6f8", fontFamily: "'Inter', system-ui, sans-serif", paddingBottom: 80 },
+  app: { minHeight: "100vh", background: "#ffffff", fontFamily: "system-ui, sans-serif" },
+  toastBox: { position: "fixed", top: 20, left: "50%", transform: "translateX(-50%)", background: "#1e293b", color: "#fff", padding: "10px 20px", borderRadius: 20, fontWeight: 800, fontSize: 13, zIndex: 100 },
 
-  toastBox: { position: "fixed", top: 16, left: "50%", transform: "translateX(-50%)", background: "#1c1c1c", color: "#fff", padding: "10px 20px", borderRadius: 20, fontSize: 13, fontWeight: 700, zIndex: 100 },
+  header: { background: "#ffffff", borderBottom: "1px solid #e2e8f0", position: "sticky", top: 0, zIndex: 40, padding: "12px 24px" },
+  headerInner: { maxWidth: 1280, margin: "0 auto", display: "flex", alignItems: "center", gap: 24 },
+  logoWrap: { cursor: "pointer", display: "flex", alignItems: "center" },
 
-  header: { background: "#fff", padding: "12px 16px 8px", position: "sticky", top: 0, zIndex: 30, boxShadow: "0 2px 8px rgba(0,0,0,0.06)" },
-  headerTop: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 },
-  brandLogo: { fontSize: 24, fontWeight: 900, letterSpacing: "-1px" },
-  locationPill: { cursor: "pointer" },
-  slaTime: { fontSize: 12, fontWeight: 900, color: "#1c1c1c" },
-  addressText: { fontSize: 12, color: "#64748b", fontWeight: 600 },
+  deliveryWidget: { cursor: "pointer" },
+  slaTitle: { fontSize: 15, fontWeight: 900, color: "#0f172a" },
+  addressSub: { fontSize: 12, color: "#64748b", fontWeight: 600 },
 
-  headerActions: { display: "flex", alignItems: "center", gap: 8 },
-  walletBadge: { background: "#e8f5e9", borderRadius: 20, padding: "4px 10px", display: "flex", alignItems: "center", gap: 4, cursor: "pointer" },
-  walletIcon: { fontSize: 13 },
-  walletAmt: { fontSize: 13, fontWeight: 800, color: "#0c831f" },
-  accountBtn: { background: "none", border: "none", fontWeight: 800, fontSize: 14, color: "#1c1c1c", cursor: "pointer" },
+  searchContainer: { flex: 1, background: "#f1f5f9", borderRadius: 12, padding: "10px 16px", display: "flex", alignItems: "center", gap: 10, border: "1px solid #e2e8f0" },
+  searchIcon: { color: "#64748b" },
+  searchInput: { flex: 1, border: "none", background: "transparent", outline: "none", fontSize: 14, fontWeight: 600, color: "#0f172a" },
+  clearSearch: { border: "none", background: "none", cursor: "pointer", color: "#64748b" },
 
-  searchRow: { background: "#f2f2f2", borderRadius: 10, padding: "8px 12px", display: "flex", alignItems: "center", gap: 8, marginBottom: 10 },
-  searchIcon: { fontSize: 14, color: "#757575" },
-  searchInput: { flex: 1, border: "none", background: "transparent", outline: "none", fontSize: 14, fontWeight: 600, color: "#1c1c1c" },
-  clearSearch: { border: "none", background: "none", cursor: "pointer", color: "#757575", fontSize: 14 },
+  headerRight: { display: "flex", alignItems: "center", gap: 16 },
+  loginLinkBtn: { background: "none", border: "none", fontWeight: 800, fontSize: 15, color: "#0f172a", cursor: "pointer" },
 
-  pills: { display: "flex", gap: 6, overflowX: "auto", paddingBottom: 4 },
-  pill: { padding: "6px 14px", borderRadius: 20, background: "#f2f2f2", border: "none", fontSize: 12, fontWeight: 700, color: "#757575", whiteSpace: "nowrap", cursor: "pointer" },
-  pillActive: { background: "#0c831f", color: "#fff", fontWeight: 800 },
+  myCartBtn: { background: "#f1f5f9", border: "none", padding: "10px 18px", borderRadius: 12, fontWeight: 800, fontSize: 14, color: "#0f172a", cursor: "pointer", display: "flex", alignItems: "center", gap: 8 },
+  myCartBtnActive: { background: "#0c831f", color: "#ffffff" },
 
-  main: { padding: 16, maxWidth: 500, margin: "0 auto" },
+  searchOverlayWrap: { maxWidth: 1280, margin: "20px auto", padding: "0 24px" },
+  searchQueryHeader: { fontSize: 18, marginBottom: 16, color: "#0f172a" },
 
-  bannerCard: { borderRadius: 16, overflow: "hidden", cursor: "pointer", marginBottom: 16 },
+  skeletonGrid: { display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 16 },
+  skeletonCard: { height: 220, background: "#f1f5f9", borderRadius: 12 },
 
-  sectionHeaderRow: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 },
-  sectionTitle: { fontSize: 18, fontWeight: 900, color: "#1c1c1c" },
-  resultCountBadge: { fontSize: 12, fontWeight: 700, color: "#0c831f", background: "#e8f5e9", padding: "2px 8px", borderRadius: 10 },
+  referenceGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 16 },
 
-  productGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 },
-  productCard: { background: "#fff", borderRadius: 14, overflow: "hidden", border: "1px solid #eef2f5" },
-  imageWrap: { position: "relative", height: 120, background: "#f8fafc", cursor: "pointer" },
-  productImage: { width: "100%", height: "100%", objectFit: "cover" },
-  deliveryChip: { position: "absolute", bottom: 6, left: 6, background: "#fff", fontSize: 10, fontWeight: 800, color: "#1c1c1c", padding: "2px 6px", borderRadius: 4 },
-  discountChip: { position: "absolute", top: 6, right: 6, background: "#0c831f", color: "#fff", fontSize: 10, fontWeight: 800, padding: "2px 6px", borderRadius: 4 },
+  mainContent: { maxWidth: 1280, margin: "24px auto", padding: "0 24px" },
 
-  productInfo: { padding: 10 },
-  productWeight: { fontSize: 11, color: "#757575", fontWeight: 600 },
-  productName: { fontSize: 13, fontWeight: 800, color: "#1c1c1c", height: 34, overflow: "hidden", cursor: "pointer", marginTop: 2 },
-  priceRow: { display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8 },
-  salePrice: { fontSize: 15, fontWeight: 900, color: "#1c1c1c" },
-  mrpPrice: { fontSize: 11, color: "#757575", textDecoration: "line-through", marginLeft: 4 },
+  promoGrid: { display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16, marginBottom: 28 },
+  promoCard: { padding: 20, borderRadius: 16, color: "#ffffff" },
+  promoTitle: { fontSize: 18, fontWeight: 900 },
+  promoSub: { fontSize: 12, opacity: 0.9, marginTop: 4, height: 32 },
+  promoBtn: { marginTop: 14, background: "#0f172a", color: "#fff", border: "none", padding: "8px 16px", borderRadius: 8, fontWeight: 800, fontSize: 12, cursor: "pointer" },
 
-  addBtn: { background: "#fff", border: "1px solid #0c831f", color: "#0c831f", fontWeight: 900, fontSize: 12, padding: "5px 14px", borderRadius: 6, cursor: "pointer" },
-  counter: { display: "flex", alignItems: "center", background: "#0c831f", borderRadius: 6, padding: "2px" },
-  counterBtn: { background: "transparent", border: "none", color: "#fff", fontWeight: 900, fontSize: 15, width: 22, height: 22, cursor: "pointer" },
-  counterNum: { color: "#fff", fontWeight: 900, fontSize: 12, padding: "0 4px" },
+  categoryGridSection: { display: "grid", gridTemplateColumns: "repeat(10, 1fr)", gap: 10, marginBottom: 32 },
+  catTileCard: { borderRadius: 12, border: "1px solid", padding: 10, textAlign: "center", cursor: "pointer", transition: "all 0.15s ease" },
+  catTileIcon: { fontSize: 26, marginBottom: 4 },
+  catTileTitle: { fontSize: 11, fontWeight: 800, color: "#1e293b", lineHeight: 1.2 },
 
-  categoriesWrap: { background: "#fff", borderRadius: 16, padding: 16 },
-  catDepartmentGrid: { display: "flex", flexDirection: "column", gap: 8, marginTop: 12 },
-  catDepartmentCard: { display: "flex", alignItems: "center", gap: 12, padding: 14, borderRadius: 12, cursor: "pointer" },
-  catCardIcon: { fontSize: 24 },
+  sectionBlock: { marginBottom: 32 },
+  sectionHeadRow: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 },
+  sectionHeadTitle: { fontSize: 20, fontWeight: 900, color: "#0f172a" },
+  seeAllBtn: { background: "none", border: "none", color: "#0c831f", fontWeight: 800, fontSize: 14, cursor: "pointer" },
 
-  profilePageWrap: { display: "flex", flexDirection: "column", gap: 14 },
-  accountProfileCard: { background: "#fff", borderRadius: 16, padding: 16, display: "flex", alignItems: "center", gap: 12, border: "1px solid #eef2f5" },
-  userAvatar: { fontSize: 28, background: "#f2f2f2", width: 48, height: 48, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center" },
-  userName: { fontSize: 17, fontWeight: 900, color: "#1c1c1c" },
-  userPhone: { fontSize: 13, color: "#757575", marginTop: 2 },
-  editProfileBtn: { background: "none", border: "none", color: "#0c831f", fontWeight: 800, fontSize: 13, cursor: "pointer" },
+  horizontalScrollRow: { display: "flex", gap: 16, overflowX: "auto", paddingBottom: 8 },
 
-  blinkWalletCard: { background: "linear-gradient(135deg, #0c831f, #15803d)", borderRadius: 16, padding: 18, color: "#fff" },
-  bwLabel: { fontSize: 13, opacity: 0.9, fontWeight: 700 },
-  bwBalance: { fontSize: 28, fontWeight: 900, marginTop: 2 },
-  topUpBtn: { background: "#fff", color: "#0c831f", border: "none", borderRadius: 8, padding: "8px 14px", fontWeight: 900, fontSize: 12, cursor: "pointer" },
+  refProductCard: { minWidth: 180, maxWidth: 180, background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: 14, padding: 12, position: "relative", display: "flex", flexDirection: "column", justifyContent: "space-between" },
+  refDiscountBadge: { position: "absolute", top: 8, left: 8, background: "#2563eb", color: "#ffffff", fontSize: 9, fontWeight: 900, padding: "2px 6px", borderRadius: 4, zIndex: 5 },
+  refImgWrap: { height: 110, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", marginBottom: 6 },
+  refImg: { maxHeight: "100%", maxWidth: "100%", objectFit: "contain" },
+  refSlaTag: { fontSize: 10, fontWeight: 800, color: "#64748b", marginBottom: 4 },
+  refTitle: { fontSize: 13, fontWeight: 800, color: "#0f172a", height: 34, overflow: "hidden", lineHeight: 1.3, cursor: "pointer" },
+  refWeight: { fontSize: 11, color: "#94a3b8", margin: "4px 0 10px" },
+  refPriceRow: { display: "flex", justifyContent: "space-between", alignItems: "center" },
+  refPrice: { fontSize: 14, fontWeight: 900, color: "#0f172a" },
+  refMrp: { fontSize: 11, color: "#94a3b8", textDecoration: "line-through", marginLeft: 4 },
 
-  accountGroupCard: { background: "#fff", borderRadius: 16, padding: "12px 16px", border: "1px solid #eef2f5" },
-  accountGroupHeading: { fontSize: 11, fontWeight: 900, color: "#757575", letterSpacing: "0.5px", marginBottom: 8 },
-  accountRow: { display: "flex", alignItems: "center", gap: 12, padding: "12px 0", borderBottom: "1px solid #f8f8f8", cursor: "pointer" },
-  rowIcon: { fontSize: 20 },
-  rowTitle: { fontSize: 14, fontWeight: 800, color: "#1c1c1c" },
-  rowDesc: { fontSize: 12, color: "#757575", marginTop: 2 },
-  rowChevron: { color: "#757575", fontSize: 16, fontWeight: 800 },
+  refAddBtn: { background: "#ffffff", border: "1px solid #0c831f", color: "#0c831f", fontWeight: 900, fontSize: 12, padding: "6px 14px", borderRadius: 6, cursor: "pointer" },
+  refCounter: { display: "flex", alignItems: "center", background: "#0c831f", borderRadius: 6, padding: "2px" },
+  refCounterBtn: { background: "none", border: "none", color: "#fff", fontWeight: 900, fontSize: 15, width: 22, height: 22, cursor: "pointer" },
+  refCounterNum: { color: "#fff", fontWeight: 900, fontSize: 12, padding: "0 4px" },
 
-  logoutAccountBtn: { width: "100%", padding: 14, background: "#fff", border: "1px solid #dc2626", color: "#dc2626", borderRadius: 12, fontWeight: 800, fontSize: 14, cursor: "pointer" },
+  profileCard: { background: "#f8fafc", padding: 20, borderRadius: 16, display: "flex", alignItems: "center", gap: 16, marginBottom: 16 },
+  profileAvatar: { fontSize: 32 },
+  logoutBtn: { background: "#fee2e2", border: "none", color: "#dc2626", padding: "8px 16px", borderRadius: 8, fontWeight: 800, cursor: "pointer" },
 
-  drawerOverlay: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 50, display: "flex", alignItems: "flex-end", justifyContent: "center" },
-  drawerCard: { background: "#fff", width: "100%", maxWidth: 500, borderRadius: "20px 20px 0 0", maxHeight: "85vh", overflowY: "auto" },
-  drawerHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 20px", borderBottom: "1px solid #f2f2f2" },
-  drawerTitle: { fontSize: 17, fontWeight: 900, color: "#1c1c1c" },
-  drawerCloseBtn: { background: "#f2f2f2", border: "none", width: 30, height: 30, borderRadius: "50%", cursor: "pointer", fontWeight: 800 },
+  walletCard: { background: "linear-gradient(135deg, #0c831f, #15803d)", padding: 24, borderRadius: 16, color: "#fff" },
 
-  orderHistoryItem: { background: "#f8f8f8", padding: 14, borderRadius: 12 },
-  addressItem: { background: "#f8f8f8", padding: 14, borderRadius: 12, position: "relative" },
-  defaultTag: { background: "#0c831f", color: "#fff", fontSize: 10, fontWeight: 800, padding: "2px 6px", borderRadius: 4, marginTop: 6, display: "inline-block" },
-  paymentRow: { display: "flex", justifyContent: "space-between", background: "#f8f8f8", padding: 14, borderRadius: 12 },
-  couponCard: { background: "#e8f5e9", border: "1px dashed #0c831f", padding: 14, borderRadius: 12 },
+  drawerOverlay: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 60, display: "flex", justifyContent: "flex-end" },
+  drawerCard: { width: "100%", maxWidth: 440, background: "#ffffff", height: "100vh", overflowY: "auto" },
+  drawerHeader: { padding: 20, borderBottom: "1px solid #e2e8f0", display: "flex", justifyContent: "space-between", alignItems: "center" },
+  drawerCloseBtn: { border: "none", background: "#f1f5f9", width: 32, height: 32, borderRadius: "50%", fontWeight: 800, cursor: "pointer" },
 
-  cartItemRow: { display: "flex", alignItems: "center", gap: 10, marginBottom: 12 },
-  cartItemImg: { width: 44, height: 44, borderRadius: 8, objectFit: "cover" },
-  billCard: { background: "#f8f8f8", padding: 14, borderRadius: 12, margin: "16px 0" },
-  errorBox: { color: "#dc2626", fontSize: 13, fontWeight: 700, marginBottom: 10 },
-  placeOrderBtn: { width: "100%", padding: 15, background: "#0c831f", color: "#fff", border: "none", borderRadius: 12, fontWeight: 900, fontSize: 15, cursor: "pointer" },
-
-  cartBar: { position: "fixed", bottom: 64, left: 16, right: 16, background: "#0c831f", borderRadius: 14, padding: "12px 18px", display: "flex", justifyContent: "space-between", alignItems: "center", color: "#fff", cursor: "pointer", zIndex: 40 },
-
-  bottomNav: { position: "fixed", bottom: 0, left: 0, right: 0, height: 60, background: "#fff", borderTop: "1px solid #f2f2f2", display: "flex", zIndex: 30 },
-  navTab: { flex: 1, height: "100%", border: "none", background: "transparent", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", cursor: "pointer", position: "relative" },
-  navActiveBar: { position: "absolute", top: 0, width: 24, height: 3, background: "#0c831f", borderRadius: 2 },
+  cartRow: { display: "flex", alignItems: "center", gap: 12, marginBottom: 14 },
+  cartItemImg: { width: 48, height: 48, borderRadius: 8, objectFit: "contain" },
+  billSummary: { background: "#f8fafc", padding: 16, borderRadius: 12, margin: "20px 0" },
+  checkoutBtn: { width: "100%", padding: 16, background: "#0c831f", color: "#fff", border: "none", borderRadius: 12, fontWeight: 900, fontSize: 15, cursor: "pointer" },
 };
