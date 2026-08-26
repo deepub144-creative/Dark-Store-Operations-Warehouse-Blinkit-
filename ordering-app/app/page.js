@@ -1,9 +1,8 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CATALOG } from "@/lib/items";
-import Image from "next/image";
 
 const WALLET_LIMIT = 1000000;
 
@@ -11,11 +10,13 @@ export default function OrderPage() {
   const [customer, setCustomer] = useState(null);
   const [cart, setCart] = useState({});
   const [activeTab, setActiveTab] = useState("home");
+  const [selectedCategory, setSelectedCategory] = useState("All");
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [placingOrder, setPlacingOrder] = useState(false);
   const [error, setError] = useState("");
   const [showCart, setShowCart] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState(null); // Modal state
   const [location, setLocation] = useState(null);
   const [locationLabel, setLocationLabel] = useState("Detecting location...");
   const [locationRequested, setLocationRequested] = useState(false);
@@ -37,7 +38,6 @@ export default function OrderPage() {
           const { latitude, longitude } = pos.coords;
           setLocation({ lat: latitude, lng: longitude });
           setLocationRequested(true);
-          // Reverse geocode for human-readable address
           try {
             const geo = await fetch(
               `https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json`
@@ -52,7 +52,7 @@ export default function OrderPage() {
               `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
             setLocationLabel(label);
           } catch {
-            setLocationLabel(`${latitude.toFixed(4)}, ${longitude.toFixed(4)}`);
+            setLocationLabel("Muniswamappa Layout, Bengaluru");
           }
         },
         () => {
@@ -63,7 +63,8 @@ export default function OrderPage() {
       );
     }
 
-    const timer = setTimeout(() => setLoading(false), 600);
+    // Blinkit Bike Splash animation timer (2 seconds)
+    const timer = setTimeout(() => setLoading(false), 2000);
     return () => clearTimeout(timer);
   }, [router]);
 
@@ -85,16 +86,19 @@ export default function OrderPage() {
   }, 0);
   const walletBalance = customer?.walletBalance || WALLET_LIMIT;
 
-  const filteredCatalog =
-    searchQuery.trim()
-      ? CATALOG.filter((i) => i.name.toLowerCase().includes(searchQuery.toLowerCase()))
-      : CATALOG;
+  // Filter Catalog by Search & Category
+  const filteredCatalog = CATALOG.filter((item) => {
+    const matchesSearch = item.name.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesCategory =
+      selectedCategory === "All" || item.category === selectedCategory;
+    return matchesSearch && matchesCategory;
+  });
 
   async function placeOrder() {
     if (!customer) { router.push("/login"); return; }
     if (cartEntries.length === 0) { setError("Your cart is empty."); return; }
     if (totalPrice > walletBalance) {
-      setError(`Insufficient Blinkit Wallet balance. Available: ₹${walletBalance.toLocaleString()}`);
+      setError(`Insufficient Blinkit Wallet balance. Available: ₹${walletBalance.toLocaleString("en-IN")}`);
       return;
     }
     setError("");
@@ -132,14 +136,38 @@ export default function OrderPage() {
     router.push("/login");
   }
 
+  // 🛵 BLINKIT ANIMATED BIKE SPLASH SCREEN
   if (!customer || loading) {
     return (
       <div style={S.splash}>
+        <style>{`
+          @keyframes bikeZoom {
+            0% { transform: translateX(-120px) scale(0.9); }
+            50% { transform: translateX(40px) scale(1.1); }
+            100% { transform: translateX(180px) scale(0.95); }
+          }
+          @keyframes roadMove {
+            0% { background-position: 0 0; }
+            100% { background-position: -40px 0; }
+          }
+          @keyframes pulseText {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.6; }
+          }
+        `}</style>
         <div style={S.splashContent}>
           <div style={S.splashLogo}>blinkit</div>
-          <div style={S.splashEmoji}>🛒</div>
-          <div style={S.splashTag}>Grocery in minutes</div>
-          <div style={S.spinnerWrap}><div style={S.spinner} /></div>
+          <div style={S.splashTag}>India's Last Minute App</div>
+
+          {/* Bike Animation Track */}
+          <div style={S.bikeTrack}>
+            <div style={S.bikeWrapper}>
+              <span style={S.bikeEmoji}>🛵💨</span>
+            </div>
+            <div style={S.roadLine} />
+          </div>
+
+          <div style={S.splashStatus}>Delivering in 14 minutes...</div>
         </div>
       </div>
     );
@@ -178,7 +206,7 @@ export default function OrderPage() {
           <span style={S.searchIcon}>🔍</span>
           <input
             style={S.searchInput}
-            placeholder='Search "milk, bread, onion..."'
+            placeholder='Search "milk, bread, tomato, ice cream..."'
             value={searchQuery}
             onChange={(e) => { setSearchQuery(e.target.value); setActiveTab("home"); }}
           />
@@ -187,10 +215,26 @@ export default function OrderPage() {
           )}
         </div>
 
-        {/* Category pills */}
+        {/* Category Pills Bar */}
         <div style={S.pills}>
-          {["All 🏷️", "🌿 Fresh", "🥛 Dairy", "🍪 Snacks", "🥶 Frozen", "🎁 Gifts"].map((c, i) => (
-            <span key={c} style={{ ...S.pill, ...(i === 0 ? S.pillActive : {}) }}>{c}</span>
+          {[
+            { id: "All", label: "All 🏷️" },
+            { id: "Vegetables & Fruits", label: "🥦 Veggies & Fruits" },
+            { id: "Dairy & Breakfast", label: "🥛 Dairy & Eggs" },
+            { id: "Ice Creams & Frozen", label: "🍦 Ice Creams & Frozen" },
+            { id: "Snacks & Drinks", label: "🍿 Snacks & Drinks" },
+            { id: "Festive & Gifts", label: "🎁 Festive & Gifts" },
+          ].map((cat) => (
+            <button
+              key={cat.id}
+              style={{
+                ...S.pill,
+                ...(selectedCategory === cat.id ? S.pillActive : {}),
+              }}
+              onClick={() => { setSelectedCategory(cat.id); setActiveTab("home"); }}
+            >
+              {cat.label}
+            </button>
           ))}
         </div>
       </header>
@@ -203,38 +247,33 @@ export default function OrderPage() {
           <div>
             {/* Hero Banner */}
             <div style={S.heroBanner}>
-              <div style={S.heroLabel}>🎉 RAKSHA BANDHAN SPECIAL</div>
-              <div style={S.heroTitle}>Celebrate with loved ones</div>
-              <div style={S.heroSub}>Premium Rakhis, Gifts, Sweets — delivered in 14 mins!</div>
+              <div style={S.heroLabel}>🎉 RAKSHA BANDHAN & FESTIVE SPECIAL</div>
+              <div style={S.heroTitle}>Delivered to your doorstep in 14 Mins!</div>
+              <div style={S.heroSub}>Rakhis, Fresh Veggies, Ice Creams & Gifts</div>
               <div style={S.heroCats}>
-                {["🎁 Gifts", "🍫 Sweets", "🌸 Flowers", "🪔 Decor"].map((c) => (
+                {["🥦 Fresh Veggies", "🥛 Dairy", "🍦 Ice Creams", "🎁 Gifts"].map((c) => (
                   <span key={c} style={S.heroCatPill}>{c}</span>
                 ))}
               </div>
             </div>
 
-            {/* Filter chips */}
-            <div style={S.filterRow}>
-              {["Under ₹49", "Under ₹99", "Under ₹199", "Bestsellers"].map((f) => (
-                <span key={f} style={S.filterChip}>{f}</span>
-              ))}
+            <div style={S.sectionTitle}>
+              {selectedCategory === "All" ? "Fresh Store Essentials" : selectedCategory}
             </div>
 
-            <div style={S.sectionTitle}>Essentials — delivered instantly</div>
-
-            {/* Product grid */}
+            {/* Product Grid */}
             <div style={S.productGrid}>
               {filteredCatalog.map((item) => {
                 const qty = cart[item.sku] || 0;
                 const discount = Math.round(((item.mrp - item.price) / item.mrp) * 100);
                 return (
                   <div key={item.sku} style={S.productCard}>
-                    <div style={S.imageWrap}>
+                    {/* Clickable Image to view Product Details */}
+                    <div style={S.imageWrap} onClick={() => setSelectedProduct(item)}>
                       <img
                         src={item.image}
                         alt={item.name}
                         style={S.productImage}
-                        onError={(e) => { e.target.style.display = "none"; }}
                       />
                       <span style={S.deliveryChip}>⚡ {item.delivery}</span>
                       {discount > 0 && <span style={S.discountChip}>{discount}% OFF</span>}
@@ -242,7 +281,9 @@ export default function OrderPage() {
 
                     <div style={S.productInfo}>
                       <div style={S.productWeight}>{item.weight}</div>
-                      <div style={S.productName}>{item.name}</div>
+                      <div style={S.productName} onClick={() => setSelectedProduct(item)}>
+                        {item.name}
+                      </div>
                       <div style={S.priceRow}>
                         <div>
                           <span style={S.salePrice}>₹{item.price}</span>
@@ -280,7 +321,7 @@ export default function OrderPage() {
                 const qty = cart[item.sku] || 0;
                 return (
                   <div key={item.sku} style={S.productCard}>
-                    <div style={S.imageWrap}>
+                    <div style={S.imageWrap} onClick={() => setSelectedProduct(item)}>
                       <img src={item.image} alt={item.name} style={S.productImage} />
                       <span style={S.deliveryChip}>⚡ {item.delivery}</span>
                     </div>
@@ -311,15 +352,25 @@ export default function OrderPage() {
         {activeTab === "categories" && (
           <div style={S.categoriesWrap}>
             {[
-              { group: "Grocery & Kitchen", items: ["🥦 Vegetables & Fruits", "🌾 Atta, Rice & Dal", "🧈 Oil, Ghee & Masala", "🥛 Dairy, Bread & Eggs", "🍪 Bakery & Biscuits", "🥜 Dry Fruits"] },
-              { group: "Snacks & Beverages", items: ["🍿 Chips & Namkeen", "🍫 Chocolates", "🥤 Cold Drinks", "☕ Tea & Coffee", "🍜 Instant Noodles", "🍨 Ice Creams"] },
-              { group: "Beauty & Personal Care", items: ["🧴 Skincare", "💆 Hair Care", "🪥 Oral Care", "🧼 Soaps & Body Wash"] },
+              { group: "Vegetables & Fruits", items: ["🥦 Fresh Vegetables", "🍎 Fresh Fruits", "🌿 Coriander & Herbs"] },
+              { group: "Dairy & Breakfast", items: ["🥛 Nandini Milk & Curd", "🍞 Brown Bread", "🥚 Eggs & Butter"] },
+              { group: "Ice Creams & Frozen", items: ["🍦 Vanilla & Chocolate Tubs", "🟢 Frozen Sweet Peas"] },
+              { group: "Snacks & Beverage", items: ["🍿 Potato Chips", "🥤 Cold Drinks", "🍫 Chocolates"] },
             ].map(({ group, items }) => (
               <div key={group}>
                 <div style={S.catGroupTitle}>{group}</div>
                 <div style={S.catGrid}>
                   {items.map((it) => (
-                    <div key={it} style={S.catBox}>{it}</div>
+                    <div
+                      key={it}
+                      style={S.catBox}
+                      onClick={() => {
+                        setSelectedCategory(group);
+                        setActiveTab("home");
+                      }}
+                    >
+                      {it}
+                    </div>
                   ))}
                 </div>
               </div>
@@ -333,7 +384,7 @@ export default function OrderPage() {
             <div style={S.profileCard}>
               <div style={S.profileAvatar}>👤</div>
               <div>
-                <div style={S.profileName}>{customer.name || "Your Account"}</div>
+                <div style={S.profileName}>{customer.name || `Customer ${customer.phone}`}</div>
                 <div style={S.profilePhone}>+91 {customer.phone}</div>
               </div>
             </div>
@@ -347,14 +398,14 @@ export default function OrderPage() {
                 <div
                   style={{
                     ...S.walletProgress,
-                    width: `${Math.max(1, 100 - (totalPrice / WALLET_LIMIT) * 100)}%`,
+                    width: `${Math.max(1, (walletBalance / WALLET_LIMIT) * 100)}%`,
                   }}
                 />
               </div>
             </div>
 
             <div style={S.profileMenu}>
-              {["📦 Your Orders", "📍 Address Book", "💳 Payment Settings", "🎁 Gift Cards", "🤝 Refer & Earn", "🎧 Help & Support", "📋 Terms & Privacy"].map((item) => (
+              {["📦 Your Orders", "📍 Saved Addresses", "💳 Payment Methods", "🎁 Gift Cards", "🎧 Support"].map((item) => (
                 <div key={item} style={S.profileMenuRow}>
                   <span>{item}</span><span style={S.menuArrow}>›</span>
                 </div>
@@ -366,6 +417,38 @@ export default function OrderPage() {
           </div>
         )}
       </main>
+
+      {/* ── PRODUCT MODAL POPUP ── */}
+      {selectedProduct && (
+        <div style={S.drawerOverlay} onClick={() => setSelectedProduct(null)}>
+          <div style={S.modalCard} onClick={(e) => e.stopPropagation()}>
+            <button style={S.modalClose} onClick={() => setSelectedProduct(null)}>✕</button>
+            <img src={selectedProduct.image} alt={selectedProduct.name} style={S.modalImg} />
+            <div style={S.modalBody}>
+              <div style={S.modalDelivery}>⚡ Delivered in 14 minutes</div>
+              <div style={S.modalTitle}>{selectedProduct.name}</div>
+              <div style={S.modalWeight}>{selectedProduct.weight} • {selectedProduct.aisle}</div>
+              <div style={S.modalPriceRow}>
+                <div>
+                  <span style={S.modalPrice}>₹{selectedProduct.price}</span>
+                  <span style={S.modalMrp}>MRP ₹{selectedProduct.mrp}</span>
+                </div>
+                {cart[selectedProduct.sku] ? (
+                  <div style={S.counter}>
+                    <button style={S.counterBtn} onClick={() => updateQty(selectedProduct.sku, -1)}>−</button>
+                    <span style={S.counterNum}>{cart[selectedProduct.sku]}</span>
+                    <button style={S.counterBtn} onClick={() => updateQty(selectedProduct.sku, 1)}>+</button>
+                  </div>
+                ) : (
+                  <button style={S.modalAddBtn} onClick={() => updateQty(selectedProduct.sku, 1)}>
+                    ADD TO CART
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── CART BOTTOM BAR ── */}
       {totalItems > 0 && !showCart && (
@@ -467,12 +550,15 @@ export default function OrderPage() {
 
 const S = {
   splash: { minHeight: "100vh", background: "#facc15", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "system-ui, sans-serif" },
-  splashContent: { textAlign: "center" },
-  splashLogo: { fontSize: 48, fontWeight: 900, color: "#0c831f", letterSpacing: "-2px" },
-  splashEmoji: { fontSize: 60, marginTop: 16 },
-  splashTag: { fontSize: 16, color: "#3f6212", fontWeight: 600, marginTop: 8 },
-  spinnerWrap: { marginTop: 24, display: "flex", justifyContent: "center" },
-  spinner: { width: 32, height: 32, border: "3px solid #fff", borderTopColor: "#0c831f", borderRadius: "50%", animation: "spin 0.8s linear infinite" },
+  splashContent: { textAlign: "center", width: "100%", maxWidth: 360, padding: 20 },
+  splashLogo: { fontSize: 52, fontWeight: 900, color: "#0c831f", letterSpacing: "-2px" },
+  splashTag: { fontSize: 16, color: "#3f6212", fontWeight: 700, marginTop: 4 },
+
+  bikeTrack: { position: "relative", height: 70, marginTop: 40, overflow: "hidden", display: "flex", alignItems: "center" },
+  bikeWrapper: { animation: "bikeZoom 2s cubic-bezier(0.4, 0, 0.2, 1) infinite" },
+  bikeEmoji: { fontSize: 44 },
+  roadLine: { position: "absolute", bottom: 10, left: 0, right: 0, height: 4, background: "repeating-linear-gradient(90deg, #0c831f, #0c831f 15px, transparent 15px, transparent 25px)", animation: "roadMove 0.4s linear infinite" },
+  splashStatus: { fontSize: 14, fontWeight: 800, color: "#15803d", marginTop: 24, animation: "pulseText 1.5s ease-in-out infinite" },
 
   app: { minHeight: "100vh", background: "#f1f5f9", fontFamily: "'Inter', system-ui, sans-serif", paddingBottom: 80 },
 
@@ -498,39 +584,30 @@ const S = {
   clearSearch: { border: "none", background: "none", cursor: "pointer", color: "#94a3b8", fontSize: 14 },
 
   pills: { display: "flex", gap: 6, overflowX: "auto", paddingBottom: 12 },
-  pill: { padding: "5px 12px", borderRadius: 20, background: "#f1f5f9", fontSize: 12, fontWeight: 600, color: "#475569", whiteSpace: "nowrap", cursor: "pointer" },
-  pillActive: { background: "#0c831f", color: "#fff" },
+  pill: { padding: "6px 14px", borderRadius: 20, background: "#f1f5f9", border: "none", fontSize: 12, fontWeight: 600, color: "#475569", whiteSpace: "nowrap", cursor: "pointer" },
+  pillActive: { background: "#0c831f", color: "#fff", fontWeight: 700 },
 
   main: { padding: 16, maxWidth: 480, margin: "0 auto" },
 
-  heroBanner: {
-    background: "linear-gradient(135deg, #0c831f, #15803d)",
-    borderRadius: 16,
-    padding: 18,
-    color: "#fff",
-    marginBottom: 16,
-  },
+  heroBanner: { background: "linear-gradient(135deg, #0c831f, #15803d)", borderRadius: 16, padding: 18, color: "#fff", marginBottom: 16 },
   heroLabel: { fontSize: 11, fontWeight: 800, letterSpacing: "0.5px", opacity: 0.85 },
-  heroTitle: { fontSize: 22, fontWeight: 900, marginTop: 4 },
+  heroTitle: { fontSize: 20, fontWeight: 900, marginTop: 4 },
   heroSub: { fontSize: 13, opacity: 0.8, marginTop: 4 },
   heroCats: { display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" },
   heroCatPill: { background: "rgba(255,255,255,0.2)", padding: "5px 10px", borderRadius: 16, fontSize: 12, fontWeight: 700 },
-
-  filterRow: { display: "flex", gap: 8, overflowX: "auto", marginBottom: 14 },
-  filterChip: { padding: "6px 12px", borderRadius: 16, background: "#fff", border: "1px solid #e2e8f0", fontSize: 12, fontWeight: 700, whiteSpace: "nowrap", cursor: "pointer" },
 
   sectionTitle: { fontSize: 17, fontWeight: 800, color: "#0f172a", marginBottom: 12 },
 
   productGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 },
   productCard: { background: "#fff", borderRadius: 16, overflow: "hidden", border: "1px solid #e2e8f0" },
-  imageWrap: { position: "relative", height: 110, background: "#f8fafc" },
+  imageWrap: { position: "relative", height: 115, background: "#f8fafc", cursor: "pointer" },
   productImage: { width: "100%", height: "100%", objectFit: "cover" },
   deliveryChip: { position: "absolute", bottom: 5, left: 5, background: "#fff", fontSize: 10, fontWeight: 800, padding: "2px 6px", borderRadius: 6, boxShadow: "0 1px 4px rgba(0,0,0,0.12)" },
   discountChip: { position: "absolute", top: 5, right: 5, background: "#10b981", color: "#fff", fontSize: 10, fontWeight: 800, padding: "2px 6px", borderRadius: 6 },
 
   productInfo: { padding: 10 },
   productWeight: { fontSize: 11, color: "#94a3b8", marginBottom: 2 },
-  productName: { fontSize: 13, fontWeight: 700, color: "#0f172a", height: 34, overflow: "hidden" },
+  productName: { fontSize: 13, fontWeight: 700, color: "#0f172a", height: 34, overflow: "hidden", cursor: "pointer" },
   priceRow: { display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8 },
   salePrice: { fontSize: 15, fontWeight: 800, color: "#0f172a" },
   mrpPrice: { fontSize: 11, color: "#94a3b8", textDecoration: "line-through", marginLeft: 4 },
@@ -540,10 +617,22 @@ const S = {
   counterBtn: { background: "transparent", border: "none", color: "#fff", fontWeight: 900, fontSize: 16, width: 26, height: 26, cursor: "pointer", lineHeight: 1 },
   counterNum: { color: "#fff", fontWeight: 800, fontSize: 13, padding: "0 4px", minWidth: 18, textAlign: "center" },
 
+  modalCard: { background: "#fff", width: "100%", maxWidth: 400, borderRadius: 20, overflow: "hidden", position: "relative" },
+  modalClose: { position: "absolute", top: 12, right: 12, background: "rgba(0,0,0,0.5)", color: "#fff", border: "none", borderRadius: "50%", width: 30, height: 30, cursor: "pointer", zIndex: 10, fontSize: 16 },
+  modalImg: { width: "100%", height: 220, objectFit: "cover" },
+  modalBody: { padding: 20 },
+  modalDelivery: { color: "#0c831f", fontSize: 12, fontWeight: 800, marginBottom: 4 },
+  modalTitle: { fontSize: 18, fontWeight: 800, color: "#0f172a" },
+  modalWeight: { fontSize: 13, color: "#64748b", marginTop: 2, marginBottom: 16 },
+  modalPriceRow: { display: "flex", justifyContent: "space-between", alignItems: "center" },
+  modalPrice: { fontSize: 22, fontWeight: 900, color: "#0f172a" },
+  modalMrp: { fontSize: 13, color: "#94a3b8", textDecoration: "line-through", marginLeft: 6 },
+  modalAddBtn: { background: "#0c831f", color: "#fff", border: "none", padding: "12px 20px", borderRadius: 10, fontWeight: 800, fontSize: 14, cursor: "pointer" },
+
   categoriesWrap: { background: "#fff", borderRadius: 16, padding: 16 },
   catGroupTitle: { fontSize: 14, fontWeight: 800, color: "#0c831f", marginTop: 16, marginBottom: 8 },
   catGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 },
-  catBox: { background: "#f8fafc", padding: 12, borderRadius: 10, fontSize: 13, fontWeight: 600, border: "1px solid #e2e8f0" },
+  catBox: { background: "#f8fafc", padding: 12, borderRadius: 10, fontSize: 13, fontWeight: 600, border: "1px solid #e2e8f0", cursor: "pointer" },
 
   profileWrap: { display: "flex", flexDirection: "column", gap: 12 },
   profileCard: { background: "#fff", borderRadius: 16, padding: 16, display: "flex", alignItems: "center", gap: 14, border: "1px solid #e2e8f0" },
@@ -564,29 +653,13 @@ const S = {
   logoutBtn: { padding: 14, background: "#fff", border: "1.5px solid #0c831f", borderRadius: 12, color: "#0c831f", fontWeight: 800, fontSize: 15, cursor: "pointer" },
   versionTag: { textAlign: "center", fontSize: 12, color: "#94a3b8", paddingTop: 4 },
 
-  cartBar: {
-    position: "fixed",
-    bottom: 64,
-    left: 16,
-    right: 16,
-    background: "#0c831f",
-    borderRadius: 14,
-    padding: "14px 18px",
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    color: "#fff",
-    boxShadow: "0 8px 24px rgba(12,131,31,0.35)",
-    cursor: "pointer",
-    zIndex: 40,
-    animation: "slideUp 0.3s ease",
-  },
+  cartBar: { position: "fixed", bottom: 64, left: 16, right: 16, background: "#0c831f", borderRadius: 14, padding: "14px 18px", display: "flex", justifyContent: "space-between", alignItems: "center", color: "#fff", boxShadow: "0 8px 24px rgba(12,131,31,0.35)", cursor: "pointer", zIndex: 40 },
   cartLeft: {},
   cartCount: { fontSize: 10, fontWeight: 800, opacity: 0.85 },
   cartPrice: { fontSize: 18, fontWeight: 900 },
   cartRight: { fontSize: 14, fontWeight: 800 },
 
-  drawerOverlay: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 50, display: "flex", alignItems: "flex-end" },
+  drawerOverlay: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center" },
   drawer: { background: "#fff", width: "100%", borderRadius: "20px 20px 0 0", maxHeight: "90vh", overflowY: "auto", padding: 20, paddingBottom: 32 },
   drawerHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 },
   drawerTitle: { fontSize: 18, fontWeight: 800, color: "#0f172a" },
