@@ -31,7 +31,14 @@ export async function POST(req) {
   const otp = Math.floor(100000 + Math.random() * 900000).toString();
   const expiresAt = Date.now() + 5 * 60 * 1000; // 5 minutes
 
-  await adminDb.collection("otps").doc(phone).set({ otp, expiresAt });
+  try {
+    await adminDb.collection("otps").doc(phone).set({ otp, expiresAt });
+  } catch (err) {
+    return NextResponse.json(
+      { error: err.message || "Failed to access Firestore. Make sure Cloud Firestore Database is enabled in your Firebase Console." },
+      { status: 500 }
+    );
+  }
 
   return NextResponse.json({
     success: true,
