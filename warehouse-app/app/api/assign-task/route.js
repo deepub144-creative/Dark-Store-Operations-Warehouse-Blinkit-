@@ -1,44 +1,44 @@
 import { NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebaseAdmin";
-import { STAGE_SEQUENCE, staffForRole } from "@/lib/roles";
+import { STAGE_SEQUENCE, staffForRole, ROLES } from "@/lib/roles";
 
-// Finds orders waiting for assignment at their current stage and randomly
-// assigns one available staff member whose role list includes that stage's
-// required role. Call this periodically (the frontend polls it every few
-// seconds) - in a production system this would instead be a Firestore
-// trigger (Cloud Function), but that requires the Blaze billing plan, so
-// this keeps everything on Vercel + Firestore free tier.
+export async function POST(req) {
+  if (!adminDb) return NextResponse.json({ message: "No db" }, { status: 200 });
 
-export async function POST() {
-  if (!adminDb) {
-    return NextResponse.json({ success: false, error: "Firebase credentials missing in Vercel" });
+  try {
+    const ordersSnap = await adminDb
+      .collection("orders")
+      .where("status", "in", ["PLACED", "PICKING", "PACKING"])
+      .get();
+
+    for (const doc of ordersSnap.docs) {
+      const order = doc.data();
+      const stageIdx = order.currentStageIndex ?? 0;
+      const stage = STAGE_SEQUENCE[stageIdx];
+      if (!stage) continue;
+
+      // Pick Thrupthi (PICKER) for picking stages, Sinchana (MOVER) for delivery
+      const isDeliveryStage = stage.role === ROLES.MOVER;
+      const targetStaff = isDeliveryStage
+        ? { id: "sinchana", name: "Sinchana B R (OD Picker & Delivery)", roles: [ROLES.MOVER, ROLES.PICKER] }
+        : { id: "thrupthi", name: "Thrupthi K S (OD Picker)", roles: [ROLES.PICKER] };
+
+      if (!order.assignedTo) {
+        await adminDb.collection("orders").doc(doc.id).update({
+          assignedTo: targetStaff,
+          status: "PICKING",
+          deliveryPerson: { name: "Sinchana B R", phone: "8088553237" },
+          updatedAt: Date.now(),
+          statusHistory: [
+            ...(order.statusHistory || []),
+            { status: "PICKING", staffId: targetStaff.id, timestamp: Date.now() }
+          ],
+        });
+      }
+    }
+
+    return NextResponse.json({ success: true });
+  } catch (e) {
+    return NextResponse.json({ error: e.message }, { status: 500 });
   }
-
-  const pendingSnap = await adminDb
-    .collection("orders")
-    .where("stageStatus", "==", "PENDING_ASSIGN")
-    .get();
-
-  let assignedCount = 0;
-
-  for (const doc of pendingSnap.docs) {
-    const order = doc.data();
-    const stage = STAGE_SEQUENCE[order.currentStageIndex];
-    if (!stage) continue;
-
-    const eligible = staffForRole(stage.role);
-    if (eligible.length === 0) continue;
-
-    const chosen = eligible[Math.floor(Math.random() * eligible.length)];
-
-    await doc.ref.update({
-      stageStatus: "ASSIGNED",
-      assignedTo: { id: chosen.id, name: chosen.name },
-      updatedAt: Date.now(),
-    });
-
-    assignedCount++;
-  }
-
-  return NextResponse.json({ success: true, assigned: assignedCount });
 }

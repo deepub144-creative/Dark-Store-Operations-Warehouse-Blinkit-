@@ -3,42 +3,76 @@ import { adminDb } from "@/lib/firebaseAdmin";
 import { CATALOG } from "@/lib/items";
 
 export async function POST(req) {
-  if (!adminDb) {
-    return NextResponse.json(
-      { error: "Firebase credentials missing. Please set FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, and FIREBASE_PRIVATE_KEY in Vercel Environment Variables." },
-      { status: 500 }
-    );
-  }
-
-  const { customerName, cart } = await req.json();
+  const { customerId, customerName, customerPhone, cart, location } = await req.json();
 
   if (!customerName || !cart || cart.length === 0) {
-    return NextResponse.json({ error: "Name and at least one item required" }, { status: 400 });
+    return NextResponse.json({ error: "Name and cart are required" }, { status: 400 });
   }
 
-  const items = cart.map((c) => {
-    const product = CATALOG.find((p) => p.sku === c.sku);
+  // Resolve items from catalog
+  const items = cart.map(({ sku, qty }) => {
+    const product = CATALOG.find((c) => c.sku === sku);
+    if (!product) throw new Error(`Unknown SKU: ${sku}`);
     return {
       sku: product.sku,
       name: product.name,
+      price: product.price,
+      qty,
       zone: product.zone,
+      aisle: product.aisle,
       barcode: product.barcode,
-      qty: c.qty,
+      image: product.image,
       scanned: false,
+      weight: product.weight,
     };
   });
 
-  const orderRef = await adminDb.collection("orders").add({
-    customerName,
-    items,
-    status: "Placed",
-    currentStageIndex: 0,
-    stageStatus: "PENDING_ASSIGN",
-    assignedTo: null,
-    stageHistory: [],
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
-  });
+  const totalAmount = items.reduce((sum, i) => sum + i.price * i.qty, 0);
 
-  return NextResponse.json({ success: true, orderId: orderRef.id });
+  // Check wallet balance
+  if (adminDb && customerId) {
+    try {
+      const customerRef = adminDb.collection("customers").doc(customerId);
+      const snap = await customerRef.get();
+      if (snap.exists) {
+        const data = snap.data();
+        if (data.walletBalance < totalAmount) {
+          return NextResponse.json(
+            { error: `Insufficient Blinkit Wallet balance. Available: ₹${data.walletBalance}` },
+            { status: 400 }
+          );
+        }
+        // Deduct from wallet
+        await customerRef.update({ walletBalance: data.walletBalance - totalAmount });
+      }
+    } catch (e) {}
+  }
+
+  const orderId = `ORD${Date.now()}`;
+  const orderData = {
+    orderId,
+    customerId: customerId || "guest",
+    customerName,
+    customerPhone: customerPhone || "",
+    deliveryLocation: location || null,
+    items,
+    totalAmount,
+    status: "PLACED",
+    currentStageIndex: 0,
+    assignedTo: null,
+    deliveryPerson: null,
+    placedAt: Date.now(),
+    updatedAt: Date.now(),
+    statusHistory: [{ status: "PLACED", timestamp: Date.now() }],
+  };
+
+  if (adminDb) {
+    try {
+      await adminDb.collection("orders").doc(orderId).set(orderData);
+    } catch (e) {
+      return NextResponse.json({ error: "Failed to save order: " + e.message }, { status: 500 });
+    }
+  }
+
+  return NextResponse.json({ success: true, orderId, totalAmount });
 }

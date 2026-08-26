@@ -1,35 +1,26 @@
 import { NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebaseAdmin";
-import { staffByPhone } from "@/lib/roles";
 
 const mockOtps = globalThis._mockOtps || (globalThis._mockOtps = new Map());
 
 export async function POST(req) {
   const { phone } = await req.json();
-
-  if (!phone) {
-    return NextResponse.json({ error: "Phone number required" }, { status: 400 });
-  }
-
-  const staff = staffByPhone(phone);
-  if (!staff) {
-    return NextResponse.json({ error: "Phone number not registered" }, { status: 404 });
+  if (!phone || phone.length !== 10) {
+    return NextResponse.json({ error: "Enter a valid 10-digit phone number" }, { status: 400 });
   }
 
   const otp = Math.floor(100000 + Math.random() * 900000).toString();
   const expiresAt = Date.now() + 5 * 60 * 1000;
 
+  // Store OTP in memory + Firestore
   mockOtps.set(phone, { otp, expiresAt });
-
   if (adminDb) {
     try {
-      await adminDb.collection("otps").doc(phone).set({ otp, expiresAt });
-    } catch (err) {
-      console.warn("Firestore write skipped:", err.message);
-    }
+      await adminDb.collection("customer_otps").doc(phone).set({ otp, expiresAt });
+    } catch (e) {}
   }
 
-  // Send REAL SMS via Fast2SMS
+  // Send REAL SMS via Fast2SMS (free Indian SMS API)
   const FAST2SMS_KEY = process.env.FAST2SMS_API_KEY;
   let smsSent = false;
 
@@ -37,7 +28,10 @@ export async function POST(req) {
     try {
       const smsRes = await fetch("https://www.fast2sms.com/dev/bulkV2", {
         method: "POST",
-        headers: { authorization: FAST2SMS_KEY, "Content-Type": "application/json" },
+        headers: {
+          authorization: FAST2SMS_KEY,
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({
           route: "otp",
           variables_values: otp,
@@ -51,8 +45,8 @@ export async function POST(req) {
 
   return NextResponse.json({
     success: true,
-    staffName: staff.name,
     smsSent,
-    ...(smsSent ? {} : { otp }), // Only show OTP in response if SMS not sent
+    // Only expose OTP in demo mode (no SMS key configured)
+    ...(smsSent ? {} : { demoOtp: otp }),
   });
 }
