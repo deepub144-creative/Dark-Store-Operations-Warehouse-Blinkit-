@@ -30,8 +30,8 @@ export const STAFF = [
   { id: "bhaskar", name: "Bhaskar N S (SM)", phone: "8431453058", roles: [ROLES.MANAGER, ROLES.PUTAWAY, ROLES.PICKER, ROLES.AUDIT, ROLES.PACKER, ROLES.MOVER] },
   { id: "deepu", name: "Deepu B (ASM)", phone: "8050475078", roles: [ROLES.MANAGER, ROLES.PUTAWAY, ROLES.PICKER, ROLES.AUDIT, ROLES.PACKER, ROLES.MOVER, ROLES.INVENTORY_AUDIT] },
   { id: "harshitha", name: "A B Harshitha (MD)", phone: "8971720997", roles: [ROLES.MANAGER, ROLES.EXP_AUDIT, ROLES.INVENTORY_AUDIT, ROLES.PICKER, ROLES.AUDIT, ROLES.PACKER, ROLES.MOVER] },
-  { id: "thrupthi", name: "Thrupthi K S", phone: "9000000004", roles: [ROLES.FNV, ROLES.AUDIT, ROLES.INVENTORY_AUDIT, ROLES.PACKER, ROLES.PICKER] },
-  { id: "sinchana", name: "Sinchana B R", phone: "9000000005", roles: [ROLES.INVENTORY_AUDIT, ROLES.MOVER, ROLES.PICKER, ROLES.PUTAWAY] },
+  { id: "thrupthi", name: "Thrupthi K S (OD Picker)", phone: "6362435746", roles: [ROLES.PICKER, ROLES.AUDIT, ROLES.PACKER, ROLES.FNV, ROLES.INVENTORY_AUDIT] },
+  { id: "sinchana", name: "Sinchana B R (OD Picker & Delivery)", phone: "8088553237", roles: [ROLES.PICKER, ROLES.MOVER, ROLES.PACKER, ROLES.INVENTORY_AUDIT, ROLES.PUTAWAY] },
 ];
 
 export function staffForRole(role) {
