@@ -1,0 +1,27 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Orders: anyone can create (friends placing demo orders) and read
+    // (for live tracking + manager dashboard). All writes/updates that
+    // matter (assignment, scan validation) go through the server-side
+    // Admin SDK API routes, which bypass these rules entirely - so it's
+    // safe to keep reads open for this demo project.
+    match /orders/{orderId} {
+      allow read: if true;
+      allow create: if true;
+      allow update: if false; // only Admin SDK (API routes) can update
+    }
+
+    // Staff online/offline status - readable by the manager dashboard.
+    match /staffStatus/{staffId} {
+      allow read: if true;
+      allow write: if false; // only Admin SDK sets this on OTP login
+    }
+
+    // OTP documents - never readable/writable from the client directly.
+    match /otps/{phone} {
+      allow read, write: if false;
+    }
+  }
+}
