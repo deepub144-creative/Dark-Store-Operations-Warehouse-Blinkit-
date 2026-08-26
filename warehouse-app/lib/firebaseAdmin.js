@@ -6,8 +6,11 @@ function getAdminApp() {
 
   const projectId = process.env.FIREBASE_PROJECT_ID;
   const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
-  // Vercel env vars store newlines as \n literal - convert back
   const privateKey = (process.env.FIREBASE_PRIVATE_KEY || "").replace(/\\n/g, "\n");
+
+  if (!projectId || !clientEmail || !privateKey) {
+    return null;
+  }
 
   return initializeApp({
     credential: cert({ projectId, clientEmail, privateKey }),
@@ -15,4 +18,5 @@ function getAdminApp() {
 }
 
 const adminApp = getAdminApp();
-export const adminDb = getFirestore(adminApp);
+export const adminDb = adminApp ? getFirestore(adminApp) : null;
+
