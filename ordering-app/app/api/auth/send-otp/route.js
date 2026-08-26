@@ -24,17 +24,17 @@ export async function POST(req) {
   const FAST2SMS_KEY = process.env.FAST2SMS_API_KEY;
   let smsSent = false;
 
+  // Try Fast2SMS (Quick route - requires ₹100 recharge)
   if (FAST2SMS_KEY) {
     try {
       const smsRes = await fetch("https://www.fast2sms.com/dev/bulkV2", {
         method: "POST",
-        headers: {
-          authorization: FAST2SMS_KEY,
-          "Content-Type": "application/json",
-        },
+        headers: { authorization: FAST2SMS_KEY, "Content-Type": "application/json" },
         body: JSON.stringify({
-          route: "otp",
-          variables_values: otp,
+          route: "q",
+          message: `Your Blinkit OTP is ${otp}. Valid for 5 minutes. Do not share with anyone.`,
+          language: "english",
+          flash: "0",
           numbers: phone,
         }),
       });
@@ -43,10 +43,26 @@ export async function POST(req) {
     } catch (e) {}
   }
 
+  // Fallback: MSG91
+  if (!smsSent && process.env.MSG91_AUTH_KEY && process.env.MSG91_TEMPLATE_ID) {
+    try {
+      const res = await fetch("https://control.msg91.com/api/v5/otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", authkey: process.env.MSG91_AUTH_KEY },
+        body: JSON.stringify({
+          template_id: process.env.MSG91_TEMPLATE_ID,
+          mobile: `91${phone}`,
+          otp,
+        }),
+      });
+      const data = await res.json();
+      if (data.type === "success") smsSent = true;
+    } catch (e) {}
+  }
+
   return NextResponse.json({
     success: true,
     smsSent,
-    // Only expose OTP in demo mode (no SMS key configured)
     ...(smsSent ? {} : { demoOtp: otp }),
   });
 }
