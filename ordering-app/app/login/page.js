@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
-export default function CustomerLoginPage() {
+export default function LoginPage() {
   const [phone, setPhone] = useState("");
   const [otp, setOtp] = useState("");
   const [step, setStep] = useState("phone");
@@ -59,216 +59,322 @@ export default function CustomerLoginPage() {
   }
 
   return (
-    <div style={S.page}>
-      <div style={S.topSection}>
-        <div style={S.logo}>blinkit</div>
-        <div style={S.tagline}>Grocery in minutes</div>
-        <div style={S.illustration}>🛒</div>
-      </div>
+    <div style={S.container}>
+      <div style={S.mobileFrame}>
+        {/* Top Branding Section */}
+        <div style={S.topHeader}>
+          <div style={S.logoText}>blinkit</div>
+          <div style={S.badgeTag}>India's Last Minute App ⚡</div>
+          <div style={S.iconGraphic}>🛵💨</div>
+        </div>
 
-      <div style={S.card}>
-        {step === "phone" ? (
-          <>
-            <h2 style={S.title}>Login or Sign Up</h2>
-            <p style={S.sub}>Enter your mobile number to continue</p>
+        {/* Form Body Card */}
+        <div style={S.formCard}>
+          {step === "phone" ? (
+            <>
+              <h1 style={S.heading}>Log in or Sign up</h1>
+              <p style={S.subText}>Enter your 10-digit mobile number to proceed</p>
 
-            <div style={S.phoneRow}>
-              <div style={S.countryCode}>🇮🇳 +91</div>
-              <input
-                style={S.phoneInput}
-                type="tel"
-                maxLength={10}
-                placeholder="10-digit mobile number"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value.replace(/\D/g, ""))}
-              />
-            </div>
-
-            {error && <div style={S.errorBox}>{error}</div>}
-
-            <button
-              style={{ ...S.btn, opacity: phone.length === 10 ? 1 : 0.5 }}
-              onClick={sendOtp}
-              disabled={loading || phone.length !== 10}
-            >
-              {loading ? "Sending OTP..." : "Continue →"}
-            </button>
-
-            <p style={S.disclaimer}>
-              By continuing, you agree to our Terms of Service and Privacy Policy
-            </p>
-          </>
-        ) : (
-          <>
-            <button style={S.backBtn} onClick={() => setStep("phone")}>← {phone}</button>
-            <h2 style={S.title}>Enter OTP</h2>
-            <p style={S.sub}>
-              {smsSent
-                ? `We sent a 6-digit OTP to +91 ${phone} via SMS`
-                : `OTP for +91 ${phone}`}
-            </p>
-
-            {!smsSent && demoOtp && (
-              <div style={S.demoBox}>
-                📱 Demo OTP: <strong style={S.otpNum}>{demoOtp}</strong>
-                <div style={S.demoNote}>(Real SMS not configured yet — add FAST2SMS_API_KEY in Vercel)</div>
+              {/* High Contrast Phone Input Row */}
+              <div style={S.inputGroup}>
+                <div style={S.countryFlag}>🇮🇳 +91</div>
+                <input
+                  style={S.phoneInput}
+                  type="tel"
+                  maxLength={10}
+                  placeholder="Enter Mobile Number"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value.replace(/\D/g, ""))}
+                  autoFocus
+                />
               </div>
-            )}
 
-            <div style={S.otpBoxRow}>
-              {[0,1,2,3,4,5].map((i) => (
-                <div key={i} style={{
-                  ...S.otpBox,
-                  borderColor: otp[i] ? "#0c831f" : "#d1d5db",
-                  color: otp[i] ? "#0c831f" : "#94a3b8",
-                }}>
-                  {otp[i] || "·"}
+              {error && <div style={S.errorAlert}>⚠️ {error}</div>}
+
+              <button
+                style={{
+                  ...S.submitBtn,
+                  opacity: phone.length === 10 ? 1 : 0.6,
+                  cursor: phone.length === 10 ? "pointer" : "not-allowed",
+                }}
+                onClick={sendOtp}
+                disabled={loading || phone.length !== 10}
+              >
+                {loading ? "Sending OTP..." : "Continue →"}
+              </button>
+
+              <div style={S.termsText}>
+                By continuing, you agree to Blinkit's <span style={S.linkText}>Terms of Use</span> & <span style={S.linkText}>Privacy Policy</span>
+              </div>
+            </>
+          ) : (
+            <>
+              <button style={S.backButton} onClick={() => { setStep("phone"); setOtp(""); }}>
+                ← Change Number (+91 {phone})
+              </button>
+
+              <h1 style={S.heading}>Enter Verification Code</h1>
+              <p style={S.subText}>
+                {smsSent
+                  ? `We sent a 6-digit OTP to +91 ${phone} via SMS`
+                  : `Enter the 6-digit OTP to verify your account`}
+              </p>
+
+              {!smsSent && demoOtp && (
+                <div style={S.demoOtpCard}>
+                  <div>📱 Verification OTP</div>
+                  <div style={S.demoOtpNumber}>{demoOtp}</div>
+                  <div style={S.demoNote}>Auto-generated test code for instant login</div>
                 </div>
-              ))}
-            </div>
+              )}
 
-            <input
-              style={S.hiddenOtpInput}
-              type="tel"
-              maxLength={6}
-              autoFocus
-              value={otp}
-              onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))}
-            />
+              {/* 6 Digit OTP Display */}
+              <div style={S.otpRow} onClick={() => document.getElementById("hiddenOtp")?.focus()}>
+                {[0, 1, 2, 3, 4, 5].map((idx) => (
+                  <div
+                    key={idx}
+                    style={{
+                      ...S.otpBox,
+                      borderColor: otp[idx] ? "#0c831f" : "#cbd5e1",
+                      backgroundColor: otp[idx] ? "#f0fdf4" : "#ffffff",
+                      color: "#0c831f",
+                    }}
+                  >
+                    {otp[idx] || ""}
+                  </div>
+                ))}
+              </div>
 
-            {error && <div style={S.errorBox}>{error}</div>}
+              <input
+                id="hiddenOtp"
+                style={S.hiddenInput}
+                type="tel"
+                maxLength={6}
+                value={otp}
+                onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))}
+                autoFocus
+              />
 
-            <button
-              style={{ ...S.btn, opacity: otp.length === 6 ? 1 : 0.5 }}
-              onClick={verifyOtp}
-              disabled={loading || otp.length !== 6}
-            >
-              {loading ? "Verifying..." : "Verify & Continue →"}
-            </button>
+              {error && <div style={S.errorAlert}>⚠️ {error}</div>}
 
-            <button style={S.resendBtn} onClick={() => { setStep("phone"); setOtp(""); }}>
-              Resend OTP
-            </button>
-          </>
-        )}
+              <button
+                style={{
+                  ...S.submitBtn,
+                  opacity: otp.length === 6 ? 1 : 0.6,
+                  cursor: otp.length === 6 ? "pointer" : "not-allowed",
+                }}
+                onClick={verifyOtp}
+                disabled={loading || otp.length !== 6}
+              >
+                {loading ? "Verifying..." : "Verify & Continue →"}
+              </button>
+
+              <button style={S.resendLink} onClick={() => { setStep("phone"); setOtp(""); }}>
+                Resend OTP
+              </button>
+            </>
+          )}
+        </div>
       </div>
     </div>
   );
 }
 
 const S = {
-  page: {
+  container: {
     minHeight: "100vh",
-    background: "#facc15",
-    fontFamily: "'Inter', system-ui, sans-serif",
+    backgroundColor: "#facc15",
     display: "flex",
-    flexDirection: "column",
-  },
-  topSection: {
-    flex: 1,
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
     justifyContent: "center",
-    paddingTop: 60,
-    paddingBottom: 20,
+    alignItems: "center",
+    fontFamily: "'Inter', system-ui, -apple-system, sans-serif",
   },
-  logo: { fontSize: 42, fontWeight: 900, color: "#0c831f", letterSpacing: "-2px" },
-  tagline: { fontSize: 15, color: "#3f6212", fontWeight: 600, marginTop: 4 },
-  illustration: { fontSize: 64, marginTop: 16 },
-
-  card: {
-    background: "#fff",
-    borderRadius: "24px 24px 0 0",
-    padding: "28px 24px 40px",
-    boxShadow: "0 -8px 30px rgba(0,0,0,0.08)",
+  mobileFrame: {
+    width: "100%",
+    maxWidth: "420px",
+    minHeight: "100vh",
+    backgroundColor: "#facc15",
+    display: "flex",
+    flexDirection: "column",
+    justifyContent: "space-between",
+    position: "relative",
+    boxShadow: "0 20px 50px rgba(0,0,0,0.15)",
   },
-  title: { fontSize: 22, fontWeight: 800, color: "#0f172a", margin: "0 0 6px" },
-  sub: { fontSize: 14, color: "#64748b", margin: "0 0 20px" },
-  backBtn: { background: "none", border: "none", color: "#0c831f", fontWeight: 700, fontSize: 14, cursor: "pointer", padding: "0 0 16px" },
-
-  phoneRow: {
+  topHeader: {
+    padding: "48px 24px 24px",
+    textAlign: "center",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+  },
+  logoText: {
+    fontSize: "46px",
+    fontWeight: "900",
+    color: "#0c831f",
+    letterSpacing: "-2px",
+    lineHeight: "1",
+  },
+  badgeTag: {
+    fontSize: "13px",
+    fontWeight: "800",
+    color: "#166534",
+    backgroundColor: "#fef08a",
+    padding: "4px 12px",
+    borderRadius: "20px",
+    marginTop: "8px",
+    display: "inline-block",
+  },
+  iconGraphic: {
+    fontSize: "56px",
+    marginTop: "16px",
+  },
+  formCard: {
+    backgroundColor: "#ffffff",
+    borderRadius: "32px 32px 0 0",
+    padding: "32px 24px 40px",
+    boxShadow: "0 -10px 40px rgba(0,0,0,0.08)",
+  },
+  heading: {
+    fontSize: "22px",
+    fontWeight: "800",
+    color: "#0f172a",
+    margin: "0 0 6px",
+  },
+  subText: {
+    fontSize: "14px",
+    color: "#475569",
+    margin: "0 0 24px",
+    fontWeight: "500",
+  },
+  inputGroup: {
     display: "flex",
     alignItems: "center",
-    border: "1.5px solid #d1d5db",
-    borderRadius: 12,
+    border: "2px solid #0c831f",
+    borderRadius: "14px",
+    backgroundColor: "#ffffff",
     overflow: "hidden",
-    marginBottom: 16,
+    marginBottom: "20px",
+    boxShadow: "0 2px 8px rgba(12,131,31,0.08)",
   },
-  countryCode: {
-    background: "#f8fafc",
-    padding: "14px 12px",
-    fontSize: 14,
-    fontWeight: 700,
-    borderRight: "1.5px solid #d1d5db",
+  countryFlag: {
+    backgroundColor: "#f8fafc",
+    padding: "16px 14px",
+    fontSize: "15px",
+    fontWeight: "800",
+    color: "#0f172a",
+    borderRight: "2px solid #e2e8f0",
     whiteSpace: "nowrap",
   },
   phoneInput: {
     flex: 1,
-    padding: "14px 12px",
-    fontSize: 16,
-    fontWeight: 600,
+    padding: "16px 14px",
+    fontSize: "18px",
+    fontWeight: "700",
+    color: "#000000",
     border: "none",
     outline: "none",
-    background: "transparent",
-    letterSpacing: "1px",
+    backgroundColor: "#ffffff",
+    letterSpacing: "2px",
   },
-
-  otpBoxRow: { display: "flex", gap: 8, marginBottom: 8, justifyContent: "center" },
+  submitBtn: {
+    width: "100%",
+    padding: "16px",
+    backgroundColor: "#0c831f",
+    color: "#ffffff",
+    border: "none",
+    borderRadius: "14px",
+    fontWeight: "800",
+    fontSize: "16px",
+    boxShadow: "0 4px 14px rgba(12,131,31,0.3)",
+    transition: "all 0.2s ease",
+  },
+  errorAlert: {
+    backgroundColor: "#fef2f2",
+    border: "1px solid #fca5a5",
+    color: "#991b1b",
+    borderRadius: "10px",
+    padding: "12px",
+    fontSize: "13px",
+    fontWeight: "700",
+    marginBottom: "16px",
+    textAlign: "center",
+  },
+  termsText: {
+    fontSize: "12px",
+    color: "#64748b",
+    textAlign: "center",
+    marginTop: "20px",
+    lineHeight: "1.5",
+  },
+  linkText: {
+    color: "#0c831f",
+    fontWeight: "700",
+  },
+  backButton: {
+    backgroundColor: "transparent",
+    border: "none",
+    color: "#0c831f",
+    fontWeight: "800",
+    fontSize: "14px",
+    cursor: "pointer",
+    padding: "0 0 16px",
+    display: "flex",
+    alignItems: "center",
+  },
+  demoOtpCard: {
+    backgroundColor: "#f0fdf4",
+    border: "1.5px solid #86efac",
+    borderRadius: "12px",
+    padding: "14px",
+    textAlign: "center",
+    marginBottom: "20px",
+    color: "#166534",
+    fontWeight: "700",
+  },
+  demoOtpNumber: {
+    fontSize: "28px",
+    fontWeight: "900",
+    color: "#0c831f",
+    letterSpacing: "4px",
+    margin: "4px 0",
+  },
+  demoNote: {
+    fontSize: "11px",
+    color: "#15803d",
+    fontWeight: "500",
+  },
+  otpRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    gap: "8px",
+    marginBottom: "20px",
+    cursor: "pointer",
+  },
   otpBox: {
-    width: 44,
-    height: 52,
+    width: "48px",
+    height: "56px",
     border: "2px solid",
-    borderRadius: 10,
+    borderRadius: "12px",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    fontSize: 20,
-    fontWeight: 800,
+    fontSize: "24px",
+    fontWeight: "900",
   },
-  hiddenOtpInput: {
+  hiddenInput: {
     position: "absolute",
     opacity: 0,
     width: 1,
     height: 1,
   },
-
-  btn: {
-    width: "100%",
-    padding: "15px",
-    background: "#0c831f",
-    color: "#fff",
-    border: "none",
-    borderRadius: 12,
-    fontWeight: 800,
-    fontSize: 15,
-    cursor: "pointer",
-    marginTop: 8,
-  },
-  resendBtn: {
-    width: "100%",
-    marginTop: 12,
-    padding: "10px",
-    background: "none",
+  resendLink: {
+    backgroundColor: "transparent",
     border: "none",
     color: "#0c831f",
-    fontWeight: 700,
-    fontSize: 14,
+    fontWeight: "800",
+    fontSize: "14px",
     cursor: "pointer",
+    width: "100%",
+    marginTop: "14px",
   },
-
-  demoBox: {
-    background: "#fef9c3",
-    border: "1px solid #fde047",
-    borderRadius: 10,
-    padding: "10px 14px",
-    fontSize: 14,
-    color: "#854d0e",
-    marginBottom: 16,
-    textAlign: "center",
-  },
-  otpNum: { fontSize: 22, color: "#15803d" },
-  demoNote: { fontSize: 11, color: "#a16207", marginTop: 4 },
-  errorBox: { background: "#fef2f2", borderRadius: 8, padding: "10px 12px", color: "#dc2626", fontSize: 13, fontWeight: 600, marginBottom: 12 },
-  disclaimer: { fontSize: 11, color: "#94a3b8", textAlign: "center", marginTop: 16 },
 };
