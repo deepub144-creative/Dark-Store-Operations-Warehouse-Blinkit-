@@ -6,8 +6,8 @@ import { useRouter } from "next/navigation";
 export default function LoginPage() {
   const [phone, setPhone] = useState("");
   const [otp, setOtp] = useState("");
+  const [otpToken, setOtpToken] = useState("");
   const [step, setStep] = useState("phone");
-  const [demoOtp, setDemoOtp] = useState("");
   const [smsSent, setSmsSent] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -29,7 +29,7 @@ export default function LoginPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to send OTP");
       setSmsSent(data.smsSent);
-      if (data.demoOtp) setDemoOtp(data.demoOtp);
+      if (data.otpToken) setOtpToken(data.otpToken);
       setStep("otp");
     } catch (e) {
       setError(e.message);
@@ -39,13 +39,17 @@ export default function LoginPage() {
   }
 
   async function verifyOtp() {
+    if (otp.length !== 6) {
+      setError("Please enter the 6-digit OTP received on your mobile");
+      return;
+    }
     setError("");
     setLoading(true);
     try {
       const res = await fetch("/api/auth/verify-otp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone, otp }),
+        body: JSON.stringify({ phone, otp, otpToken }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "OTP verification failed");
@@ -61,21 +65,21 @@ export default function LoginPage() {
   return (
     <div style={S.container}>
       <div style={S.mobileFrame}>
-        {/* Top Branding Section */}
+        {/* Top Branding Header */}
         <div style={S.topHeader}>
           <div style={S.logoText}>blinkit</div>
           <div style={S.badgeTag}>India's Last Minute App ⚡</div>
           <div style={S.iconGraphic}>🛵💨</div>
         </div>
 
-        {/* Form Body Card */}
+        {/* Form Container */}
         <div style={S.formCard}>
           {step === "phone" ? (
             <>
               <h1 style={S.heading}>Log in or Sign up</h1>
-              <p style={S.subText}>Enter your 10-digit mobile number to proceed</p>
+              <p style={S.subText}>Enter your 10-digit mobile number to receive real SMS OTP</p>
 
-              {/* High Contrast Phone Input Row */}
+              {/* High Contrast Phone Input */}
               <div style={S.inputGroup}>
                 <div style={S.countryFlag}>🇮🇳 +91</div>
                 <input
@@ -100,7 +104,7 @@ export default function LoginPage() {
                 onClick={sendOtp}
                 disabled={loading || phone.length !== 10}
               >
-                {loading ? "Sending OTP..." : "Continue →"}
+                {loading ? "Sending SMS OTP..." : "Get OTP via SMS →"}
               </button>
 
               <div style={S.termsText}>
@@ -113,20 +117,14 @@ export default function LoginPage() {
                 ← Change Number (+91 {phone})
               </button>
 
-              <h1 style={S.heading}>Enter Verification Code</h1>
+              <h1 style={S.heading}>Enter Real SMS OTP</h1>
               <p style={S.subText}>
-                {smsSent
-                  ? `We sent a 6-digit OTP to +91 ${phone} via SMS`
-                  : `Enter the 6-digit OTP to verify your account`}
+                We sent a 6-digit OTP code to <strong style={{ color: "#0c831f" }}>+91 {phone}</strong> via SMS.
               </p>
 
-              {!smsSent && demoOtp && (
-                <div style={S.demoOtpCard}>
-                  <div>📱 Verification OTP</div>
-                  <div style={S.demoOtpNumber}>{demoOtp}</div>
-                  <div style={S.demoNote}>Auto-generated test code for instant login</div>
-                </div>
-              )}
+              <div style={S.smsNoticeBanner}>
+                📲 Check your mobile SMS messages for your 6-digit verification code.
+              </div>
 
               {/* 6 Digit OTP Display */}
               <div style={S.otpRow} onClick={() => document.getElementById("hiddenOtp")?.focus()}>
@@ -166,11 +164,11 @@ export default function LoginPage() {
                 onClick={verifyOtp}
                 disabled={loading || otp.length !== 6}
               >
-                {loading ? "Verifying..." : "Verify & Continue →"}
+                {loading ? "Verifying OTP..." : "Verify OTP & Continue →"}
               </button>
 
-              <button style={S.resendLink} onClick={() => { setStep("phone"); setOtp(""); }}>
-                Resend OTP
+              <button style={S.resendLink} onClick={sendOtp} disabled={loading}>
+                Resend Real SMS OTP
               </button>
             </>
           )}
@@ -243,8 +241,20 @@ const S = {
   subText: {
     fontSize: "14px",
     color: "#475569",
-    margin: "0 0 24px",
+    margin: "0 0 20px",
     fontWeight: "500",
+    lineHeight: "1.4",
+  },
+  smsNoticeBanner: {
+    backgroundColor: "#f0fdf4",
+    border: "1.5px solid #86efac",
+    color: "#166534",
+    borderRadius: "12px",
+    padding: "12px 14px",
+    fontSize: "13px",
+    fontWeight: "700",
+    marginBottom: "20px",
+    lineHeight: "1.4",
   },
   inputGroup: {
     display: "flex",
@@ -320,28 +330,6 @@ const S = {
     padding: "0 0 16px",
     display: "flex",
     alignItems: "center",
-  },
-  demoOtpCard: {
-    backgroundColor: "#f0fdf4",
-    border: "1.5px solid #86efac",
-    borderRadius: "12px",
-    padding: "14px",
-    textAlign: "center",
-    marginBottom: "20px",
-    color: "#166534",
-    fontWeight: "700",
-  },
-  demoOtpNumber: {
-    fontSize: "28px",
-    fontWeight: "900",
-    color: "#0c831f",
-    letterSpacing: "4px",
-    margin: "4px 0",
-  },
-  demoNote: {
-    fontSize: "11px",
-    color: "#15803d",
-    fontWeight: "500",
   },
   otpRow: {
     display: "flex",

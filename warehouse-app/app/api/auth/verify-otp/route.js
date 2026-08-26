@@ -6,41 +6,76 @@ export const dynamic = 'force-dynamic';
 const mockOtps = globalThis._mockOtps || (globalThis._mockOtps = new Map());
 
 export async function POST(req) {
-  const { phone, otp } = await req.json();
-  if (!phone || !otp) {
-    return NextResponse.json({ error: "Phone and OTP required" }, { status: 400 });
+  try {
+    const { phone, otp, otpToken: bodyToken } = await req.json();
+    if (!phone || !otp) {
+      return NextResponse.json({ error: "Phone number and OTP are required" }, { status: 400 });
+    }
+
+    let isValid = false;
+
+    // 1. Stateless token verification (from payload or cookie)
+    const cookieToken = req.cookies.get("blinkit_otp_token")?.value;
+    const token = bodyToken || cookieToken;
+
+    if (token) {
+      try {
+        const decoded = Buffer.from(token, "base64").toString("utf-8");
+        const [tokPhone, tokOtp, tokExp] = decoded.split(":");
+        if (tokPhone === phone && tokOtp === otp && Date.now() <= parseInt(tokExp, 10)) {
+          isValid = true;
+        }
+      } catch (e) {}
+    }
+
+    // 2. In-memory map verification
+    if (!isValid) {
+      const stored = mockOtps.get(phone);
+      if (stored && stored.otp === otp && Date.now() <= stored.expiresAt) {
+        isValid = true;
+      }
+    }
+
+    // 3. Firestore verification fallback
+    if (!isValid && adminDb) {
+      try {
+        const doc = await adminDb.collection("customer_otps").doc(phone).get();
+        if (doc.exists) {
+          const data = doc.data();
+          if (data.otp === otp && Date.now() <= data.expiresAt) {
+            isValid = true;
+          }
+        }
+      } catch (e) {}
+    }
+
+    if (!isValid) {
+      return NextResponse.json(
+        { error: "Invalid OTP code. Please enter the 6-digit code received on your mobile." },
+        { status: 400 }
+      );
+    }
+
+    // Clean up OTP state
+    mockOtps.delete(phone);
+
+    const customer = {
+      customerId: `cust_${phone}`,
+      phone,
+      name: `Customer ${phone}`,
+      walletBalance: 1000000,
+    };
+
+    if (adminDb) {
+      try {
+        await adminDb.collection("customers").doc(phone).set(customer, { merge: true });
+      } catch (e) {}
+    }
+
+    const res = NextResponse.json({ success: true, customer });
+    res.cookies.delete("blinkit_otp_token");
+    return res;
+  } catch (e) {
+    return NextResponse.json({ error: e.message }, { status: 500 });
   }
-
-  let stored = mockOtps.get(phone);
-  if (!stored && adminDb) {
-    try {
-      const doc = await adminDb.collection("customer_otps").doc(phone).get();
-      if (doc.exists) stored = doc.data();
-    } catch (e) {}
-  }
-
-  if (!stored || stored.otp !== otp) {
-    return NextResponse.json({ error: "Invalid OTP" }, { status: 400 });
-  }
-
-  if (Date.now() > stored.expiresAt) {
-    return NextResponse.json({ error: "OTP expired" }, { status: 400 });
-  }
-
-  mockOtps.delete(phone);
-
-  const customer = {
-    customerId: `cust_${phone}`,
-    phone,
-    name: `Customer ${phone}`,
-    walletBalance: 1000000,
-  };
-
-  if (adminDb) {
-    try {
-      await adminDb.collection("customers").doc(phone).set(customer, { merge: true });
-    } catch (e) {}
-  }
-
-  return NextResponse.json({ success: true, customer });
 }
