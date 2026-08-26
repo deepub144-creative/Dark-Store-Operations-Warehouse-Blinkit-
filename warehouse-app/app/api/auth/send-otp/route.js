@@ -9,14 +9,9 @@ import { staffByPhone } from "@/lib/roles";
 // To go live for real, swap this for an SMS API (e.g. Fast2SMS, Twilio)
 // and stop returning `otp` in the response.
 
-export async function POST(req) {
-  if (!adminDb) {
-    return NextResponse.json(
-      { error: "Firebase credentials missing. Please set FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, and FIREBASE_PRIVATE_KEY in Vercel Environment Variables." },
-      { status: 500 }
-    );
-  }
+const mockOtps = globalThis._mockOtps || (globalThis._mockOtps = new Map());
 
+export async function POST(req) {
   const { phone } = await req.json();
 
   if (!phone) {
@@ -31,19 +26,20 @@ export async function POST(req) {
   const otp = Math.floor(100000 + Math.random() * 900000).toString();
   const expiresAt = Date.now() + 5 * 60 * 1000; // 5 minutes
 
-  try {
-    await adminDb.collection("otps").doc(phone).set({ otp, expiresAt });
-  } catch (err) {
-    return NextResponse.json(
-      { error: err.message || "Failed to access Firestore. Make sure Cloud Firestore Database is enabled in your Firebase Console." },
-      { status: 500 }
-    );
+  mockOtps.set(phone, { otp, expiresAt });
+
+  if (adminDb) {
+    try {
+      await adminDb.collection("otps").doc(phone).set({ otp, expiresAt });
+    } catch (err) {
+      console.warn("Firestore write skipped:", err.message);
+    }
   }
 
   return NextResponse.json({
     success: true,
     message: "OTP generated (demo mode - shown below instead of SMS)",
-    otp, // remove this line once a real SMS provider is connected
+    otp,
     staffName: staff.name,
   });
 }
