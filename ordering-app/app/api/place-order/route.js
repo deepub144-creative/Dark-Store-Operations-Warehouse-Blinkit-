@@ -2,77 +2,68 @@ import { NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebaseAdmin";
 import { CATALOG } from "@/lib/items";
 
+export const dynamic = 'force-dynamic';
+
 export async function POST(req) {
-  const { customerId, customerName, customerPhone, cart, location } = await req.json();
+  try {
+    const { customerId, customerName, customerPhone, cart, location } = await req.json();
 
-  if (!customerName || !cart || cart.length === 0) {
-    return NextResponse.json({ error: "Name and cart are required" }, { status: 400 });
-  }
-
-  // Resolve items from catalog
-  const items = cart.map(({ sku, qty }) => {
-    const product = CATALOG.find((c) => c.sku === sku);
-    if (!product) throw new Error(`Unknown SKU: ${sku}`);
-    return {
-      sku: product.sku,
-      name: product.name,
-      price: product.price,
-      qty,
-      zone: product.zone,
-      aisle: product.aisle,
-      barcode: product.barcode,
-      image: product.image,
-      scanned: false,
-      weight: product.weight,
-    };
-  });
-
-  const totalAmount = items.reduce((sum, i) => sum + i.price * i.qty, 0);
-
-  // Check wallet balance
-  if (adminDb && customerId) {
-    try {
-      const customerRef = adminDb.collection("customers").doc(customerId);
-      const snap = await customerRef.get();
-      if (snap.exists) {
-        const data = snap.data();
-        if (data.walletBalance < totalAmount) {
-          return NextResponse.json(
-            { error: `Insufficient Blinkit Wallet balance. Available: ₹${data.walletBalance}` },
-            { status: 400 }
-          );
-        }
-        // Deduct from wallet
-        await customerRef.update({ walletBalance: data.walletBalance - totalAmount });
-      }
-    } catch (e) {}
-  }
-
-  const orderId = `ORD${Date.now()}`;
-  const orderData = {
-    orderId,
-    customerId: customerId || "guest",
-    customerName,
-    customerPhone: customerPhone || "",
-    deliveryLocation: location || null,
-    items,
-    totalAmount,
-    status: "PLACED",
-    currentStageIndex: 0,
-    assignedTo: null,
-    deliveryPerson: null,
-    placedAt: Date.now(),
-    updatedAt: Date.now(),
-    statusHistory: [{ status: "PLACED", timestamp: Date.now() }],
-  };
-
-  if (adminDb) {
-    try {
-      await adminDb.collection("orders").doc(orderId).set(orderData);
-    } catch (e) {
-      return NextResponse.json({ error: "Failed to save order: " + e.message }, { status: 500 });
+    if (!cart || cart.length === 0) {
+      return NextResponse.json({ error: "Cart is empty" }, { status: 400 });
     }
-  }
 
-  return NextResponse.json({ success: true, orderId, totalAmount });
+    const items = cart.map(({ sku, qty }) => {
+      const catItem = CATALOG.find((c) => c.sku === sku) || {};
+      return {
+        sku,
+        name: catItem.name || sku,
+        qty,
+        price: catItem.price || 0,
+        mrp: catItem.mrp || 0,
+        weight: catItem.weight || "",
+        zone: catItem.zone || "CR",
+        aisle: catItem.aisle || "Aisle: A01-01-A-1000",
+        barcode: catItem.barcode || sku,
+        image: catItem.image || "",
+        scanned: false,
+      };
+    });
+
+    const totalAmount = items.reduce((s, i) => s + i.price * i.qty, 0);
+    const orderId = `ORD-${Date.now().toString().slice(-6)}`;
+
+    const orderData = {
+      orderId,
+      customerId: customerId || `cust_${customerPhone}`,
+      customerName: customerName || "Customer",
+      customerPhone: customerPhone || "9000000000",
+      items,
+      totalAmount,
+      deliveryFee: 0,
+      paymentMethod: "Blinkit Wallet",
+      stage: "Picking", // Assigned to OD Picker (Thrupthi K S)
+      status: "ASSIGNED",
+      assignedStaffId: "thrupthi",
+      assignedStaffName: "Thrupthi K S (OD Picker)",
+      deliveryCaptainId: "sinchana",
+      deliveryCaptainName: "Sinchana B R (OD Delivery)",
+      deliveryCaptainPhone: "8088553237",
+      estimatedDeliveryMins: 14,
+      location: location || { address: "Muniswamappa Layout, Bengaluru" },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    if (adminDb) {
+      await adminDb.collection("orders").doc(orderId).set(orderData);
+    }
+
+    return NextResponse.json({
+      success: true,
+      orderId,
+      order: orderData,
+    });
+  } catch (e) {
+    return NextResponse.json({ error: e.message }, { status: 500 });
+  }
 }

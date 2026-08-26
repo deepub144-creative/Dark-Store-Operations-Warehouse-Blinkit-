@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebaseAdmin";
 
+export const dynamic = 'force-dynamic';
+
 const mockOtps = globalThis._mockOtps || (globalThis._mockOtps = new Map());
 
 export async function POST(req) {
