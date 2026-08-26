@@ -3,6 +3,7 @@
 export const dynamic = "force-dynamic";
 
 import { useState } from "react";
+import Image from "next/image";
 import { STAFF, staffByPhone } from "@/lib/roles";
 import { doc, setDoc } from "firebase/firestore";
 import { db } from "@/lib/firebaseClient";
@@ -102,7 +103,19 @@ export default function WarehouseLoginPage() {
   return (
     <div style={S.container}>
       <div style={S.card}>
-        {/* Header */}
+        {/* Header Visual Banner */}
+        <div style={{ borderRadius: 16, overflow: "hidden", marginBottom: 20 }}>
+          <Image
+            src="/assets/blinkit-header-banner.jpeg"
+            alt="Blinkit Dark Store Operations Portal"
+            width={440}
+            height={140}
+            style={{ width: "100%", height: "auto", objectFit: "cover", display: "block" }}
+            priority
+          />
+        </div>
+
+        {/* Header Titles */}
         <div style={S.header}>
           <div style={S.brandRow}>
             <span style={S.brandName}>blinkit</span>
@@ -220,14 +233,14 @@ const S = {
     borderRadius: 24,
     width: "100%",
     maxWidth: 440,
-    padding: 36,
+    padding: 32,
     boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.35)",
   },
-  header: { textAlign: "center", marginBottom: 28 },
+  header: { textAlign: "center", marginBottom: 24 },
   brandRow: { display: "flex", alignItems: "center", justifyContent: "center", gap: 8 },
-  brandName: { fontSize: 34, fontWeight: 900, color: "#0c831f", letterSpacing: "-1px" },
+  brandName: { fontSize: 32, fontWeight: 900, color: "#0c831f", letterSpacing: "-1px" },
   opsBadge: { background: "#facc15", color: "#0f172a", fontSize: 11, fontWeight: 800, padding: "3px 8px", borderRadius: 6 },
-  title: { fontSize: 20, fontWeight: 800, color: "#0f172a", marginTop: 8 },
+  title: { fontSize: 18, fontWeight: 800, color: "#0f172a", marginTop: 6 },
 
   formBlock: { display: "flex", flexDirection: "column", gap: 16 },
   label: { fontSize: 13, fontWeight: 700, color: "#334155" },
@@ -244,5 +257,5 @@ const S = {
   hiddenInput: { position: "absolute", opacity: 0, width: 1, height: 1 },
   errorAlert: { background: "#fef2f2", color: "#dc2626", padding: 12, borderRadius: 10, fontSize: 13, fontWeight: 700, textAlign: "center" },
 
-  footerBadge: { marginTop: 28, textAlign: "center", fontSize: 11, fontWeight: 700, color: "#94a3b8" },
+  footerBadge: { marginTop: 24, textAlign: "center", fontSize: 11, fontWeight: 700, color: "#94a3b8" },
 };

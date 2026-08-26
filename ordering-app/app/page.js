@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import { CATALOG } from "@/lib/items";
 
 const WALLET_LIMIT = 1000000;
@@ -245,16 +246,27 @@ export default function OrderPage() {
         {/* HOME TAB */}
         {activeTab === "home" && (
           <div>
-            {/* Hero Banner */}
-            <div style={S.heroBanner}>
-              <div style={S.heroLabel}>🎉 RAKSHA BANDHAN & FESTIVE SPECIAL</div>
-              <div style={S.heroTitle}>Delivered to your doorstep in 14 Mins!</div>
-              <div style={S.heroSub}>Rakhis, Fresh Veggies, Ice Creams & Gifts</div>
-              <div style={S.heroCats}>
-                {["🥦 Fresh Veggies", "🥛 Dairy", "🍦 Ice Creams", "🎁 Gifts"].map((c) => (
-                  <span key={c} style={S.heroCatPill}>{c}</span>
-                ))}
-              </div>
+            {/* Real Image Hero Banner */}
+            <div style={{ marginBottom: 16, borderRadius: 16, overflow: "hidden", boxShadow: "0 4px 12px rgba(0,0,0,0.1)" }}>
+              <Image
+                src="/assets/blinkit-festive-hero.jpeg"
+                alt="Raksha Bandhan & Festive Special"
+                width={480}
+                height={220}
+                style={{ width: "100%", height: "auto", objectFit: "cover", display: "block" }}
+                priority
+              />
+            </div>
+
+            {/* Bestseller Spotlight Banner */}
+            <div style={{ marginBottom: 16, borderRadius: 16, overflow: "hidden", boxShadow: "0 4px 12px rgba(0,0,0,0.08)" }}>
+              <Image
+                src="/assets/blinkit-bestsellers.jpeg"
+                alt="Bestsellers - Nandini Curd, Coriander, Potato"
+                width={480}
+                height={220}
+                style={{ width: "100%", height: "auto", objectFit: "cover", display: "block" }}
+              />
             </div>
 
             <div style={S.sectionTitle}>
@@ -315,6 +327,17 @@ export default function OrderPage() {
         {/* ORDER AGAIN TAB */}
         {activeTab === "orderAgain" && (
           <div>
+            {/* Print Store Special Section */}
+            <div style={{ marginBottom: 16, borderRadius: 16, overflow: "hidden", boxShadow: "0 4px 12px rgba(0,0,0,0.08)" }}>
+              <Image
+                src="/assets/blinkit-print-store.jpeg"
+                alt="Blinkit Print Store & Documents"
+                width={480}
+                height={220}
+                style={{ width: "100%", height: "auto", objectFit: "cover", display: "block" }}
+              />
+            </div>
+
             <div style={S.sectionTitle}>Order Again</div>
             <div style={S.productGrid}>
               {CATALOG.slice(0, 6).map((item) => {
@@ -351,6 +374,17 @@ export default function OrderPage() {
         {/* CATEGORIES TAB */}
         {activeTab === "categories" && (
           <div style={S.categoriesWrap}>
+            {/* Real Categories Grid Image Banner */}
+            <div style={{ marginBottom: 16, borderRadius: 12, overflow: "hidden" }}>
+              <Image
+                src="/assets/blinkit-categories-grid.jpeg"
+                alt="Blinkit All Categories Overview"
+                width={480}
+                height={240}
+                style={{ width: "100%", height: "auto", objectFit: "cover", display: "block" }}
+              />
+            </div>
+
             {[
               { group: "Vegetables & Fruits", items: ["🥦 Fresh Vegetables", "🍎 Fresh Fruits", "🌿 Coriander & Herbs"] },
               { group: "Dairy & Breakfast", items: ["🥛 Nandini Milk & Curd", "🍞 Brown Bread", "🥚 Eggs & Butter"] },
@@ -381,6 +415,17 @@ export default function OrderPage() {
         {/* PROFILE TAB */}
         {activeTab === "profile" && (
           <div style={S.profileWrap}>
+            {/* Real Profile Header Banner */}
+            <div style={{ borderRadius: 16, overflow: "hidden", marginBottom: 12 }}>
+              <Image
+                src="/assets/blinkit-account.jpeg"
+                alt="Account Overview"
+                width={480}
+                height={220}
+                style={{ width: "100%", height: "auto", objectFit: "cover", display: "block" }}
+              />
+            </div>
+
             <div style={S.profileCard}>
               <div style={S.profileAvatar}>👤</div>
               <div>
@@ -402,6 +447,17 @@ export default function OrderPage() {
                   }}
                 />
               </div>
+            </div>
+
+            {/* Detailed App Options Asset */}
+            <div style={{ borderRadius: 16, overflow: "hidden", margin: "12px 0" }}>
+              <Image
+                src="/assets/blinkit-profile.jpeg"
+                alt="Blinkit Rewards and Donation Settings"
+                width={480}
+                height={240}
+                style={{ width: "100%", height: "auto", objectFit: "cover", display: "block" }}
+              />
             </div>
 
             <div style={S.profileMenu}>
@@ -588,13 +644,6 @@ const S = {
   pillActive: { background: "#0c831f", color: "#fff", fontWeight: 700 },
 
   main: { padding: 16, maxWidth: 480, margin: "0 auto" },
-
-  heroBanner: { background: "linear-gradient(135deg, #0c831f, #15803d)", borderRadius: 16, padding: 18, color: "#fff", marginBottom: 16 },
-  heroLabel: { fontSize: 11, fontWeight: 800, letterSpacing: "0.5px", opacity: 0.85 },
-  heroTitle: { fontSize: 20, fontWeight: 900, marginTop: 4 },
-  heroSub: { fontSize: 13, opacity: 0.8, marginTop: 4 },
-  heroCats: { display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" },
-  heroCatPill: { background: "rgba(255,255,255,0.2)", padding: "5px 10px", borderRadius: 16, fontSize: 12, fontWeight: 700 },
 
   sectionTitle: { fontSize: 17, fontWeight: 800, color: "#0f172a", marginBottom: 12 },
 
