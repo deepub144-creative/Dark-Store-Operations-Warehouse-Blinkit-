@@ -3,7 +3,6 @@
 export const dynamic = "force-dynamic";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { STAFF, staffByPhone } from "@/lib/roles";
 import { doc, setDoc } from "firebase/firestore";
 import { db } from "@/lib/firebaseClient";
@@ -11,19 +10,20 @@ import { db } from "@/lib/firebaseClient";
 export default function WarehouseLoginPage() {
   const [phone, setPhone] = useState("");
   const [otp, setOtp] = useState("");
-  const [step, setStep] = useState("phone");
+  const [step, setStep] = useState("phone"); // 'phone' | 'otp'
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const router = useRouter();
 
-  async function handleAuthenticate(staffMember) {
+  function handleAuthenticate(staffMember) {
     setError("");
     setLoading(true);
     try {
+      // 1. Save staff session locally immediately
       localStorage.setItem("auditx_staff", JSON.stringify(staffMember));
 
+      // 2. Fire-and-forget Firestore presence update so user is never blocked
       if (db) {
-        await setDoc(
+        setDoc(
           doc(db, "staffStatus", staffMember.id),
           {
             id: staffMember.id,
@@ -39,20 +39,16 @@ export default function WarehouseLoginPage() {
             lastActive: new Date().toISOString(),
           },
           { merge: true }
-        );
+        ).catch((err) => console.log("Background Firestore sync:", err));
       }
 
-      if (staffMember.roles.includes("MANAGER")) {
-        router.push("/dashboard");
-      } else {
-        router.push("/tasks");
-      }
+      // 3. Fast direct navigation
+      const targetPath = staffMember.roles && staffMember.roles.includes("MANAGER") ? "/dashboard" : "/tasks";
+      window.location.href = targetPath;
     } catch (e) {
       console.error("Staff session sync err:", e);
       localStorage.setItem("auditx_staff", JSON.stringify(staffMember));
-      router.push(staffMember.roles.includes("MANAGER") ? "/dashboard" : "/tasks");
-    } finally {
-      setLoading(false);
+      window.location.href = "/dashboard";
     }
   }
 
@@ -69,15 +65,15 @@ export default function WarehouseLoginPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ phone }),
       });
-      setStep("otp");
     } catch (e) {
-      setStep("otp");
+      // Direct pass for seamless staff access
     } finally {
+      setStep("otp");
       setLoading(false);
     }
   }
 
-  async function verifyOtp() {
+  function verifyOtp() {
     if (otp.length !== 6) {
       setError("Please enter the 6-digit verification code");
       return;
@@ -85,42 +81,37 @@ export default function WarehouseLoginPage() {
     setError("");
     setLoading(true);
 
-    try {
-      const found = staffByPhone(phone);
-      const staffMember = found || {
-        id: `staff_${phone}`,
-        name: `Dark Store Staff (${phone})`,
-        designation: "Store Operations Associate",
-        roles: ["MANAGER", "PICKER", "PACKER", "MOVER"],
-        phone,
-        avatar: "👤",
-        deviceId: `DEV-MOBILE-${phone.slice(-4)}`,
-        deviceName: "Staff Mobile Terminal",
-        ip: "192.168.1.120",
-        zone: "Store Floor",
-      };
+    // Match registered staff member by phone
+    const found = staffByPhone(phone);
+    const staffMember = found || {
+      id: `staff_${phone}`,
+      name: `Dark Store Staff (${phone})`,
+      designation: "Store Operations Associate",
+      roles: ["MANAGER", "PICKER", "PACKER", "MOVER"],
+      phone,
+      avatar: "👤",
+      deviceId: `DEV-MOBILE-${phone.slice(-4)}`,
+      deviceName: "Staff Mobile Terminal",
+      ip: "192.168.1.120",
+      zone: "Store Floor",
+    };
 
-      await handleAuthenticate(staffMember);
-    } catch (e) {
-      setError(e.message || "Failed to authenticate OTP");
-      setLoading(false);
-    }
+    handleAuthenticate(staffMember);
   }
 
   return (
     <div style={S.container}>
       <div style={S.card}>
+        {/* Header */}
         <div style={S.header}>
           <div style={S.brandRow}>
             <span style={S.brandName}>blinkit</span>
             <span style={S.opsBadge}>DARK STORE OPS</span>
           </div>
           <div style={S.title}>Warehouse Operations Portal</div>
-          <div style={S.subtitle}>
-            Enter registered staff mobile number to access Dark Store Control Tower
-          </div>
         </div>
 
+        {/* Form Container */}
         {step === "phone" ? (
           <div style={S.formBlock}>
             <div style={S.label}>Staff Mobile Number</div>
@@ -205,6 +196,7 @@ export default function WarehouseLoginPage() {
           </div>
         )}
 
+        {/* Footer Security Badge */}
         <div style={S.footerBadge}>
           🔒 Dark Store Ops Terminal • SLA Secured Authentication
         </div>
@@ -236,7 +228,6 @@ const S = {
   brandName: { fontSize: 34, fontWeight: 900, color: "#0c831f", letterSpacing: "-1px" },
   opsBadge: { background: "#facc15", color: "#0f172a", fontSize: 11, fontWeight: 800, padding: "3px 8px", borderRadius: 6 },
   title: { fontSize: 20, fontWeight: 800, color: "#0f172a", marginTop: 8 },
-  subtitle: { fontSize: 13, color: "#64748b", marginTop: 6, lineHeight: 1.4 },
 
   formBlock: { display: "flex", flexDirection: "column", gap: 16 },
   label: { fontSize: 13, fontWeight: 700, color: "#334155" },
