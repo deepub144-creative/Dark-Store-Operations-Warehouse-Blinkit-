@@ -18,6 +18,7 @@ export default function BlinkitFigmaApp() {
   const [toastMessage, setToastMessage] = useState("");
   const [locationLabel, setLocationLabel] = useState("Sujal Dave, Ratanada, Jodhpur (Raj)");
   const [activeTab, setActiveTab] = useState("home"); // 'home' | 'cart' | 'categories' | 'print' | 'profile'
+  const [showAppsModal, setShowAppsModal] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
@@ -147,8 +148,29 @@ export default function BlinkitFigmaApp() {
               </div>
             </div>
 
-            <div className="user-profile-circle" onClick={() => setActiveTab(activeTab === "profile" ? "home" : "profile")}>
-              👤
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <button
+                style={{
+                  background: "#1e293b",
+                  color: "#f8cb46",
+                  border: "1px solid #f8cb46",
+                  borderRadius: 20,
+                  padding: "4px 10px",
+                  fontSize: 11,
+                  fontWeight: 900,
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 4,
+                }}
+                onClick={() => setShowAppsModal(true)}
+              >
+                <span>🏬 6 Apps Hub</span>
+              </button>
+
+              <div className="user-profile-circle" onClick={() => setActiveTab(activeTab === "profile" ? "home" : "profile")}>
+                👤
+              </div>
             </div>
           </div>
 
@@ -541,6 +563,70 @@ export default function BlinkitFigmaApp() {
           {activeTab === "print" && <div className="figma-active-indicator" />}
         </button>
       </nav>
+
+      {/* ── 6 APPS DIRECTORY MODAL ── */}
+      {showAppsModal && (
+        <div style={M.backdrop} onClick={() => setShowAppsModal(false)}>
+          <div style={M.modal} onClick={(e) => e.stopPropagation()}>
+            <div style={M.mHeader}>
+              <div>
+                <div style={M.mTitle}>🏬 Dark Store Operations — 6 Apps Hub</div>
+                <div style={M.mSub}>AuditX BCA (Data Science) Academic Mini Project</div>
+              </div>
+              <button style={M.closeBtn} onClick={() => setShowAppsModal(false)}>✕</button>
+            </div>
+
+            <div style={M.appsGrid}>
+              {(() => {
+                const whBase = typeof window !== "undefined" && process.env.NEXT_PUBLIC_WAREHOUSE_APP_URL ? process.env.NEXT_PUBLIC_WAREHOUSE_APP_URL : "http://localhost:3000";
+                return [
+                  { id: "app1", num: "1st App", name: "Ordering App (Customer App)", role: "Public Customer", url: "#", active: true, badge: "ACTIVE HERE" },
+                  { id: "app2", num: "2nd App", name: "Store Manager (SM) App", role: "Bhaskar N S", url: `${whBase}/roles/sm`, active: false, badge: "/roles/sm" },
+                  { id: "app3", num: "3rd App", name: "Assistant Store Manager (ASM) App", role: "Deepu B", url: `${whBase}/roles/asm`, active: false, badge: "/roles/asm" },
+                  { id: "app4", num: "4th App", name: "Full-Time OD Picker App", role: "Thrupthi K S / Sinchana J P", url: `${whBase}/roles/picker`, active: false, badge: "/roles/picker" },
+                  { id: "app5", num: "5th App", name: "Delivery Partner (Captain) App", role: "Sinchana B R / Likith Kumar", url: `${whBase}/roles/captain`, active: false, badge: "/roles/captain" },
+                  { id: "app6", num: "6th App", name: "Internal Inventory Management Dashboard", role: "MD A B Harshitha / Inventory Manager", url: `${whBase}/roles/md`, active: false, badge: "/roles/md" },
+                ];
+              })().map((app) => (
+                <div key={app.id} style={M.appCard}>
+                  <div style={M.cardTop}>
+                    <span style={M.appNum}>{app.num}</span>
+                    <span style={M.appBadge}>{app.badge}</span>
+                  </div>
+                  <div style={M.appName}>{app.name}</div>
+                  <div style={M.appRole}>Assigned Role: <b>{app.role}</b></div>
+                  <a
+                    href={app.url}
+                    target={app.active ? "_self" : "_blank"}
+                    rel="noreferrer"
+                    style={M.launchLink}
+                  >
+                    Open App {app.num} ↗
+                  </a>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+
+const M = {
+  backdrop: { position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.75)", zIndex: 999, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 },
+  modal: { background: "#0f172a", color: "#fff", width: "100%", maxWidth: 640, borderRadius: 20, border: "2px solid #f8cb46", padding: 20, maxHeight: "90vh", overflowY: "auto", fontFamily: "Inter, sans-serif" },
+  mHeader: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16, borderBottom: "1px solid #334155", paddingBottom: 12 },
+  mTitle: { fontSize: 18, fontWeight: 900, color: "#f8cb46" },
+  mSub: { fontSize: 11, color: "#94a3b8", marginTop: 2 },
+  closeBtn: { background: "#334155", color: "#fff", border: "none", width: 28, height: 28, borderRadius: "50%", fontWeight: 900, cursor: "pointer" },
+
+  appsGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 12 },
+  appCard: { background: "#1e293b", border: "1px solid #334155", borderRadius: 14, padding: 14 },
+  cardTop: { display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 6 },
+  appNum: { background: "#f8cb46", color: "#000", padding: "2px 6px", borderRadius: 4, fontWeight: 900 },
+  appBadge: { background: "#334155", color: "#10b981", padding: "2px 6px", borderRadius: 4, fontWeight: 800 },
+  appName: { fontSize: 14, fontWeight: 900, color: "#fff" },
+  appRole: { fontSize: 11, color: "#cbd5e1", marginTop: 4 },
+  launchLink: { display: "block", marginTop: 10, background: "#10b981", color: "#000", textDecoration: "none", textAlign: "center", padding: "8px", borderRadius: 8, fontWeight: 900, fontSize: 12 },
+};

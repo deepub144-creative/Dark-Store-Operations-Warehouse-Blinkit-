@@ -5,8 +5,10 @@ import { useRouter } from "next/navigation";
 import { collection, doc, onSnapshot, orderBy, query, setDoc, updateDoc } from "firebase/firestore";
 import { db } from "@/lib/firebaseClient";
 import { STAFF, STAGE_SEQUENCE } from "@/lib/roles";
+import { INITIAL_SKUS, seedAllDemoData } from "@/lib/seedData";
+import ErdDfdViewer from "@/components/ErdDfdViewer";
 
-// Initial Demo Complaints Data
+// Demo Complaints Data
 const INITIAL_COMPLAINTS = [
   {
     id: "CMP-9041",
@@ -72,6 +74,7 @@ export default function WarehouseDashboardPage() {
   const [complaints, setComplaints] = useState(INITIAL_COMPLAINTS);
   const [actionSuccess, setActionSuccess] = useState("");
   const [pingedDevice, setPingedDevice] = useState("");
+  const [skuSearch, setSkuSearch] = useState("");
 
   const router = useRouter();
 
@@ -93,14 +96,16 @@ export default function WarehouseDashboardPage() {
     let unsub2 = () => {};
 
     try {
-      const q1 = query(collection(db, "orders"), orderBy("createdAt", "desc"));
-      unsub1 = onSnapshot(q1, (snap) => {
-        setOrders(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-      });
+      if (db) {
+        const q1 = query(collection(db, "orders"), orderBy("createdAt", "desc"));
+        unsub1 = onSnapshot(q1, (snap) => {
+          setOrders(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+        });
 
-      unsub2 = onSnapshot(collection(db, "staffStatus"), (snap) => {
-        setStaffStatus(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-      });
+        unsub2 = onSnapshot(collection(db, "staffStatus"), (snap) => {
+          setStaffStatus(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+        });
+      }
     } catch (e) {
       console.error("Firestore snapshot error:", e);
     }
@@ -156,6 +161,17 @@ export default function WarehouseDashboardPage() {
     setTimeout(() => setPingedDevice(""), 3000);
   }
 
+  async function handleSeedDemoData() {
+    setActionSuccess("Seeding initial SKU catalog & demo orders to Cloud Firestore...");
+    const res = await seedAllDemoData();
+    if (res.success) {
+      setActionSuccess("✅ Demo data seeded successfully!");
+    } else {
+      setActionSuccess(`⚠️ Cloud sync offline, local fallback active.`);
+    }
+    setTimeout(() => setActionSuccess(""), 3500);
+  }
+
   if (!staff) return null;
 
   const currentOrdersCount = Math.max(orders.length, 348);
@@ -172,6 +188,13 @@ export default function WarehouseDashboardPage() {
       battery: liveDoc ? liveDoc.battery : (s.id === "sinchana" ? 18 : 88 + Math.floor(Math.random() * 10)),
     };
   });
+
+  const filteredSKUs = INITIAL_SKUS.filter(
+    (s) =>
+      s.name.toLowerCase().includes(skuSearch.toLowerCase()) ||
+      s.category.toLowerCase().includes(skuSearch.toLowerCase()) ||
+      s.binLocation.toLowerCase().includes(skuSearch.toLowerCase())
+  );
 
   return (
     <div style={S.wrap}>
@@ -192,7 +215,7 @@ export default function WarehouseDashboardPage() {
 
         <div style={S.headerRight}>
           <div style={S.staffSwitcherBlock}>
-            <span style={S.switcherLabel}>Logged in Personnel:</span>
+            <span style={S.switcherLabel}>Personnel Login:</span>
             <div style={S.activeStaffPill}>
               <span>{staff.avatar}</span>
               <div>
@@ -209,7 +232,7 @@ export default function WarehouseDashboardPage() {
                 if (target) switchStaff(target);
               }}
             >
-              <option disabled>Switch Personnel Login:</option>
+              <option disabled>Switch Profile:</option>
               {STAFF.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.avatar} {s.name} ({s.designation})
@@ -225,16 +248,18 @@ export default function WarehouseDashboardPage() {
       </header>
 
       {actionSuccess && <div style={S.actionAlert}>{actionSuccess}</div>}
-      {pingedDevice && <div style={S.pingAlert}>🔔 Pinging terminal "{pingedDevice}"... High-pitch chime sent to device speaker!</div>}
+      {pingedDevice && <div style={S.pingAlert}>🔔 Pinging terminal "{pingedDevice}"... Chime dispatched to device speaker!</div>}
 
       {/* ── NAVIGATION TAB BAR ── */}
       <div style={S.tabBar}>
         {[
           { id: "overview", label: "📊 Ops Overview", count: null },
+          { id: "erdDfd", label: "📐 ERD & DFD Architecture", count: "Diagrams" },
           { id: "orderCap", label: "🎯 Order Cap & Throttling", count: `${capacityPercent}%` },
           { id: "complaints", label: "⚠️ Complaints & Quality", count: openComplaintsCount },
-          { id: "devices", label: "📱 Devices Logged In Today", count: fullRoster.length },
-          { id: "orders", label: "📦 Live Orders Flow", count: orders.length },
+          { id: "devices", label: "📱 Personnel & Terminals", count: fullRoster.length },
+          { id: "inventory", label: "📦 SKU Inventory & Barcodes", count: INITIAL_SKUS.length },
+          { id: "orders", label: "⚡ Live Orders Pipeline", count: orders.length },
         ].map((tab) => {
           const active = activeTab === tab.id;
           return (
@@ -264,7 +289,7 @@ export default function WarehouseDashboardPage() {
       </div>
 
       <main style={S.main}>
-        {/* OVERVIEW TAB */}
+        {/* TAB 1: OVERVIEW */}
         {activeTab === "overview" && (
           <div>
             <div style={S.statsGrid}>
@@ -306,7 +331,7 @@ export default function WarehouseDashboardPage() {
                 </div>
                 <div style={S.statVal}>{fullRoster.length} Active</div>
                 <div style={S.statSub}>
-                  SM, ASM, MD & 2 OD Pickers Logged In
+                  SM, ASM, MD & OD Pickers Logged In
                 </div>
               </div>
 
@@ -332,14 +357,17 @@ export default function WarehouseDashboardPage() {
                 >
                   {isStorePaused ? "🟢 Resume Store Orders" : "🛑 Pause Incoming Orders"}
                 </button>
+                <button style={S.actionBtnOutline} onClick={() => setActiveTab("erdDfd")}>
+                  📐 View ERD & DFD Diagram
+                </button>
                 <button style={S.actionBtnOutline} onClick={() => setActiveTab("orderCap")}>
                   ⚙️ Adjust Order Cap ({orderCapLimit}/hr)
                 </button>
                 <button style={S.actionBtnOutline} onClick={() => setActiveTab("complaints")}>
                   ⚠️ Review Complaints ({openComplaintsCount})
                 </button>
-                <button style={S.actionBtnOutline} onClick={() => setActiveTab("devices")}>
-                  📱 Track Logged-In Personnel ({fullRoster.length})
+                <button style={S.actionBtnOutline} onClick={handleSeedDemoData}>
+                  🌱 Seed Firestore Database
                 </button>
               </div>
             </div>
@@ -347,7 +375,7 @@ export default function WarehouseDashboardPage() {
             <div style={S.twoColGrid}>
               <div style={S.panel}>
                 <div style={S.panelHeader}>
-                  <span style={S.panelTitle}>👥 Personnel & Active Devices Today</span>
+                  <span style={S.panelTitle}>👥 Personnel & Active Devices</span>
                   <button style={S.smLinkBtn} onClick={() => setActiveTab("devices")}>View All →</button>
                 </div>
                 <div style={S.rosterList}>
@@ -371,7 +399,7 @@ export default function WarehouseDashboardPage() {
 
               <div style={S.panel}>
                 <div style={S.panelHeader}>
-                  <span style={S.panelTitle}>⚠️ Complaints & Quality Escalations</span>
+                  <span style={S.panelTitle}>⚠️ Complaints & Quality Tickets</span>
                   <button style={S.smLinkBtn} onClick={() => setActiveTab("complaints")}>View All →</button>
                 </div>
                 <div style={S.complaintMiniList}>
@@ -400,13 +428,16 @@ export default function WarehouseDashboardPage() {
           </div>
         )}
 
-        {/* ORDER CAP & THROTTLING TAB */}
+        {/* TAB 2: ERD & DFD ARCHITECTURE VIEW */}
+        {activeTab === "erdDfd" && <ErdDfdViewer />}
+
+        {/* TAB 3: ORDER CAP & THROTTLING */}
         {activeTab === "orderCap" && (
           <div style={S.sectionWrap}>
             <div style={S.sectionHeader}>
               <div>
                 <h2 style={S.sectionHeading}>🎯 Order Cap & Store Load Management</h2>
-                <p style={S.sectionSub}>Configure order capacity limits, surge throttling, and emergency order caps.</p>
+                <p style={S.sectionSub}>Configure order capacity limits, surge throttling, and emergency store pause.</p>
               </div>
               <button
                 style={{
@@ -499,7 +530,7 @@ export default function WarehouseDashboardPage() {
           </div>
         )}
 
-        {/* COMPLAINTS & QUALITY TAB */}
+        {/* TAB 4: COMPLAINTS & QUALITY */}
         {activeTab === "complaints" && (
           <div style={S.sectionWrap}>
             <div style={S.sectionHeader}>
@@ -573,12 +604,12 @@ export default function WarehouseDashboardPage() {
           </div>
         )}
 
-        {/* DEVICES LOGGED IN TODAY TAB */}
+        {/* TAB 5: DEVICES & PERSONNEL */}
         {activeTab === "devices" && (
           <div style={S.sectionWrap}>
             <div style={S.sectionHeader}>
               <div>
-                <h2 style={S.sectionHeading}>📱 Devices Logged In Today</h2>
+                <h2 style={S.sectionHeading}>📱 Personnel & Logged-In Terminals</h2>
                 <p style={S.sectionSub}>Track active store personnel terminals, battery levels, zones, and session status.</p>
               </div>
             </div>
@@ -637,12 +668,57 @@ export default function WarehouseDashboardPage() {
           </div>
         )}
 
-        {/* LIVE ORDERS TAB */}
+        {/* TAB 6: INVENTORY & BARCODES */}
+        {activeTab === "inventory" && (
+          <div style={S.sectionWrap}>
+            <div style={S.sectionHeader}>
+              <div>
+                <h2 style={S.sectionHeading}>📦 SKU Inventory & Dark Store Aisles</h2>
+                <p style={S.sectionSub}>View live SKU stock levels, aisle bin locations, Code128 barcodes, and reorder points.</p>
+              </div>
+              <div style={S.searchBox}>
+                <span>🔍</span>
+                <input
+                  type="text"
+                  placeholder="Filter SKUs by name, category, or aisle..."
+                  style={S.searchInput}
+                  value={skuSearch}
+                  onChange={(e) => setSkuSearch(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div style={S.skuGrid}>
+              {filteredSKUs.map((sku) => (
+                <div key={sku.id} style={S.skuCard}>
+                  <div style={S.skuHeader}>
+                    <span style={S.skuCode}>{sku.skuId}</span>
+                    <span style={S.skuBin}>{sku.binLocation}</span>
+                  </div>
+                  <h4 style={S.skuName}>{sku.name}</h4>
+                  <div style={S.skuMeta}>Category: <b>{sku.category}</b></div>
+                  <div style={S.skuPriceRow}>
+                    <span style={S.priceVal}>₹{sku.price} <s style={{ fontSize: 12, color: "#64748b" }}>₹{sku.mrp}</s></span>
+                    <span style={{ fontSize: 13, fontWeight: 800, color: sku.quantityAvailable <= sku.reorderPoint ? "#ef4444" : "#10b981" }}>
+                      Qty: {sku.quantityAvailable} units
+                    </span>
+                  </div>
+                  <div style={S.barcodeBox}>
+                    <div style={S.barcodeLines}>|||| ||| ||||| |||| || |||</div>
+                    <code style={S.barcodeCode}>{sku.barcode}</code>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* TAB 7: LIVE ORDERS PIPELINE */}
         {activeTab === "orders" && (
           <div style={S.sectionWrap}>
             <div style={S.sectionHeader}>
               <div>
-                <h2 style={S.sectionHeading}>📦 Live Orders Pipeline</h2>
+                <h2 style={S.sectionHeading}>⚡ Live Orders Pipeline</h2>
                 <p style={S.sectionSub}>Real-time fulfillment tracking synced with Blinkit ordering app.</p>
               </div>
             </div>
@@ -653,7 +729,7 @@ export default function WarehouseDashboardPage() {
                   <div style={{ fontSize: 32 }}>📦</div>
                   <div style={{ fontWeight: 800, marginTop: 8 }}>No active orders in Firestore yet.</div>
                   <div style={{ fontSize: 13, color: "#64748b", marginTop: 4 }}>
-                    Place an order on the Blinkit Ordering App to see live order cards stream here!
+                    Use the Ordering App or click "Seed Firestore Database" to populate demo live orders!
                   </div>
                 </div>
               )}
@@ -664,7 +740,7 @@ export default function WarehouseDashboardPage() {
                   <div key={o.id} style={S.orderCardRow}>
                     <div style={S.orderMainInfo}>
                       <div style={S.orderHeaderLine}>
-                        <span style={S.oId}>Order #{o.id.slice(0, 8)}</span>
+                        <span style={S.oId}>Order #{o.id}</span>
                         <span style={S.oStage}>{stage?.label || "Putaway"}</span>
                         <span style={statusBadge(o.status)}>{o.status}</span>
                       </div>
@@ -745,7 +821,7 @@ const S = {
   controlTitle: { fontSize: 14, fontWeight: 800, color: "#facc15" },
   controlBtns: { display: "flex", gap: 10, flexWrap: "wrap" },
   actionBtn: { color: "#fff", border: "none", padding: "8px 16px", borderRadius: 10, fontWeight: 800, fontSize: 13, cursor: "pointer" },
-  actionBtnOutline: { background: "transparent", border: "1px solid #475569", color: "#f8fafc", padding: "8px 14px", borderRadius: 10, fontWeight: 700, fontSize: 12, cursor: "pointer" },
+  actionBtnOutline: { background: "#0f172a", border: "1px solid #475569", color: "#f8fafc", padding: "8px 14px", borderRadius: 10, fontWeight: 700, fontSize: 12, cursor: "pointer" },
 
   twoColGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 },
   panel: { background: "#1e293b", border: "1px solid #334155", borderRadius: 16, padding: 20 },
@@ -773,7 +849,7 @@ const S = {
   resolvedBadge: { color: "#10b981", fontWeight: 800, fontSize: 12 },
 
   sectionWrap: { display: "flex", flexDirection: "column", gap: 20 },
-  sectionHeader: { display: "flex", justifyContent: "space-between", alignItems: "flex-start" },
+  sectionHeader: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12 },
   sectionHeading: { fontSize: 22, fontWeight: 900, color: "#f8fafc", margin: 0 },
   sectionSub: { fontSize: 13, color: "#94a3b8", marginTop: 4 },
   pauseBtnBig: { color: "#fff", border: "none", padding: "12px 20px", borderRadius: 12, fontWeight: 900, fontSize: 14, cursor: "pointer" },
@@ -798,49 +874,64 @@ const S = {
   toggleRow: { display: "flex", justifyContent: "space-between", alignItems: "center" },
   toggleLabel: { fontSize: 14, fontWeight: 800, color: "#f8fafc" },
   toggleSub: { fontSize: 12, color: "#94a3b8", marginTop: 2 },
-  toggleBtn: { color: "#fff", border: "none", padding: "8px 16px", borderRadius: 10, fontWeight: 800, cursor: "pointer" },
+  toggleBtn: { border: "none", color: "#fff", padding: "8px 16px", borderRadius: 10, fontWeight: 800, fontSize: 12, cursor: "pointer" },
 
   logList: { display: "flex", flexDirection: "column", gap: 8, marginTop: 12 },
-  logRow: { display: "flex", gap: 16, background: "#0f172a", padding: "8px 12px", borderRadius: 8, fontSize: 12 },
-  logTime: { color: "#facc15", fontWeight: 800 },
-  logMsg: { color: "#cbd5e1" },
+  logRow: { display: "flex", gap: 12, background: "#0f172a", padding: "10px 14px", borderRadius: 10, fontSize: 13 },
+  logTime: { color: "#38bdf8", fontWeight: 800 },
+  logMsg: { color: "#f8fafc", fontWeight: 600 },
 
   addComplaintBtn: { background: "#0c831f", color: "#fff", border: "none", padding: "10px 16px", borderRadius: 10, fontWeight: 800, fontSize: 13, cursor: "pointer" },
-  complaintsGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))", gap: 16 },
-  complaintCard: { background: "#1e293b", border: "1px solid #334155", borderRadius: 16, padding: 20, display: "flex", flexDirection: "column", justifyContent: "space-between" },
-  cCardHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 },
-  cTicketId: { fontSize: 14, fontWeight: 900, color: "#0c831f" },
+  complaintsGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 16 },
+  complaintCard: { background: "#1e293b", border: "1px solid #334155", borderRadius: 16, padding: 20, display: "flex", flexDirection: "column", gap: 12 },
+  cCardHeader: { display: "flex", justifyContent: "space-between", alignItems: "center" },
+  cTicketId: { fontWeight: 900, fontSize: 14, color: "#f8fafc" },
   cOrderRef: { fontSize: 12, color: "#94a3b8" },
-  cCardIssue: { fontSize: 14, fontWeight: 700, color: "#f8fafc", marginBottom: 12 },
-  cMetaGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, fontSize: 12, color: "#cbd5e1", background: "#0f172a", padding: 10, borderRadius: 10, marginBottom: 14 },
-  cCardFooter: {},
+  cCardIssue: { fontSize: 14, fontWeight: 700, color: "#f8fafc", lineHeight: 1.4 },
+  cMetaGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, fontSize: 12, color: "#cbd5e1", background: "#0f172a", padding: 12, borderRadius: 10 },
+  cCardFooter: { marginTop: 4 },
+  resolvedText: { color: "#10b981", fontWeight: 800, fontSize: 13 },
   cBtnRow: { display: "flex", gap: 8 },
-  refundBtn: { flex: 1, background: "#0c831f", color: "#fff", border: "none", padding: 10, borderRadius: 8, fontWeight: 800, fontSize: 12, cursor: "pointer" },
-  resolveBtn: { background: "#334155", color: "#fff", border: "none", padding: "10px 14px", borderRadius: 8, fontWeight: 700, fontSize: 12, cursor: "pointer" },
-  resolvedText: { color: "#10b981", fontWeight: 800, fontSize: 13, textAlign: "center" },
+  refundBtn: { background: "#059669", color: "#fff", border: "none", padding: "8px 12px", borderRadius: 8, fontWeight: 800, fontSize: 12, cursor: "pointer", flex: 1 },
+  resolveBtn: { background: "#334155", color: "#fff", border: "none", padding: "8px 12px", borderRadius: 8, fontWeight: 700, fontSize: 12, cursor: "pointer" },
 
   devicesTableCard: { background: "#1e293b", border: "1px solid #334155", borderRadius: 16, overflowX: "auto" },
   table: { width: "100%", borderCollapse: "collapse", textAlign: "left" },
   thRow: { background: "#0f172a", borderBottom: "1px solid #334155" },
-  th: { padding: "14px 16px", fontSize: 12, fontWeight: 800, color: "#94a3b8" },
+  th: { padding: "14px 18px", fontSize: 12, fontWeight: 800, color: "#94a3b8" },
   tr: { borderBottom: "1px solid #334155" },
-  td: { padding: "14px 16px", fontSize: 13, color: "#f8fafc" },
-  tdPerson: { display: "flex", alignItems: "center", gap: 8 },
-  rolePill: { background: "#0c831f", color: "#fff", fontSize: 11, fontWeight: 800, padding: "2px 8px", borderRadius: 6 },
+  td: { padding: "14px 18px", fontSize: 13, color: "#f8fafc" },
+  tdPerson: { display: "flex", alignItems: "center", gap: 10 },
+  rolePill: { background: "#0c831f22", color: "#0c831f", border: "1px solid #0c831f44", padding: "3px 8px", borderRadius: 6, fontWeight: 800, fontSize: 11 },
   devName: { fontWeight: 700 },
-  devId: { fontSize: 11, color: "#94a3b8" },
-  ipText: { fontSize: 11, color: "#94a3b8" },
-  onlineBadge: { color: "#10b981", fontWeight: 800, fontSize: 12 },
-  pingBtn: { background: "#334155", color: "#f8fafc", border: "none", padding: "6px 12px", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer" },
+  devId: { fontSize: 11, color: "#64748b" },
+  ipText: { fontSize: 11, color: "#64748b", fontFamily: "monospace" },
+  onlineBadge: { fontSize: 11, fontWeight: 800, color: "#10b981" },
+  pingBtn: { background: "#334155", border: "none", color: "#f8fafc", padding: "6px 10px", borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: "pointer" },
+
+  searchBox: { display: "flex", alignItems: "center", gap: 10, background: "#1e293b", border: "1px solid #334155", borderRadius: 10, padding: "8px 14px", width: 340 },
+  searchInput: { background: "none", border: "none", color: "#f8fafc", fontSize: 13, outline: "none", width: "100%", fontWeight: 600 },
+  skuGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 16 },
+  skuCard: { background: "#1e293b", border: "1px solid #334155", borderRadius: 16, padding: 18, display: "flex", flexDirection: "column", gap: 8 },
+  skuHeader: { display: "flex", justifyContent: "space-between", alignItems: "center" },
+  skuCode: { fontSize: 11, fontWeight: 900, color: "#facc15" },
+  skuBin: { fontSize: 11, fontWeight: 800, background: "#0f172a", color: "#38bdf8", padding: "2px 6px", borderRadius: 6 },
+  skuName: { fontSize: 14, fontWeight: 800, color: "#f8fafc", margin: 0 },
+  skuMeta: { fontSize: 12, color: "#94a3b8" },
+  skuPriceRow: { display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4 },
+  priceVal: { fontSize: 16, fontWeight: 900, color: "#0c831f" },
+  barcodeBox: { background: "#0f172a", padding: 8, borderRadius: 8, textAlign: "center", marginTop: 6, border: "1px solid #334155" },
+  barcodeLines: { fontSize: 14, letterSpacing: 4, fontFamily: "monospace", color: "#cbd5e1", fontWeight: 900 },
+  barcodeCode: { fontSize: 10, color: "#64748b" },
 
   ordersList: { display: "flex", flexDirection: "column", gap: 12 },
-  emptyOrders: { background: "#1e293b", padding: 32, borderRadius: 16, textAlign: "center" },
-  orderCardRow: { background: "#1e293b", border: "1px solid #334155", borderRadius: 14, padding: 16, display: "flex", justifyContent: "space-between", alignItems: "center" },
-  orderMainInfo: {},
-  orderHeaderLine: { display: "flex", alignItems: "center", gap: 10, marginBottom: 4 },
-  oId: { fontSize: 15, fontWeight: 800, color: "#f8fafc" },
-  oStage: { background: "#0f172a", color: "#facc15", fontSize: 11, fontWeight: 800, padding: "2px 8px", borderRadius: 6 },
+  emptyOrders: { background: "#1e293b", border: "1px solid #334155", borderRadius: 16, padding: 40, textAlign: "center", color: "#f8fafc" },
+  orderCardRow: { background: "#1e293b", border: "1px solid #334155", borderRadius: 16, padding: 16, display: "flex", justifyContent: "space-between", alignItems: "center" },
+  orderMainInfo: { display: "flex", flexDirection: "column", gap: 4 },
+  orderHeaderLine: { display: "flex", alignItems: "center", gap: 10 },
+  oId: { fontWeight: 900, fontSize: 15, color: "#f8fafc" },
+  oStage: { background: "#0c831f", color: "#fff", fontWeight: 800, fontSize: 11, padding: "2px 8px", borderRadius: 6 },
   oCustomer: { fontSize: 13, color: "#cbd5e1" },
-  oItemsCount: { fontSize: 12, color: "#94a3b8", marginTop: 2 },
+  oItemsCount: { fontSize: 12, color: "#94a3b8" },
   oAssigned: { textAlign: "right" },
 };

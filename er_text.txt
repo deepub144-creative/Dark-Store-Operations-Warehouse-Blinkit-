@@ -1,0 +1,17 @@
+=== PAGE 1 ===
+Mr Creative Creations
+Project Workflow 
+audit-x-blinkit/
+├── backend/     → Deepu — API, routes, ML/RAG integration
+├── data/        → Bhaskar — synthetic dataset, schema
+├── ml/          → Bhaskar — demand forecast model
+├── cv/          → Thrupthi — barcode/QC verification
+├── rag/         → Sinchana — RAG assistant pipeline
+├── telemetry/   → Sinchana — live GPS/dispatch tracking
+├── dashboard/   → Bhaskar + Harshitha — BI dashboard
+├── app/         → Thrupthi — Android/web frontend
+├── infra/       → Harshitha — AWS/Docker deployment
+└── docs/        → shared architecture & API docs
+=== PAGE 2 ===
+Mr Creative Creations
+E R - Architecture of AUDIT”X
