@@ -5,6 +5,7 @@ import { collection, onSnapshot, doc, updateDoc, query, where } from "firebase/f
 import { db } from "@/lib/firebaseClient";
 import { playOrderAlarm, stopOrderAlarm, playSuccessChime } from "@/lib/soundSystem";
 import SharedScanner from "@/components/SharedScanner";
+import SlideButton from "@/components/SlideButton";
 
 export default function DeliveryCaptainApp() {
   const [isCheckedIn, setIsCheckedIn] = useState(false);
@@ -229,8 +230,25 @@ export default function DeliveryCaptainApp() {
                     <div style={S.ordCustomer}>Customer: <b>{ord.customerName}</b></div>
                     <div style={S.ordAddress}>📍 {ord.customerAddress}</div>
                     <div style={S.ordTotal}>Amount: <b>₹{ord.totalAmount}</b> (Demo Wallet Paid)</div>
-                    <button style={S.acceptBtn} onClick={() => handleAcceptOrder(ord)}>
-                      ⚡ ACCEPT DELIVERY & PICK UP BAG
+
+                    {/* Item list preview */}
+                    <div style={{ background: "#0f172a", padding: 10, borderRadius: 8, margin: "10px 0", fontSize: 12 }}>
+                      <div style={{ fontWeight: 800, color: "#cbd5e1", marginBottom: 4 }}>📦 Bag Items Checklist:</div>
+                      {(ord.items || []).map((it, idx) => (
+                        <div key={idx} style={{ color: "#94a3b8" }}>
+                          • {it.name} × {it.qty} ({it.binLocation || "Cold Store"})
+                        </div>
+                      ))}
+                    </div>
+
+                    <SlideButton
+                      text="SLIDE TO ACCEPT DELIVERY ➡️"
+                      color="#3b82f6"
+                      icon="🛵"
+                      onSlideComplete={() => handleAcceptOrder(ord)}
+                    />
+                    <button style={{ ...S.acceptBtn, marginTop: 4 }} onClick={() => handleAcceptOrder(ord)}>
+                      ⚡ Quick Tap Accept
                     </button>
                   </div>
                 ))}
@@ -266,8 +284,17 @@ export default function DeliveryCaptainApp() {
                 <span>Thermal Insulated Delivery Bag Sealed & Temp &lt; 4°C</span>
               </label>
 
+              {coldChainPassed && (
+                <SlideButton
+                  text="SLIDE TO START LAST-MILE DELIVERY ➡️"
+                  color="#3b82f6"
+                  icon="🚀"
+                  onSlideComplete={handleStartDelivery}
+                />
+              )}
+
               <button
-                style={{ ...S.confirmBtn, opacity: coldChainPassed ? 1 : 0.5 }}
+                style={{ ...S.confirmBtn, opacity: coldChainPassed ? 1 : 0.5, marginTop: 8 }}
                 disabled={!coldChainPassed}
                 onClick={handleStartDelivery}
               >
@@ -283,7 +310,7 @@ export default function DeliveryCaptainApp() {
               <div>
                 <div style={S.slaTitle}>Order #{activeOrder.orderNumber || activeOrder.id}</div>
                 <div style={S.slaSub}>Customer: <b>{activeOrder.customerName}</b></div>
-                <div style={S.slaAddress}>📍 {activeOrder.customerAddress}</div>
+                <div style={S.slaAddress}>📍 {activeOrder.customerAddress || "Muniswamappa Layout, Bengaluru"}</div>
               </div>
               <div style={S.slaBox}>
                 <div style={S.slaVal}>{Math.floor(elapsedSec / 60)}m {elapsedSec % 60}s</div>
@@ -292,13 +319,41 @@ export default function DeliveryCaptainApp() {
             </div>
 
             <div style={S.mapMockBox}>
-              📍 GPS Navigation Map Simulation (Indiranagar Dark Store → {activeOrder.customerAddress})
+              📍 GPS Navigation Route (Indiranagar Dark Store → {activeOrder.customerAddress || "Bengaluru"})
               <div style={S.progressLine}>
                 <div style={{ ...S.progressFill, width: `${Math.min(100, (elapsedSec / 480) * 100)}%` }} />
               </div>
+              <div style={{ marginTop: 12, display: "flex", gap: 10 }}>
+                <a
+                  href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(activeOrder.customerAddress || "Muniswamappa Layout, Bengaluru")}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{
+                    background: "#4285F4",
+                    color: "#fff",
+                    padding: "10px 16px",
+                    borderRadius: 10,
+                    fontWeight: 900,
+                    fontSize: 13,
+                    textDecoration: "none",
+                    display: "inline-block",
+                  }}
+                >
+                  🗺️ Open Live Google Maps Directions
+                </a>
+              </div>
             </div>
 
-            <button style={S.arrivedBtn} onClick={() => setActiveStep("handover")}>
+            <div style={{ marginTop: 16 }}>
+              <SlideButton
+                text="SLIDE UPON ARRIVAL AT DOORSTEP ➡️"
+                color="#059669"
+                icon="📍"
+                onSlideComplete={() => setActiveStep("handover")}
+              />
+            </div>
+
+            <button style={{ ...S.arrivedBtn, marginTop: 8 }} onClick={() => setActiveStep("handover")}>
               📍 Arrived at Customer Doorstep → Proceed to Handover
             </button>
           </div>
@@ -324,7 +379,16 @@ export default function DeliveryCaptainApp() {
                 )}
               </div>
 
-              <button style={S.deliveredBtn} onClick={handleCompleteHandover}>
+              <div style={{ marginTop: 16 }}>
+                <SlideButton
+                  text="SLIDE TO COMPLETE DELIVERY ➡️"
+                  color="#10b981"
+                  icon="✅"
+                  onSlideComplete={handleCompleteHandover}
+                />
+              </div>
+
+              <button style={{ ...S.deliveredBtn, marginTop: 8 }} onClick={handleCompleteHandover}>
                 ✅ MARK DELIVERED & COMPLETE ORDER
               </button>
 

@@ -5,6 +5,7 @@ import { collection, onSnapshot, doc, updateDoc, query, where, addDoc } from "fi
 import { db } from "@/lib/firebaseClient";
 import { playOrderAlarm, stopOrderAlarm, playSuccessChime } from "@/lib/soundSystem";
 import SharedScanner from "@/components/SharedScanner";
+import SlideButton from "@/components/SlideButton";
 
 export default function OdPickerApp() {
   const [isOnline, setIsOnline] = useState(true);
@@ -194,8 +195,15 @@ export default function OdPickerApp() {
                     <div style={S.ordTitle}>{ord.orderNumber || ord.id} • {ord.customerName}</div>
                     <div style={S.ordSub}>{ord.customerAddress}</div>
                     <div style={S.ordItemsCount}>{(ord.items || []).length} SKUs to pick</div>
-                    <button style={S.acceptBtn} onClick={() => handleAcceptOrder(ord)}>
-                      ⚡ ACCEPT ORDER & START 3-MIN TIMER
+
+                    <SlideButton
+                      text="SLIDE TO ACCEPT & START 3-MIN TIMER"
+                      color="#0c831f"
+                      icon="⚡"
+                      onSlideComplete={() => handleAcceptOrder(ord)}
+                    />
+                    <button style={{ ...S.acceptBtn, marginTop: 6 }} onClick={() => handleAcceptOrder(ord)}>
+                      ⚡ Quick Tap Accept
                     </button>
                   </div>
                 ))}
@@ -285,9 +293,17 @@ export default function OdPickerApp() {
               </div>
 
               {allPicked && (
-                <button style={S.packBtn} onClick={handleProceedToPacking}>
-                  📦 All Items Picked! Proceed to Packing & Invoicing →
-                </button>
+                <div style={{ marginTop: 16 }}>
+                  <SlideButton
+                    text="SLIDE TO PACKING & INVOICING ➡️"
+                    color="#0c831f"
+                    icon="📦"
+                    onSlideComplete={handleProceedToPacking}
+                  />
+                  <button style={S.packBtn} onClick={handleProceedToPacking}>
+                    📦 All Items Picked! Proceed to Packing & Invoicing →
+                  </button>
+                </div>
               )}
             </div>
           </div>
@@ -307,7 +323,20 @@ export default function OdPickerApp() {
                   <div style={S.qrBox}>[{activeOrder?.qrCode || `ORD-${activeOrder?.id}-STAGED-QR`}]</div>
                 </div>
               </div>
-              <button style={S.stageBtn} onClick={handleMarkReadyForDelivery}>
+
+              <div style={{ marginTop: 16 }}>
+                <div style={{ fontSize: 13, fontWeight: 900, color: "#0c831f", marginBottom: 6 }}>
+                  ➡️ SLIDE OPTION: HANDOVER TO BAG & STAGE ORDER FOR RIDER:
+                </div>
+                <SlideButton
+                  text="SLIDE TO HANDOVER TO BAG (STAGE) ➡️"
+                  color="#10b981"
+                  icon="🚀"
+                  onSlideComplete={handleMarkReadyForDelivery}
+                />
+              </div>
+
+              <button style={{ ...S.stageBtn, marginTop: 8 }} onClick={handleMarkReadyForDelivery}>
                 🚀 MARK READY FOR DELIVERY (STAGE ORDER)
               </button>
             </div>
