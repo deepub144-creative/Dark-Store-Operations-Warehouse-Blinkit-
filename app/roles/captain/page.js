@@ -67,12 +67,12 @@ export default function DeliveryCaptainApp() {
   useEffect(() => {
     if (!db || !isCheckedIn) return;
 
-    const q = query(collection(db, "orders"), where("status", "==", "staged"));
-    const unsub = onSnapshot(q, (snap) => {
+    const unsub = onSnapshot(collection(db, "orders"), (snap) => {
       const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-      setStagedOrders(docs);
+      const stagedDocs = docs.filter((d) => d.status === "staged" || d.status === "Staged");
+      setStagedOrders(stagedDocs);
 
-      if (docs.length > 0 && !activeOrder) {
+      if (stagedDocs.length > 0 && !activeOrder) {
         playOrderAlarm();
       } else {
         stopOrderAlarm();

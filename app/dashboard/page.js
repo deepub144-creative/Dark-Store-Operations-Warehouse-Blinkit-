@@ -94,6 +94,7 @@ export default function WarehouseDashboardPage() {
 
     let unsub1 = () => {};
     let unsub2 = () => {};
+    let unsub3 = () => {};
 
     try {
       if (db) {
@@ -105,6 +106,22 @@ export default function WarehouseDashboardPage() {
         unsub2 = onSnapshot(collection(db, "staffStatus"), (snap) => {
           setStaffStatus(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
         });
+
+        const q3 = query(collection(db, "complaints"), orderBy("createdAt", "desc"));
+        unsub3 = onSnapshot(q3, (snap) => {
+          const liveComplaints = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+          if (liveComplaints.length > 0) {
+            setComplaints((prev) => {
+              const combined = [...liveComplaints];
+              prev.forEach((oldC) => {
+                if (!combined.some((c) => c.id === oldC.id)) {
+                  combined.push(oldC);
+                }
+              });
+              return combined;
+            });
+          }
+        }, (err) => console.warn("Complaints listener err:", err));
       }
     } catch (e) {
       console.error("Firestore snapshot error:", e);
@@ -113,6 +130,7 @@ export default function WarehouseDashboardPage() {
     return () => {
       unsub1();
       unsub2();
+      unsub3();
     };
   }, [staff]);
 
@@ -152,8 +170,41 @@ export default function WarehouseDashboardPage() {
         return c;
       })
     );
-    setActionSuccess(refund ? `✅ Refund issued & Complaint ${id} resolved!` : `✅ Complaint ${id} marked as resolved.`);
+    setActionSuccess(refund ? `✅ Refund issued & Complaint ${id} resolved by ${staff?.name}!` : `✅ Complaint ${id} marked resolved by ${staff?.name}.`);
     setTimeout(() => setActionSuccess(""), 3500);
+  }
+
+  async function dispatchReplacementOrder(c) {
+    const replacementId = `ORD-RPL-${Math.floor(100000 + Math.random() * 900000)}`;
+    const newOrderData = {
+      orderId: replacementId,
+      customerName: c.customerName || "Customer",
+      customerPhone: c.phone || "9876543210",
+      customerAddress: "Muniswamappa Layout, Bengaluru (REPLACEMENT PRIORITY)",
+      status: "pending",
+      stage: "Picking",
+      totalAmount: c.amount || 0,
+      items: [
+        { skuId: "MILK008", name: "Amul Taaza Toned Milk", qty: 1, mrp: 27, binLocation: "Aisle A01-01" },
+        { skuId: "CHIPS015", name: "Lays Potato Chips", qty: 1, mrp: 20, binLocation: "Aisle B02-04" },
+      ],
+      createdAt: new Date().toISOString(),
+      priorityTag: "EXPRESS_REPLACEMENT",
+    };
+
+    try {
+      if (db) {
+        await setDoc(doc(db, "orders", replacementId), newOrderData);
+      }
+    } catch (e) {
+      console.warn("Firestore replacement create:", e);
+    }
+
+    setComplaints((prev) =>
+      prev.map((item) => (item.id === c.id ? { ...item, status: "REPLACEMENT_DISPATCHED", resolvedBy: staff?.name } : item))
+    );
+    setActionSuccess(`🚀 PRIORITY REPLACEMENT #${replacementId} DISPATCHED! Live alert sent to OD Picker App!`);
+    setTimeout(() => setActionSuccess(""), 4000);
   }
 
   function handlePingDevice(deviceName) {
@@ -577,23 +628,37 @@ export default function WarehouseDashboardPage() {
 
                   <div style={S.cCardIssue}>{c.issue}</div>
 
+                  {c.photoUrl && (
+                    <div style={S.photoContainer}>
+                      <span style={S.photoTag}>📸 Real-Time Customer Photo Proof:</span>
+                      <img src={c.photoUrl} alt="Complaint Proof" style={S.cPhotoImg} />
+                    </div>
+                  )}
+
                   <div style={S.cMetaGrid}>
                     <div>Customer: <b>{c.customerName}</b> (+91 {c.phone})</div>
                     <div>Category: <b>{c.category}</b></div>
-                    <div>Assigned: <b>{c.assignedTo}</b></div>
+                    <div>Assigned: <b>{c.assignedTo || staff.name}</b></div>
                     <div>Value: <b>₹{c.amount}</b></div>
                   </div>
 
                   <div style={S.cCardFooter}>
                     {c.status === "RESOLVED" ? (
                       <div style={S.resolvedText}>✓ Resolved by {c.resolvedBy || "Store Manager"}</div>
+                    ) : c.status === "REPLACEMENT_DISPATCHED" ? (
+                      <div style={{ color: "#38bdf8", fontWeight: 800, fontSize: 13 }}>
+                        🚀 Replacement Order Dispatched by {c.resolvedBy || staff.name}
+                      </div>
                     ) : (
                       <div style={S.cBtnRow}>
                         <button style={S.refundBtn} onClick={() => resolveComplaint(c.id, true)}>
                           💚 Refund Wallet (₹{c.amount})
                         </button>
+                        <button style={S.replaceBtn} onClick={() => dispatchReplacementOrder(c)}>
+                          ⚡ Replacement Order
+                        </button>
                         <button style={S.resolveBtn} onClick={() => resolveComplaint(c.id, false)}>
-                          ✓ Mark Resolved
+                          ✓ Resolve
                         </button>
                       </div>
                     )}
@@ -888,11 +953,15 @@ const S = {
   cTicketId: { fontWeight: 900, fontSize: 14, color: "#f8fafc" },
   cOrderRef: { fontSize: 12, color: "#94a3b8" },
   cCardIssue: { fontSize: 14, fontWeight: 700, color: "#f8fafc", lineHeight: 1.4 },
+  photoContainer: { background: "#0f172a", border: "1px solid #334155", borderRadius: 10, padding: 10 },
+  photoTag: { display: "block", fontSize: 11, fontWeight: 800, color: "#f8cb46", marginBottom: 6 },
+  cPhotoImg: { width: "100%", maxHeight: 180, borderRadius: 8, objectFit: "cover" },
   cMetaGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, fontSize: 12, color: "#cbd5e1", background: "#0f172a", padding: 12, borderRadius: 10 },
   cCardFooter: { marginTop: 4 },
   resolvedText: { color: "#10b981", fontWeight: 800, fontSize: 13 },
-  cBtnRow: { display: "flex", gap: 8 },
+  cBtnRow: { display: "flex", gap: 8, flexWrap: "wrap" },
   refundBtn: { background: "#059669", color: "#fff", border: "none", padding: "8px 12px", borderRadius: 8, fontWeight: 800, fontSize: 12, cursor: "pointer", flex: 1 },
+  replaceBtn: { background: "#0284c7", color: "#fff", border: "none", padding: "8px 12px", borderRadius: 8, fontWeight: 800, fontSize: 12, cursor: "pointer", flex: 1 },
   resolveBtn: { background: "#334155", color: "#fff", border: "none", padding: "8px 12px", borderRadius: 8, fontWeight: 700, fontSize: 12, cursor: "pointer" },
 
   devicesTableCard: { background: "#1e293b", border: "1px solid #334155", borderRadius: 16, overflowX: "auto" },

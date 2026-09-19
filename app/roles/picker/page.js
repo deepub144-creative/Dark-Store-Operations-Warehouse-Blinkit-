@@ -31,9 +31,9 @@ export default function OdPickerApp() {
       return;
     }
 
-    const q = query(collection(db, "orders"), where("status", "==", "pending"));
-    const unsubOrders = onSnapshot(q, (snap) => {
-      const pendingDocs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    const unsubOrders = onSnapshot(collection(db, "orders"), (snap) => {
+      const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      const pendingDocs = docs.filter((d) => d.status === "pending" || d.status === "ASSIGNED");
       setUnassignedOrders(pendingDocs);
 
       if (pendingDocs.length > 0 && !activeOrder) {
