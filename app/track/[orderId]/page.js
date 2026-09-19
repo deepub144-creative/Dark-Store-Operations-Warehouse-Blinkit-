@@ -4,6 +4,7 @@ import { useEffect, useState, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { doc, onSnapshot, addDoc, collection } from "firebase/firestore";
 import { db } from "@/lib/firebaseClient";
+import { subscribeToEvents, broadcastEvent } from "@/lib/realtimeSync";
 
 const STAGES = [
   { key: "PLACED", label: "Order Placed", icon: "✅", desc: "Your order has been confirmed!" },
@@ -52,25 +53,42 @@ export default function TrackOrderPage() {
     if (!orderId) return;
     let unsub = () => {};
 
-    try {
-      const ref = doc(db, "orders", orderId);
-      unsub = onSnapshot(ref, (snap) => {
-        if (snap.exists()) {
-          setOrder({ id: snap.id, ...snap.data() });
+    const unsubBus = subscribeToEvents((data) => {
+      if (data.payload && (data.payload.id === orderId || data.payload.orderId === orderId)) {
+        if (data.type === "ORDER_STAGED") {
+          setOrder((prev) => ({ ...(prev || {}), status: "staged", stage: "PACKING" }));
+        } else if (data.type === "ORDER_DELIVERED") {
+          setOrder((prev) => ({ ...(prev || {}), status: "delivered", stage: "DELIVERED" }));
         }
+      }
+    });
+
+    try {
+      if (db) {
+        const ref = doc(db, "orders", orderId);
+        unsub = onSnapshot(ref, (snap) => {
+          if (snap.exists()) {
+            setOrder({ id: snap.id, ...snap.data() });
+          }
+          setLoading(false);
+        }, () => {
+          setLoading(false);
+          fetch(`/api/order-status?orderId=${orderId}`)
+            .then(r => r.json())
+            .then(d => { if (d.order) setFallback(d.order); })
+            .catch(() => {});
+        });
+      } else {
         setLoading(false);
-      }, () => {
-        setLoading(false);
-        fetch(`/api/order-status?orderId=${orderId}`)
-          .then(r => r.json())
-          .then(d => { if (d.order) setFallback(d.order); })
-          .catch(() => {});
-      });
+      }
     } catch {
       setLoading(false);
     }
 
-    return () => unsub();
+    return () => {
+      unsubBus();
+      unsub();
+    };
   }, [orderId]);
 
   // Clean up camera stream
@@ -164,27 +182,20 @@ export default function TrackOrderPage() {
       if (db) {
         await addDoc(collection(db, "complaints"), newTicket);
       }
-      setComplaintToast(`✅ Complaint #${ticketId} submitted live to SM/ASM/MD Dashboard!`);
-      setTimeout(() => {
-        setShowComplaintDrawer(false);
-        setComplaintDesc("");
-        setPhotoDataUrl("");
-        stopCamera();
-        setComplaintToast("");
-      }, 2000);
     } catch (e) {
       console.error("Firestore complaint save:", e);
-      setComplaintToast(`✅ Ticket #${ticketId} registered locally & sent to SM Dashboard!`);
-      setTimeout(() => {
-        setShowComplaintDrawer(false);
-        setComplaintDesc("");
-        setPhotoDataUrl("");
-        stopCamera();
-        setComplaintToast("");
-      }, 2000);
-    } finally {
-      setSubmittingComplaint(false);
     }
+
+    broadcastEvent("COMPLAINT_RAISED", newTicket);
+    setComplaintToast(`✅ Complaint #${ticketId} submitted live to SM/ASM/MD Dashboard!`);
+    setTimeout(() => {
+      setShowComplaintDrawer(false);
+      setComplaintDesc("");
+      setPhotoDataUrl("");
+      stopCamera();
+      setComplaintToast("");
+    }, 2000);
+    setSubmittingComplaint(false);
   }
 
   const data = order || fallback;

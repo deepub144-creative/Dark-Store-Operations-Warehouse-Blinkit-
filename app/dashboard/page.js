@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { collection, doc, onSnapshot, orderBy, query, setDoc, updateDoc } from "firebase/firestore";
 import { db } from "@/lib/firebaseClient";
+import { subscribeToEvents, broadcastEvent } from "@/lib/realtimeSync";
 import { STAFF, STAGE_SEQUENCE } from "@/lib/roles";
 import { INITIAL_SKUS, seedAllDemoData } from "@/lib/seedData";
 import ErdDfdViewer from "@/components/ErdDfdViewer";
@@ -92,6 +93,14 @@ export default function WarehouseDashboardPage() {
   useEffect(() => {
     if (!staff) return;
 
+    const unsubBus = subscribeToEvents((data) => {
+      if (data.type === "COMPLAINT_RAISED" && data.payload) {
+        setComplaints((prev) => [data.payload, ...prev.filter((c) => c.id !== data.payload.id)]);
+      } else if (data.type === "ORDER_CREATED" && data.payload) {
+        setOrders((prev) => [data.payload, ...prev.filter((o) => o.id !== data.payload.id)]);
+      }
+    });
+
     let unsub1 = () => {};
     let unsub2 = () => {};
     let unsub3 = () => {};
@@ -128,6 +137,7 @@ export default function WarehouseDashboardPage() {
     }
 
     return () => {
+      unsubBus();
       unsub1();
       unsub2();
       unsub3();

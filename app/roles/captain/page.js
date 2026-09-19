@@ -6,6 +6,7 @@ import { db } from "@/lib/firebaseClient";
 import { playOrderAlarm, stopOrderAlarm, playSuccessChime } from "@/lib/soundSystem";
 import SharedScanner from "@/components/SharedScanner";
 import SlideButton from "@/components/SlideButton";
+import { subscribeToEvents, broadcastEvent } from "@/lib/realtimeSync";
 
 export default function DeliveryCaptainApp() {
   const [isCheckedIn, setIsCheckedIn] = useState(false);
@@ -66,21 +67,36 @@ export default function DeliveryCaptainApp() {
   }
 
   useEffect(() => {
-    if (!db || !isCheckedIn) return;
+    if (!isCheckedIn) return;
 
-    const unsub = onSnapshot(collection(db, "orders"), (snap) => {
-      const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-      const stagedDocs = docs.filter((d) => d.status === "staged" || d.status === "Staged");
-      setStagedOrders(stagedDocs);
-
-      if (stagedDocs.length > 0 && !activeOrder) {
+    const unsubBus = subscribeToEvents((data) => {
+      if (data.type === "ORDER_STAGED" && data.payload) {
+        setStagedOrders((prev) => [data.payload, ...prev.filter((p) => p.id !== data.payload.id)]);
         playOrderAlarm();
-      } else {
-        stopOrderAlarm();
       }
     });
 
+    let unsub = () => {};
+    if (db) {
+      unsub = onSnapshot(collection(db, "orders"), (snap) => {
+        const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        const stagedDocs = docs.filter((d) => d.status === "staged" || d.status === "Staged");
+        setStagedOrders((prev) => {
+          const merged = [...stagedDocs];
+          prev.forEach((p) => {
+            if (!merged.some((m) => m.id === p.id)) merged.push(p);
+          });
+          return merged;
+        });
+
+        if (stagedDocs.length > 0 && !activeOrder) {
+          playOrderAlarm();
+        }
+      });
+    }
+
     return () => {
+      unsubBus();
       unsub();
       stopOrderAlarm();
     };
@@ -153,22 +169,25 @@ export default function DeliveryCaptainApp() {
     const isSlaMet = totalDeliverySec <= 480;
 
     try {
-      await updateDoc(doc(db, "orders", activeOrder.id), {
-        status: "delivered",
-        deliveredAt: new Date().toISOString(),
-        deliveryTimeSec: totalDeliverySec,
-      });
-
-      playSuccessChime();
-      setActiveStep("handover");
-      setActionSuccess(
-        isSlaMet
-          ? `🎉 ORDER DELIVERED IN ${(totalDeliverySec / 60).toFixed(1)} MINS! LAST-MILE 8-MIN SLA MET!`
-          : `⚠️ Order Delivered in ${(totalDeliverySec / 60).toFixed(1)} mins.`
-      );
+      if (db) {
+        await updateDoc(doc(db, "orders", activeOrder.id), {
+          status: "delivered",
+          deliveredAt: new Date().toISOString(),
+          deliveryTimeSec: totalDeliverySec,
+        });
+      }
     } catch (e) {
       console.error(e);
     }
+
+    broadcastEvent("ORDER_DELIVERED", { orderId: activeOrder.id, status: "delivered" });
+    playSuccessChime();
+    setActiveStep("handover");
+    setActionSuccess(
+      isSlaMet
+        ? `🎉 ORDER DELIVERED IN ${(totalDeliverySec / 60).toFixed(1)} MINS! LAST-MILE 8-MIN SLA MET!`
+        : `⚠️ Order Delivered in ${(totalDeliverySec / 60).toFixed(1)} mins.`
+    );
   }
 
   function handleResetToIdle() {

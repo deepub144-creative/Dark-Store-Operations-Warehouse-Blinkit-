@@ -6,6 +6,7 @@ import { db } from "@/lib/firebaseClient";
 import { playOrderAlarm, stopOrderAlarm, playSuccessChime } from "@/lib/soundSystem";
 import SharedScanner from "@/components/SharedScanner";
 import SlideButton from "@/components/SlideButton";
+import { subscribeToEvents, broadcastEvent } from "@/lib/realtimeSync";
 
 export default function OdPickerApp() {
   const [isOnline, setIsOnline] = useState(true);
@@ -27,24 +28,40 @@ export default function OdPickerApp() {
   }, []);
 
   useEffect(() => {
-    if (!db || !isOnline) {
+    if (!isOnline) {
       stopOrderAlarm();
       return;
     }
 
-    const unsubOrders = onSnapshot(collection(db, "orders"), (snap) => {
-      const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-      const pendingDocs = docs.filter((d) => d.status === "pending" || d.status === "ASSIGNED");
-      setUnassignedOrders(pendingDocs);
-
-      if (pendingDocs.length > 0 && !activeOrder) {
+    const unsubBus = subscribeToEvents((data) => {
+      if (data.type === "ORDER_CREATED" && data.payload) {
+        setUnassignedOrders((prev) => [data.payload, ...prev.filter((p) => p.id !== data.payload.id)]);
         playOrderAlarm();
-      } else {
-        stopOrderAlarm();
       }
     });
 
+    let unsubOrders = () => {};
+    if (db) {
+      unsubOrders = onSnapshot(collection(db, "orders"), (snap) => {
+        const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        const pendingDocs = docs.filter((d) => d.status === "pending" || d.status === "ASSIGNED");
+        setUnassignedOrders((prev) => {
+          const merged = [...pendingDocs];
+          prev.forEach((p) => {
+            if (!merged.some((m) => m.id === p.id)) merged.push(p);
+          });
+          return merged;
+        });
+
+        if (pendingDocs.length > 0 && !activeOrder) {
+          playOrderAlarm();
+        }
+      });
+    }
+
     return () => {
+      unsubBus();
+      unsubOrders();
       stopOrderAlarm();
     };
   }, [isOnline, activeOrder]);
@@ -135,24 +152,29 @@ export default function OdPickerApp() {
     const finalSec = elapsedSec;
     const isSlaAchieved = finalSec <= 180;
 
-    try {
-      await updateDoc(doc(db, "orders", activeOrder.id), {
-        status: "staged",
-        stagedAt: new Date().toISOString(),
-        pickTimeSec: finalSec,
-        qrCode: `ORD-${activeOrder.id}-STAGED-QR`,
-      });
+    const stagedOrder = { ...activeOrder, status: "staged", stagedAt: new Date().toISOString(), pickTimeSec: finalSec, qrCode: `ORD-${activeOrder.id}-STAGED-QR` };
 
-      playSuccessChime();
-      setActiveStep("staging");
-      setActionSuccess(
-        isSlaAchieved
-          ? `🎉 ORDER STAGED IN ${finalSec}s! SLA TARGET ACHIEVED (&lt; 3.0 MINS). Live sent to Captain App!`
-          : `⚠️ Order Staged in ${finalSec}s. SLA Breached. Sent to Captain App.`
-      );
+    try {
+      if (db) {
+        await updateDoc(doc(db, "orders", activeOrder.id), {
+          status: "staged",
+          stagedAt: new Date().toISOString(),
+          pickTimeSec: finalSec,
+          qrCode: `ORD-${activeOrder.id}-STAGED-QR`,
+        });
+      }
     } catch (e) {
       console.error(e);
     }
+
+    broadcastEvent("ORDER_STAGED", stagedOrder);
+    playSuccessChime();
+    setActiveStep("staging");
+    setActionSuccess(
+      isSlaAchieved
+        ? `🎉 ORDER STAGED IN ${finalSec}s! SLA TARGET ACHIEVED (< 3.0 MINS). Live sent to Captain App!`
+        : `⚠️ Order Staged in ${finalSec}s. SLA Breached. Sent to Captain App.`
+    );
   }
 
   function handleFinishCycle() {

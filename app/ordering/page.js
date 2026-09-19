@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CATALOG } from "@/lib/items";
+import { broadcastEvent } from "@/lib/realtimeSync";
 
 const WALLET_LIMIT = 1000000;
 
@@ -101,10 +102,11 @@ export default function OrderingAppPage() {
       const updated = { ...customer, walletBalance: walletBalance - totalPrice };
       localStorage.setItem("blinkit_customer", JSON.stringify(updated));
 
-      // Store in local storage fallback for live reference
-      const localOrders = JSON.parse(localStorage.getItem("auditx_orders") || "[]");
-      localOrders.unshift(data.order || { orderId: data.orderId, totalAmount: totalPrice, status: "PLACED" });
+      const createdOrder = data.order || { id: data.orderId, orderId: data.orderId, orderNumber: data.orderId, totalAmount: totalPrice, status: "pending", customerName: customer?.name || "Deepu B", customerAddress: locationLabel, items: cartEntries.map(([sku, qty]) => ({ skuId: sku, name: SKU_NAME_MAP[sku] || sku, qty, binLocation: "Aisle A-01" })) };
+      localOrders.unshift(createdOrder);
       localStorage.setItem("auditx_orders", JSON.stringify(localOrders));
+
+      broadcastEvent("ORDER_CREATED", createdOrder);
 
       setCart({});
       router.push(`/track/${data.orderId}`);
