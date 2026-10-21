@@ -7,15 +7,15 @@ import { isSoundMuted, setSoundMuted, unlockAudio } from "@/lib/soundSystem";
 import { seedAllDemoData } from "@/lib/seedData";
 
 export const ROLE_CONFIGS = [
-  { id: "ordering", label: "1st App: Ordering App", name: "Public Customer", avatar: "🛒", route: typeof window !== "undefined" && process.env.NEXT_PUBLIC_ORDERING_APP_URL ? process.env.NEXT_PUBLIC_ORDERING_APP_URL : "http://localhost:3001", external: true, badgeBg: "#f8cb46" },
-  { id: "sm", label: "2nd App: Store Manager (SM)", name: "Bhasker N S", avatar: "👨‍💼", route: "/roles/sm", badgeBg: "#3b82f6" },
-  { id: "asm", label: "3rd App: Assistant Store Mgr", name: "Deepu B", avatar: "👨‍💻", route: "/roles/asm", badgeBg: "#8b5cf6" },
-  { id: "picker", label: "4th App: Full-time OD Picker", name: "Sinchana J P", avatar: "⚡", route: "/roles/picker", badgeBg: "#eab308" },
-  { id: "captain", label: "5th App: Delivery Captain", name: "Likith Kumar", avatar: "🛵", route: "/roles/captain", badgeBg: "#10b981" },
-  { id: "md", label: "6th App: Internal Inventory (MD)", name: "A B Harshitha", avatar: "📦", route: "/roles/md", badgeBg: "#ec4899" },
+  { id: "ordering", label: "🛒 Ordering App", name: "Namma Tiptur KA 44", avatar: "🛍️", route: "/ordering", badgeBg: "#10b981" },
+  { id: "sm", label: "👑 Store Manager (SM)", name: "Bhaskar N S", avatar: "👑", route: "/roles/sm", badgeBg: "#ec4899" },
+  { id: "asm", label: "⚡ Assistant SM (ASM)", name: "Deepu B", avatar: "⚡", route: "/roles/asm", badgeBg: "#06b6d4" },
+  { id: "picker", label: "📦 OD Picker Terminal", name: "Thrupthi K S", avatar: "📦", route: "/roles/picker", badgeBg: "#f59e0b" },
+  { id: "captain", label: "🛵 Order Captain Fleet", name: "Sinchana B R", avatar: "🛵", route: "/roles/captain", badgeBg: "#3b82f6" },
+  { id: "md", label: "🛡️ Managing Director", name: "A B Harshitha", avatar: "🛡️", route: "/roles/md", badgeBg: "#8b5cf6" },
 ];
 
-export default function RoleHeader({ activeRole = "sm", onRoleSelect, currentStore = "ST-BLR-01", onStoreChange }) {
+export default function RoleHeader({ activeRole = "sm", onRoleSelect, currentStore = "TIPTUR-HUB-KA44", onStoreChange }) {
   const [muted, setMuted] = useState(false);
   const [walletBalance, setWalletBalance] = useState(1000000);
   const [seeding, setSeeding] = useState(false);
@@ -42,10 +42,10 @@ export default function RoleHeader({ activeRole = "sm", onRoleSelect, currentSto
 
   async function handleSeedData() {
     setSeeding(true);
-    setSeedMsg("Seeding demo SKUs & Orders to Firestore...");
+    setSeedMsg("Seeding Tiptur HUB demo SKUs & Orders to Firestore...");
     try {
       const res = await seedAllDemoData();
-      setSeedMsg(`✅ Demo Data Seeded! (${res.skusCount} SKUs, ${res.ordersCount} Orders)`);
+      setSeedMsg(`✅ Demo Data Seeded! (${res.count} Records Synced)`);
       setTimeout(() => setSeedMsg(""), 3500);
     } catch (e) {
       setSeedMsg(`⚠️ Seeding note: ${e.message}`);
@@ -60,8 +60,9 @@ export default function RoleHeader({ activeRole = "sm", onRoleSelect, currentSto
       {/* Top Utility Bar */}
       <div style={S.topBar}>
         <div style={S.brandBlock}>
-          <span style={S.logoText}>blinkit</span>
-          <span style={S.opsBadge}>DARK STORE OPERATIONAL HUBS</span>
+          <span style={S.logoText}>AUDIT'X</span>
+          <span style={S.opsBadge}>TIPTUR HUB - KA44</span>
+          <span style={S.subPill}>Namma Tiptur (Tumkur - 572201)</span>
         </div>
 
         <div style={S.rightControls}>
@@ -72,12 +73,12 @@ export default function RoleHeader({ activeRole = "sm", onRoleSelect, currentSto
 
           {/* Seed Demo Data Button */}
           <button style={S.seedBtn} onClick={handleSeedData} disabled={seeding}>
-            {seeding ? "⏳ Seeding..." : "⚡ Seed Demo Firestore Data"}
+            {seeding ? "⏳ Seeding..." : "⚡ Seed Tiptur HUB Data"}
           </button>
 
           {/* Wallet Balance Display */}
           <div style={S.walletBox}>
-            <span style={S.walletLabel}>Store Ops Wallet</span>
+            <span style={S.walletLabel}>Tiptur Hub Ops Wallet</span>
             <span style={S.walletVal}>₹{walletBalance.toLocaleString("en-IN")}</span>
           </div>
         </div>
@@ -87,7 +88,7 @@ export default function RoleHeader({ activeRole = "sm", onRoleSelect, currentSto
 
       {/* Role Navigation Pills */}
       <nav style={S.roleNav}>
-        <span style={S.roleNavLabel}>Teammate Roles:</span>
+        <span style={S.roleNavLabel}>Teammate Portals:</span>
         <div style={S.rolePillGroup}>
           {ROLE_CONFIGS.map((r) => {
             const isActive = activeRole === r.id;
@@ -99,19 +100,12 @@ export default function RoleHeader({ activeRole = "sm", onRoleSelect, currentSto
                   ...(isActive ? S.rolePillActive : {}),
                 }}
                 onClick={() => {
-                  unlockAudio();
-                  if (r.external) {
-                    window.open(r.route, "_blank");
-                  } else if (onRoleSelect) {
-                    onRoleSelect(r.id);
-                  }
+                  if (onRoleSelect) onRoleSelect(r.id);
+                  else window.location.href = r.route;
                 }}
               >
-                <span style={S.roleAvatar}>{r.avatar}</span>
-                <div style={S.roleTextWrap}>
-                  <div style={S.roleTitle}>{r.label}</div>
-                  <div style={S.rolePerson}>{r.name}</div>
-                </div>
+                <span>{r.avatar}</span>
+                <span><b>{r.name}</b> • {r.label}</span>
               </button>
             );
           })}
@@ -123,40 +117,41 @@ export default function RoleHeader({ activeRole = "sm", onRoleSelect, currentSto
 
 const S = {
   headerWrap: {
-    background: "#121212",
-    borderBottom: "2px solid #222",
-    padding: "12px 20px",
-    sticky: "top",
-    zIndex: 100,
+    background: "#0f172a",
+    borderBottom: "1px solid #1e293b",
   },
   topBar: {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 12,
+    padding: "10px 20px",
+    borderBottom: "1px solid #1e293b",
     flexWrap: "wrap",
-    gap: 12,
+    gap: 10,
   },
   brandBlock: {
     display: "flex",
     alignItems: "center",
-    gap: 10,
+    gap: 8,
   },
   logoText: {
-    fontSize: 26,
+    fontSize: 20,
     fontWeight: 900,
-    color: "#f8cb46",
-    letterSpacing: "-0.5px",
+    color: "#10b981",
+    letterSpacing: 1,
   },
   opsBadge: {
-    background: "#000",
-    color: "#10b981",
-    fontSize: 10,
-    fontWeight: 900,
-    padding: "4px 8px",
-    borderRadius: 6,
-    border: "1px solid #10b981",
-    letterSpacing: "0.5px",
+    fontSize: 11,
+    fontWeight: 800,
+    background: "#1e293b",
+    color: "#f59e0b",
+    padding: "2px 8px",
+    borderRadius: 4,
+    border: "1px solid #f59e0b",
+  },
+  subPill: {
+    fontSize: 11,
+    color: "#94a3b8",
   },
   rightControls: {
     display: "flex",
@@ -164,66 +159,58 @@ const S = {
     gap: 10,
   },
   iconBtn: {
-    background: "#222",
-    color: "#fff",
-    border: "1px solid #444",
-    borderRadius: 8,
-    padding: "6px 12px",
-    fontSize: 12,
-    fontWeight: 700,
-    cursor: "pointer",
-  },
-  seedBtn: {
-    background: "linear-gradient(135deg, #eab308, #ca8a04)",
-    color: "#000",
-    border: "none",
-    borderRadius: 8,
-    padding: "6px 12px",
-    fontSize: 12,
-    fontWeight: 900,
-    cursor: "pointer",
-  },
-  walletBox: {
     background: "#1e293b",
     border: "1px solid #334155",
-    padding: "4px 10px",
-    borderRadius: 8,
+    color: "#cbd5e1",
+    padding: "6px 12px",
+    borderRadius: 6,
+    fontSize: 12,
+    cursor: "pointer",
+    fontWeight: 600,
+  },
+  seedBtn: {
+    background: "#1e293b",
+    border: "1px solid #10b981",
+    color: "#10b981",
+    padding: "6px 12px",
+    borderRadius: 6,
+    fontSize: 12,
+    cursor: "pointer",
+    fontWeight: 700,
+  },
+  walletBox: {
     display: "flex",
     flexDirection: "column",
     alignItems: "flex-end",
   },
   walletLabel: {
-    fontSize: 9,
+    fontSize: 10,
     color: "#94a3b8",
-    fontWeight: 700,
-    textTransform: "uppercase",
   },
   walletVal: {
     fontSize: 13,
-    fontWeight: 900,
-    color: "#10b981",
+    fontWeight: 800,
+    color: "#38bdf8",
   },
   seedNotice: {
-    background: "#065f46",
-    color: "#a7f3d0",
-    padding: "6px 12px",
-    borderRadius: 6,
+    background: "rgba(16, 185, 129, 0.15)",
+    color: "#10b981",
+    padding: "6px 20px",
     fontSize: 12,
-    fontWeight: 800,
-    marginBottom: 8,
+    fontWeight: 600,
     textAlign: "center",
   },
   roleNav: {
     display: "flex",
     alignItems: "center",
-    gap: 12,
+    gap: 10,
+    padding: "8px 20px",
     overflowX: "auto",
-    paddingBottom: 4,
   },
   roleNavLabel: {
     fontSize: 11,
-    fontWeight: 800,
-    color: "#888",
+    fontWeight: 700,
+    color: "#64748b",
     textTransform: "uppercase",
     whiteSpace: "nowrap",
   },
@@ -232,36 +219,21 @@ const S = {
     gap: 8,
   },
   rolePill: {
-    background: "#1e1e1e",
-    border: "1px solid #333",
-    color: "#aaa",
-    borderRadius: 10,
+    background: "#1e293b",
+    border: "1px solid #334155",
+    color: "#94a3b8",
     padding: "6px 12px",
+    borderRadius: 20,
+    fontSize: 12,
     display: "flex",
     alignItems: "center",
-    gap: 8,
+    gap: 6,
     cursor: "pointer",
     whiteSpace: "nowrap",
-    transition: "all 0.2s ease",
   },
   rolePillActive: {
-    background: "#f8cb46",
-    color: "#000",
-    borderColor: "#f8cb46",
-    fontWeight: 900,
-  },
-  roleAvatar: {
-    fontSize: 16,
-  },
-  roleTextWrap: {
-    textAlign: "left",
-  },
-  roleTitle: {
-    fontSize: 12,
-    fontWeight: 800,
-  },
-  rolePerson: {
-    fontSize: 10,
-    opacity: 0.8,
+    background: "#334155",
+    color: "#38bdf8",
+    border: "1px solid #38bdf8",
   },
 };

@@ -5,66 +5,88 @@ import { useParams, useRouter } from "next/navigation";
 import { doc, onSnapshot, addDoc, collection } from "firebase/firestore";
 import { db } from "@/lib/firebaseClient";
 import { subscribeToEvents, broadcastEvent } from "@/lib/realtimeSync";
+import { playSuccessChime, playNotificationChime } from "@/lib/soundSystem";
 
 const STAGES = [
-  { key: "PLACED", label: "Order Placed", icon: "✅", desc: "Your order has been confirmed!" },
-  { key: "PICKING", label: "Picking Items", icon: "📦", desc: "Thrupthi K S is picking your items from the store" },
-  { key: "PACKING", label: "Packing Order", icon: "📫", desc: "Your items are being packed securely" },
-  { key: "OUT_FOR_DELIVERY", label: "Out for Delivery", icon: "🛵", desc: "Sinchana B R is on the way to you!" },
-  { key: "DELIVERED", label: "Delivered", icon: "🎉", desc: "Enjoy your order!" },
+  { key: "PLACED", label: "Order Confirmed", icon: "✅", desc: "Received at Tiptur HUB - KA44" },
+  { key: "PICKING", label: "OD Picker (2 Min SLA)", icon: "📦", desc: "Thrupthi K S is picking fresh items at Tiptur HUB" },
+  { key: "STAGED", label: "Staged in Rack", icon: "🏷️", desc: "Bag packed & staged in designated rack" },
+  { key: "OUT_FOR_DELIVERY", label: "Order Captain Fleet (8 Min SLA)", icon: "🛵", desc: "Sinchana B R is on the way in Namma Tiptur" },
+  { key: "DELIVERED", label: "Delivered", icon: "🎉", desc: "Safely handed over to you!" },
 ];
-
-function StepDot({ done, active }) {
-  return (
-    <div style={{
-      width: 20, height: 20, borderRadius: "50%",
-      background: done ? "#0c831f" : active ? "#facc15" : "#e2e8f0",
-      border: `2px solid ${done ? "#0c831f" : active ? "#d97706" : "#cbd5e1"}`,
-      display: "flex", alignItems: "center", justifyContent: "center",
-      fontSize: 10, color: done ? "#fff" : "transparent",
-      flexShrink: 0,
-    }}>
-      {done && "✓"}
-    </div>
-  );
-}
 
 export default function TrackOrderPage() {
   const { orderId } = useParams();
   const router = useRouter();
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [fallback, setFallback] = useState(null);
+  
+  // 10-Minute SLA countdown (600s)
+  const TOTAL_SLA_SECONDS = 600;
+  const [remainingSec, setRemainingSec] = useState(TOTAL_SLA_SECONDS);
+  const timerRef = useRef(null);
 
-  // Complaint Raise Drawer States
+  // Complaints
   const [showComplaintDrawer, setShowComplaintDrawer] = useState(false);
   const [complaintCategory, setComplaintCategory] = useState("Damaged Goods");
   const [complaintDesc, setComplaintDesc] = useState("");
-  const [photoDataUrl, setPhotoDataUrl] = useState("");
-  const [cameraActive, setCameraActive] = useState(false);
   const [submittingComplaint, setSubmittingComplaint] = useState(false);
   const [complaintToast, setComplaintToast] = useState("");
 
-  const videoRef = useRef(null);
-  const fileInputRef = useRef(null);
-  const mediaStreamRef = useRef(null);
+  // Tiptur Route Progress
+  const [routeProgress, setRouteProgress] = useState(15);
 
   useEffect(() => {
     if (!orderId) return;
-    let unsub = () => {};
+
+    // Local fallback check
+    const rawLocal = localStorage.getItem("auditx_customer_last_order");
+    if (rawLocal) {
+      try {
+        const parsed = JSON.parse(rawLocal);
+        if (parsed.id === orderId || parsed.orderId === orderId) {
+          setOrder(parsed);
+          setLoading(false);
+        }
+      } catch (e) {
+        console.warn(e);
+      }
+    }
 
     const unsubBus = subscribeToEvents((data) => {
       if (data.payload && (data.payload.id === orderId || data.payload.orderId === orderId)) {
-        if (data.type === "ORDER_STAGED") {
-          setOrder((prev) => ({ ...(prev || {}), status: "staged", stage: "PACKING" }));
+        if (data.type === "ORDER_PICKING_STARTED") {
+          setOrder((prev) => ({ ...(prev || {}), status: "picking", stage: "Picking Items" }));
+          playNotificationChime();
+        } else if (data.type === "ORDER_STAGED") {
+          setOrder((prev) => ({
+            ...(prev || {}),
+            status: "staged",
+            stage: "Staged in Rack",
+            assignedRack: data.payload.assignedRack || "D5",
+          }));
+          playNotificationChime();
+        } else if (data.type === "ORDER_DISPATCHED") {
+          setOrder((prev) => ({
+            ...(prev || {}),
+            status: "dispatched",
+            stage: "Out for Delivery",
+            captainName: "Sinchana B R",
+            captainPhone: "8088553237",
+          }));
+          setRouteProgress(45);
+          playNotificationChime();
         } else if (data.type === "ORDER_DELIVERED") {
-          setOrder((prev) => ({ ...(prev || {}), status: "delivered", stage: "DELIVERED" }));
+          setOrder((prev) => ({ ...(prev || {}), status: "delivered", stage: "Delivered" }));
+          setRouteProgress(100);
+          playSuccessChime();
         }
       }
     });
 
-    try {
-      if (db) {
+    let unsub = () => {};
+    if (db) {
+      try {
         const ref = doc(db, "orders", orderId);
         unsub = onSnapshot(ref, (snap) => {
           if (snap.exists()) {
@@ -73,15 +95,11 @@ export default function TrackOrderPage() {
           setLoading(false);
         }, () => {
           setLoading(false);
-          fetch(`/api/order-status?orderId=${orderId}`)
-            .then(r => r.json())
-            .then(d => { if (d.order) setFallback(d.order); })
-            .catch(() => {});
         });
-      } else {
+      } catch {
         setLoading(false);
       }
-    } catch {
+    } else {
       setLoading(false);
     }
 
@@ -91,342 +109,288 @@ export default function TrackOrderPage() {
     };
   }, [orderId]);
 
-  // Clean up camera stream
+  // 10-Minute Countdown Timer
   useEffect(() => {
-    return () => {
-      if (mediaStreamRef.current) {
-        mediaStreamRef.current.getTracks().forEach((track) => track.stop());
-      }
-    };
+    timerRef.current = setInterval(() => {
+      setRemainingSec((prev) => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+    return () => clearInterval(timerRef.current);
   }, []);
 
-  async function startCamera() {
-    try {
-      setCameraActive(true);
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-      mediaStreamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        videoRef.current.play();
-      }
-    } catch (e) {
-      console.warn("Camera access denied or unavailable:", e);
-      setCameraActive(false);
-      setComplaintToast("⚠️ Camera unavailable. Use File Upload option below.");
-      setTimeout(() => setComplaintToast(""), 3000);
-    }
-  }
-
-  function stopCamera() {
-    if (mediaStreamRef.current) {
-      mediaStreamRef.current.getTracks().forEach((track) => track.stop());
-      mediaStreamRef.current = null;
-    }
-    setCameraActive(false);
-  }
-
-  function capturePhotoFromCamera() {
-    if (!videoRef.current) return;
-    const canvas = document.createElement("canvas");
-    canvas.width = videoRef.current.videoWidth || 640;
-    canvas.height = videoRef.current.videoHeight || 480;
-    const ctx = canvas.getContext("2d");
-    ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
-    const dataUrl = canvas.toDataURL("image/jpeg", 0.8);
-    setPhotoDataUrl(dataUrl);
-    stopCamera();
-    setComplaintToast("📸 Photo captured successfully!");
-    setTimeout(() => setComplaintToast(""), 2500);
-  }
-
-  function handleFileUpload(e) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (evt) => {
-      setPhotoDataUrl(evt.target.result);
-      setComplaintToast("📁 Photo uploaded successfully!");
-      setTimeout(() => setComplaintToast(""), 2500);
-    };
-    reader.readAsDataURL(file);
-  }
-
-  async function handleSubmitComplaint() {
-    if (!complaintDesc.trim()) {
-      setComplaintToast("⚠️ Please describe the issue before submitting.");
-      setTimeout(() => setComplaintToast(""), 3000);
-      return;
-    }
-
+  async function submitComplaint(e) {
+    e.preventDefault();
     setSubmittingComplaint(true);
-    const currentData = order || fallback || {};
-    const ticketId = `CMP-${Math.floor(1000 + Math.random() * 9000)}`;
 
-    const newTicket = {
-      id: ticketId,
-      orderId: currentData.id || orderId || "ORD-001",
-      customerName: currentData.customerName || "Customer",
-      phone: currentData.customerPhone || "9876543210",
-      issue: complaintDesc,
+    const cmp = {
+      id: `CMP-KA44-${Math.floor(100 + Math.random() * 900)}`,
+      orderId: orderId,
+      customerName: order?.customerName || "Customer",
+      phone: order?.customerPhone || "9845112233",
+      issue: complaintDesc || `${complaintCategory} reported on Tiptur delivery`,
       category: complaintCategory,
-      severity: complaintCategory === "Damaged Goods" || complaintCategory === "Missing Item" ? "HIGH" : "MEDIUM",
-      photoUrl: photoDataUrl || null,
+      severity: complaintCategory === "Damaged Goods" ? "CRITICAL" : "MEDIUM",
+      slaMins: 4,
       status: "OPEN",
       time: "Just now",
+      assignedTo: "Bhaskar N S (SM)",
+      amount: order?.totalAmount || 180,
       createdAt: new Date().toISOString(),
-      amount: currentData.totalAmount || 150,
-      assignedTo: "Bhasker N S (SM)",
     };
 
-    try {
-      if (db) {
-        await addDoc(collection(db, "complaints"), newTicket);
+    if (db) {
+      try {
+        await addDoc(collection(db, "complaints"), cmp);
+      } catch (err) {
+        console.warn(err);
       }
-    } catch (e) {
-      console.error("Firestore complaint save:", e);
     }
 
-    broadcastEvent("COMPLAINT_RAISED", newTicket);
-    setComplaintToast(`✅ Complaint #${ticketId} submitted live to SM/ASM/MD Dashboard!`);
-    setTimeout(() => {
-      setShowComplaintDrawer(false);
-      setComplaintDesc("");
-      setPhotoDataUrl("");
-      stopCamera();
-      setComplaintToast("");
-    }, 2000);
+    broadcastEvent("COMPLAINT_RAISED", cmp);
     setSubmittingComplaint(false);
+    setShowComplaintDrawer(false);
+    setComplaintDesc("");
+    setComplaintToast("✅ Complaint received by Store Manager Bhaskar N S! Instant review initiated.");
+    setTimeout(() => setComplaintToast(""), 4000);
   }
 
-  const data = order || fallback;
+  const isDelivered = order?.status === "delivered";
+  const isDispatched = order?.status === "dispatched" || isDelivered;
+  const isStaged = order?.status === "staged" || isDispatched;
+  const isPicking = order?.status === "picking" || isStaged;
 
-  if (loading) {
-    return (
-      <div style={S.loadingPage}>
-        <div style={S.spinner} />
-        <div style={S.loadingText}>Loading order details...</div>
-      </div>
-    );
-  }
-
-  if (!data) {
-    return (
-      <div style={S.loadingPage}>
-        <div style={{ fontSize: 40 }}>📦</div>
-        <div style={S.loadingText}>Order #{orderId?.slice(0, 8)}</div>
-        <div style={{ color: "#64748b", fontSize: 13, marginTop: 8 }}>Order placed! Tracking will appear shortly.</div>
-        <button style={S.homeBtn} onClick={() => router.push("/")}>← Back to Home</button>
-      </div>
-    );
-  }
-
-  const currentStatus = data.status || "PLACED";
-  const currentStageIdx = STAGES.findIndex((s) => s.key === currentStatus);
-  const deliveryPerson = data.deliveryPerson || { name: "Sinchana B R", phone: "8088553237" };
+  const minStr = Math.floor(remainingSec / 60).toString().padStart(2, "0");
+  const secStr = (remainingSec % 60).toString().padStart(2, "0");
 
   return (
-    <div style={S.page}>
-      {/* Toast */}
+    <div style={S.container}>
       {complaintToast && <div style={S.toast}>{complaintToast}</div>}
 
-      {/* Header */}
+      {/* Top Header */}
       <header style={S.header}>
-        <button style={S.backBtn} onClick={() => router.push("/")}>←</button>
-        <span style={S.headerTitle}>Track Order</span>
-        <button
-          style={S.raiseHeaderBtn}
-          onClick={() => setShowComplaintDrawer(true)}
-        >
-          🚨 Raise Issue
+        <button style={S.backBtn} onClick={() => router.push("/ordering")}>
+          ← Back to Catalog
+        </button>
+        <div style={S.headerCenter}>
+          <span style={S.brandName}>AUDIT'X</span>
+          <span style={S.hubBadge}>TIPTUR HUB - KA44</span>
+        </div>
+        <button style={S.helpBtn} onClick={() => setShowComplaintDrawer(true)}>
+          ⚠️ Need Help?
         </button>
       </header>
 
-      {/* Order Assigned Banner */}
-      {currentStatus === "PLACED" && (
-        <div style={S.assignedBanner}>
-          <div style={S.assignedEmoji}>🎉</div>
-          <div>
-            <div style={S.assignedTitle}>Your order is assigned successfully!</div>
-            <div style={S.assignedSub}>Our picker is getting your items ready.</div>
-          </div>
-        </div>
-      )}
-
-      {/* Delivery Person Card */}
-      {(currentStatus === "OUT_FOR_DELIVERY" || currentStatus === "PICKING" || currentStatus === "PACKING") && (
-        <div style={S.deliveryCard}>
-          <div style={S.deliveryCardLeft}>
-            <div style={S.dAvatar}>🛵</div>
+      <main style={S.main}>
+        {/* SLA Hero Countdown Banner */}
+        <div style={S.slaHero}>
+          <div style={S.slaTop}>
             <div>
-              <div style={S.dName}>{deliveryPerson.name || "Sinchana B R"}</div>
-              <div style={S.dRole}>Your Delivery Captain</div>
-              <div style={S.dEta}>⚡ Arriving in 14 mins</div>
-            </div>
-          </div>
-          <a href={`tel:${deliveryPerson.phone || "8088553237"}`} style={S.callBtn}>📞 Call</a>
-        </div>
-      )}
-
-      {/* Live Status Tracker */}
-      <div style={S.trackerCard}>
-        <div style={S.trackerTitle}>Live Order Status</div>
-        <div style={S.orderId}>Order ID: #{data.id?.slice(0, 10) || orderId?.slice(0, 10)}</div>
-
-        <div style={S.stepsWrap}>
-          {STAGES.map((stage, idx) => {
-            const done = idx < currentStageIdx;
-            const active = idx === currentStageIdx;
-            return (
-              <div key={stage.key} style={S.stepRow}>
-                <div style={S.stepLeft}>
-                  <StepDot done={done} active={active} />
-                  {idx < STAGES.length - 1 && (
-                    <div style={{ ...S.stepLine, background: done ? "#0c831f" : "#e2e8f0" }} />
-                  )}
-                </div>
-                <div style={{ ...S.stepContent, opacity: done || active ? 1 : 0.4 }}>
-                  <div style={S.stepIcon}>{stage.icon}</div>
-                  <div>
-                    <div style={{ ...S.stepLabel, color: active ? "#0c831f" : done ? "#0f172a" : "#94a3b8" }}>
-                      {stage.label}
-                      {active && <span style={S.activeBadge}> • Now</span>}
-                    </div>
-                    {active && <div style={S.stepDesc}>{stage.desc}</div>}
-                  </div>
-                </div>
+              <div style={S.slaTitle}>
+                {isDelivered ? "🎉 ORDER DELIVERED!" : "⚡ ARRIVING IN 10 MINUTES"}
               </div>
-            );
-          })}
-        </div>
-      </div>
+              <div style={S.slaSub}>
+                {isDelivered
+                  ? "Handover completed at your doorstep in Namma Tiptur"
+                  : "Live Sync with Tiptur HUB KA44 (Tumkur District - 572201)"}
+              </div>
+            </div>
+            {!isDelivered && (
+              <div style={S.digitClock}>
+                <span style={S.clockDigits}>{minStr}:{secStr}</span>
+                <small style={{ fontSize: 10, color: "#94a3b8" }}>EST. TIME</small>
+              </div>
+            )}
+          </div>
 
-      {/* Items in order */}
-      <div style={S.itemsCard}>
-        <div style={S.itemsTitle}>Your Items</div>
-        {(data.items || []).map((item) => (
-          <div key={item.sku} style={S.itemRow}>
-            <img src={item.image} alt={item.name} style={S.itemImg}
-              onError={(e) => { e.target.style.display = "none"; }}
+          <div style={S.progressBarBg}>
+            <div
+              style={{
+                ...S.progressBarFill,
+                width: isDelivered ? "100%" : `${Math.max(15, routeProgress)}%`,
+              }}
             />
-            <div style={S.itemInfo}>
-              <div style={S.itemName}>{item.name}</div>
-              <div style={S.itemWeight}>{item.weight} × {item.qty}</div>
-            </div>
-            <div style={S.itemPrice}>₹{item.price * item.qty}</div>
           </div>
-        ))}
-        <div style={S.totalRow}>
-          <span style={S.totalLabel}>Total Paid</span>
-          <span style={S.totalAmt}>₹{data.totalAmount || 0}</span>
         </div>
-        <div style={S.paidViaBadge}>💚 Paid via Blinkit Wallet</div>
-      </div>
 
-      {/* Raise Photo Complaint Quick Trigger Card */}
-      <div style={S.complaintCardTrigger}>
-        <div>
-          <div style={S.cTriggerTitle}>Need Help with this Order?</div>
-          <div style={S.cTriggerSub}>Report missing or damaged items with instant real-time photo capture.</div>
+        {/* ORDER CAPTAIN GREETING BANNER */}
+        <div style={S.captainCard}>
+          <div style={S.captainRow}>
+            <div style={S.captainAvatar}>🛵</div>
+            <div style={S.captainDetails}>
+              <div style={S.captainRole}>Order Captain (Delivery Girl):</div>
+              <div style={S.captainName}>Sinchana B R</div>
+              <div style={S.captainPhone}>📞 +91 8088553237 • Tiptur HUB KA44 Fleet</div>
+            </div>
+            <span style={S.verifiedBadge}>Verified ✓</span>
+          </div>
+
+          {/* Message per prompt */}
+          <div style={S.captainMessageBubble}>
+            💬 <i>"Hi I am Sinchana B R, your order captain on the way coming soon!"</i>
+          </div>
         </div>
-        <button style={S.cTriggerBtn} onClick={() => setShowComplaintDrawer(true)}>
-          📸 Raise Photo Complaint
-        </button>
-      </div>
 
-      <button style={S.homeBtn} onClick={() => router.push("/")}>← Continue Shopping</button>
-
-      {/* ── REAL-TIME PHOTO COMPLAINT DRAWER / MODAL ── */}
-      {showComplaintDrawer && (
-        <div style={S.modalOverlay}>
-          <div style={S.modalContent}>
-            <div style={S.modalHeader}>
-              <div>
-                <h3 style={S.modalTitle}>🚨 Raise Order Issue / Complaint</h3>
-                <div style={S.modalSub}>Order #{data.id?.slice(0, 10) || orderId?.slice(0, 10)}</div>
+        {/* 10-Minute Live Model Breakdown (2m Picker + 8m Captain) */}
+        <div style={S.opsModelBox}>
+          <div style={S.opsModelHeader}>Dark Store 10-Minute Operations Model:</div>
+          <div style={S.opsModelSplit}>
+            <div style={{ ...S.splitCard, borderColor: isStaged ? "#10b981" : "#f59e0b" }}>
+              <div style={S.splitTime}>2:00 MINS</div>
+              <div style={S.splitTitle}>Inside Warehouse Pick</div>
+              <div style={S.splitName}>Thrupthi K S (OD Picker)</div>
+              <div style={S.splitRack}>
+                Staged at: <b>Rack {order?.assignedRack || "D5"}</b>
               </div>
-              <button style={S.modalCloseBtn} onClick={() => { setShowComplaintDrawer(false); stopCamera(); }}>✕</button>
             </div>
 
-            <div style={S.formGroup}>
-              <label style={S.formLabel}>Issue Category:</label>
-              <select
-                style={S.formSelect}
-                value={complaintCategory}
-                onChange={(e) => setComplaintCategory(e.target.value)}
-              >
-                <option value="Damaged Goods">💥 Damaged / Defective Item</option>
-                <option value="Missing Item">🔍 Missing Item from Bag</option>
-                <option value="Quality Issue">❄️ Quality / Temperature Issue</option>
-                <option value="Delivery SLA">⏱️ Delivery Delay (SLA Breach)</option>
-                <option value="Wrong Product">📦 Received Wrong Product</option>
-              </select>
+            <div style={{ ...S.splitCard, borderColor: isDispatched ? "#10b981" : "#38bdf8" }}>
+              <div style={S.splitTime}>8:00 MINS</div>
+              <div style={S.splitTitle}>Namma Tiptur Last-Mile</div>
+              <div style={S.splitName}>Sinchana B R (Order Captain)</div>
+              <div style={S.splitRack}>Speed Target: &lt; 8 Mins</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Animated Tiptur Transit Route */}
+        <div style={S.routeCard}>
+          <div style={S.routeHeader}>
+            <span>🗺️ Namma Tiptur Live Route Simulation</span>
+            <span style={S.routeStatusPill}>
+              {isDelivered
+                ? "Delivered ✓"
+                : isDispatched
+                ? "On Tiptur Roads 🛵"
+                : isStaged
+                ? `Staged in Rack ${order?.assignedRack || "D5"}`
+                : "Picking at Hub 📦"}
+            </span>
+          </div>
+
+          <div style={S.timeline}>
+            <div style={S.timelineItem}>
+              <div style={{ ...S.timelineDot, background: "#10b981" }}>✓</div>
+              <div style={S.timelineContent}>
+                <div style={S.timelinePlace}>Tiptur HUB - KA44 (Dock Bay)</div>
+                <div style={S.timelineSub}>Order packed in Rack {order?.assignedRack || "D5"} by Thrupthi K S</div>
+              </div>
             </div>
 
-            <div style={S.formGroup}>
-              <label style={S.formLabel}>Issue Description:</label>
-              <textarea
-                style={S.formTextarea}
-                rows={3}
-                placeholder="Describe what went wrong with your order..."
-                value={complaintDesc}
-                onChange={(e) => setComplaintDesc(e.target.value)}
-              />
+            <div style={S.timelineItem}>
+              <div style={{ ...S.timelineDot, background: isDispatched ? "#10b981" : "#334155" }}>
+                {isDispatched ? "✓" : "2"}
+              </div>
+              <div style={S.timelineContent}>
+                <div style={S.timelinePlace}>Kalpataru College & APMC Coconut Road</div>
+                <div style={S.timelineSub}>Order Captain Sinchana B R en-route on electric scooter</div>
+              </div>
             </div>
 
-            {/* Photo Capture & Upload Section */}
-            <div style={S.photoSection}>
-              <div style={S.formLabel}>📸 Photo Proof (Sent Live to SM/ASM/MD Dashboard):</div>
-
-              {photoDataUrl ? (
-                <div style={S.photoPreviewBox}>
-                  <img src={photoDataUrl} alt="Complaint Preview" style={S.photoPreviewImg} />
-                  <button
-                    style={S.removePhotoBtn}
-                    onClick={() => setPhotoDataUrl("")}
-                  >
-                    🗑️ Retake / Remove Photo
-                  </button>
-                </div>
-              ) : cameraActive ? (
-                <div style={S.cameraBox}>
-                  <video ref={videoRef} playsInline muted style={S.cameraVideo} />
-                  <div style={S.cameraActions}>
-                    <button style={S.captureBtn} onClick={capturePhotoFromCamera}>
-                      📸 Snap Photo
-                    </button>
-                    <button style={S.cancelCamBtn} onClick={stopCamera}>
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div style={S.photoOptionsRow}>
-                  <button style={S.camOptionBtn} onClick={startCamera}>
-                    📷 Open Camera
-                  </button>
-                  <button style={S.fileOptionBtn} onClick={() => fileInputRef.current?.click()}>
-                    📁 Upload Image
-                  </button>
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/*"
-                    style={{ display: "none" }}
-                    onChange={handleFileUpload}
-                  />
-                </div>
-              )}
+            <div style={S.timelineItem}>
+              <div style={{ ...S.timelineDot, background: isDispatched ? "#10b981" : "#334155" }}>
+                {isDispatched ? "✓" : "3"}
+              </div>
+              <div style={S.timelineContent}>
+                <div style={S.timelinePlace}>Gandhi Circle & B.H. Road Main Crossing</div>
+                <div style={S.timelineSub}>Approaching delivery sector in Namma Tiptur</div>
+              </div>
             </div>
 
-            <div style={S.modalFooter}>
-              <button
-                style={{ ...S.submitComplaintBtn, opacity: submittingComplaint ? 0.7 : 1 }}
-                disabled={submittingComplaint}
-                onClick={handleSubmitComplaint}
-              >
-                {submittingComplaint ? "Sending Ticket..." : "⚡ SUBMIT COMPLAINT TO SM / ASM / MD"}
+            <div style={S.timelineItem}>
+              <div style={{ ...S.timelineDot, background: isDelivered ? "#10b981" : "#334155" }}>
+                {isDelivered ? "✓" : "4"}
+              </div>
+              <div style={S.timelineContent}>
+                <div style={S.timelinePlace}>Your Doorstep (Namma Tiptur - 572201)</div>
+                <div style={S.timelineSub}>{order?.customerAddress || "Near Kalpataru College Road"}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* CUSTOMER HANDOVER QR CODE */}
+        <div style={S.qrCard}>
+          <div style={S.qrTitle}>Customer Delivery Handover QR Code</div>
+          <p style={S.qrSub}>
+            Show this QR code to Order Captain <b>Sinchana B R</b> upon arrival to complete delivery:
+          </p>
+
+          <div style={S.qrBox}>
+            <div style={S.qrPlaceholder}>
+              <div style={S.qrPattern}>
+                <span style={{ fontSize: 48 }}>📱</span>
+                <span style={S.qrLabel}>{order?.id || orderId}</span>
+              </div>
+            </div>
+            <code style={S.qrCodeSnippet}>AUDITX-DELIVERY-{order?.id || orderId}</code>
+          </div>
+
+          <div style={S.handoverAlert}>
+            🔒 <i>Once Sinchana scans this QR, order delivery will immediately track on warehouse dashboards!</i>
+          </div>
+        </div>
+
+        {/* Order Details */}
+        <div style={S.orderSummaryCard}>
+          <div style={S.summaryHeader}>
+            <span>Order Summary (#{order?.orderNumber || orderId})</span>
+            <span style={S.totalAmount}>₹{order?.totalAmount || 180}</span>
+          </div>
+
+          <div style={S.itemsList}>
+            {(order?.items || []).map((it, idx) => (
+              <div key={idx} style={S.itemRow}>
+                <span>{it.name} (x{it.qty || 1})</span>
+                <b>₹{(it.price || 50) * (it.qty || 1)}</b>
+              </div>
+            ))}
+          </div>
+        </div>
+      </main>
+
+      {/* COMPLAINTS MODAL DRAWER */}
+      {showComplaintDrawer && (
+        <div style={S.modalOverlay} onClick={() => setShowComplaintDrawer(false)}>
+          <div style={S.drawer} onClick={(e) => e.stopPropagation()}>
+            <div style={S.drawerHeader}>
+              <h3 style={S.drawerTitle}>Raise Order Complaint</h3>
+              <button style={S.closeBtn} onClick={() => setShowComplaintDrawer(false)}>✕</button>
+            </div>
+
+            <p style={S.drawerSub}>
+              Direct connection to <b>Bhaskar N S (Store Manager - Tiptur HUB KA44)</b>.
+            </p>
+
+            <form onSubmit={submitComplaint}>
+              <div style={S.formGroup}>
+                <label style={S.label}>Issue Category:</label>
+                <select
+                  value={complaintCategory}
+                  onChange={(e) => setComplaintCategory(e.target.value)}
+                  style={S.select}
+                >
+                  <option value="Damaged Goods">Damaged Packaging / Leaking Item</option>
+                  <option value="Missing Item">Missing Item in Delivery Bag</option>
+                  <option value="Delivery SLA">Delivery Took More Than 10 Minutes</option>
+                  <option value="Wrong Item">Wrong Item Delivered</option>
+                </select>
+              </div>
+
+              <div style={S.formGroup}>
+                <label style={S.label}>Explain the problem:</label>
+                <textarea
+                  rows={3}
+                  placeholder="Describe what happened (e.g. Tender coconut was damaged or Nandini milk was missing)..."
+                  value={complaintDesc}
+                  onChange={(e) => setComplaintDesc(e.target.value)}
+                  style={S.textarea}
+                  required
+                />
+              </div>
+
+              <button type="submit" style={S.submitCmpBtn} disabled={submittingComplaint}>
+                {submittingComplaint ? "Submitting..." : "Send Complaint to SM Bhaskar N S →"}
               </button>
-            </div>
+            </form>
           </div>
         </div>
       )}
@@ -435,110 +399,442 @@ export default function TrackOrderPage() {
 }
 
 const S = {
-  loadingPage: { minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "#f1f5f9", fontFamily: "system-ui, sans-serif", gap: 12 },
-  spinner: { width: 36, height: 36, border: "3px solid #e2e8f0", borderTopColor: "#0c831f", borderRadius: "50%", animation: "spin 0.8s linear infinite" },
-  loadingText: { color: "#0f172a", fontWeight: 700, fontSize: 16 },
-
-  page: { minHeight: "100vh", background: "#f1f5f9", fontFamily: "'Inter', system-ui, sans-serif", paddingBottom: 32 },
-  toast: { position: "fixed", top: 20, left: "50%", transform: "translateX(-50%)", background: "#0c831f", color: "#fff", padding: "10px 20px", borderRadius: 30, fontWeight: 900, fontSize: 13, zIndex: 999, boxShadow: "0 10px 25px rgba(0,0,0,0.3)" },
-
-  header: { background: "#fff", padding: "14px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid #e2e8f0", position: "sticky", top: 0, zIndex: 20 },
-  backBtn: { background: "none", border: "none", fontSize: 20, cursor: "pointer", color: "#0f172a" },
-  headerTitle: { fontWeight: 800, fontSize: 17, color: "#0f172a" },
-  raiseHeaderBtn: { background: "#ef4444", color: "#fff", border: "none", padding: "6px 12px", borderRadius: 8, fontWeight: 800, fontSize: 12, cursor: "pointer" },
-
-  assignedBanner: {
-    background: "linear-gradient(135deg, #0c831f, #15803d)",
-    margin: 16,
-    borderRadius: 16,
-    padding: 20,
-    display: "flex",
-    alignItems: "center",
-    gap: 14,
-    color: "#fff",
+  container: {
+    minHeight: "100vh",
+    background: "#080c14",
+    color: "#f8fafc",
+    fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+    paddingBottom: 40,
   },
-  assignedEmoji: { fontSize: 36 },
-  assignedTitle: { fontSize: 17, fontWeight: 800 },
-  assignedSub: { fontSize: 13, opacity: 0.85, marginTop: 4 },
-
-  deliveryCard: {
-    background: "#fff",
-    margin: "0 16px 16px",
-    borderRadius: 16,
-    padding: 16,
+  toast: {
+    position: "fixed",
+    top: 16,
+    left: "50%",
+    transform: "translateX(-50%)",
+    background: "#10b981",
+    color: "#ffffff",
+    padding: "10px 20px",
+    borderRadius: 8,
+    fontWeight: 600,
+    zIndex: 9999,
+    boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
+    fontSize: 14,
+  },
+  header: {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
-    border: "1px solid #e2e8f0",
+    padding: "14px 20px",
+    background: "#0f172a",
+    borderBottom: "1px solid #1e293b",
+    position: "sticky",
+    top: 0,
+    zIndex: 40,
   },
-  deliveryCardLeft: { display: "flex", alignItems: "center", gap: 12 },
-  dAvatar: { fontSize: 28, background: "#dcfce7", width: 48, height: 48, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center" },
-  dName: { fontSize: 15, fontWeight: 800, color: "#0f172a" },
-  dRole: { fontSize: 12, color: "#64748b" },
-  dEta: { fontSize: 12, color: "#0c831f", fontWeight: 700, marginTop: 2 },
-  callBtn: { background: "#dcfce7", color: "#0c831f", border: "none", padding: "8px 14px", borderRadius: 10, fontWeight: 700, fontSize: 13, cursor: "pointer", textDecoration: "none" },
-
-  trackerCard: { background: "#fff", margin: "0 16px 16px", borderRadius: 16, padding: 20, border: "1px solid #e2e8f0" },
-  trackerTitle: { fontSize: 16, fontWeight: 800, color: "#0f172a", marginBottom: 2 },
-  orderId: { fontSize: 12, color: "#94a3b8", marginBottom: 20 },
-  stepsWrap: { display: "flex", flexDirection: "column" },
-  stepRow: { display: "flex", gap: 12 },
-  stepLeft: { display: "flex", flexDirection: "column", alignItems: "center" },
-  stepLine: { width: 2, flex: 1, minHeight: 28, marginTop: 4, borderRadius: 2 },
-  stepContent: { display: "flex", alignItems: "flex-start", gap: 10, paddingBottom: 16, flex: 1 },
-  stepIcon: { fontSize: 18, width: 24, textAlign: "center" },
-  stepLabel: { fontSize: 14, fontWeight: 700 },
-  activeBadge: { color: "#0c831f", fontSize: 12 },
-  stepDesc: { fontSize: 12, color: "#64748b", marginTop: 2 },
-
-  itemsCard: { background: "#fff", margin: "0 16px 16px", borderRadius: 16, padding: 20, border: "1px solid #e2e8f0" },
-  itemsTitle: { fontSize: 16, fontWeight: 800, color: "#0f172a", marginBottom: 12 },
-  itemRow: { display: "flex", alignItems: "center", gap: 12, paddingBottom: 12, borderBottom: "1px solid #f1f5f9", marginBottom: 12 },
-  itemImg: { width: 48, height: 48, borderRadius: 8, objectFit: "cover", border: "1px solid #e2e8f0" },
-  itemInfo: { flex: 1 },
-  itemName: { fontSize: 13, fontWeight: 700, color: "#0f172a" },
-  itemWeight: { fontSize: 12, color: "#94a3b8" },
-  itemPrice: { fontSize: 14, fontWeight: 800, color: "#0f172a" },
-  totalRow: { display: "flex", justifyContent: "space-between", marginTop: 8 },
-  totalLabel: { fontSize: 14, fontWeight: 700, color: "#0f172a" },
-  totalAmt: { fontSize: 16, fontWeight: 900, color: "#0c831f" },
-  paidViaBadge: { background: "#dcfce7", borderRadius: 8, padding: "6px 10px", fontSize: 12, fontWeight: 700, color: "#15803d", marginTop: 10, display: "inline-block" },
-
-  complaintCardTrigger: { background: "#fff", margin: "0 16px 16px", borderRadius: 16, padding: 18, border: "1.5px dashed #ef4444", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 },
-  cTriggerTitle: { fontSize: 14, fontWeight: 900, color: "#0f172a" },
-  cTriggerSub: { fontSize: 12, color: "#64748b", marginTop: 2 },
-  cTriggerBtn: { background: "#ef4444", color: "#fff", border: "none", padding: "10px 16px", borderRadius: 10, fontWeight: 900, fontSize: 13, cursor: "pointer" },
-
-  homeBtn: { display: "block", margin: "0 16px", width: "calc(100% - 32px)", padding: 14, background: "#fff", border: "1.5px solid #0c831f", borderRadius: 12, color: "#0c831f", fontWeight: 800, fontSize: 15, cursor: "pointer" },
-
-  // Drawer / Modal Styles
-  modalOverlay: { position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.6)", zIndex: 1000, display: "flex", justifyContent: "center", alignItems: "flex-end", backdropFilter: "blur(4px)" },
-  modalContent: { background: "#ffffff", width: "100%", maxWidth: 540, borderRadius: "24px 24px 0 0", padding: 24, maxHeight: "90vh", overflowY: "auto", animation: "slideUp 0.3s ease" },
-  modalHeader: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 },
-  modalTitle: { fontSize: 18, fontWeight: 900, color: "#0f172a", margin: 0 },
-  modalSub: { fontSize: 12, color: "#64748b", marginTop: 2 },
-  modalCloseBtn: { background: "#f1f5f9", border: "none", width: 32, height: 32, borderRadius: "50%", fontWeight: 900, cursor: "pointer", color: "#64748b" },
-
-  formGroup: { marginBottom: 16 },
-  formLabel: { display: "block", fontSize: 13, fontWeight: 800, color: "#0f172a", marginBottom: 6 },
-  formSelect: { width: "100%", padding: 12, borderRadius: 12, border: "1.5px solid #cbd5e1", fontSize: 14, fontWeight: 700, color: "#0f172a", background: "#f8fafc", outline: "none" },
-  formTextarea: { width: "100%", padding: 12, borderRadius: 12, border: "1.5px solid #cbd5e1", fontSize: 13, fontWeight: 600, color: "#0f172a", background: "#f8fafc", outline: "none" },
-
-  photoSection: { background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 16, padding: 14, marginBottom: 20 },
-  photoOptionsRow: { display: "flex", gap: 10, marginTop: 8 },
-  camOptionBtn: { flex: 1, background: "#3b82f6", color: "#fff", border: "none", padding: 12, borderRadius: 10, fontWeight: 800, fontSize: 13, cursor: "pointer" },
-  fileOptionBtn: { flex: 1, background: "#475569", color: "#fff", border: "none", padding: 12, borderRadius: 10, fontWeight: 800, fontSize: 13, cursor: "pointer" },
-
-  cameraBox: { textAlign: "center", marginTop: 10 },
-  cameraVideo: { width: "100%", maxHeight: 220, borderRadius: 12, background: "#000", objectFit: "cover" },
-  cameraActions: { display: "flex", gap: 10, marginTop: 10, justifyContent: "center" },
-  captureBtn: { background: "#10b981", color: "#000", border: "none", padding: "10px 20px", borderRadius: 8, fontWeight: 900, fontSize: 13, cursor: "pointer" },
-  cancelCamBtn: { background: "#ef4444", color: "#fff", border: "none", padding: "10px 16px", borderRadius: 8, fontWeight: 800, fontSize: 12, cursor: "pointer" },
-
-  photoPreviewBox: { textAlign: "center", marginTop: 10 },
-  photoPreviewImg: { width: "100%", maxHeight: 200, borderRadius: 12, objectFit: "cover", border: "2px solid #10b981" },
-  removePhotoBtn: { marginTop: 8, background: "#fee2e2", color: "#b91c1c", border: "none", padding: "6px 12px", borderRadius: 6, fontWeight: 800, fontSize: 12, cursor: "pointer" },
-
-  modalFooter: { marginTop: 10 },
-  submitComplaintBtn: { width: "100%", background: "#ef4444", color: "#fff", border: "none", padding: 16, borderRadius: 14, fontWeight: 900, fontSize: 15, cursor: "pointer", boxShadow: "0 4px 14px rgba(239,68,68,0.3)" },
+  backBtn: {
+    background: "transparent",
+    border: "none",
+    color: "#38bdf8",
+    fontSize: 13,
+    fontWeight: 700,
+    cursor: "pointer",
+  },
+  headerCenter: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+  },
+  brandName: {
+    fontSize: 18,
+    fontWeight: 900,
+    color: "#10b981",
+  },
+  hubBadge: {
+    fontSize: 11,
+    fontWeight: 700,
+    background: "#1e293b",
+    color: "#f59e0b",
+    padding: "2px 8px",
+    borderRadius: 4,
+    border: "1px solid #f59e0b",
+  },
+  helpBtn: {
+    background: "#1e293b",
+    border: "1px solid #ef4444",
+    color: "#ef4444",
+    padding: "6px 12px",
+    borderRadius: 6,
+    fontSize: 11,
+    fontWeight: 700,
+    cursor: "pointer",
+  },
+  main: {
+    maxWidth: 580,
+    margin: "0 auto",
+    padding: "16px",
+  },
+  slaHero: {
+    background: "#0f172a",
+    borderRadius: 14,
+    padding: 18,
+    border: "2px solid #10b981",
+    marginBottom: 14,
+  },
+  slaTop: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  slaTitle: {
+    fontSize: 16,
+    fontWeight: 900,
+    color: "#10b981",
+  },
+  slaSub: {
+    fontSize: 12,
+    color: "#94a3b8",
+  },
+  digitClock: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "flex-end",
+  },
+  clockDigits: {
+    fontSize: 26,
+    fontWeight: 900,
+    color: "#ffffff",
+    fontFamily: "monospace",
+  },
+  progressBarBg: {
+    width: "100%",
+    height: 8,
+    background: "#1e293b",
+    borderRadius: 4,
+    overflow: "hidden",
+  },
+  progressBarFill: {
+    height: "100%",
+    background: "linear-gradient(90deg, #10b981, #38bdf8)",
+    transition: "width 1s linear",
+  },
+  captainCard: {
+    background: "#0f172a",
+    borderRadius: 14,
+    padding: 16,
+    border: "1px solid #1e293b",
+    marginBottom: 14,
+  },
+  captainRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 12,
+    marginBottom: 10,
+  },
+  captainAvatar: {
+    fontSize: 28,
+  },
+  captainDetails: {
+    flex: 1,
+  },
+  captainRole: {
+    fontSize: 11,
+    color: "#94a3b8",
+  },
+  captainName: {
+    fontSize: 16,
+    fontWeight: 800,
+    color: "#ffffff",
+  },
+  captainPhone: {
+    fontSize: 12,
+    color: "#38bdf8",
+  },
+  verifiedBadge: {
+    fontSize: 11,
+    fontWeight: 700,
+    color: "#10b981",
+    background: "rgba(16, 185, 129, 0.15)",
+    padding: "3px 8px",
+    borderRadius: 4,
+  },
+  captainMessageBubble: {
+    background: "#1e293b",
+    borderRadius: 10,
+    padding: "10px 14px",
+    fontSize: 13,
+    color: "#f8fafc",
+    borderLeft: "3px solid #10b981",
+  },
+  opsModelBox: {
+    background: "#0f172a",
+    borderRadius: 14,
+    padding: 16,
+    border: "1px solid #1e293b",
+    marginBottom: 14,
+  },
+  opsModelHeader: {
+    fontSize: 12,
+    fontWeight: 700,
+    color: "#94a3b8",
+    marginBottom: 10,
+    textTransform: "uppercase",
+  },
+  opsModelSplit: {
+    display: "grid",
+    gridTemplateColumns: "1fr 1fr",
+    gap: 10,
+  },
+  splitCard: {
+    background: "#1e293b",
+    borderRadius: 10,
+    padding: 12,
+    border: "1px solid",
+  },
+  splitTime: {
+    fontSize: 16,
+    fontWeight: 900,
+    color: "#ffffff",
+    fontFamily: "monospace",
+  },
+  splitTitle: {
+    fontSize: 12,
+    color: "#94a3b8",
+    fontWeight: 600,
+  },
+  splitName: {
+    fontSize: 13,
+    fontWeight: 700,
+    color: "#38bdf8",
+    marginTop: 4,
+  },
+  splitRack: {
+    fontSize: 11,
+    color: "#f59e0b",
+    marginTop: 2,
+  },
+  routeCard: {
+    background: "#0f172a",
+    borderRadius: 14,
+    padding: 16,
+    border: "1px solid #1e293b",
+    marginBottom: 14,
+  },
+  routeHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    fontSize: 13,
+    fontWeight: 700,
+    color: "#ffffff",
+    marginBottom: 14,
+  },
+  routeStatusPill: {
+    fontSize: 11,
+    color: "#38bdf8",
+  },
+  timeline: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 12,
+  },
+  timelineItem: {
+    display: "flex",
+    alignItems: "flex-start",
+    gap: 12,
+  },
+  timelineDot: {
+    width: 22,
+    height: 22,
+    borderRadius: "50%",
+    color: "#fff",
+    fontSize: 11,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontWeight: 800,
+    flexShrink: 0,
+  },
+  timelineContent: {},
+  timelinePlace: {
+    fontSize: 13,
+    fontWeight: 700,
+    color: "#ffffff",
+  },
+  timelineSub: {
+    fontSize: 11,
+    color: "#94a3b8",
+  },
+  qrCard: {
+    background: "#0f172a",
+    borderRadius: 14,
+    padding: 18,
+    border: "1px solid #1e293b",
+    textAlign: "center",
+    marginBottom: 14,
+  },
+  qrTitle: {
+    fontSize: 15,
+    fontWeight: 800,
+    color: "#ffffff",
+    marginBottom: 4,
+  },
+  qrSub: {
+    fontSize: 12,
+    color: "#94a3b8",
+    marginBottom: 14,
+  },
+  qrBox: {
+    background: "#ffffff",
+    color: "#0f172a",
+    borderRadius: 12,
+    padding: 18,
+    display: "inline-flex",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: 8,
+  },
+  qrPlaceholder: {
+    width: 140,
+    height: 140,
+    border: "3px dashed #0f172a",
+    borderRadius: 8,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  qrPattern: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+  },
+  qrLabel: {
+    fontSize: 10,
+    fontWeight: 800,
+  },
+  qrCodeSnippet: {
+    fontSize: 11,
+    fontWeight: 700,
+    background: "#f1f5f9",
+    padding: "2px 8px",
+    borderRadius: 4,
+  },
+  handoverAlert: {
+    fontSize: 11,
+    color: "#10b981",
+    marginTop: 10,
+  },
+  orderSummaryCard: {
+    background: "#0f172a",
+    borderRadius: 14,
+    padding: 16,
+    border: "1px solid #1e293b",
+  },
+  summaryHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    fontSize: 13,
+    fontWeight: 700,
+    color: "#ffffff",
+    marginBottom: 10,
+  },
+  totalAmount: {
+    fontSize: 16,
+    fontWeight: 900,
+    color: "#10b981",
+  },
+  itemsList: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 6,
+  },
+  itemRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    fontSize: 12,
+    color: "#cbd5e1",
+  },
+  modalOverlay: {
+    position: "fixed",
+    inset: 0,
+    background: "rgba(0,0,0,0.75)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 16,
+    zIndex: 100,
+  },
+  drawer: {
+    background: "#0f172a",
+    borderRadius: 16,
+    padding: 20,
+    maxWidth: 440,
+    width: "100%",
+    border: "1px solid #1e293b",
+  },
+  drawerHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 6,
+  },
+  drawerTitle: {
+    fontSize: 18,
+    fontWeight: 800,
+    color: "#ffffff",
+    margin: 0,
+  },
+  closeBtn: {
+    background: "transparent",
+    border: "none",
+    color: "#94a3b8",
+    fontSize: 18,
+    cursor: "pointer",
+  },
+  drawerSub: {
+    fontSize: 12,
+    color: "#94a3b8",
+    marginBottom: 14,
+  },
+  formGroup: {
+    marginBottom: 12,
+  },
+  label: {
+    display: "block",
+    fontSize: 12,
+    fontWeight: 600,
+    color: "#cbd5e1",
+    marginBottom: 6,
+  },
+  select: {
+    width: "100%",
+    background: "#1e293b",
+    border: "1px solid #334155",
+    color: "#ffffff",
+    padding: "10px",
+    borderRadius: 8,
+    fontSize: 13,
+  },
+  textarea: {
+    width: "100%",
+    background: "#1e293b",
+    border: "1px solid #334155",
+    color: "#ffffff",
+    padding: "10px",
+    borderRadius: 8,
+    fontSize: 13,
+    boxSizing: "border-box",
+  },
+  submitCmpBtn: {
+    width: "100%",
+    background: "#ef4444",
+    border: "none",
+    color: "#ffffff",
+    padding: "12px",
+    borderRadius: 8,
+    fontWeight: 800,
+    fontSize: 13,
+    cursor: "pointer",
+  },
 };

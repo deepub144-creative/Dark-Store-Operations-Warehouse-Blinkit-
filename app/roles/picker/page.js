@@ -1,32 +1,32 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import { collection, onSnapshot, doc, updateDoc, query, where, addDoc } from "firebase/firestore";
+import { collection, onSnapshot, doc, updateDoc, setDoc } from "firebase/firestore";
 import { db } from "@/lib/firebaseClient";
-import { playOrderAlarm, stopOrderAlarm, playSuccessChime } from "@/lib/soundSystem";
+import { playOrderAlarm, stopOrderAlarm, playScanSuccess, playScanFail, playSuccessChime } from "@/lib/soundSystem";
 import SharedScanner from "@/components/SharedScanner";
 import SlideButton from "@/components/SlideButton";
 import { subscribeToEvents, broadcastEvent } from "@/lib/realtimeSync";
+import { STAGING_RACKS, getRandomStagingRack } from "@/lib/roles";
 
 export default function OdPickerApp() {
   const [isOnline, setIsOnline] = useState(true);
   const [unassignedOrders, setUnassignedOrders] = useState([]);
   const [activeOrder, setActiveOrder] = useState(null);
-  const [skus, setSkus] = useState([]);
   const [pickedItemsMap, setPickedItemsMap] = useState({});
+  const [assignedRack, setAssignedRack] = useState(STAGING_RACKS[0]);
+  
+  // 2-Minute Strict SLA Countdown & Stopwatch
+  const PICKER_SLA_SECONDS = 120; // 2 minutes (2:00)
+  const [remainingSec, setRemainingSec] = useState(PICKER_SLA_SECONDS);
   const [elapsedSec, setElapsedSec] = useState(0);
-  const [activeStep, setActiveStep] = useState("accept"); // accept | picking | packing | staging | idleReplenish
+  const [isBypassUsed, setIsBypassUsed] = useState(false);
+  const [activeStep, setActiveStep] = useState("accept"); // accept | picking | staging | complete
   const [actionSuccess, setActionSuccess] = useState("");
+  const [manualCodeInput, setManualCodeInput] = useState("");
   const timerRef = useRef(null);
 
-  useEffect(() => {
-    if (!db) return;
-    const unsubSkus = onSnapshot(collection(db, "skus"), (snap) => {
-      setSkus(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-    });
-    return () => unsubSkus();
-  }, []);
-
+  // Sync orders from BroadcastChannel & Firestore
   useEffect(() => {
     if (!isOnline) {
       stopOrderAlarm();
@@ -42,21 +42,25 @@ export default function OdPickerApp() {
 
     let unsubOrders = () => {};
     if (db) {
-      unsubOrders = onSnapshot(collection(db, "orders"), (snap) => {
-        const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-        const pendingDocs = docs.filter((d) => d.status === "pending" || d.status === "ASSIGNED");
-        setUnassignedOrders((prev) => {
-          const merged = [...pendingDocs];
-          prev.forEach((p) => {
-            if (!merged.some((m) => m.id === p.id)) merged.push(p);
+      try {
+        unsubOrders = onSnapshot(collection(db, "orders"), (snap) => {
+          const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+          const pendingDocs = docs.filter((d) => d.status === "pending" || d.status === "ASSIGNED");
+          setUnassignedOrders((prev) => {
+            const merged = [...pendingDocs];
+            prev.forEach((p) => {
+              if (!merged.some((m) => m.id === p.id)) merged.push(p);
+            });
+            return merged;
           });
-          return merged;
-        });
 
-        if (pendingDocs.length > 0 && !activeOrder) {
-          playOrderAlarm();
-        }
-      });
+          if (pendingDocs.length > 0 && !activeOrder) {
+            playOrderAlarm();
+          }
+        });
+      } catch (err) {
+        console.warn("Firestore listener error:", err);
+      }
     }
 
     return () => {
@@ -66,10 +70,17 @@ export default function OdPickerApp() {
     };
   }, [isOnline, activeOrder]);
 
+  // 2-Minute Stopwatch & Countdown Timer
   useEffect(() => {
     if (activeOrder && activeStep === "picking") {
       timerRef.current = setInterval(() => {
         setElapsedSec((prev) => prev + 1);
+        setRemainingSec((prev) => {
+          if (prev <= 1) {
+            return 0;
+          }
+          return prev - 1;
+        });
       }, 1000);
     } else {
       if (timerRef.current) clearInterval(timerRef.current);
@@ -79,24 +90,45 @@ export default function OdPickerApp() {
     };
   }, [activeOrder, activeStep]);
 
-  async function handleAcceptOrder(order) {
+  function handleAcceptOrder(order) {
     stopOrderAlarm();
-    try {
-      await updateDoc(doc(db, "orders", order.id), {
-        status: "picking",
-        pickerId: "picker_sinchana",
-        pickerName: "Sinchana J P",
-        acceptedAt: new Date().toISOString(),
-      });
-      setActiveOrder(order);
-      setElapsedSec(0);
-      setPickedItemsMap({});
-      setActiveStep("picking");
-      setActionSuccess(`Order #${order.orderNumber || order.id} Accepted! 3-Min SLA Countdown Started.`);
-      setTimeout(() => setActionSuccess(""), 3000);
-    } catch (e) {
-      console.error(e);
+    const rack = getRandomStagingRack();
+    setAssignedRack(rack);
+    setActiveOrder(order);
+    setRemainingSec(PICKER_SLA_SECONDS);
+    setElapsedSec(0);
+    setPickedItemsMap({});
+    setIsBypassUsed(false);
+    setActiveStep("picking");
+
+    const updated = {
+      ...order,
+      status: "picking",
+      pickerId: "thrupthi",
+      pickerName: "Thrupthi K S",
+      assignedRack: rack.id,
+      rackQr: rack.qr,
+      acceptedAt: new Date().toISOString(),
+    };
+
+    if (db) {
+      try {
+        updateDoc(doc(db, "orders", order.id), {
+          status: "picking",
+          pickerId: "thrupthi",
+          pickerName: "Thrupthi K S",
+          assignedRack: rack.id,
+          rackQr: rack.qr,
+          acceptedAt: new Date().toISOString(),
+        }).catch(() => {});
+      } catch (e) {
+        console.warn(e);
+      }
     }
+
+    broadcastEvent("ORDER_PICKING_STARTED", updated);
+    setActionSuccess(`⚡ Order #${order.orderNumber || order.id} Accepted! 2:00 Min Picker Timer Started.`);
+    setTimeout(() => setActionSuccess(""), 3000);
   }
 
   function handleItemScan(code) {
@@ -104,285 +136,429 @@ export default function OdPickerApp() {
     const items = activeOrder.items || [];
 
     const matchedIndex = items.findIndex(
-      (it) => it.skuId === code || (code && code.includes(it.skuId)) || code.toLowerCase().includes(it.name.toLowerCase().slice(0, 5))
+      (it, idx) =>
+        !pickedItemsMap[idx] &&
+        (it.skuId === code ||
+          it.barcode === code ||
+          (code && code.includes(it.skuId)) ||
+          code.toLowerCase().includes(it.name.toLowerCase().slice(0, 6)))
     );
 
     if (matchedIndex !== -1) {
-      const matched = items[matchedIndex];
+      playScanSuccess();
       setPickedItemsMap((prev) => ({ ...prev, [matchedIndex]: true }));
-      setActionSuccess(`✅ Picked ${matched.name} (${matched.binLocation})!`);
+      setActionSuccess(`✅ Verified SKU: ${items[matchedIndex].name} (${items[matchedIndex].binLocation || "Shelf"})`);
       setTimeout(() => setActionSuccess(""), 2000);
     } else {
-      const unpickedIdx = items.findIndex((_, idx) => !pickedItemsMap[idx]);
-      if (unpickedIdx !== -1) {
-        setPickedItemsMap((prev) => ({ ...prev, [unpickedIdx]: true }));
-        setActionSuccess(`✅ Picked ${items[unpickedIdx].name}!`);
+      // Find first unpicked
+      const nextUnpicked = items.findIndex((_, idx) => !pickedItemsMap[idx]);
+      if (nextUnpicked !== -1) {
+        playScanSuccess();
+        setPickedItemsMap((prev) => ({ ...prev, [nextUnpicked]: true }));
+        setActionSuccess(`✅ Scanned & Picked: ${items[nextUnpicked].name}`);
+        setTimeout(() => setActionSuccess(""), 2000);
+      } else {
+        playScanFail();
+        setActionSuccess(`⚠️ Barcode not found in current pick list.`);
         setTimeout(() => setActionSuccess(""), 2000);
       }
     }
   }
 
-  async function handleRejectItem(item) {
-    try {
-      await addDoc(collection(db, "dadEntries"), {
-        id: `DAD-${Math.floor(1000 + Math.random() * 9000)}`,
-        skuId: item.skuId || "SKU-001",
-        skuName: item.name,
-        reason: "damaged_on_pick",
-        qty: 1,
-        cost: item.mrp || 40,
-        reportedBy: "Sinchana J P",
-        role: "picker",
-        status: "logged",
-        createdAt: new Date().toLocaleTimeString(),
-      });
-      setActionSuccess(`🚨 Item "${item.name}" flagged damaged & routed to DAD! Fetch replacement from reserve bin.`);
-      setTimeout(() => setActionSuccess(""), 3500);
-    } catch (e) {
-      console.error(e);
-    }
+  // Bypass feature: One-time 2-Minute override / QR handover bypass
+  function handleQrBypass() {
+    setIsBypassUsed(true);
+    // Mark all items as picked
+    const items = activeOrder?.items || [];
+    const all = {};
+    items.forEach((_, idx) => {
+      all[idx] = true;
+    });
+    setPickedItemsMap(all);
+    playScanSuccess();
+    setActionSuccess("⚡ QR CODE BYPASS ACTIVATED! Handover cleared to Rack " + assignedRack.id + ".");
+    setTimeout(() => {
+      setActiveStep("staging");
+      setActionSuccess("");
+    }, 1500);
   }
 
-  function handleProceedToPacking() {
-    setActiveStep("packing");
-  }
-
-  async function handleMarkReadyForDelivery() {
+  async function handleConfirmRackStaging() {
     if (!activeOrder) return;
     const finalSec = elapsedSec;
-    const isSlaAchieved = finalSec <= 180;
+    const isSlaAchieved = finalSec <= PICKER_SLA_SECONDS;
 
-    const stagedOrder = { ...activeOrder, status: "staged", stagedAt: new Date().toISOString(), pickTimeSec: finalSec, qrCode: `ORD-${activeOrder.id}-STAGED-QR` };
+    const stagedOrder = {
+      ...activeOrder,
+      status: "staged",
+      stage: "Staged in Rack " + assignedRack.id,
+      assignedRack: assignedRack.id,
+      rackQr: assignedRack.qr,
+      rackZone: assignedRack.zone,
+      pickerId: "thrupthi",
+      pickerName: "Thrupthi K S",
+      stagedAt: new Date().toISOString(),
+      pickTimeSec: finalSec,
+      qrCode: `AUDITX-HANDOVER-${activeOrder.id}-${assignedRack.id}`,
+    };
 
-    try {
-      if (db) {
+    if (db) {
+      try {
         await updateDoc(doc(db, "orders", activeOrder.id), {
           status: "staged",
+          stage: "Staged in Rack " + assignedRack.id,
+          assignedRack: assignedRack.id,
+          rackQr: assignedRack.qr,
+          pickerId: "thrupthi",
+          pickerName: "Thrupthi K S",
           stagedAt: new Date().toISOString(),
           pickTimeSec: finalSec,
-          qrCode: `ORD-${activeOrder.id}-STAGED-QR`,
+          qrCode: `AUDITX-HANDOVER-${activeOrder.id}-${assignedRack.id}`,
         });
+      } catch (e) {
+        console.warn(e);
       }
-    } catch (e) {
-      console.error(e);
     }
 
     broadcastEvent("ORDER_STAGED", stagedOrder);
     playSuccessChime();
-    setActiveStep("staging");
+    setActiveStep("complete");
     setActionSuccess(
       isSlaAchieved
-        ? `🎉 ORDER STAGED IN ${finalSec}s! SLA TARGET ACHIEVED (< 3.0 MINS). Live sent to Captain App!`
-        : `⚠️ Order Staged in ${finalSec}s. SLA Breached. Sent to Captain App.`
+        ? `🎉 SUCCESS: Picked & Placed in Rack ${assignedRack.id} in ${finalSec}s! (SLA Target <= 2:00 min Achieved)`
+        : `⚠️ Placed in Rack ${assignedRack.id} in ${finalSec}s. (SLA Breached > 2:00 min)`
     );
   }
 
-  function handleFinishCycle() {
+  function handleResetForNextOrder() {
     setActiveOrder(null);
     setActiveStep("accept");
+    setActionSuccess("");
   }
 
   const items = activeOrder?.items || [];
   const pickedCount = Object.keys(pickedItemsMap).length;
   const allPicked = items.length > 0 && pickedCount >= items.length;
 
-  return (
-    <div style={S.wrap}>
-      {actionSuccess && <div style={S.actionBanner}>{actionSuccess}</div>}
+  const minStr = Math.floor(remainingSec / 60).toString().padStart(2, "0");
+  const secStr = (remainingSec % 60).toString().padStart(2, "0");
 
-      <div style={S.topBar}>
-        <div>
-          <span style={S.pickerTitle}>⚡ OD Picker Terminal</span>
-          <div style={S.pickerSub}>Assigned Picker: <b>Sinchana J P</b></div>
+  return (
+    <div style={S.container}>
+      {actionSuccess && <div style={S.toast}>{actionSuccess}</div>}
+
+      {/* Terminal Header */}
+      <header style={S.header}>
+        <div style={S.headerLeft}>
+          <div style={S.brandTag}>
+            <span style={S.brandName}>AUDIT'X</span>
+            <span style={S.hubBadge}>TIPTUR HUB - KA44</span>
+          </div>
+          <div style={S.operatorInfo}>
+            <span style={{ fontSize: 18 }}>📦</span>
+            <div>
+              <div style={S.operatorName}>Thrupthi K S</div>
+              <div style={S.operatorRole}>OD Picker Lead • Inside Warehouse</div>
+            </div>
+          </div>
         </div>
+
         <button
-          style={{ ...S.onlineBtn, background: isOnline ? "#10b981" : "#ef4444" }}
+          style={{ ...S.dutyBtn, background: isOnline ? "#10b981" : "#ef4444" }}
           onClick={() => setIsOnline(!isOnline)}
         >
-          {isOnline ? "🟢 ONLINE (DUTY)" : "🔴 OFFLINE"}
+          {isOnline ? "🟢 ONLINE ON DUTY" : "🔴 OFFLINE"}
         </button>
-      </div>
+      </header>
 
+      {/* Main Terminal Body */}
       <main style={S.main}>
+        {/* STEP 1: AWAITING ORDERS */}
         {activeStep === "accept" && (
           <div>
             {unassignedOrders.length > 0 ? (
-              <div style={S.pulseCard}>
-                <div style={S.pulseHeader}>
-                  <span style={S.alarmIcon}>🔔</span>
-                  <span>NEW UNASSIGNED ORDER ALERT!</span>
+              <div style={S.orderAlertCard}>
+                <div style={S.alertBadge}>
+                  <span style={S.pulseDot} />
+                  <span>NEW INCOMING ORDER FOR TIPTUR HUB!</span>
                 </div>
-                {unassignedOrders.map((ord) => (
-                  <div key={ord.id} style={S.ordBox}>
-                    <div style={S.ordTitle}>{ord.orderNumber || ord.id} • {ord.customerName}</div>
-                    <div style={S.ordSub}>{ord.customerAddress}</div>
-                    <div style={S.ordItemsCount}>{(ord.items || []).length} SKUs to pick</div>
 
-                    <SlideButton
-                      text="SLIDE TO ACCEPT & START 3-MIN TIMER"
-                      color="#0c831f"
-                      icon="⚡"
-                      onSlideComplete={() => handleAcceptOrder(ord)}
-                    />
-                    <button style={{ ...S.acceptBtn, marginTop: 6 }} onClick={() => handleAcceptOrder(ord)}>
+                {unassignedOrders.map((ord) => (
+                  <div key={ord.id} style={S.orderCard}>
+                    <div style={S.orderTopRow}>
+                      <span style={S.orderId}>{ord.orderNumber || ord.id}</span>
+                      <span style={S.orderPrice}>₹{ord.totalAmount || 180}</span>
+                    </div>
+
+                    <div style={S.customerLine}>
+                      <span>👤 {ord.customerName || "Customer (Namma Tiptur)"}</span>
+                      <span style={S.addressSnippet}>📍 {ord.customerAddress || "Tiptur - 572201"}</span>
+                    </div>
+
+                    <div style={S.itemCountPill}>
+                      📋 {(ord.items || []).length} SKUs to Pick • Strict 2:00 Min SLA
+                    </div>
+
+                    <div style={{ marginTop: 14 }}>
+                      <SlideButton
+                        text="SLIDE TO ACCEPT & START 2-MIN PICKER TIMER"
+                        color="#0c831f"
+                        icon="⚡"
+                        onSlideComplete={() => handleAcceptOrder(ord)}
+                      />
+                    </div>
+
+                    <button style={S.quickAcceptBtn} onClick={() => handleAcceptOrder(ord)}>
                       ⚡ Quick Tap Accept
                     </button>
                   </div>
                 ))}
               </div>
             ) : (
-              <div>
-                <div style={S.panel}>
-                  <div style={S.idleText}>🟢 Online & Ready for Orders...</div>
-                  <div style={S.idleSub}>Listening to live Firestore orders. When a customer places an order, your phone alarm will sound instantly!</div>
-                </div>
-
-                <div style={{ ...S.panel, marginTop: 20 }}>
-                  <div style={S.panelTitle}>🛠️ Idle-Time Rack Replenishment Tasks</div>
-                  <div style={S.taskList}>
-                    <div style={S.taskRow}>
-                      <span>1. Refill Aisle A-01 (Amul Milk) from Cold Storage</span>
-                      <span style={S.taskPill}>PENDING</span>
-                    </div>
-                    <div style={S.taskRow}>
-                      <span>2. Clean Bin B-02 (Kurkure Masala) Shelf Display</span>
-                      <span style={S.taskPill}>IN PROGRESS</span>
-                    </div>
-                  </div>
+              <div style={S.idleBox}>
+                <div style={S.idleIcon}>📡</div>
+                <h3 style={S.idleTitle}>Awaiting Orders at Tiptur HUB - KA44</h3>
+                <p style={S.idleSub}>
+                  When a customer places an order on the Namma Tiptur app, your terminal alarm will ring immediately!
+                </p>
+                <div style={S.terminalMeta}>
+                  <span>Device: Zebra TC52 #04</span>
+                  <span>Zone: Inside Warehouse Aisles</span>
                 </div>
               </div>
             )}
           </div>
         )}
 
+        {/* STEP 2: ACTIVE PICKING WITH 2-MIN TIMER & AISLE LOCATIONS */}
         {activeStep === "picking" && activeOrder && (
           <div>
-            <div style={S.timerBar}>
-              <div>
-                <div style={S.tLabel}>Order #{activeOrder.orderNumber || activeOrder.id}</div>
-                <div style={S.tTime}>
-                  ⏱️ Elapsed: <b>{Math.floor(elapsedSec / 60)}m {elapsedSec % 60}s</b> / Target 3m
-                </div>
+            {/* 2-Minute SLA Stopwatch / Countdown Widget */}
+            <div
+              style={{
+                ...S.timerWidget,
+                borderColor: remainingSec <= 30 ? "#ef4444" : remainingSec <= 60 ? "#f59e0b" : "#10b981",
+                background: remainingSec <= 30 ? "#450a0a" : "#0f172a",
+              }}
+            >
+              <div style={S.timerHeader}>
+                <span>⏱️ OD PICKER 2-MINUTE SLA COUNTDOWN</span>
+                <span style={S.slaTargetText}>TARGET: &lt; 2:00 MINS</span>
               </div>
-              <div style={S.pickProgress}>
-                {pickedCount} / {items.length} Picked
+              <div style={S.digitClock}>
+                <span style={remainingSec <= 30 ? S.digitWarning : S.digitNormal}>{minStr}:{secStr}</span>
+                <span style={S.elapsedSmall}>({elapsedSec}s elapsed)</span>
+              </div>
+              {remainingSec <= 30 && (
+                <div style={S.warningBanner}>
+                  ⚠️ 30 SECONDS LEFT! Fast-track scan or trigger QR bypass.
+                </div>
+              )}
+            </div>
+
+            {/* Staging Rack Assignment Banner */}
+            <div style={{ ...S.rackAssignmentPill, background: assignedRack.color }}>
+              <span>📦 ASSIGNED STAGING RACK: <b>{assignedRack.label}</b> ({assignedRack.zone})</span>
+            </div>
+
+            {/* SKU Pick List with Explicit Aisle Location Displays */}
+            <div style={S.skusSection}>
+              <div style={S.sectionTitleRow}>
+                <h3 style={S.sectionTitle}>Pick List ({pickedCount}/{items.length} Picked)</h3>
+                <span style={S.stepBadge}>Match Barcode or Tap</span>
+              </div>
+
+              {items.map((item, idx) => {
+                const isPicked = !!pickedItemsMap[idx];
+                return (
+                  <div
+                    key={idx}
+                    style={{
+                      ...S.skuRow,
+                      borderColor: isPicked ? "#10b981" : "#e2e8f0",
+                      background: isPicked ? "#f0fdf4" : "#ffffff",
+                    }}
+                  >
+                    <div style={S.skuLeft}>
+                      {/* Aisle Location Banner - Explicitly highlighted per requirement */}
+                      <div style={S.aislePill}>
+                        <span style={S.aisleIcon}>📍</span>
+                        <span style={S.aisleText}>
+                          AISLE LOCATION: <b>{item.binLocation || item.aisle || "F0 - A1 - 001"}</b>
+                        </span>
+                      </div>
+
+                      <div style={S.skuName}>{item.name}</div>
+                      <div style={S.skuMeta}>
+                        <span>Qty: <b>{item.qty || 1}</b></span>
+                        <span>• Barcode: <code style={S.codeSnippet}>{item.barcode || item.skuId}</code></span>
+                      </div>
+                    </div>
+
+                    <div style={S.skuRight}>
+                      {isPicked ? (
+                        <div style={S.pickedCheckBadge}>✅ PICKED</div>
+                      ) : (
+                        <button
+                          style={S.tapPickBtn}
+                          onClick={() => handleItemScan(item.barcode || item.skuId)}
+                        >
+                          Scan / Pick
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Camera / Barcode Scanner */}
+            <div style={S.scannerSection}>
+              <div style={S.scannerLabel}>📷 In-Store ZXing Camera Scanner & Barcode Reader</div>
+              <SharedScanner
+                title="Scan Item Barcode at Aisle Location"
+                onScan={handleItemScan}
+                expectedCode={items.find((_, i) => !pickedItemsMap[i])?.barcode}
+              />
+
+              {/* Manual Barcode Input Fallback */}
+              <div style={S.manualInputRow}>
+                <input
+                  type="text"
+                  placeholder="Or enter barcode (e.g. 89044001001)..."
+                  value={manualCodeInput}
+                  onChange={(e) => setManualCodeInput(e.target.value)}
+                  style={S.manualInput}
+                />
+                <button
+                  style={S.manualSubmitBtn}
+                  onClick={() => {
+                    if (manualCodeInput) {
+                      handleItemScan(manualCodeInput.trim());
+                      setManualCodeInput("");
+                    }
+                  }}
+                >
+                  Verify
+                </button>
               </div>
             </div>
 
-            <SharedScanner
-              title="OD Route Picker Scanner"
-              subtitle="Scan item barcode to verify pick"
-              onScanSuccess={handleItemScan}
-              demoItems={items.map((it) => ({ name: `${it.name} [${it.binLocation}]`, code: it.skuId }))}
-            />
+            {/* QR CODE BYPASS & HANDOVER CONTROLS */}
+            <div style={S.bypassBox}>
+              <div style={S.bypassTextRow}>
+                <div>
+                  <div style={S.bypassTitle}>⚡ QR Code Bypass to Order Captain Handover</div>
+                  <div style={S.bypassSub}>
+                    If item barcode or camera fails, trigger one-time 2-minute bypass to clear bag handover to Order Captain Sinchana B R.
+                  </div>
+                </div>
+                <button style={S.bypassBtn} onClick={handleQrBypass}>
+                  🚀 Activate QR Bypass
+                </button>
+              </div>
+            </div>
 
-            <div style={{ ...S.panel, marginTop: 20 }}>
-              <div style={S.panelTitle}>📍 Shelf-Sorted Pick Route (Aisle Order)</div>
-              <div style={S.pickList}>
-                {items.map((it, idx) => {
-                  const isPicked = pickedItemsMap[idx];
+            {/* Proceed to Staging Rack when all items picked */}
+            {allPicked && (
+              <div style={S.allPickedFloat}>
+                <div style={S.readyTitle}>🎉 All Items Successfully Picked!</div>
+                <p style={S.readySub}>Hand over bag to designated rack: <b>{assignedRack.label}</b></p>
+                <button style={S.proceedStagingBtn} onClick={() => setActiveStep("staging")}>
+                  Handover to {assignedRack.label} →
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* STEP 3: STAGING HANDOVER TO 4 RACKS (D5, T2, B4, R1) */}
+        {activeStep === "staging" && activeOrder && (
+          <div style={S.stagingCard}>
+            <div style={S.stagingHeader}>
+              <span style={{ fontSize: 32 }}>🏷️</span>
+              <h2 style={S.stagingTitle}>Staging Bag Handover</h2>
+              <p style={S.stagingSub}>
+                Place the packed order bag into the designated rack slot for Order Captain Sinchana B R.
+              </p>
+            </div>
+
+            {/* Designated Rack Display */}
+            <div style={{ ...S.designatedRackBox, borderColor: assignedRack.color }}>
+              <div style={S.designatedRackLabel}>ASSIGNED RACK SLOT</div>
+              <div style={{ ...S.designatedRackCode, color: assignedRack.color }}>
+                {assignedRack.id}
+              </div>
+              <div style={S.designatedRackZone}>{assignedRack.zone}</div>
+              <div style={S.rackQrSnippet}>QR: <code>{assignedRack.qr}</code></div>
+            </div>
+
+            {/* 4 Racks Overview */}
+            <div style={S.allRacksGrid}>
+              <div style={S.allRacksTitle}>Dark Store Staging Racks Directory:</div>
+              <div style={S.racksList}>
+                {STAGING_RACKS.map((r) => {
+                  const isAssigned = r.id === assignedRack.id;
                   return (
-                    <div key={idx} style={{ ...S.pickCard, borderLeft: `5px solid ${isPicked ? "#10b981" : "#f8cb46"}` }}>
-                      <div style={S.pTop}>
-                        <span style={S.binBadge}>{it.binLocation}</span>
-                        <span style={{ fontSize: 13, fontWeight: 900 }}>{it.name}</span>
-                      </div>
-                      <div style={S.pSub}>Qty: <b>{it.qty}</b> | MRP: <b>₹{it.mrp}</b></div>
-                      <div style={S.pActions}>
-                        {isPicked ? (
-                          <span style={S.pickedBadge}>✅ PICKED & VERIFIED</span>
-                        ) : (
-                          <div style={S.btnGroup}>
-                            <button
-                              style={S.manualPickBtn}
-                              onClick={() => {
-                                setPickedItemsMap((prev) => ({ ...prev, [idx]: true }));
-                                setActionSuccess(`Manually marked ${it.name} as picked.`);
-                                setTimeout(() => setActionSuccess(""), 2000);
-                              }}
-                            >
-                              Tap to Pick
-                            </button>
-                            <button style={S.rejectBtn} onClick={() => handleRejectItem(it)}>
-                              🚨 Flag Damaged
-                            </button>
-                          </div>
-                        )}
-                      </div>
+                    <div
+                      key={r.id}
+                      style={{
+                        ...S.rackMiniCard,
+                        borderColor: isAssigned ? r.color : "#cbd5e1",
+                        background: isAssigned ? "#f8fafc" : "#ffffff",
+                      }}
+                    >
+                      <span style={{ ...S.rackMiniCode, color: r.color }}>{r.id}</span>
+                      <span style={S.rackMiniLabel}>{r.label}</span>
+                      {isAssigned && <span style={S.targetTag}>TARGET</span>}
                     </div>
                   );
                 })}
               </div>
-
-              {allPicked && (
-                <div style={{ marginTop: 16 }}>
-                  <SlideButton
-                    text="SLIDE TO PACKING & INVOICING ➡️"
-                    color="#0c831f"
-                    icon="📦"
-                    onSlideComplete={handleProceedToPacking}
-                  />
-                  <button style={S.packBtn} onClick={handleProceedToPacking}>
-                    📦 All Items Picked! Proceed to Packing & Invoicing →
-                  </button>
-                </div>
-              )}
             </div>
+
+            <div style={{ marginTop: 24 }}>
+              <SlideButton
+                text={`SLIDE TO CONFIRM HANDOVER IN RACK ${assignedRack.id}`}
+                color="#0c831f"
+                icon="📦"
+                onSlideComplete={handleConfirmRackStaging}
+              />
+            </div>
+            <button style={S.quickStagingBtn} onClick={handleConfirmRackStaging}>
+              Confirm Handover to Rack {assignedRack.id}
+            </button>
           </div>
         )}
 
-        {activeStep === "packing" && (
-          <div style={S.panel}>
-            <div style={S.panelTitle}>📦 Packing & Invoicing Seal Check</div>
-            <div style={S.packCard}>
-              <div>Order Ref: <b>#{activeOrder?.orderNumber || activeOrder?.id}</b></div>
-              <div>Customer: <b>{activeOrder?.customerName}</b></div>
-              <div style={{ marginTop: 12 }}>
-                <div style={S.receiptPreview}>
-                  🧾 <b>MOCK RECEIPT PRINTED</b>
-                  <div>Blinkit Bag Seal Code: <b>#SEAL-9014</b></div>
-                  <div>QR Code Generated for Delivery Captain scan:</div>
-                  <div style={S.qrBox}>[{activeOrder?.qrCode || `ORD-${activeOrder?.id}-STAGED-QR`}]</div>
-                </div>
-              </div>
+        {/* STEP 4: COMPLETED SUMMARY */}
+        {activeStep === "complete" && (
+          <div style={S.completeCard}>
+            <div style={S.successIcon}>🎉</div>
+            <h2 style={S.completeTitle}>Order Staged in Rack {assignedRack.id}!</h2>
+            <p style={S.completeSub}>
+              Order #{activeOrder?.orderNumber || activeOrder?.id} has been placed in <b>Rack {assignedRack.id}</b>.
+              Order Captain <b>Sinchana B R</b> has received the live notification to pick up and deliver in 8 minutes!
+            </p>
 
-              <div style={{ marginTop: 16 }}>
-                <div style={{ fontSize: 13, fontWeight: 900, color: "#0c831f", marginBottom: 6 }}>
-                  ➡️ SLIDE OPTION: HANDOVER TO BAG & STAGE ORDER FOR RIDER:
-                </div>
-                <SlideButton
-                  text="SLIDE TO HANDOVER TO BAG (STAGE) ➡️"
-                  color="#10b981"
-                  icon="🚀"
-                  onSlideComplete={handleMarkReadyForDelivery}
-                />
+            <div style={S.summaryPills}>
+              <div style={S.summaryPill}>
+                <span>Pick Time</span>
+                <b>{elapsedSec}s / 120s</b>
               </div>
-
-              <button style={{ ...S.stageBtn, marginTop: 8 }} onClick={handleMarkReadyForDelivery}>
-                🚀 MARK READY FOR DELIVERY (STAGE ORDER)
-              </button>
+              <div style={S.summaryPill}>
+                <span>Rack Slot</span>
+                <b>{assignedRack.id}</b>
+              </div>
+              <div style={S.summaryPill}>
+                <span>Captain</span>
+                <b>Sinchana B R</b>
+              </div>
             </div>
-          </div>
-        )}
 
-        {activeStep === "staging" && (
-          <div style={S.panel}>
-            <div style={S.stageSuccessBox}>
-              <div style={{ fontSize: 44 }}>🎉</div>
-              <div style={S.sTitle}>ORDER STAGED & READY FOR DELIVERY!</div>
-              <div style={S.sSub}>
-                Actual Pick Time: <b>{elapsedSec} seconds</b> ({ (elapsedSec / 60).toFixed(1) } mins)
-              </div>
-              <div style={{ ...S.sSlaResult, color: elapsedSec <= 180 ? "#10b981" : "#ef4444" }}>
-                {elapsedSec <= 180 ? "✅ 3-MIN SLA TARGET MET!" : "⚠️ 3-MIN SLA BREACHED"}
-              </div>
-              <div style={S.handoffText}>
-                ⚡ <b>LIVE FIRESTORE HANDOFF:</b> Order #{activeOrder?.id} has been pushed directly into Delivery Captain Likith's live queue!
-              </div>
-              <button style={S.finishBtn} onClick={handleFinishCycle}>
-                Return to Picker Dashboard for Next Order
-              </button>
-            </div>
+            <button style={S.nextOrderBtn} onClick={handleResetForNextOrder}>
+              Ready for Next Order →
+            </button>
           </div>
         )}
       </main>
@@ -391,60 +567,614 @@ export default function OdPickerApp() {
 }
 
 const S = {
-  wrap: { minHeight: "100vh", background: "#0f172a", color: "#f8fafc", padding: 16, fontFamily: "Inter, sans-serif" },
-  actionBanner: { background: "#059669", color: "#fff", padding: "10px 20px", borderRadius: 12, marginBottom: 16, fontWeight: 700, fontSize: 13, textAlign: "center" },
-
-  topBar: { display: "flex", justifyContent: "space-between", alignItems: "center", background: "#1e293b", padding: 14, borderRadius: 14, border: "1px solid #334155", marginBottom: 16 },
-  pickerTitle: { fontSize: 16, fontWeight: 900, color: "#f8cb46" },
-  pickerSub: { fontSize: 11, color: "#94a3b8" },
-  onlineBtn: { color: "#000", border: "none", padding: "8px 14px", borderRadius: 8, fontWeight: 900, fontSize: 12, cursor: "pointer" },
-
-  main: { maxWidth: 650, margin: "0 auto" },
-
-  pulseCard: { background: "#1e293b", border: "2px solid #ef4444", borderRadius: 16, padding: 18, animation: "pulse 1.5s infinite" },
-  pulseHeader: { display: "flex", alignItems: "center", gap: 8, color: "#ef4444", fontWeight: 900, fontSize: 16 },
-  alarmIcon: { fontSize: 24 },
-  ordBox: { background: "#0f172a", borderRadius: 12, padding: 14, marginTop: 12, border: "1px solid #334155" },
-  ordTitle: { fontSize: 15, fontWeight: 900, color: "#fff" },
-  ordSub: { fontSize: 12, color: "#cbd5e1", marginTop: 2 },
-  ordItemsCount: { fontSize: 11, color: "#f8cb46", fontWeight: 800, marginTop: 6 },
-  acceptBtn: { marginTop: 12, width: "100%", background: "#f8cb46", color: "#000", border: "none", padding: "12px", borderRadius: 10, fontWeight: 900, fontSize: 14, cursor: "pointer" },
-
-  panel: { background: "#1e293b", border: "1px solid #334155", borderRadius: 16, padding: 18 },
-  idleText: { fontSize: 18, fontWeight: 900, color: "#10b981", textAlign: "center" },
-  idleSub: { fontSize: 12, color: "#94a3b8", textAlign: "center", marginTop: 6 },
-  panelTitle: { fontSize: 15, fontWeight: 900, color: "#f8cb46", marginBottom: 12 },
-
-  taskList: { display: "flex", flexDirection: "column", gap: 10 },
-  taskRow: { display: "flex", justifyContent: "space-between", background: "#0f172a", padding: 10, borderRadius: 8, fontSize: 12 },
-  taskPill: { background: "#334155", color: "#f8cb46", padding: "2px 6px", borderRadius: 4, fontWeight: 800, fontSize: 10 },
-
-  timerBar: { display: "flex", justifyContent: "space-between", alignItems: "center", background: "#1e293b", padding: 14, borderRadius: 14, border: "1px solid #334155", marginBottom: 16 },
-  tLabel: { fontSize: 14, fontWeight: 900, color: "#f8cb46" },
-  tTime: { fontSize: 12, color: "#fff", marginTop: 2 },
-  pickProgress: { background: "#10b981", color: "#000", padding: "6px 12px", borderRadius: 8, fontWeight: 900, fontSize: 13 },
-
-  pickList: { display: "flex", flexDirection: "column", gap: 12 },
-  pickCard: { background: "#0f172a", borderRadius: 12, padding: 14, border: "1px solid #334155" },
-  pTop: { display: "flex", alignItems: "center", gap: 10 },
-  binBadge: { background: "#f8cb46", color: "#000", padding: "3px 8px", borderRadius: 6, fontWeight: 900, fontSize: 11 },
-  pSub: { fontSize: 12, color: "#cbd5e1", marginTop: 6 },
-  pActions: { marginTop: 10 },
-  pickedBadge: { background: "#10b981", color: "#000", padding: "4px 10px", borderRadius: 6, fontWeight: 900, fontSize: 11, display: "inline-block" },
-  btnGroup: { display: "flex", gap: 8 },
-  manualPickBtn: { background: "#f8cb46", color: "#000", border: "none", padding: "6px 12px", borderRadius: 6, fontWeight: 800, fontSize: 11, cursor: "pointer" },
-  rejectBtn: { background: "#dc2626", color: "#fff", border: "none", padding: "6px 12px", borderRadius: 6, fontWeight: 800, fontSize: 11, cursor: "pointer" },
-  packBtn: { width: "100%", marginTop: 16, background: "#10b981", color: "#000", border: "none", padding: "14px", borderRadius: 10, fontWeight: 900, fontSize: 14, cursor: "pointer" },
-
-  packCard: { background: "#0f172a", borderRadius: 12, padding: 16, fontSize: 13 },
-  receiptPreview: { background: "#1e293b", padding: 14, borderRadius: 10, margin: "12px 0", border: "1px dashed #334155" },
-  qrBox: { background: "#000", color: "#10b981", padding: 8, borderRadius: 6, fontFamily: "monospace", marginTop: 6, fontWeight: 800 },
-  stageBtn: { width: "100%", background: "#f8cb46", color: "#000", border: "none", padding: "14px", borderRadius: 10, fontWeight: 900, fontSize: 15, cursor: "pointer" },
-
-  stageSuccessBox: { textAlign: "center", padding: 20 },
-  sTitle: { fontSize: 18, fontWeight: 900, color: "#f8cb46", marginTop: 10 },
-  sSub: { fontSize: 14, color: "#cbd5e1", marginTop: 6 },
-  sSlaResult: { fontSize: 16, fontWeight: 900, marginTop: 8 },
-  handoffText: { background: "#0f172a", padding: 14, borderRadius: 10, margin: "16px 0", fontSize: 12, color: "#10b981", border: "1px solid #10b981" },
-  finishBtn: { background: "#f8cb46", color: "#000", border: "none", padding: "12px 20px", borderRadius: 10, fontWeight: 900, fontSize: 13, cursor: "pointer" },
+  container: {
+    minHeight: "100vh",
+    background: "#090d16",
+    color: "#f8fafc",
+    fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+    paddingBottom: 40,
+  },
+  toast: {
+    position: "fixed",
+    top: 16,
+    left: "50%",
+    transform: "translateX(-50%)",
+    background: "#10b981",
+    color: "#ffffff",
+    padding: "10px 20px",
+    borderRadius: 8,
+    fontWeight: 600,
+    zIndex: 9999,
+    boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
+    fontSize: 14,
+  },
+  header: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: "14px 20px",
+    background: "#0f172a",
+    borderBottom: "1px solid #1e293b",
+    position: "sticky",
+    top: 0,
+    zIndex: 50,
+  },
+  headerLeft: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 4,
+  },
+  brandTag: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+  },
+  brandName: {
+    fontSize: 18,
+    fontWeight: 800,
+    color: "#10b981",
+    letterSpacing: 1,
+  },
+  hubBadge: {
+    fontSize: 11,
+    fontWeight: 700,
+    background: "#1e293b",
+    color: "#f59e0b",
+    padding: "2px 8px",
+    borderRadius: 4,
+    border: "1px solid #f59e0b",
+  },
+  operatorInfo: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 2,
+  },
+  operatorName: {
+    fontSize: 14,
+    fontWeight: 700,
+    color: "#ffffff",
+  },
+  operatorRole: {
+    fontSize: 11,
+    color: "#94a3b8",
+  },
+  dutyBtn: {
+    border: "none",
+    color: "#fff",
+    padding: "8px 14px",
+    borderRadius: 20,
+    fontSize: 12,
+    fontWeight: 700,
+    cursor: "pointer",
+  },
+  main: {
+    maxWidth: 640,
+    margin: "0 auto",
+    padding: "16px",
+  },
+  orderAlertCard: {
+    background: "#1e293b",
+    borderRadius: 14,
+    padding: 18,
+    border: "2px solid #10b981",
+    boxShadow: "0 0 24px rgba(16, 185, 129, 0.2)",
+  },
+  alertBadge: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    color: "#10b981",
+    fontWeight: 800,
+    fontSize: 13,
+    marginBottom: 12,
+  },
+  pulseDot: {
+    width: 10,
+    height: 10,
+    borderRadius: "50%",
+    background: "#10b981",
+    boxShadow: "0 0 8px #10b981",
+  },
+  orderCard: {
+    background: "#0f172a",
+    borderRadius: 10,
+    padding: 16,
+    border: "1px solid #334155",
+    marginBottom: 12,
+  },
+  orderTopRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 6,
+  },
+  orderId: {
+    fontSize: 16,
+    fontWeight: 800,
+    color: "#38bdf8",
+  },
+  orderPrice: {
+    fontSize: 16,
+    fontWeight: 800,
+    color: "#10b981",
+  },
+  customerLine: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 2,
+    fontSize: 13,
+    color: "#cbd5e1",
+    marginBottom: 10,
+  },
+  addressSnippet: {
+    fontSize: 12,
+    color: "#94a3b8",
+  },
+  itemCountPill: {
+    display: "inline-block",
+    fontSize: 12,
+    fontWeight: 700,
+    color: "#f59e0b",
+    background: "rgba(245, 158, 11, 0.1)",
+    padding: "4px 8px",
+    borderRadius: 6,
+    border: "1px solid rgba(245, 158, 11, 0.3)",
+  },
+  quickAcceptBtn: {
+    width: "100%",
+    marginTop: 8,
+    padding: "10px",
+    background: "#1e293b",
+    border: "1px solid #38bdf8",
+    color: "#38bdf8",
+    borderRadius: 8,
+    fontWeight: 700,
+    fontSize: 13,
+    cursor: "pointer",
+  },
+  idleBox: {
+    textAlign: "center",
+    padding: "60px 20px",
+    background: "#0f172a",
+    borderRadius: 14,
+    border: "1px solid #1e293b",
+  },
+  idleIcon: {
+    fontSize: 48,
+    marginBottom: 12,
+  },
+  idleTitle: {
+    fontSize: 18,
+    fontWeight: 700,
+    color: "#ffffff",
+    marginBottom: 8,
+  },
+  idleSub: {
+    fontSize: 13,
+    color: "#94a3b8",
+    maxWidth: 400,
+    margin: "0 auto 20px",
+    lineHeight: 1.5,
+  },
+  terminalMeta: {
+    display: "flex",
+    justifyContent: "center",
+    gap: 16,
+    fontSize: 11,
+    color: "#64748b",
+  },
+  timerWidget: {
+    borderRadius: 12,
+    padding: "12px 16px",
+    border: "2px solid #10b981",
+    marginBottom: 14,
+    textAlign: "center",
+  },
+  timerHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    fontSize: 11,
+    fontWeight: 700,
+    color: "#94a3b8",
+    letterSpacing: 0.5,
+  },
+  slaTargetText: {
+    color: "#38bdf8",
+  },
+  digitClock: {
+    display: "flex",
+    alignItems: "baseline",
+    justifyContent: "center",
+    gap: 8,
+    margin: "6px 0",
+  },
+  digitNormal: {
+    fontSize: 36,
+    fontWeight: 900,
+    color: "#10b981",
+    fontFamily: "monospace",
+  },
+  digitWarning: {
+    fontSize: 36,
+    fontWeight: 900,
+    color: "#ef4444",
+    fontFamily: "monospace",
+    animation: "pulse 1s infinite",
+  },
+  elapsedSmall: {
+    fontSize: 13,
+    color: "#64748b",
+  },
+  warningBanner: {
+    fontSize: 12,
+    fontWeight: 700,
+    color: "#ef4444",
+    background: "rgba(239, 68, 68, 0.15)",
+    padding: "4px 8px",
+    borderRadius: 6,
+  },
+  rackAssignmentPill: {
+    padding: "10px 14px",
+    borderRadius: 8,
+    color: "#ffffff",
+    fontWeight: 800,
+    fontSize: 13,
+    textAlign: "center",
+    marginBottom: 14,
+    boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
+  },
+  skusSection: {
+    background: "#0f172a",
+    borderRadius: 12,
+    padding: 14,
+    border: "1px solid #1e293b",
+    marginBottom: 14,
+  },
+  sectionTitleRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  sectionTitle: {
+    fontSize: 15,
+    fontWeight: 700,
+    color: "#ffffff",
+    margin: 0,
+  },
+  stepBadge: {
+    fontSize: 11,
+    background: "#334155",
+    color: "#94a3b8",
+    padding: "3px 8px",
+    borderRadius: 4,
+  },
+  skuRow: {
+    border: "1px solid #e2e8f0",
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 10,
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    color: "#0f172a",
+  },
+  skuLeft: {
+    flex: 1,
+  },
+  aislePill: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 4,
+    background: "#fef3c7",
+    color: "#92400e",
+    padding: "3px 8px",
+    borderRadius: 6,
+    fontSize: 11,
+    fontWeight: 700,
+    marginBottom: 4,
+    border: "1px solid #fde68a",
+  },
+  aisleIcon: {
+    fontSize: 11,
+  },
+  aisleText: {},
+  skuName: {
+    fontSize: 14,
+    fontWeight: 700,
+    color: "#0f172a",
+    marginBottom: 2,
+  },
+  skuMeta: {
+    fontSize: 12,
+    color: "#475569",
+  },
+  codeSnippet: {
+    fontFamily: "monospace",
+    background: "#f1f5f9",
+    padding: "1px 4px",
+    borderRadius: 4,
+  },
+  skuRight: {
+    marginLeft: 12,
+  },
+  pickedCheckBadge: {
+    fontSize: 12,
+    fontWeight: 800,
+    color: "#166534",
+    background: "#dcfce7",
+    padding: "6px 12px",
+    borderRadius: 20,
+    border: "1px solid #bbf7d0",
+  },
+  tapPickBtn: {
+    border: "none",
+    background: "#0c831f",
+    color: "#ffffff",
+    padding: "8px 14px",
+    borderRadius: 8,
+    fontWeight: 700,
+    fontSize: 12,
+    cursor: "pointer",
+  },
+  scannerSection: {
+    background: "#0f172a",
+    borderRadius: 12,
+    padding: 14,
+    border: "1px solid #1e293b",
+    marginBottom: 14,
+  },
+  scannerLabel: {
+    fontSize: 12,
+    fontWeight: 700,
+    color: "#94a3b8",
+    marginBottom: 8,
+  },
+  manualInputRow: {
+    display: "flex",
+    gap: 8,
+    marginTop: 10,
+  },
+  manualInput: {
+    flex: 1,
+    background: "#1e293b",
+    border: "1px solid #334155",
+    color: "#fff",
+    padding: "8px 12px",
+    borderRadius: 6,
+    fontSize: 13,
+  },
+  manualSubmitBtn: {
+    background: "#38bdf8",
+    border: "none",
+    color: "#0f172a",
+    padding: "8px 16px",
+    borderRadius: 6,
+    fontWeight: 700,
+    fontSize: 13,
+    cursor: "pointer",
+  },
+  bypassBox: {
+    background: "rgba(236, 72, 153, 0.1)",
+    border: "1px dashed #ec4899",
+    borderRadius: 10,
+    padding: 14,
+    marginBottom: 14,
+  },
+  bypassTextRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 12,
+  },
+  bypassTitle: {
+    fontSize: 13,
+    fontWeight: 800,
+    color: "#f472b6",
+    marginBottom: 2,
+  },
+  bypassSub: {
+    fontSize: 11,
+    color: "#cbd5e1",
+    lineHeight: 1.4,
+  },
+  bypassBtn: {
+    background: "#ec4899",
+    border: "none",
+    color: "#fff",
+    padding: "10px 14px",
+    borderRadius: 8,
+    fontWeight: 700,
+    fontSize: 12,
+    cursor: "pointer",
+    whiteSpace: "nowrap",
+  },
+  allPickedFloat: {
+    background: "#065f46",
+    borderRadius: 12,
+    padding: 16,
+    textAlign: "center",
+    border: "2px solid #10b981",
+    marginTop: 10,
+  },
+  readyTitle: {
+    fontSize: 16,
+    fontWeight: 800,
+    color: "#ffffff",
+    marginBottom: 4,
+  },
+  readySub: {
+    fontSize: 13,
+    color: "#a7f3d0",
+    marginBottom: 12,
+  },
+  proceedStagingBtn: {
+    background: "#ffffff",
+    color: "#065f46",
+    border: "none",
+    padding: "10px 20px",
+    borderRadius: 8,
+    fontWeight: 800,
+    fontSize: 14,
+    cursor: "pointer",
+  },
+  stagingCard: {
+    background: "#0f172a",
+    borderRadius: 14,
+    padding: 20,
+    border: "1px solid #1e293b",
+    textAlign: "center",
+  },
+  stagingHeader: {
+    marginBottom: 18,
+  },
+  stagingTitle: {
+    fontSize: 20,
+    fontWeight: 800,
+    color: "#ffffff",
+    margin: "8px 0 4px",
+  },
+  stagingSub: {
+    fontSize: 13,
+    color: "#94a3b8",
+    maxWidth: 420,
+    margin: "0 auto",
+  },
+  designatedRackBox: {
+    background: "#1e293b",
+    borderRadius: 12,
+    padding: 20,
+    border: "2px solid",
+    margin: "16px auto",
+    maxWidth: 280,
+  },
+  designatedRackLabel: {
+    fontSize: 11,
+    fontWeight: 700,
+    color: "#94a3b8",
+    letterSpacing: 1,
+  },
+  designatedRackCode: {
+    fontSize: 54,
+    fontWeight: 900,
+    margin: "4px 0",
+    letterSpacing: 2,
+  },
+  designatedRackZone: {
+    fontSize: 13,
+    fontWeight: 600,
+    color: "#e2e8f0",
+  },
+  rackQrSnippet: {
+    fontSize: 10,
+    color: "#64748b",
+    marginTop: 6,
+  },
+  allRacksGrid: {
+    marginTop: 16,
+    textAlign: "left",
+  },
+  allRacksTitle: {
+    fontSize: 12,
+    fontWeight: 700,
+    color: "#94a3b8",
+    marginBottom: 8,
+  },
+  racksList: {
+    display: "grid",
+    gridTemplateColumns: "repeat(4, 1fr)",
+    gap: 8,
+  },
+  rackMiniCard: {
+    border: "1px solid",
+    borderRadius: 8,
+    padding: "8px 4px",
+    textAlign: "center",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    position: "relative",
+  },
+  rackMiniCode: {
+    fontSize: 18,
+    fontWeight: 800,
+  },
+  rackMiniLabel: {
+    fontSize: 10,
+    color: "#64748b",
+    marginTop: 2,
+  },
+  targetTag: {
+    position: "absolute",
+    top: -6,
+    right: -4,
+    background: "#10b981",
+    color: "#fff",
+    fontSize: 8,
+    fontWeight: 800,
+    padding: "1px 4px",
+    borderRadius: 4,
+  },
+  quickStagingBtn: {
+    width: "100%",
+    marginTop: 8,
+    background: "#1e293b",
+    border: "1px solid #10b981",
+    color: "#10b981",
+    padding: "10px",
+    borderRadius: 8,
+    fontWeight: 700,
+    fontSize: 13,
+    cursor: "pointer",
+  },
+  completeCard: {
+    background: "#0f172a",
+    borderRadius: 14,
+    padding: 30,
+    border: "1px solid #10b981",
+    textAlign: "center",
+  },
+  successIcon: {
+    fontSize: 48,
+    marginBottom: 10,
+  },
+  completeTitle: {
+    fontSize: 20,
+    fontWeight: 800,
+    color: "#ffffff",
+    marginBottom: 8,
+  },
+  completeSub: {
+    fontSize: 13,
+    color: "#94a3b8",
+    maxWidth: 420,
+    margin: "0 auto 20px",
+    lineHeight: 1.5,
+  },
+  summaryPills: {
+    display: "flex",
+    justifyContent: "center",
+    gap: 16,
+    marginBottom: 24,
+  },
+  summaryPill: {
+    background: "#1e293b",
+    padding: "8px 14px",
+    borderRadius: 8,
+    display: "flex",
+    flexDirection: "column",
+    gap: 2,
+    fontSize: 12,
+  },
+  nextOrderBtn: {
+    background: "#10b981",
+    color: "#ffffff",
+    border: "none",
+    padding: "12px 24px",
+    borderRadius: 8,
+    fontWeight: 800,
+    fontSize: 14,
+    cursor: "pointer",
+  },
 };

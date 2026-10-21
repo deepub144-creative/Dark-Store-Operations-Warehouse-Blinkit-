@@ -1,7 +1,7 @@
 "use client";
 
-import WarehouseDashboardPage from "@/app/dashboard/page";
+import StoreManagerApp from "@/app/roles/sm/page";
 
 export default function DedicatedWarehouseRoute() {
-  return <WarehouseDashboardPage />;
+  return <StoreManagerApp />;
 }

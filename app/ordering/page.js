@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CATALOG } from "@/lib/items";
-import { broadcastEvent } from "@/lib/realtimeSync";
+import { broadcastEvent, subscribeToEvents } from "@/lib/realtimeSync";
+import { playNotificationChime, playSuccessChime } from "@/lib/soundSystem";
 
 const WALLET_LIMIT = 1000000;
 
@@ -15,33 +16,72 @@ export default function OrderingAppPage() {
   const [loading, setLoading] = useState(true);
   const [placingOrder, setPlacingOrder] = useState(false);
   const [error, setError] = useState("");
-  const [selectedProduct, setSelectedProduct] = useState(null);
   const [toastMessage, setToastMessage] = useState("");
-  const [locationLabel, setLocationLabel] = useState("Muniswamappa Layout, Bengaluru (KA)");
-  const [activeTab, setActiveTab] = useState("home"); // 'home' | 'cart' | 'categories' | 'print' | 'profile'
-  const [showAppsModal, setShowAppsModal] = useState(false);
+  const [locationLabel, setLocationLabel] = useState("Namma Tiptur KA 44 (Tumkur Dist, KA - 572201)");
+  const [activeTab, setActiveTab] = useState("home"); // 'home' | 'cart' | 'categories' | 'profile'
+  const [oosList, setOosList] = useState([]);
+  const [showLocationModal, setShowLocationModal] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
-    const raw = localStorage.getItem("blinkit_customer");
+    // 1. Load customer profile
+    const raw = localStorage.getItem("auditx_customer") || localStorage.getItem("blinkit_customer");
     if (!raw) {
-      const demoCust = { customerId: "cust_demo", name: "Deepu B", phone: "8050475078", walletBalance: 999920 };
+      const demoCust = {
+        customerId: "cust_tiptur_demo",
+        name: "Ramesh Gowda",
+        phone: "9845112233",
+        location: "Near Kalpataru College, Namma Tiptur - 572201",
+        walletBalance: 999850,
+      };
+      localStorage.setItem("auditx_customer", JSON.stringify(demoCust));
       localStorage.setItem("blinkit_customer", JSON.stringify(demoCust));
       setCustomer(demoCust);
     } else {
       setCustomer(JSON.parse(raw));
     }
 
-    const timer = setTimeout(() => setLoading(false), 400);
-    return () => clearTimeout(timer);
-  }, [router]);
+    // 2. Load out-of-stock items marked by ASM Deepu B
+    const rawOos = localStorage.getItem("auditx_oos_items");
+    if (rawOos) {
+      try {
+        setOosList(JSON.parse(rawOos));
+      } catch (e) {
+        console.warn(e);
+      }
+    }
+
+    // 3. Subscribe to real-time events (e.g. ASM marks item OOS)
+    const unsubBus = subscribeToEvents((data) => {
+      if (data.type === "ITEM_STOCK_TOGGLED" && data.payload) {
+        if (!data.payload.inStock) {
+          setOosList((prev) => [...new Set([...prev, data.payload.sku])]);
+          triggerToast(`⚠️ ASM Deepu B updated: "${data.payload.name}" is now Out of Stock.`);
+        } else {
+          setOosList((prev) => prev.filter((s) => s !== data.payload.sku));
+          triggerToast(`🟢 "${data.payload.name}" is back in stock at Tiptur HUB!`);
+        }
+      }
+    });
+
+    const timer = setTimeout(() => setLoading(false), 300);
+    return () => {
+      clearTimeout(timer);
+      unsubBus();
+    };
+  }, []);
 
   function triggerToast(msg) {
     setToastMessage(msg);
-    setTimeout(() => setToastMessage(""), 2200);
+    setTimeout(() => setToastMessage(""), 3000);
   }
 
   function updateQty(sku, delta) {
+    if (oosList.includes(sku) && delta > 0) {
+      triggerToast("⚠️ This item was marked Out of Stock by ASM Deepu B!");
+      return;
+    }
+
     setCart((prev) => {
       const next = { ...prev };
       const qty = (next[sku] || 0) + delta;
@@ -52,6 +92,7 @@ export default function OrderingAppPage() {
 
     const item = CATALOG.find((c) => c.sku === sku);
     if (delta > 0 && item) {
+      playSuccessChime();
       triggerToast(`Added 1x ${item.name} to cart 🛍️`);
     }
   }
@@ -70,400 +111,635 @@ export default function OrderingAppPage() {
     const matchesSearch =
       item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       item.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (item.aisle && item.aisle.toLowerCase().includes(searchQuery.toLowerCase()));
+      item.aisle.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesCategory =
       selectedCategory === "All" || item.category === selectedCategory;
     return matchesSearch && matchesCategory;
   });
 
   async function placeOrder() {
-    if (cartEntries.length === 0) { setError("Your cart is empty."); return; }
-    if (totalPrice > walletBalance) {
-      setError(`Insufficient Wallet balance. Available: ₹${walletBalance.toLocaleString("en-IN")}`);
+    if (cartEntries.length === 0) {
+      setError("Your cart is empty. Add items from the catalog.");
       return;
     }
+
     setError("");
     setPlacingOrder(true);
+
     try {
       const res = await fetch("/api/place-order", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          customerId: customer?.customerId || "cust_demo",
-          customerName: customer?.name || "Deepu B",
-          customerPhone: customer?.phone || "8050475078",
+          customerId: customer?.customerId || "cust_tiptur_demo",
+          customerName: customer?.name || "Ramesh Gowda",
+          customerPhone: customer?.phone || "9845112233",
           cart: cartEntries.map(([sku, qty]) => ({ sku, qty })),
-          location: { address: locationLabel }
+          location: { address: locationLabel },
         }),
       });
+
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Order placement failed");
 
+      // Update wallet balance locally
       const updated = { ...customer, walletBalance: walletBalance - totalPrice };
+      localStorage.setItem("auditx_customer", JSON.stringify(updated));
       localStorage.setItem("blinkit_customer", JSON.stringify(updated));
 
-      const createdOrder = data.order || { id: data.orderId, orderId: data.orderId, orderNumber: data.orderId, totalAmount: totalPrice, status: "pending", customerName: customer?.name || "Deepu B", customerAddress: locationLabel, items: cartEntries.map(([sku, qty]) => ({ skuId: sku, name: SKU_NAME_MAP[sku] || sku, qty, binLocation: "Aisle A-01" })) };
-      localOrders.unshift(createdOrder);
-      localStorage.setItem("auditx_orders", JSON.stringify(localOrders));
+      const createdOrder = data.order || {
+        id: data.orderId,
+        orderId: data.orderId,
+        orderNumber: data.orderId,
+        customerName: customer?.name || "Ramesh Gowda",
+        customerPhone: customer?.phone || "9845112233",
+        customerAddress: locationLabel,
+        totalAmount: totalPrice,
+        status: "pending",
+        stage: "Awaiting OD Picker",
+        assignedRack: "D5",
+        pickerName: "Thrupthi K S",
+        captainName: "Sinchana B R",
+        items: cartEntries.map(([sku, qty]) => {
+          const cat = CATALOG.find((c) => c.sku === sku);
+          return {
+            skuId: sku,
+            name: cat?.name || sku,
+            qty,
+            binLocation: cat?.aisle || "F0 - A1 - 001",
+            price: cat?.price || 50,
+          };
+        }),
+        createdAt: new Date().toISOString(),
+      };
 
+      // Broadcast order across all open browser tabs (OD Picker & Captain terminals)
       broadcastEvent("ORDER_CREATED", createdOrder);
+      playNotificationChime();
 
-      setCart({});
-      router.push(`/track/${data.orderId}`);
+      triggerToast("🎉 Order placed! Dispatched to OD Picker Thrupthi K S at Tiptur HUB KA44!");
+      setTimeout(() => {
+        router.push(`/track/${data.orderId}`);
+      }, 1000);
     } catch (e) {
-      setError(e.message);
-    } finally {
+      setError(e.message || "Failed to place order.");
       setPlacingOrder(false);
     }
   }
 
-  function logout() {
-    localStorage.removeItem("blinkit_customer");
-    router.push("/login");
-  }
-
-  if (loading) {
-    return (
-      <div style={{ minHeight: "100vh", background: "#e23744", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff" }}>
-        <div style={{ textAlign: "center" }}>
-          <div style={{ fontSize: 44, fontWeight: 900, letterSpacing: "-1px" }}>blinkit</div>
-          <div style={{ fontSize: 16, fontWeight: 800, marginTop: 8 }}>14 minutes instant dark store delivery</div>
-          <div style={{ width: 28, height: 28, border: "3px solid #fff", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.8s linear infinite", margin: "20px auto 0" }} />
-        </div>
-      </div>
-    );
-  }
-
-  const isHome = activeTab === "home";
-  const headerClass = isHome ? "figma-header header-red" : "figma-header header-yellow";
-
   return (
-    <div className="app-container">
-      {toastMessage && (
-        <div style={{ position: "fixed", top: 20, left: "50%", transform: "translateX(-50%)", background: "#1e293b", color: "#fff", padding: "10px 20px", borderRadius: 20, fontWeight: 800, fontSize: 13, zIndex: 200 }}>
-          {toastMessage}
+    <div style={S.container}>
+      {toastMessage && <div style={S.toast}>{toastMessage}</div>}
+
+      {/* App Header with Location Fixed to Namma Tiptur KA 44 */}
+      <header style={S.header}>
+        <div style={S.headerTop}>
+          <div style={S.brandTag}>
+            <span style={S.brandName}>AUDIT'X</span>
+            <span style={S.storePill}>Tiptur HUB - KA44</span>
+          </div>
+
+          <div style={S.headerActions}>
+            <button style={S.roleSwitcherBtn} onClick={() => router.push("/login")}>
+              Switch Role / Staff Portal ↗
+            </button>
+          </div>
         </div>
-      )}
 
-      {/* ── HEADER ── */}
-      <header className={headerClass}>
-        <div className="header-content-inner">
-          <div className="header-top-row">
-            <div className="header-title-block" onClick={() => { setActiveTab("home"); setSearchQuery(""); }}>
-              <span className="header-sub-text">Blinkit Dark Store in</span>
-              <span className="header-sla-title">14 minutes</span>
-              <div className="header-location-row">
-                <span>📍 HOME - {locationLabel}</span>
-                <span>▼</span>
+        {/* Live Location Pill (Fixed Namma Tiptur KA 44) */}
+        <div style={S.locationBar} onClick={() => setShowLocationModal(true)}>
+          <div style={S.locationLeft}>
+            <span style={S.gpsIcon}>📍</span>
+            <div>
+              <div style={S.deliveryTimeText}>
+                ⚡ <b>10 MINS</b> Express Delivery Guaranteed
               </div>
-            </div>
-
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <button
-                style={{
-                  background: "#1e293b",
-                  color: "#f8cb46",
-                  border: "1px solid #f8cb46",
-                  borderRadius: 20,
-                  padding: "6px 12px",
-                  fontSize: 12,
-                  fontWeight: 900,
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                }}
-                onClick={() => router.push("/")}
-              >
-                <span>🏬 Multi-App Portal</span>
-              </button>
-
-              <div className="user-profile-circle" onClick={() => setActiveTab(activeTab === "profile" ? "home" : "profile")}>
-                👤
-              </div>
+              <div style={S.locationAddress}>{locationLabel}</div>
             </div>
           </div>
-
-          <div className="header-search-bar">
-            <span style={{ fontSize: 16, color: "#64748b" }}>🔍</span>
-            <input
-              className="search-input-field"
-              placeholder='Search "tomatoes", "milk", "ice cream", "chips", "rakhi"...'
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-            {searchQuery ? (
-              <button style={{ border: "none", background: "none", cursor: "pointer", fontWeight: 800 }} onClick={() => setSearchQuery("")}>✕</button>
-            ) : (
-              <div className="search-mic-divider">
-                <span>|</span>
-                <span>🎙️</span>
-              </div>
-            )}
-          </div>
+          <span style={S.locationChangeTag}>Live GPS Verified ✓</span>
         </div>
       </header>
 
-      {/* ── SEARCH OVERLAY DRILL-DOWN ── */}
-      {searchQuery.length > 0 && (
-        <main className="section-wrapper" style={{ marginTop: 20 }}>
-          <div style={{ fontSize: 18, fontWeight: 900, marginBottom: 16 }}>
-            Showing results for "{searchQuery}" ({filteredCatalog.length} items)
-          </div>
-          <div className="product-cards-grid">
-            {filteredCatalog.map((item) => {
-              const qty = cart[item.sku] || 0;
-              return (
-                <div key={item.sku} className="figma-product-card">
-                  <div className="product-img-wrap" onClick={() => setSelectedProduct(item)}>
-                    <img src={item.image} alt={item.name} className="product-img-file" />
+      {/* Search Bar */}
+      <div style={S.searchWrap}>
+        <input
+          type="text"
+          placeholder="Search Tiptur Copra, Nandini Milk, Mysore Sandal, snacks..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          style={S.searchInput}
+        />
+      </div>
+
+      {/* Category Pills */}
+      <div style={S.categoryScroller}>
+        {categories.map((cat) => {
+          const active = selectedCategory === cat;
+          return (
+            <button
+              key={cat}
+              style={{ ...S.categoryPill, ...(active ? S.categoryPillActive : {}) }}
+              onClick={() => setSelectedCategory(cat)}
+            >
+              {cat}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Main Catalog Grid */}
+      <main style={S.main}>
+        <div style={S.sectionHeader}>
+          <h2 style={S.sectionTitle}>
+            {selectedCategory === "All" ? "Fresh from Namma Tiptur Hub" : selectedCategory}
+          </h2>
+          <span style={S.itemCount}>{filteredCatalog.length} products</span>
+        </div>
+
+        <div style={S.catalogGrid}>
+          {filteredCatalog.map((item) => {
+            const qty = cart[item.sku] || 0;
+            const isOos = oosList.includes(item.sku);
+
+            return (
+              <div
+                key={item.sku}
+                style={{
+                  ...S.productCard,
+                  opacity: isOos ? 0.65 : 1,
+                  filter: isOos ? "grayscale(40%)" : "none",
+                }}
+              >
+                {/* Product Image */}
+                <div style={S.imageBox}>
+                  <img src={item.image} alt={item.name} style={S.productImg} />
+                  <span style={S.timeTag}>⏱️ 10 mins</span>
+                  {isOos && <span style={S.oosBadge}>OUT OF STOCK (ASM MARKED)</span>}
+                </div>
+
+                {/* Product Details */}
+                <div style={S.productInfo}>
+                  <div style={S.aisleLocation}>
+                    📍 Aisle: <b>{item.aisle}</b>
                   </div>
-                  <div className="product-sla-tag">⚡ 14 MINS</div>
-                  <div className="product-name-title" onClick={() => setSelectedProduct(item)}>{item.name}</div>
-                  <div className="product-price-row">
-                    <span className="product-price-bold">₹ {item.price}</span>
-                    {qty === 0 ? (
-                      <button className="product-add-badge" onClick={() => updateQty(item.sku, 1)}>ADD</button>
+                  <h3 style={S.productTitle}>{item.name}</h3>
+                  <div style={S.weightText}>{item.weight}</div>
+
+                  <div style={S.priceRow}>
+                    <div>
+                      <span style={S.price}>₹{item.price}</span>
+                      {item.mrp > item.price && (
+                        <span style={S.mrp}>₹{item.mrp}</span>
+                      )}
+                    </div>
+
+                    {/* Add / Qty Controls */}
+                    {isOos ? (
+                      <button style={S.disabledBtn} disabled>
+                        Unavailable
+                      </button>
+                    ) : qty === 0 ? (
+                      <button style={S.addBtn} onClick={() => updateQty(item.sku, 1)}>
+                        ADD
+                      </button>
                     ) : (
-                      <button className="product-add-badge" style={{ background: "#0c831f", color: "#fff" }} onClick={() => updateQty(item.sku, 1)}>{qty} in Cart</button>
+                      <div style={S.qtyStepper}>
+                        <button style={S.stepBtn} onClick={() => updateQty(item.sku, -1)}>−</button>
+                        <span style={S.qtyText}>{qty}</span>
+                        <button style={S.stepBtn} onClick={() => updateQty(item.sku, 1)}>+</button>
+                      </div>
                     )}
                   </div>
                 </div>
-              );
-            })}
-          </div>
-        </main>
-      )}
-
-      {/* ── HOME TAB SCREEN ── */}
-      {searchQuery.length === 0 && activeTab === "home" && (
-        <main>
-          {/* Hero Banner */}
-          <section className="hero-diwali-banner">
-            <div className="hero-diwali-inner">
-              <div className="hero-diwali-title">
-                <span>✨ Dark Store Flash Sale ✨</span>
               </div>
+            );
+          })}
+        </div>
+      </main>
 
-              <div className="hero-cards-row no-scrollbar">
-                <div className="hero-card-item" style={{ background: "#fce4ec" }} onClick={() => setSelectedCategory("Vegetables & Fruits")}>
-                  <div className="hero-card-text">Fresh Veggies & Fruits</div>
-                  <img src="https://images.unsplash.com/photo-1592924357228-91a4daadcfea?auto=format&fit=crop&w=300&q=80" alt="Veggies" className="hero-card-img" />
-                </div>
-
-                <div className="hero-card-item" style={{ background: "#f3e5f5" }} onClick={() => setSelectedCategory("Dairy & Breakfast")}>
-                  <div className="hero-card-text">Dairy, Bread & Eggs</div>
-                  <img src="https://images.unsplash.com/photo-1563636619-e9143da7973b?auto=format&fit=crop&w=300&q=80" alt="Dairy" className="hero-card-img" />
-                </div>
-
-                <div className="hero-card-item" style={{ background: "#eceff1" }} onClick={() => setSelectedCategory("Ice Creams & Frozen")}>
-                  <div className="hero-card-text">Ice Creams & Frozen</div>
-                  <img src="https://images.unsplash.com/photo-1570197788417-0e82375c9371?auto=format&fit=crop&w=300&q=80" alt="Ice Cream" className="hero-card-img" />
-                </div>
-
-                <div className="hero-card-item" style={{ background: "#fffde7" }} onClick={() => setSelectedCategory("Festive & Gifts")}>
-                  <div className="hero-card-text">Festive Sweets & Gifts</div>
-                  <img src="https://images.unsplash.com/photo-1549465220-1a8b9238cd48?auto=format&fit=crop&w=300&q=80" alt="Gifts" className="hero-card-img" />
-                </div>
-              </div>
-            </div>
-          </section>
-
-          {/* Quick Category Filter Pills */}
-          <section className="section-wrapper" style={{ marginBottom: 16 }}>
-            <div style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 8 }} className="no-scrollbar">
-              {categories.map((cat) => (
-                <button
-                  key={cat}
-                  style={{
-                    background: selectedCategory === cat ? "#0c831f" : "#f1f5f9",
-                    color: selectedCategory === cat ? "#fff" : "#0f172a",
-                    border: "none",
-                    padding: "8px 16px",
-                    borderRadius: 20,
-                    fontWeight: 800,
-                    fontSize: 13,
-                    cursor: "pointer",
-                    whiteSpace: "nowrap",
-                  }}
-                  onClick={() => setSelectedCategory(cat)}
-                >
-                  {cat}
-                </button>
-              ))}
-            </div>
-          </section>
-
-          {/* Catalog Grid */}
-          <section className="section-wrapper">
-            <div className="section-title">Trending Items in Dark Store</div>
-            <div className="product-cards-grid">
-              {filteredCatalog.map((item) => {
-                const qty = cart[item.sku] || 0;
-                return (
-                  <div key={item.sku} className="figma-product-card">
-                    <div className="product-img-wrap" onClick={() => setSelectedProduct(item)}>
-                      <img src={item.image} alt={item.name} className="product-img-file" />
-                    </div>
-                    <div className="product-sla-tag">⚡ 14 MINS</div>
-                    <div className="product-name-title" onClick={() => setSelectedProduct(item)}>{item.name}</div>
-                    <div className="product-price-row">
-                      <div>
-                        <span className="product-price-bold">₹{item.price}</span>
-                        {item.mrp > item.price && (
-                          <span style={{ fontSize: 11, textDecoration: "line-through", color: "#94a3b8", marginLeft: 4 }}>₹{item.mrp}</span>
-                        )}
-                      </div>
-                      {qty === 0 ? (
-                        <button className="product-add-badge" onClick={() => updateQty(item.sku, 1)}>ADD</button>
-                      ) : (
-                        <div style={{ display: "flex", alignItems: "center", background: "#0c831f", color: "#fff", borderRadius: 8, padding: "2px 6px", fontWeight: 900, fontSize: 12 }}>
-                          <button style={{ background: "none", border: "none", color: "#fff", cursor: "pointer", fontSize: 14 }} onClick={() => updateQty(item.sku, -1)}>−</button>
-                          <span style={{ margin: "0 6px" }}>{qty}</span>
-                          <button style={{ background: "none", border: "none", color: "#fff", cursor: "pointer", fontSize: 14 }} onClick={() => updateQty(item.sku, 1)}>+</button>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </section>
-        </main>
-      )}
-
-      {/* ── CATEGORIES TAB SCREEN ── */}
-      {searchQuery.length === 0 && activeTab === "categories" && (
-        <main className="section-wrapper" style={{ marginTop: 24 }}>
-          {categories.filter((c) => c !== "All").map((cat) => (
-            <section key={cat} style={{ marginBottom: 28 }}>
-              <div className="section-title">{cat}</div>
-              <div className="product-cards-grid">
-                {CATALOG.filter((item) => item.category === cat).map((item) => {
-                  const qty = cart[item.sku] || 0;
-                  return (
-                    <div key={item.sku} className="figma-product-card">
-                      <div className="product-img-wrap" onClick={() => setSelectedProduct(item)}>
-                        <img src={item.image} alt={item.name} className="product-img-file" />
-                      </div>
-                      <div className="product-name-title">{item.name}</div>
-                      <div className="product-price-row">
-                        <span className="product-price-bold">₹{item.price}</span>
-                        <button className="product-add-badge" onClick={() => updateQty(item.sku, 1)}>
-                          {qty > 0 ? `${qty} in Cart` : "ADD"}
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </section>
-          ))}
-        </main>
-      )}
-
-      {/* ── CART TAB SCREEN ── */}
-      {searchQuery.length === 0 && activeTab === "cart" && (
-        <main className="section-wrapper" style={{ marginTop: 24 }}>
-          {cartEntries.length === 0 ? (
-            <div style={{ textAlign: "center", padding: "40px 0" }}>
-              <div style={{ fontSize: 50, marginBottom: 10 }}>🛍️</div>
-              <div style={{ fontSize: 22, fontWeight: 900, color: "#0f172a" }}>Your Cart is Empty</div>
-              <div style={{ fontSize: 13, color: "#64748b", marginTop: 4 }}>
-                Add fresh groceries and items from dark store to place an instant order!
-              </div>
-              <button
-                style={{ marginTop: 20, background: "#0c831f", color: "#fff", border: "none", padding: "12px 24px", borderRadius: 12, fontWeight: 800, fontSize: 14, cursor: "pointer" }}
-                onClick={() => setActiveTab("home")}
-              >
-                Browse Dark Store Items
-              </button>
-            </div>
-          ) : (
-            <div style={{ maxWidth: 600, margin: "0 auto", background: "#ffffff", padding: 24, borderRadius: 20, border: "1px solid #e2e8f0", boxShadow: "0 4px 16px rgba(0,0,0,0.05)" }}>
-              <div style={{ fontSize: 20, fontWeight: 900, marginBottom: 16 }}>My Cart ({totalItems} items)</div>
-              {cartEntries.map(([sku, qty]) => {
-                const item = CATALOG.find((c) => c.sku === sku) || { name: sku, price: 50 };
-                return (
-                  <div key={sku} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 0", borderBottom: "1px solid #f1f5f9" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                      {item.image && <img src={item.image} alt={item.name} style={{ width: 40, height: 40, borderRadius: 8, objectFit: "cover" }} />}
-                      <div>
-                        <div style={{ fontSize: 14, fontWeight: 800 }}>{item.name}</div>
-                        <div style={{ fontSize: 13, color: "#0c831f", fontWeight: 700 }}>₹{item.price * qty}</div>
-                      </div>
-                    </div>
-                    <div style={{ display: "flex", alignItems: "center", background: "#0c831f", borderRadius: 8, padding: "2px 8px", color: "#fff", fontWeight: 900 }}>
-                      <button style={{ background: "none", border: "none", color: "#fff", fontSize: 16, cursor: "pointer" }} onClick={() => updateQty(sku, -1)}>−</button>
-                      <span style={{ margin: "0 8px" }}>{qty}</span>
-                      <button style={{ background: "none", border: "none", color: "#fff", fontSize: 16, cursor: "pointer" }} onClick={() => updateQty(sku, 1)}>+</button>
-                    </div>
-                  </div>
-                );
-              })}
-
-              <div style={{ background: "#f8fafc", padding: 16, borderRadius: 12, margin: "20px 0" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 900, fontSize: 16 }}>
-                  <span>Total Bill</span>
-                  <span style={{ color: "#0c831f" }}>₹{totalPrice}</span>
-                </div>
-                <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>⚡ Free 14-min Dark Store Express Delivery</div>
-              </div>
-
-              {error && <div style={{ color: "#dc2626", fontWeight: 700, margin: "10px 0" }}>{error}</div>}
-
-              <button
-                style={{ width: "100%", padding: 16, background: "#0c831f", color: "#fff", border: "none", borderRadius: 14, fontWeight: 900, fontSize: 16, cursor: "pointer" }}
-                onClick={placeOrder}
-                disabled={placingOrder}
-              >
-                {placingOrder ? "Placing Order..." : `Pay ₹${totalPrice} & Track Order Live →`}
-              </button>
-            </div>
-          )}
-        </main>
-      )}
-
-      {/* ── PROFILE ACCOUNT TAB ── */}
-      {activeTab === "profile" && (
-        <main className="section-wrapper" style={{ marginTop: 24, maxWidth: 600 }}>
-          <div style={{ background: "#ffffff", padding: 20, borderRadius: 18, border: "1px solid #e2e8f0", display: "flex", alignItems: "center", gap: 16, marginBottom: 16 }}>
-            <div style={{ fontSize: 36 }}>👤</div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 20, fontWeight: 900 }}>{customer?.name || "Deepu B"}</div>
-              <div style={{ fontSize: 13, color: "#64748b" }}>+91 {customer?.phone || "8050475078"}</div>
-            </div>
-            <button style={{ background: "#fee2e2", border: "none", color: "#dc2626", padding: "8px 16px", borderRadius: 8, fontWeight: 800, cursor: "pointer" }} onClick={logout}>Log Out</button>
+      {/* Floating Cart Bar */}
+      {totalItems > 0 && (
+        <div style={S.floatingCartBar}>
+          <div style={S.cartLeft}>
+            <span style={S.cartCount}>{totalItems} Items</span>
+            <span style={S.cartPrice}>₹{totalPrice}</span>
           </div>
 
-          <div style={{ background: "linear-gradient(135deg, #0c831f, #15803d)", padding: 24, borderRadius: 18, color: "#fff" }}>
-            <div style={{ fontSize: 14, fontWeight: 700, opacity: 0.9 }}>💚 Blinkit Wallet Balance</div>
-            <div style={{ fontSize: 32, fontWeight: 900, marginTop: 4 }}>₹{walletBalance.toLocaleString("en-IN")}</div>
-          </div>
-        </main>
+          <button style={S.checkoutBtn} onClick={placeOrder} disabled={placingOrder}>
+            {placingOrder ? "Placing Order..." : "Proceed to 10-Min Delivery →"}
+          </button>
+        </div>
       )}
 
-      {/* ── BOTTOM NAVIGATION ── */}
-      <nav className="figma-bottom-nav">
-        <button className={`figma-nav-btn ${activeTab === "home" ? "active" : ""}`} onClick={() => { setActiveTab("home"); setSearchQuery(""); }}>
-          <span className="figma-nav-icon">🏠</span>
-          <span className="figma-nav-label">Home</span>
-          {activeTab === "home" && <div className="figma-active-indicator" />}
-        </button>
-
-        <button className={`figma-nav-btn ${activeTab === "cart" ? "active" : ""}`} onClick={() => { setActiveTab("cart"); setSearchQuery(""); }}>
-          <span className="figma-nav-icon">🛍️</span>
-          <span className="figma-nav-label">Cart</span>
-          {totalItems > 0 && <span className="cart-nav-badge">{totalItems}</span>}
-          {activeTab === "cart" && <div className="figma-active-indicator" />}
-        </button>
-
-        <button className={`figma-nav-btn ${activeTab === "categories" ? "active" : ""}`} onClick={() => { setActiveTab("categories"); setSearchQuery(""); }}>
-          <span className="figma-nav-icon">🔲</span>
-          <span className="figma-nav-label">Categories</span>
-          {activeTab === "categories" && <div className="figma-active-indicator" />}
-        </button>
-      </nav>
+      {/* Location Modal */}
+      {showLocationModal && (
+        <div style={S.modalOverlay} onClick={() => setShowLocationModal(false)}>
+          <div style={S.modalBox} onClick={(e) => e.stopPropagation()}>
+            <h3 style={S.modalTitle}>📍 Fixed Delivery Hub: Namma Tiptur KA 44</h3>
+            <p style={S.modalSub}>
+              This academic operations platform is permanently synchronized with <b>Tiptur HUB - KA44</b> (Tumkur District, Karnataka - 572201).
+            </p>
+            <div style={S.tipturLandmarks}>
+              <div style={S.landmarkRow}>🏢 Base: APMC Tiptur Coconut Market Hub</div>
+              <div style={S.landmarkRow}>🎓 Radius: Kalpataru College of Science & Arts</div>
+              <div style={S.landmarkRow}>🚉 Transit: Tiptur Railway Station & B.H. Road</div>
+            </div>
+            <button style={S.closeModalBtn} onClick={() => setShowLocationModal(false)}>
+              Got it, Continue Shopping
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+
+const S = {
+  container: {
+    minHeight: "100vh",
+    background: "#080c14",
+    color: "#f8fafc",
+    fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+    paddingBottom: 90,
+  },
+  toast: {
+    position: "fixed",
+    top: 16,
+    left: "50%",
+    transform: "translateX(-50%)",
+    background: "#10b981",
+    color: "#ffffff",
+    padding: "10px 20px",
+    borderRadius: 8,
+    fontWeight: 600,
+    zIndex: 9999,
+    boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
+    fontSize: 14,
+  },
+  header: {
+    background: "#0f172a",
+    borderBottom: "1px solid #1e293b",
+    padding: "14px 20px",
+    position: "sticky",
+    top: 0,
+    zIndex: 40,
+  },
+  headerTop: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 10,
+  },
+  brandTag: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+  },
+  brandName: {
+    fontSize: 22,
+    fontWeight: 900,
+    color: "#10b981",
+    letterSpacing: 1.5,
+  },
+  storePill: {
+    fontSize: 11,
+    fontWeight: 800,
+    background: "#1e293b",
+    color: "#f59e0b",
+    padding: "2px 8px",
+    borderRadius: 4,
+    border: "1px solid #f59e0b",
+  },
+  headerActions: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+  },
+  roleSwitcherBtn: {
+    background: "#1e293b",
+    border: "1px solid #334155",
+    color: "#38bdf8",
+    padding: "6px 12px",
+    borderRadius: 6,
+    fontSize: 11,
+    fontWeight: 700,
+    cursor: "pointer",
+  },
+  locationBar: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    background: "#1e293b",
+    padding: "8px 12px",
+    borderRadius: 10,
+    cursor: "pointer",
+    border: "1px solid #334155",
+  },
+  locationLeft: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+  },
+  gpsIcon: {
+    fontSize: 20,
+    color: "#10b981",
+  },
+  deliveryTimeText: {
+    fontSize: 12,
+    color: "#10b981",
+  },
+  locationAddress: {
+    fontSize: 12,
+    color: "#e2e8f0",
+    fontWeight: 600,
+  },
+  locationChangeTag: {
+    fontSize: 11,
+    color: "#10b981",
+    fontWeight: 700,
+  },
+  searchWrap: {
+    padding: "12px 20px",
+    background: "#080c14",
+  },
+  searchInput: {
+    width: "100%",
+    background: "#0f172a",
+    border: "1px solid #1e293b",
+    color: "#ffffff",
+    padding: "12px 16px",
+    borderRadius: 10,
+    fontSize: 14,
+    boxSizing: "border-box",
+  },
+  categoryScroller: {
+    display: "flex",
+    gap: 8,
+    padding: "4px 20px 12px",
+    overflowX: "auto",
+  },
+  categoryPill: {
+    background: "#0f172a",
+    border: "1px solid #1e293b",
+    color: "#94a3b8",
+    padding: "8px 14px",
+    borderRadius: 20,
+    fontSize: 12,
+    fontWeight: 700,
+    cursor: "pointer",
+    whiteSpace: "nowrap",
+  },
+  categoryPillActive: {
+    background: "#10b981",
+    color: "#ffffff",
+    border: "1px solid #10b981",
+  },
+  main: {
+    maxWidth: 1200,
+    margin: "0 auto",
+    padding: "10px 20px",
+  },
+  sectionHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 14,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: 800,
+    color: "#ffffff",
+    margin: 0,
+  },
+  itemCount: {
+    fontSize: 12,
+    color: "#94a3b8",
+  },
+  catalogGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
+    gap: 16,
+  },
+  productCard: {
+    background: "#0f172a",
+    borderRadius: 12,
+    border: "1px solid #1e293b",
+    overflow: "hidden",
+    display: "flex",
+    flexDirection: "column",
+    justifyContent: "space-between",
+  },
+  imageBox: {
+    position: "relative",
+    width: "100%",
+    height: 150,
+    background: "#1e293b",
+  },
+  productImg: {
+    width: "100%",
+    height: "100%",
+    objectFit: "cover",
+  },
+  timeTag: {
+    position: "absolute",
+    bottom: 6,
+    left: 6,
+    background: "rgba(15, 23, 42, 0.85)",
+    color: "#38bdf8",
+    fontSize: 10,
+    fontWeight: 800,
+    padding: "2px 6px",
+    borderRadius: 4,
+  },
+  oosBadge: {
+    position: "absolute",
+    top: 6,
+    left: 6,
+    right: 6,
+    background: "rgba(239, 68, 68, 0.9)",
+    color: "#ffffff",
+    fontSize: 10,
+    fontWeight: 800,
+    padding: "4px",
+    borderRadius: 4,
+    textAlign: "center",
+  },
+  productInfo: {
+    padding: "12px",
+    display: "flex",
+    flexDirection: "column",
+    flex: 1,
+    justifyContent: "space-between",
+  },
+  aisleLocation: {
+    fontSize: 11,
+    color: "#f59e0b",
+    fontWeight: 700,
+    marginBottom: 4,
+  },
+  productTitle: {
+    fontSize: 14,
+    fontWeight: 700,
+    color: "#ffffff",
+    margin: "0 0 4px",
+    lineHeight: 1.3,
+  },
+  weightText: {
+    fontSize: 12,
+    color: "#94a3b8",
+    marginBottom: 10,
+  },
+  priceRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: "auto",
+  },
+  price: {
+    fontSize: 15,
+    fontWeight: 800,
+    color: "#10b981",
+  },
+  mrp: {
+    fontSize: 12,
+    color: "#64748b",
+    textDecoration: "line-through",
+    marginLeft: 6,
+  },
+  addBtn: {
+    background: "#0c831f",
+    border: "none",
+    color: "#ffffff",
+    padding: "6px 18px",
+    borderRadius: 6,
+    fontWeight: 800,
+    fontSize: 12,
+    cursor: "pointer",
+  },
+  disabledBtn: {
+    background: "#334155",
+    border: "none",
+    color: "#94a3b8",
+    padding: "6px 12px",
+    borderRadius: 6,
+    fontWeight: 700,
+    fontSize: 11,
+    cursor: "not-allowed",
+  },
+  qtyStepper: {
+    display: "flex",
+    alignItems: "center",
+    background: "#0c831f",
+    borderRadius: 6,
+    overflow: "hidden",
+  },
+  stepBtn: {
+    background: "transparent",
+    border: "none",
+    color: "#fff",
+    padding: "4px 8px",
+    fontSize: 14,
+    fontWeight: 800,
+    cursor: "pointer",
+  },
+  qtyText: {
+    padding: "0 6px",
+    fontSize: 13,
+    fontWeight: 800,
+    color: "#fff",
+  },
+  floatingCartBar: {
+    position: "fixed",
+    bottom: 16,
+    left: "50%",
+    transform: "translateX(-50%)",
+    width: "calc(100% - 32px)",
+    maxWidth: 500,
+    background: "#0c831f",
+    borderRadius: 12,
+    padding: "12px 16px",
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    boxShadow: "0 8px 24px rgba(12, 131, 31, 0.4)",
+    zIndex: 90,
+  },
+  cartLeft: {
+    display: "flex",
+    flexDirection: "column",
+  },
+  cartCount: {
+    fontSize: 12,
+    color: "#dcfce7",
+    fontWeight: 600,
+  },
+  cartPrice: {
+    fontSize: 18,
+    fontWeight: 900,
+    color: "#ffffff",
+  },
+  checkoutBtn: {
+    background: "#ffffff",
+    border: "none",
+    color: "#0c831f",
+    padding: "10px 18px",
+    borderRadius: 8,
+    fontWeight: 800,
+    fontSize: 13,
+    cursor: "pointer",
+  },
+  modalOverlay: {
+    position: "fixed",
+    inset: 0,
+    background: "rgba(0,0,0,0.75)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 20,
+    zIndex: 100,
+  },
+  modalBox: {
+    background: "#0f172a",
+    borderRadius: 16,
+    padding: 24,
+    maxWidth: 420,
+    width: "100%",
+    border: "1px solid #1e293b",
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: 800,
+    color: "#ffffff",
+    marginBottom: 8,
+  },
+  modalSub: {
+    fontSize: 13,
+    color: "#94a3b8",
+    lineHeight: 1.5,
+    marginBottom: 16,
+  },
+  tipturLandmarks: {
+    background: "#1e293b",
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 16,
+    display: "flex",
+    flexDirection: "column",
+    gap: 8,
+    fontSize: 12,
+    color: "#cbd5e1",
+  },
+  landmarkRow: {},
+  closeModalBtn: {
+    width: "100%",
+    background: "#10b981",
+    border: "none",
+    color: "#ffffff",
+    padding: "12px",
+    borderRadius: 8,
+    fontWeight: 800,
+    fontSize: 13,
+    cursor: "pointer",
+  },
+};

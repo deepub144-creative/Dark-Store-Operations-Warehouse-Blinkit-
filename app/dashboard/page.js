@@ -82,7 +82,7 @@ export default function WarehouseDashboardPage() {
   useEffect(() => {
     const raw = localStorage.getItem("auditx_staff");
     if (!raw) {
-      const defaultSM = STAFF.find((s) => s.id === "bhasker");
+      const defaultSM = STAFF.find((s) => s.id === "bhaskar") || STAFF[0];
       localStorage.setItem("auditx_staff", JSON.stringify(defaultSM));
       setStaff(defaultSM);
     } else {
@@ -263,14 +263,14 @@ export default function WarehouseDashboardPage() {
       <header style={S.header}>
         <div style={S.brandCol}>
           <div style={S.logoRow}>
-            <span style={S.brandText}>blinkit</span>
-            <span style={S.storeBadge}>BLINKIT-DS-BLR-04</span>
+            <span style={S.brandText}>AUDIT'X</span>
+            <span style={S.storeBadge}>TIPTUR-HUB-KA44</span>
             <span style={{ ...S.pauseBadge, background: isStorePaused ? "#ef4444" : "#10b981" }}>
               {isStorePaused ? "🛑 STORE PAUSED" : "🟢 STORE OPEN"}
             </span>
           </div>
           <div style={S.subText}>
-            Dark Store Operations Command Tower • Muniswamappa Layout, Bengaluru
+            Dark Store Operations Command Tower • Tiptur HUB - KA44, Tumkur District - 572201
           </div>
         </div>
 

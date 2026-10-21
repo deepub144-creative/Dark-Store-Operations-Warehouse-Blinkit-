@@ -1,13 +1,17 @@
 import "./globals.css";
 
 export const metadata = {
-  title: "blinkit — Everything delivered in 14 minutes",
-  description: "India's Last Minute App - Quick Commerce Grocery & Dark Store Ordering",
+  title: "AUDIT'X — Dark Store Operations & Warehouse Management (Tiptur HUB - KA44)",
+  description: "AUDIT'X Quick-Commerce & Dark Store Warehouse Ecosystem for Tiptur HUB KA44 (Tumkur District, Karnataka - 572201). 10-Minute Express Delivery Model.",
 };
 
 export default function RootLayout({ children }) {
   return (
     <html lang="en">
+      <head>
+        <meta name="theme-color" content="#080c14" />
+        <link rel="icon" href="/favicon.ico" />
+      </head>
       <body>{children}</body>
     </html>
   );

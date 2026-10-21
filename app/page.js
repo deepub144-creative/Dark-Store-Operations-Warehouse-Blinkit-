@@ -4,6 +4,9 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { collection, onSnapshot, query, limit, orderBy, doc, setDoc } from "firebase/firestore";
 import { db } from "@/lib/firebaseClient";
+import { broadcastEvent } from "@/lib/realtimeSync";
+import { playNotificationChime, playSuccessChime } from "@/lib/soundSystem";
+import { getRandomStagingRack } from "@/lib/roles";
 
 export default function MultiAppHubLauncher() {
   const router = useRouter();
@@ -22,48 +25,53 @@ export default function MultiAppHubLauncher() {
         if (docs.length > 0) setActiveOrdersCount(docs.length);
       }, () => {});
       return () => unsub();
-    } catch (e) {
-      console.warn("Firestore snapshot listener:", e);
-    }
+    } catch (e) { console.warn(e); }
   }, []);
 
   function triggerToast(msg) {
     setToast(msg);
-    setTimeout(() => setToast(""), 3000);
+    setTimeout(() => setToast(""), 3500);
   }
 
   async function createQuickDemoOrder() {
     setCreatingDemo(true);
-    const demoId = `ORD-${Math.floor(100000 + Math.random() * 900000)}`;
+    const demoId = `ORD-KA44-${Math.floor(100000 + Math.random() * 900000)}`;
+    const rack = getRandomStagingRack();
+
     const demoOrder = {
+      id: demoId,
       orderId: demoId,
-      customerId: "cust_demo_hub",
-      customerName: "Sujal Dave (Demo)",
-      customerPhone: "9876543210",
-      customerAddress: "Muniswamappa Layout, Bengaluru",
+      orderNumber: demoId,
+      customerId: "cust_tiptur_demo",
+      customerName: "Ramesh Gowda (Namma Tiptur)",
+      customerPhone: "9845112233",
+      customerAddress: "Near Kalpataru College Road, Namma Tiptur - 572201",
       status: "pending",
-      stage: "Picking",
-      totalAmount: 185,
+      stage: "Awaiting OD Picker",
+      assignedRack: rack.id,
+      rackQr: rack.qr,
+      pickerName: "Thrupthi K S",
+      captainName: "Sinchana B R",
+      captainPhone: "8088553237",
+      totalAmount: 425,
       items: [
-        { skuId: "TOMATO001", name: "Fresh Local Tomatoes (500g)", qty: 2, mrp: 30, price: 25, binLocation: "Aisle A01-02" },
-        { skuId: "MILK008", name: "Amul Taaza Toned Milk (1L)", qty: 1, mrp: 68, price: 68, binLocation: "Aisle A01-01" },
-        { skuId: "CHIPS015", name: "Lays India's Magic Masala", qty: 2, mrp: 20, price: 20, binLocation: "Aisle B02-04" },
+        { skuId: "SKU-TIP-01", name: "Tiptur Special Copra (Grade-A Dry Coconut)", qty: 1, mrp: 220, price: 185, binLocation: "F0 - A1 - 001" },
+        { skuId: "SKU-TIP-04", name: "Nandini Pasteurized Toned Milk 500ml", qty: 2, mrp: 27, price: 27, binLocation: "A1 - B1 - 001" },
+        { skuId: "SKU-TIP-07", name: "Mysore Sandal Soap Classic Trio (3x150g)", qty: 1, mrp: 240, price: 215, binLocation: "C2 - D1 - 005" },
       ],
       createdAt: new Date().toISOString(),
+      qrCode: `AUDITX-ORD-${demoId}-CUSTOMER-QR`,
     };
 
     try {
-      if (db) {
-        await setDoc(doc(db, "orders", demoId), demoOrder);
-      }
-    } catch (e) {
-      console.warn("Firestore demo order create:", e);
-    }
+      if (db) await setDoc(doc(db, "orders", demoId), demoOrder);
+    } catch (e) { console.warn(e); }
 
-    triggerToast(`🎉 Live Order #${demoId} Placed! Alarm dispatched to OD PickerTerminal & Rider Captain App!`);
-    setTimeout(() => {
-      router.push(`/track/${demoId}`);
-    }, 1200);
+    broadcastEvent("ORDER_CREATED", demoOrder);
+    playNotificationChime();
+
+    triggerToast(`🎉 Live Demo Order #${demoId} Placed in Namma Tiptur! Assigned to OD Picker Thrupthi K S & Rack ${rack.id}!`);
+    setTimeout(() => router.push(`/track/${demoId}`), 1200);
     setCreatingDemo(false);
   }
 
@@ -72,75 +80,137 @@ export default function MultiAppHubLauncher() {
       id: "ordering",
       num: "01",
       title: "Customer Ordering App",
-      badge: "LIVE REFERENCE TRACKING",
+      badge: "NAMMA TIPTUR KA 44",
       route: "/ordering",
       icon: "🛒",
-      color: "#e23744",
-      bgGradient: "linear-gradient(135deg, #e23744, #be123c)",
-      description: "Quick-commerce storefront for customers to browse 25+ products, manage cart, place instant orders, and track live delivery status.",
+      color: "#10b981",
+      bgGradient: "linear-gradient(135deg, #065f46, #047857)",
+      description: "Customer storefront for Namma Tiptur (572201) to order APMC Copra, Pure Coconut Oil, Nandini Milk, and fresh groceries under a guaranteed 10-minute SLA.",
       features: [
-        "14-Minute Express Delivery Guarantee",
-        "Category Filters & Search",
-        "Blinkit Wallet & One-Click Checkout",
-        "Live Reference Tracking Page (/track/[orderId])"
+        "10-Minute Express Delivery Guarantee (2m Pick + 8m Delivery)",
+        "Fixed GPS: Namma Tiptur KA 44 (Tumkur District - 572201)",
+        "Live Out-of-Stock Sync from ASM Deepu B",
+        "Live Driver Tracking (/track/[orderId])"
       ],
+      ownerName: "Customer Ordering",
+      ownerTitle: "Namma Tiptur Portal",
+      ownerEmoji: "🛍️",
       actionText: "Launch Customer Ordering App →",
     },
     {
-      id: "warehouse",
-      num: "02",
-      title: "Warehouse Operations Dashboard App",
-      badge: "DARK STORE CONTROL TOWER",
-      route: "/warehouse",
-      icon: "🏭",
-      color: "#f59e0b",
-      bgGradient: "linear-gradient(135deg, #0f172a, #1e293b)",
-      border: "#f59e0b",
-      description: "Central command dashboard for Dark Store Managers (SM, ASM, MD) to monitor real-time SLA metrics, store heatmap, and order fulfillment stream.",
-      features: [
-        "Real-Time Store Control Tower Metrics",
-        "Live Order Dispatch & Picking Monitor",
-        "Aisle Heatmap & Stock Replenishment Alerts",
-        "Staff Duty Roster Management"
-      ],
-      actionText: "Launch Warehouse Operations Dashboard →",
-    },
-    {
       id: "picker",
-      num: "03",
-      title: "OD Picker App",
-      badge: "ORDER DISPATCH & PICKING",
+      num: "02",
+      title: "OD Picker Terminal",
+      badge: "THRUPTHI K S — PICKER LEAD",
       route: "/picker",
       icon: "📦",
-      color: "#10b981",
-      bgGradient: "linear-gradient(135deg, #065f46, #047857)",
-      description: "Dedicated mobile interface for In-Store Pickers (Thrupthi K S / Sinchana J P) to process incoming orders under a 3-minute SLA timer.",
+      color: "#f59e0b",
+      bgGradient: "linear-gradient(135deg, #b45309, #d97706)",
+      border: "#f59e0b",
+      description: "Inside warehouse terminal for Thrupthi K S to pick items under a strict 2-minute stopwatch SLA, with explicit Aisle Locations (e.g. F0 - A1 - 001) and QR bypass.",
       features: [
-        "Live Order Arrival Audio Alarm 🔔",
-        "Shelf-Sorted Picking Route (Aisle & Bin)",
-        "Barcode Scanning & Tap-to-Pick Validation",
-        "Bag Sealing QR Generator & Stage to Dispatch"
+        "Strict 2:00 Minute SLA Stopwatch & Countdown Clock ⏱️",
+        "Aisle Navigation Display (e.g. F0 - A1 - 001, A1 - B1 - 001)",
+        "Item Barcode Scanner & QR Code Handover Bypass",
+        "Staging Handover to 4 Racks (D5, T2, B4, R1)"
       ],
+      ownerName: "Thrupthi K S",
+      ownerTitle: "OD Picker Lead (Inside Warehouse)",
+      ownerEmoji: "📦",
       actionText: "Launch OD Picker Terminal →",
     },
     {
       id: "rider",
-      num: "04",
-      title: "Delivery Rider App",
-      badge: "CAPTAIN DISPATCH & NAVIGATION",
+      num: "03",
+      title: "Order Captain Delivery App",
+      badge: "SINCHANA B R — CAPTAIN LEAD",
       route: "/rider",
       icon: "🛵",
       color: "#3b82f6",
-      bgGradient: "linear-gradient(135deg, #1e3a8a, #1d4ed8)",
-      description: "Dedicated mobile application for Delivery Captains (Sinchana B R / Likith Kumar) to manage order pickup, cold-chain checks, and doorstep delivery.",
+      bgGradient: "linear-gradient(135deg, #1e3a8a, #2563eb)",
+      description: "Dedicated mobile app for Sinchana B R to view staged rack numbers (D5, T2, B4, R1), slide to confirm pickup, and complete 8-minute express last-mile delivery.",
       features: [
-        "Selfie & Geo-Fence Check-In",
-        "Bag QR Code Pickup Verification",
-        "Cold-Chain Safety Inspection Checklist",
-        "Live GPS Route Navigation & Photo Proof Handover"
+        "First Visible: Rack Number Staged by OD Picker (e.g. Rack D5)",
+        "Slide to Confirm Pickup & Scan Picker Terminal",
+        "8-Minute SLA Express Timer (10m Total Model)",
+        "Live Namma Tiptur Road Tracking & Customer Handover QR"
       ],
-      actionText: "Launch Rider Delivery Terminal →",
-    }
+      ownerName: "Sinchana B R",
+      ownerTitle: "Order Captain Delivery Girl",
+      ownerEmoji: "🛵",
+      actionText: "Launch Delivery Captain App →",
+    },
+    {
+      id: "sm",
+      num: "04",
+      title: "Store Manager (SM) Dashboard",
+      badge: "BHASKAR N S — STORE MANAGER",
+      route: "/warehouse",
+      icon: "👑",
+      color: "#ec4899",
+      bgGradient: "linear-gradient(135deg, #831843, #be185d)",
+      description: "Central command dashboard for Bhaskar N S at Tiptur HUB KA44 to monitor order complaints, live queues with daily refresh, expiry inventory, putaway, and item dump.",
+      features: [
+        "Order Complaints Resolution & Instant Refund / Replacement",
+        "Live Queue Stream with 'Refresh Queue Daily / Live'",
+        "Expiry Inventory & FEFO Compliance Tracking",
+        "Inbound Putaway & Item Dump / Waste Write-Offs"
+      ],
+      ownerName: "Bhaskar N S",
+      ownerTitle: "Store Manager (SM) • Tiptur HUB Lead",
+      ownerEmoji: "👑",
+      actionText: "Launch Store Manager Dashboard →",
+    },
+    {
+      id: "asm",
+      num: "05",
+      title: "Assistant Store Manager (ASM)",
+      badge: "DEEPU B — ASSISTANT SM",
+      route: "/roles/asm",
+      icon: "⚡",
+      color: "#06b6d4",
+      bgGradient: "linear-gradient(135deg, #0e7490, #0891b2)",
+      description: "Floor portal for Deepu B to assist when items are missing on shelf, mark items Out of Stock to instantly update customer apps, and conduct solo inventory audits.",
+      features: [
+        "Item Visibility Assistance at Warehouse Shelves",
+        "Mark Item 'Not Found / Out of Stock' (Instant Customer Sync)",
+        "Exclusive Inventory Physical Audit (Conducted Alone by ASM)",
+        "Barcode Scanning & Physical vs System Stock Variance Ledger"
+      ],
+      ownerName: "Deepu B",
+      ownerTitle: "Assistant Store Manager (ASM)",
+      ownerEmoji: "⚡",
+      actionText: "Launch Assistant SM Portal →",
+    },
+    {
+      id: "md",
+      num: "06",
+      title: "Managing Director (MD) Executive",
+      badge: "A B HARSHITHA — MD",
+      route: "/roles/md",
+      icon: "🛡️",
+      color: "#8b5cf6",
+      bgGradient: "linear-gradient(135deg, #4c1d95, #6d28d9)",
+      description: "Strategic executive control tower for A B Harshitha to maintain order scale, 22.4% gross margin, and zero-complaint SLA governance for Tiptur HUB KA44.",
+      features: [
+        "Order Scale Monitoring (Target 600 orders/day)",
+        "Gross Margin Governance (Target > 22.0%)",
+        "Zero-Complaint SLA Surveillance & Resolution Audit",
+        "Tiptur HUB Infrastructure Capex & Expansion Approvals"
+      ],
+      ownerName: "A B Harshitha",
+      ownerTitle: "Managing Director (MD)",
+      ownerEmoji: "🛡️",
+      actionText: "Launch MD Executive Tower →",
+    },
+  ];
+
+  const TEAM = [
+    { name: "Bhaskar N S", role: "Store Manager (SM)", sub: "Tiptur HUB KA44 Complaints, Queues, Expiry & Putaway", emoji: "👑", route: "/warehouse" },
+    { name: "Deepu B", role: "Assistant Store Manager (ASM)", sub: "Item Help, Out-of-Stock Sync & Solo Inventory Audit", emoji: "⚡", route: "/roles/asm" },
+    { name: "A B Harshitha", role: "Managing Director (MD)", sub: "Scale Metrics, 22.4% Margin & Zero-Complaint SLA", emoji: "🛡️", route: "/roles/md" },
+    { name: "Thrupthi K S", role: "OD Picker Lead", sub: "2:00-Min SLA Pick, Aisle Locations & Staging Racks", emoji: "📦", route: "/picker" },
+    { name: "Sinchana B R", role: "Order Captain Delivery Girl", sub: "Rack Pickup, 8:00-Min SLA Delivery & Handover QR", emoji: "🛵", route: "/rider" },
   ];
 
   return (
@@ -152,44 +222,57 @@ export default function MultiAppHubLauncher() {
         <div style={S.headerContent}>
           <div style={S.logoRow}>
             <div style={S.logoBrand}>
-              <span style={S.logoText}>blinkit</span>
-              <span style={S.opsTag}>DARK STORE OPERATIONS HUB</span>
+              <span style={S.logoText}>AUDIT'X</span>
+              <span style={S.opsTag}>DARK STORE OPERATIONS ECOSYSTEM</span>
             </div>
             <div style={S.systemStatusPill}>
               <span style={S.greenDot} />
-              <span>System Live | Firestore Connected</span>
+              <span>Tiptur HUB - KA44 Live | 5 Dedicated Roles Active</span>
             </div>
           </div>
 
-          <h1 style={S.mainTitle}>Dark Store Operations & Quick-Commerce Multi-App Platform</h1>
+          <h1 style={S.mainTitle}>
+            AUDIT'X Dark Store Operations & Warehouse Management System
+          </h1>
           <p style={S.mainSub}>
-            Comprehensive 4-App Ecosystem for 14-Minute Dark Store Operations, In-Store Picking, Fleet Dispatch, and Customer Live Reference Tracking.
+            Demonstrating Blinkit-style quick-commerce dark store operations in rural / semi-urban Karnataka — <b>Tiptur Hub KA44 (Tumkur District - 572201)</b>.
+            Featuring the exact 10-Minute SLA pipeline: <b>2:00 Mins In-Store Picking (Thrupthi K S)</b> + <b>8:00 Mins Last-Mile Fleet (Sinchana B R)</b>.
           </p>
 
           <div style={S.heroActions}>
-            <button
-              style={S.demoBtn}
-              onClick={createQuickDemoOrder}
-              disabled={creatingDemo}
-            >
-              {creatingDemo ? "Creating Test Order..." : "⚡ Trigger Live Demo Order & End-to-End Simulation"}
+            <button style={S.demoBtn} onClick={createQuickDemoOrder} disabled={creatingDemo}>
+              {creatingDemo ? "Dispatching Live Order..." : "⚡ Trigger Live Demo Order & End-to-End Simulation"}
             </button>
-            <button
-              style={S.erdBtn}
-              onClick={() => router.push("/erd-dfd")}
-            >
-              📊 View System Architecture & ERD / DFD Diagram
+            <button style={S.erdBtn} onClick={() => router.push("/erd-dfd")}>
+              📊 View System Architecture & ERD / DFD Diagrams
             </button>
           </div>
         </div>
       </header>
 
-      {/* Main Apps Grid */}
+      {/* Team Roster Bar */}
+      <div style={S.rosterBar}>
+        <div style={S.rosterTitle}>🏢 Tiptur HUB - KA44 Registered Personnel Roster:</div>
+        <div style={S.rosterGrid}>
+          {TEAM.map((tm) => (
+            <div key={tm.name} style={S.rosterCard} onClick={() => router.push(tm.route)}>
+              <span style={S.rosterEmoji}>{tm.emoji}</span>
+              <div>
+                <div style={S.rosterName}>{tm.name}</div>
+                <div style={S.rosterRole}>{tm.role}</div>
+                <div style={S.rosterSub}>{tm.sub}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
       <main style={S.main}>
+        {/* Section header */}
         <div style={S.gridHeader}>
           <div>
-            <h2 style={S.sectionHeading}>Core Applications Directory</h2>
-            <p style={S.sectionSub}>Select an app below to open its dedicated dashboard or interface:</p>
+            <h2 style={S.sectionHeading}>Dedicated Operations Applications</h2>
+            <p style={S.sectionSub}>Select any dedicated portal to operate its real-time terminal:</p>
           </div>
           <div style={S.orderCountBadge}>
             <span style={{ fontSize: 18 }}>⚡</span>
@@ -197,9 +280,10 @@ export default function MultiAppHubLauncher() {
           </div>
         </div>
 
+        {/* Apps Grid */}
         <div style={S.appsGrid}>
           {APPS.map((app) => (
-            <div key={app.id} style={{ ...S.appCard, borderColor: app.border || "transparent" }}>
+            <div key={app.id} style={{ ...S.appCard, borderColor: app.border || "#1e293b" }}>
               <div style={{ ...S.cardHeader, background: app.bgGradient }}>
                 <div style={S.cardHeaderTop}>
                   <span style={S.appNum}>APP {app.num}</span>
@@ -209,182 +293,346 @@ export default function MultiAppHubLauncher() {
                   <span style={S.cardIcon}>{app.icon}</span>
                   <span style={S.cardTitle}>{app.title}</span>
                 </div>
+                {/* Owner chip */}
+                <div style={S.ownerChip}>
+                  <span>{app.ownerEmoji}</span>
+                  <div>
+                    <div style={S.ownerName}>{app.ownerName}</div>
+                    <div style={S.ownerRole}>{app.ownerTitle}</div>
+                  </div>
+                </div>
               </div>
 
               <div style={S.cardBody}>
                 <p style={S.cardDesc}>{app.description}</p>
 
                 <div style={S.featureList}>
-                  <div style={S.featureListTitle}>Key Functionalities:</div>
                   {app.features.map((f, i) => (
                     <div key={i} style={S.featureItem}>
-                      <span style={S.checkIcon}>✓</span>
+                      <span style={S.featureCheck}>✓</span>
                       <span>{f}</span>
                     </div>
                   ))}
                 </div>
 
-                <button
-                  style={{ ...S.launchBtn, background: app.color }}
-                  onClick={() => router.push(app.route)}
-                >
+                <button style={S.cardActionBtn} onClick={() => router.push(app.route)}>
                   {app.actionText}
                 </button>
               </div>
             </div>
           ))}
         </div>
-
-        {/* Live Order Stream Quick Reference */}
-        {recentOrders.length > 0 && (
-          <div style={S.streamBox}>
-            <div style={S.streamTitle}>
-              <span>📡 Live Firestore Order Stream</span>
-              <span style={S.liveTag}>REALTIME UPDATES</span>
-            </div>
-            <div style={S.streamGrid}>
-              {recentOrders.map((ord) => (
-                <div key={ord.id} style={S.streamCard} onClick={() => router.push(`/track/${ord.id || ord.orderId}`)}>
-                  <div style={S.streamCardTop}>
-                    <span style={S.ordId}>#{ord.orderId || ord.id}</span>
-                    <span style={S.ordStatusPill}>{ord.status || "PLACED"}</span>
-                  </div>
-                  <div style={S.ordCust}>{ord.customerName || "Customer"}</div>
-                  <div style={S.ordItems}>{(ord.items || []).length} items | ₹{ord.totalAmount}</div>
-                  <div style={S.trackLink}>Track Live Reference →</div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Dark Store Team Roster */}
-        <div style={S.rosterSection}>
-          <h3 style={S.rosterTitle}>Dark Store Academic Project Team & Assigned Roles</h3>
-          <div style={S.rosterGrid}>
-            <div style={S.rosterCard}>
-              <div style={S.rAvatar}>👑</div>
-              <div>
-                <div style={S.rName}>Bhasker N S</div>
-                <div style={S.rRole}>Store Manager (SM)</div>
-                <div style={S.rSub}>Warehouse Dashboard & Governance</div>
-              </div>
-            </div>
-
-            <div style={S.rosterCard}>
-              <div style={S.rAvatar}>⚡</div>
-              <div>
-                <div style={S.rName}>Deepu B</div>
-                <div style={S.rRole}>Assistant Store Manager (ASM)</div>
-                <div style={S.rSub}>Ordering App & Dark Store Ops</div>
-              </div>
-            </div>
-
-            <div style={S.rosterCard}>
-              <div style={S.rAvatar}>🛡️</div>
-              <div>
-                <div style={S.rName}>A B Harshitha</div>
-                <div style={S.rRole}>Managing Director (MD)</div>
-                <div style={S.rSub}>Inventory Audit & Control</div>
-              </div>
-            </div>
-
-            <div style={S.rosterCard}>
-              <div style={S.rAvatar}>📦</div>
-              <div>
-                <div style={S.rName}>Thrupthi K S</div>
-                <div style={S.rRole}>OD Picker Lead</div>
-                <div style={S.rSub}>3-Min In-Store Item Picking</div>
-              </div>
-            </div>
-
-            <div style={S.rosterCard}>
-              <div style={S.rAvatar}>🛵</div>
-              <div>
-                <div style={S.rName}>Sinchana B R</div>
-                <div style={S.rRole}>Delivery Captain Lead</div>
-                <div style={S.rSub}>8-Min Last-Mile Fleet Dispatch</div>
-              </div>
-            </div>
-          </div>
-        </div>
       </main>
-
-      {/* Footer */}
-      <footer style={S.footer}>
-        <div>BCA (Data Science) 5th Semester Academic Project | AuditX Dark Store Operations & Warehouse Management System</div>
-      </footer>
     </div>
   );
 }
 
 const S = {
-  page: { minHeight: "100vh", background: "#090d16", color: "#f8fafc", fontFamily: "'Inter', system-ui, sans-serif" },
-  toast: { position: "fixed", top: 20, left: "50%", transform: "translateX(-50%)", background: "#10b981", color: "#000", padding: "12px 24px", borderRadius: 30, fontWeight: 900, fontSize: 14, zIndex: 999, boxShadow: "0 10px 25px rgba(0,0,0,0.3)" },
-
-  header: { background: "linear-gradient(180deg, #1e293b 0%, #0f172a 100%)", borderBottom: "1px solid #334155", padding: "32px 24px" },
-  headerContent: { maxWidth: 1200, margin: "0 auto" },
-  logoRow: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 12 },
-  logoBrand: { display: "flex", alignItems: "center", gap: 10 },
-  logoText: { fontSize: 36, fontWeight: 900, color: "#0c831f", letterSpacing: "-1px" },
-  opsTag: { background: "#facc15", color: "#000", fontWeight: 900, fontSize: 11, padding: "4px 10px", borderRadius: 6 },
-  systemStatusPill: { background: "#0f172a", border: "1px solid #334155", padding: "6px 14px", borderRadius: 20, fontSize: 12, color: "#cbd5e1", fontWeight: 700, display: "flex", alignItems: "center", gap: 8 },
-  greenDot: { width: 8, height: 8, background: "#10b981", borderRadius: "50%" },
-
-  mainTitle: { fontSize: 32, fontWeight: 900, color: "#ffffff", letterSpacing: "-0.5px", marginBottom: 10 },
-  mainSub: { fontSize: 15, color: "#94a3b8", maxWidth: 800, lineHeight: 1.5, marginBottom: 24 },
-
-  heroActions: { display: "flex", gap: 14, flexWrap: "wrap" },
-  demoBtn: { background: "#0c831f", color: "#ffffff", border: "none", padding: "14px 22px", borderRadius: 12, fontWeight: 900, fontSize: 14, cursor: "pointer", boxShadow: "0 4px 14px rgba(12,131,31,0.3)" },
-  erdBtn: { background: "#1e293b", color: "#f8cb46", border: "1px solid #f8cb46", padding: "14px 22px", borderRadius: 12, fontWeight: 900, fontSize: 14, cursor: "pointer" },
-
-  main: { maxWidth: 1200, margin: "0 auto", padding: "32px 24px" },
-
-  gridHeader: { display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 24, flexWrap: "wrap", gap: 16 },
-  sectionHeading: { fontSize: 24, fontWeight: 900, color: "#ffffff" },
-  sectionSub: { fontSize: 13, color: "#94a3b8", marginTop: 4 },
-  orderCountBadge: { background: "#1e293b", border: "1px solid #334155", padding: "8px 16px", borderRadius: 12, fontSize: 13, color: "#10b981", display: "flex", alignItems: "center", gap: 8 },
-
-  appsGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 20, marginBottom: 40 },
-  appCard: { background: "#111827", borderRadius: 20, border: "1px solid #1f2937", overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: "space-between", boxShadow: "0 6px 20px rgba(0,0,0,0.2)" },
-  cardHeader: { padding: 20, color: "#ffffff" },
-  cardHeaderTop: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 },
-  appNum: { background: "rgba(255,255,255,0.2)", padding: "2px 8px", borderRadius: 6, fontSize: 11, fontWeight: 900 },
-  appBadge: { background: "rgba(0,0,0,0.4)", padding: "3px 8px", borderRadius: 6, fontSize: 10, fontWeight: 800, color: "#f8cb46" },
-  cardIconTitle: { display: "flex", alignItems: "center", gap: 12 },
-  cardIcon: { fontSize: 28 },
-  cardTitle: { fontSize: 18, fontWeight: 900 },
-
-  cardBody: { padding: 20, display: "flex", flexDirection: "column", flex: 1, justifyContent: "space-between" },
-  cardDesc: { fontSize: 13, color: "#9ca3af", lineHeight: 1.5, marginBottom: 16 },
-
-  featureList: { background: "#0f172a", borderRadius: 12, padding: 12, marginBottom: 20 },
-  featureListTitle: { fontSize: 11, fontWeight: 800, color: "#6b7280", textTransform: "uppercase", marginBottom: 8 },
-  featureItem: { display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "#e5e7eb", marginBottom: 6 },
-  checkIcon: { color: "#10b981", fontWeight: 900 },
-
-  launchBtn: { width: "100%", color: "#ffffff", border: "none", padding: "14px", borderRadius: 12, fontWeight: 900, fontSize: 14, cursor: "pointer", textAlign: "center", boxShadow: "0 4px 12px rgba(0,0,0,0.3)" },
-
-  streamBox: { background: "#111827", border: "1px solid #1f2937", borderRadius: 20, padding: 24, marginBottom: 40 },
-  streamTitle: { display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 18, fontWeight: 900, color: "#fff", marginBottom: 16 },
-  liveTag: { background: "#ef4444", color: "#fff", fontSize: 10, fontWeight: 900, padding: "2px 8px", borderRadius: 6 },
-  streamGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 12 },
-  streamCard: { background: "#1f2937", padding: 14, borderRadius: 12, cursor: "pointer", border: "1px solid #374151" },
-  streamCardTop: { display: "flex", justifyContent: "space-between", fontSize: 12, fontWeight: 800 },
-  ordId: { color: "#f8cb46" },
-  ordStatusPill: { color: "#10b981" },
-  ordCust: { fontSize: 13, fontWeight: 700, color: "#fff", marginTop: 4 },
-  ordItems: { fontSize: 11, color: "#9ca3af", marginTop: 2 },
-  trackLink: { fontSize: 11, color: "#3b82f6", fontWeight: 800, marginTop: 8 },
-
-  rosterSection: { background: "#111827", border: "1px solid #1f2937", borderRadius: 20, padding: 24 },
-  rosterTitle: { fontSize: 18, fontWeight: 900, color: "#fff", marginBottom: 16 },
-  rosterGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14 },
-  rosterCard: { background: "#1f2937", padding: 14, borderRadius: 12, display: "flex", alignItems: "center", gap: 12, border: "1px solid #374151" },
-  rAvatar: { fontSize: 24, background: "#111827", width: 42, height: 42, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center" },
-  rName: { fontSize: 14, fontWeight: 800, color: "#fff" },
-  rRole: { fontSize: 12, color: "#f8cb46", fontWeight: 700 },
-  rSub: { fontSize: 11, color: "#9ca3af", marginTop: 2 },
-
-  footer: { borderTop: "1px solid #1e293b", padding: "20px 24px", textAlign: "center", fontSize: 12, color: "#64748b", background: "#090d16" },
+  page: {
+    minHeight: "100vh",
+    background: "#080c14",
+    color: "#f8fafc",
+    fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+    paddingBottom: 60,
+  },
+  toast: {
+    position: "fixed",
+    top: 20,
+    left: "50%",
+    transform: "translateX(-50%)",
+    background: "#10b981",
+    color: "#ffffff",
+    padding: "12px 24px",
+    borderRadius: 8,
+    fontWeight: 700,
+    zIndex: 9999,
+    boxShadow: "0 4px 16px rgba(0,0,0,0.4)",
+    fontSize: 14,
+  },
+  header: {
+    background: "linear-gradient(180deg, #0f172a 0%, #080c14 100%)",
+    borderBottom: "1px solid #1e293b",
+    padding: "36px 24px",
+  },
+  headerContent: {
+    maxWidth: 1200,
+    margin: "0 auto",
+  },
+  logoRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 16,
+    flexWrap: "wrap",
+    gap: 12,
+  },
+  logoBrand: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+  },
+  logoText: {
+    fontSize: 28,
+    fontWeight: 900,
+    color: "#10b981",
+    letterSpacing: 2,
+  },
+  opsTag: {
+    fontSize: 11,
+    fontWeight: 800,
+    color: "#f59e0b",
+    background: "#1e293b",
+    padding: "3px 8px",
+    borderRadius: 4,
+    border: "1px solid rgba(245, 158, 11, 0.4)",
+  },
+  systemStatusPill: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    background: "#1e293b",
+    padding: "6px 14px",
+    borderRadius: 20,
+    fontSize: 12,
+    color: "#cbd5e1",
+    border: "1px solid #334155",
+  },
+  greenDot: {
+    width: 8,
+    height: 8,
+    borderRadius: "50%",
+    background: "#10b981",
+    boxShadow: "0 0 8px #10b981",
+  },
+  mainTitle: {
+    fontSize: 32,
+    fontWeight: 900,
+    color: "#ffffff",
+    margin: "0 0 10px",
+    lineHeight: 1.25,
+  },
+  mainSub: {
+    fontSize: 15,
+    color: "#94a3b8",
+    maxWidth: 820,
+    lineHeight: 1.6,
+    margin: "0 0 24px",
+  },
+  heroActions: {
+    display: "flex",
+    gap: 12,
+    flexWrap: "wrap",
+  },
+  demoBtn: {
+    background: "#10b981",
+    border: "none",
+    color: "#ffffff",
+    padding: "14px 24px",
+    borderRadius: 10,
+    fontSize: 14,
+    fontWeight: 800,
+    cursor: "pointer",
+    boxShadow: "0 4px 16px rgba(16, 185, 129, 0.3)",
+  },
+  erdBtn: {
+    background: "#1e293b",
+    border: "1px solid #334155",
+    color: "#38bdf8",
+    padding: "14px 20px",
+    borderRadius: 10,
+    fontSize: 14,
+    fontWeight: 700,
+    cursor: "pointer",
+  },
+  rosterBar: {
+    maxWidth: 1200,
+    margin: "0 auto",
+    padding: "20px 24px 0",
+  },
+  rosterTitle: {
+    fontSize: 13,
+    fontWeight: 800,
+    color: "#94a3b8",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+    marginBottom: 12,
+  },
+  rosterGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+    gap: 10,
+  },
+  rosterCard: {
+    background: "#0f172a",
+    border: "1px solid #1e293b",
+    borderRadius: 10,
+    padding: "10px 12px",
+    display: "flex",
+    alignItems: "flex-start",
+    gap: 10,
+    cursor: "pointer",
+    transition: "border-color 0.2s",
+  },
+  rosterEmoji: {
+    fontSize: 22,
+  },
+  rosterName: {
+    fontSize: 13,
+    fontWeight: 800,
+    color: "#ffffff",
+  },
+  rosterRole: {
+    fontSize: 11,
+    color: "#38bdf8",
+    fontWeight: 700,
+  },
+  rosterSub: {
+    fontSize: 10,
+    color: "#94a3b8",
+    marginTop: 2,
+  },
+  main: {
+    maxWidth: 1200,
+    margin: "0 auto",
+    padding: "30px 24px",
+  },
+  gridHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 20,
+    flexWrap: "wrap",
+    gap: 12,
+  },
+  sectionHeading: {
+    fontSize: 22,
+    fontWeight: 800,
+    color: "#ffffff",
+    margin: 0,
+  },
+  sectionSub: {
+    fontSize: 13,
+    color: "#94a3b8",
+    margin: "4px 0 0",
+  },
+  orderCountBadge: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    background: "#1e293b",
+    border: "1px solid #334155",
+    padding: "6px 14px",
+    borderRadius: 20,
+    fontSize: 13,
+    color: "#10b981",
+  },
+  appsGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))",
+    gap: 20,
+  },
+  appCard: {
+    background: "#0f172a",
+    borderRadius: 14,
+    border: "1px solid",
+    overflow: "hidden",
+    display: "flex",
+    flexDirection: "column",
+    justifyContent: "space-between",
+  },
+  cardHeader: {
+    padding: "18px 20px",
+    color: "#ffffff",
+  },
+  cardHeaderTop: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 10,
+  },
+  appNum: {
+    fontSize: 11,
+    fontWeight: 800,
+    background: "rgba(0,0,0,0.3)",
+    padding: "2px 8px",
+    borderRadius: 4,
+  },
+  appBadge: {
+    fontSize: 10,
+    fontWeight: 800,
+    background: "rgba(255,255,255,0.2)",
+    padding: "2px 8px",
+    borderRadius: 4,
+  },
+  cardIconTitle: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 10,
+  },
+  cardIcon: {
+    fontSize: 26,
+  },
+  cardTitle: {
+    fontSize: 18,
+    fontWeight: 800,
+  },
+  ownerChip: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    background: "rgba(0,0,0,0.25)",
+    padding: "6px 12px",
+    borderRadius: 8,
+    fontSize: 12,
+  },
+  ownerName: {
+    fontWeight: 800,
+  },
+  ownerRole: {
+    fontSize: 10,
+    opacity: 0.85,
+  },
+  cardBody: {
+    padding: "20px",
+    display: "flex",
+    flexDirection: "column",
+    flex: 1,
+    justifyContent: "space-between",
+  },
+  cardDesc: {
+    fontSize: 13,
+    color: "#cbd5e1",
+    lineHeight: 1.5,
+    marginBottom: 14,
+  },
+  featureList: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 6,
+    marginBottom: 18,
+  },
+  featureItem: {
+    display: "flex",
+    alignItems: "flex-start",
+    gap: 8,
+    fontSize: 12,
+    color: "#94a3b8",
+  },
+  featureCheck: {
+    color: "#10b981",
+    fontWeight: 800,
+  },
+  cardActionBtn: {
+    width: "100%",
+    background: "#1e293b",
+    border: "1px solid #334155",
+    color: "#ffffff",
+    padding: "12px",
+    borderRadius: 8,
+    fontWeight: 800,
+    fontSize: 13,
+    cursor: "pointer",
+    transition: "background 0.2s",
+  },
 };
