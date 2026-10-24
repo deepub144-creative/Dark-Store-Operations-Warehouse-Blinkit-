@@ -238,163 +238,98 @@ export default function TrackOrderPage() {
           </div>
         </header>
 
-        {/* ── 2. REALISTIC GOOGLE MAPS SECTION WITH ROUTE & RIDER ── */}
+        {/* ── 2. AUTHENTIC TIPTUR KA44 GOOGLE MAPS WITH LIVE ROUTE & RIDER ── */}
         <section style={S.mapSection}>
           <div style={S.mapViewport}>
-            {/* SVG Vector Map Canvas (Google Maps Styling) */}
             <svg
-              viewBox="0 0 360 260"
+              viewBox="230 70 530 250"
               style={S.mapSvg}
               xmlns="http://www.w3.org/2000/svg"
             >
-              {/* Map Background */}
-              <rect width="360" height="260" fill="#E8ECEF" />
+              {/* Actual Google Maps of Tiptur centered on Kalpatharu First Grade Science College */}
+              <image
+                href="/tiptur-live-map.png"
+                x="0"
+                y="0"
+                width="1024"
+                height="411"
+              />
 
-              {/* City Blocks / Buildings */}
-              <rect x="15" y="10" width="75" height="55" rx="3" fill="#F4F6F8" stroke="#DCE1E6" strokeWidth="1" />
-              <rect x="105" y="10" width="110" height="40" rx="3" fill="#F4F6F8" stroke="#DCE1E6" strokeWidth="1" />
-              <rect x="230" y="15" width="115" height="60" rx="3" fill="#F4F6F8" stroke="#DCE1E6" strokeWidth="1" />
-
-              <rect x="15" y="80" width="85" height="70" rx="3" fill="#F4F6F8" stroke="#DCE1E6" strokeWidth="1" />
-              <rect x="115" y="65" width="60" height="90" rx="3" fill="#F4F6F8" stroke="#DCE1E6" strokeWidth="1" />
-              <rect x="190" y="90" width="45" height="70" rx="3" fill="#F4F6F8" stroke="#DCE1E6" strokeWidth="1" />
-              <rect x="250" y="90" width="95" height="80" rx="3" fill="#F4F6F8" stroke="#DCE1E6" strokeWidth="1" />
-
-              <rect x="15" y="165" width="90" height="85" rx="3" fill="#F4F6F8" stroke="#DCE1E6" strokeWidth="1" />
-              <rect x="120" y="170" width="75" height="80" rx="3" fill="#F4F6F8" stroke="#DCE1E6" strokeWidth="1" />
-              <rect x="210" y="185" width="135" height="65" rx="3" fill="#F4F6F8" stroke="#DCE1E6" strokeWidth="1" />
-
-              {/* Small Parcels & Subdivisions */}
-              <line x1="250" y1="110" x2="345" y2="110" stroke="#E2E6EA" strokeWidth="1" />
-              <line x1="250" y1="130" x2="345" y2="130" stroke="#E2E6EA" strokeWidth="1" />
-              <line x1="250" y1="150" x2="345" y2="150" stroke="#E2E6EA" strokeWidth="1" />
-              <line x1="285" y1="90" x2="285" y2="170" stroke="#E2E6EA" strokeWidth="1" />
-              <line x1="315" y1="90" x2="315" y2="170" stroke="#E2E6EA" strokeWidth="1" />
-
-              {/* Roads (White bands with clean borders) */}
-              {/* B.H. Road / Main Diagonal Arterial */}
+              {/* Highway NH 73 Live Delivery Route line from Tiptur Hub to KFGSC */}
               <path
-                d="M -10 65 Q 120 50 370 75"
-                stroke="#FFFFFF"
-                strokeWidth="14"
+                d="M 320 185 Q 380 195 440 228 T 530 254 T 598 248"
+                stroke="rgba(0, 0, 0, 0.45)"
+                strokeWidth="6"
+                strokeLinecap="round"
                 fill="none"
               />
               <path
-                d="M -10 65 Q 120 50 370 75"
-                stroke="#CCD2D8"
-                strokeWidth="1"
-                fill="none"
-              />
-
-              {/* Cross Street: Kalpataru Marg */}
-              <path
-                d="M 100 -10 L 105 270"
-                stroke="#FFFFFF"
-                strokeWidth="12"
+                d="M 320 185 Q 380 195 440 228 T 530 254 T 598 248"
+                stroke="#0c831f"
+                strokeWidth="4"
+                strokeLinecap="round"
                 fill="none"
               />
               <path
-                d="M 100 -10 L 105 270"
-                stroke="#CCD2D8"
-                strokeWidth="1"
-                fill="none"
-              />
-
-              {/* Kings Road */}
-              <path
-                d="M 240 -10 L 245 270"
-                stroke="#FFFFFF"
-                strokeWidth="11"
-                fill="none"
-              />
-
-              {/* New Sadashiva Nagar Avenue */}
-              <path
-                d="M -10 160 Q 180 165 370 180"
-                stroke="#FFFFFF"
-                strokeWidth="12"
-                fill="none"
-              />
-
-              {/* Road Labels (Google Maps typography) */}
-              <text x="18" y="62" fontSize="7" fill="#8895A7" fontWeight="bold" transform="rotate(-3, 18, 62)">
-                B.H. Main Road (KA44)
-              </text>
-              <text x="108" y="115" fontSize="6.5" fill="#8895A7" fontWeight="bold" transform="rotate(88, 108, 115)">
-                Kalpataru Marg
-              </text>
-              <text x="248" y="125" fontSize="6.5" fill="#8895A7" fontWeight="bold" transform="rotate(88, 248, 125)">
-                Kings Rd
-              </text>
-              <text x="260" y="176" fontSize="6.5" fill="#8895A7" fontWeight="bold">
-                New Sadashiva Nagar
-              </text>
-
-              {/* ── THE CURVED DASHED TRANSIT ROUTE (MATCHING SCREENSHOT) ── */}
-              {/* Bezier curve from Rider location (140, 55) to Customer Home (220, 155) */}
-              <path
-                d="M 140 55 Q 190 85 220 155"
-                stroke="#1E293B"
-                strokeWidth="2.5"
-                strokeDasharray="5,5"
+                d="M 320 185 Q 380 195 440 228 T 530 254 T 598 248"
+                stroke="#ffffff"
+                strokeWidth="2"
+                strokeDasharray="6,6"
                 strokeLinecap="round"
                 fill="none"
               />
 
-              {/* ── CUSTOMER DESTINATION MARKER ── */}
-              {/* Blue ground drop pin */}
-              <g transform="translate(220, 155)">
-                {/* Pin shadow */}
-                <ellipse cx="0" cy="5" rx="6" ry="2.5" fill="rgba(0,0,0,0.2)" />
-                {/* Pin shape */}
-                <path
-                  d="M 0 5 C -6 5 -9 -2 -9 -6 C -9 -11 0 -18 0 -18 C 0 -18 9 -11 9 -6 C 9 -2 6 5 0 5 Z"
-                  fill="#1D72B8"
-                />
-                {/* White circular badge with Home icon */}
-                <circle cx="0" cy="-6" r="8" fill="#FFFFFF" stroke="#1D72B8" strokeWidth="1.5" />
-                <path
-                  d="M -4 -4 L 0 -8 L 4 -4 L 4 0 L -4 0 Z"
-                  fill="#F59E0B"
-                />
-                <rect x="-1.5" y="-2" width="3" height="2" fill="#92400E" />
+              {/* ── TIPTUR HUB KA44 (DARK STORE DISPATCH POINT) ── */}
+              <g transform="translate(320, 185)">
+                {/* Hub pulse */}
+                <circle cx="0" cy="0" r="15" fill="rgba(12, 131, 31, 0.3)">
+                  <animate attributeName="r" values="10;20;10" dur="2s" repeatCount="indefinite" />
+                  <animate attributeName="opacity" values="0.8;0.1;0.8" dur="2s" repeatCount="indefinite" />
+                </circle>
+                <circle cx="0" cy="0" r="10" fill="#0c831f" stroke="#ffffff" strokeWidth="2" />
+                <text x="0" y="3.5" textAnchor="middle" fontSize="9" fill="#ffffff" fontWeight="bold">🏬</text>
+                <rect x="-44" y="-24" width="88" height="15" rx="4" fill="#0f172a" opacity="0.92" />
+                <text x="0" y="-13" textAnchor="middle" fontSize="7.5" fill="#ffffff" fontWeight="800">
+                  Tiptur HUB KA44
+                </text>
               </g>
 
-              {/* ── DELIVERY PARTNER RIDER MARKER ── */}
-              {/* Rider with green helmet and scooter, positioned at (140, 55) */}
-              <g transform="translate(140, 55)">
-                {/* Pulsing radar waves */}
-                <circle cx="0" cy="0" r="18" fill="rgba(12, 131, 31, 0.15)">
-                  <animate
-                    attributeName="r"
-                    values="14;24;14"
-                    dur="2s"
-                    repeatCount="indefinite"
-                  />
-                  <animate
-                    attributeName="opacity"
-                    values="0.6;0;0.6"
-                    dur="2s"
-                    repeatCount="indefinite"
-                  />
+              {/* ── KFGSC DESTINATION PIN (PULSING RED MARKER) ── */}
+              <g transform="translate(598, 246)">
+                {/* Destination pulse ring */}
+                <circle cx="0" cy="0" r="14" fill="rgba(220, 38, 38, 0.35)">
+                  <animate attributeName="r" values="8;18;8" dur="2s" repeatCount="indefinite" />
+                  <animate attributeName="opacity" values="0.8;0.2;0.8" dur="2s" repeatCount="indefinite" />
                 </circle>
+                <circle cx="0" cy="0" r="4.5" fill="#dc2626" stroke="#ffffff" strokeWidth="1.5" />
+                {/* Destination Badge */}
+                <rect x="-52" y="8" width="104" height="16" rx="4" fill="#1e293b" opacity="0.94" />
+                <text x="0" y="19" textAnchor="middle" fontSize="7" fill="#f8fafc" fontWeight="bold">
+                  📍 KFGSC , Tiptur 572201
+                </text>
+              </g>
 
-                {/* Black circular background pill */}
-                <circle cx="0" cy="-6" r="11" fill="#111827" />
-
-                {/* Scooter & Helmet Graphic */}
-                <circle cx="0" cy="-6" r="7" fill="#0C831F" />
-                <path
-                  d="M -3 -5 Q 0 -9 3 -5 Q 3 -3 -3 -3 Z"
-                  fill="#FFFFFF"
-                />
-                {/* Scooter body & wheels */}
-                <circle cx="-4" cy="5" r="2" fill="#374151" />
-                <circle cx="4" cy="5" r="2" fill="#374151" />
-                <path d="M -4 5 L 4 5 L 2 1 L -2 1 Z" fill="#10B981" />
-                <circle cx="0" cy="0" r="3" fill="#F59E0B" />
+              {/* ── LIVE ANIMATED DELIVERY RIDER SCOOTER ── */}
+              <g transform="translate(470, 238)">
+                {/* Pulsing radar */}
+                <circle cx="0" cy="0" r="16" fill="rgba(16, 185, 129, 0.35)">
+                  <animate attributeName="r" values="12;22;12" dur="1.6s" repeatCount="indefinite" />
+                  <animate attributeName="opacity" values="0.7;0.1;0.7" dur="1.6s" repeatCount="indefinite" />
+                </circle>
+                <circle cx="0" cy="-2" r="12" fill="#0f172a" stroke="#10b981" strokeWidth="2" />
+                <text x="0" y="2.5" textAnchor="middle" fontSize="11">🛵</text>
+                <rect x="-28" y="-22" width="56" height="13" rx="4" fill="#0c831f" />
+                <text x="0" y="-13" textAnchor="middle" fontSize="6.5" fill="#ffffff" fontWeight="800">
+                  ⚡ 8 Mins SLA
+                </text>
               </g>
             </svg>
+
+            {/* Live Route Info Strip */}
+            <div style={S.mapLiveRouteBadge}>
+              <span style={S.mapLiveGreenDot} />
+              <span><b>Live Route:</b> Tiptur Hub KA44 → <b>KFGSC, Tiptur 572201</b></span>
+            </div>
 
             {/* Google Watermark Logo on bottom-left */}
             <div style={S.googleWatermark}>Google</div>
@@ -403,10 +338,10 @@ export default function TrackOrderPage() {
             <button
               type="button"
               style={S.mapRecenterBtn}
-              onClick={() => triggerToast("Map re-centered to delivery route")}
+              onClick={() => triggerToast("Map re-centered to KFGSC, Tiptur 572201")}
               title="Re-center map"
             >
-              <IconTarget size={16} color="#475569" />
+              <IconTarget size={16} color="#0c831f" />
             </button>
           </div>
         </section>
@@ -922,6 +857,30 @@ const S = {
     justifyContent: "center",
     boxShadow: "0 2px 6px rgba(0,0,0,0.15)",
     cursor: "pointer",
+  },
+  mapLiveRouteBadge: {
+    position: "absolute",
+    top: 10,
+    left: 12,
+    background: "rgba(15, 23, 42, 0.9)",
+    backdropFilter: "blur(6px)",
+    color: "#f8fafc",
+    fontSize: 10,
+    padding: "5px 10px",
+    borderRadius: 20,
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    boxShadow: "0 2px 8px rgba(0,0,0,0.25)",
+    border: "1px solid rgba(255,255,255,0.18)",
+    pointerEvents: "none",
+  },
+  mapLiveGreenDot: {
+    width: 7,
+    height: 7,
+    borderRadius: "50%",
+    background: "#10b981",
+    boxShadow: "0 0 6px #10b981",
   },
 
   // CARDS LAYOUT
