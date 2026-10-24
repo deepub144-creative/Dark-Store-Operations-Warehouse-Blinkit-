@@ -5,6 +5,7 @@ import { doc, onSnapshot } from "firebase/firestore";
 import { db } from "@/lib/firebaseClient";
 import { isSoundMuted, setSoundMuted, unlockAudio } from "@/lib/soundSystem";
 import { seedAllDemoData } from "@/lib/seedData";
+import AuditxLogo from "@/components/AuditxLogo";
 
 export const ROLE_CONFIGS = [
   { id: "ordering", label: "🛒 Ordering App", name: "Namma Tiptur KA 44", avatar: "🛍️", route: "/ordering", badgeBg: "#10b981" },
@@ -60,7 +61,7 @@ export default function RoleHeader({ activeRole = "sm", onRoleSelect, currentSto
       {/* Top Utility Bar */}
       <div style={S.topBar}>
         <div style={S.brandBlock}>
-          <span style={S.logoText}>AUDIT'X</span>
+          <AuditxLogo height={32} href="/" />
           <span style={S.opsBadge}>TIPTUR HUB - KA44</span>
           <span style={S.subPill}>Namma Tiptur (Tumkur - 572201)</span>
         </div>

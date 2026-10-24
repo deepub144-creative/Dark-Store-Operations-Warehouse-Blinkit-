@@ -1,8 +1,10 @@
 # dependencies
 node_modules/
+**/node_modules/
 
 # next.js build output
 .next/
+**/.next/
 out/
 
 # env files
@@ -14,3 +16,6 @@ out/
 Thumbs.db
 .vscode/
 .idea/
+blinkit-customer/
+ordering-app/
+warehouse-app/

@@ -6,12 +6,14 @@ import { db } from "@/lib/firebaseClient";
 import { playOrderAlarm, stopOrderAlarm, playScanSuccess, playSuccessChime } from "@/lib/soundSystem";
 import SharedScanner from "@/components/SharedScanner";
 import SlideButton from "@/components/SlideButton";
-import { subscribeToEvents, broadcastEvent } from "@/lib/realtimeSync";
+import { subscribeToEvents, broadcastEvent, subscribeToLiveOrders, updateLiveOrder } from "@/lib/realtimeSync";
 import { STAGING_RACKS } from "@/lib/roles";
+import AuditxLogo from "@/components/AuditxLogo";
 
 export default function DeliveryCaptainApp() {
   const [isCheckedIn, setIsCheckedIn] = useState(true);
   const [geoLoc, setGeoLoc] = useState({ lat: 13.2584, lng: 76.4787, status: "GPS Live - Tiptur HUB KA44" });
+  const [incomingAssignedOrders, setIncomingAssignedOrders] = useState([]);
   const [stagedOrders, setStagedOrders] = useState([]);
   const [activeOrder, setActiveOrder] = useState(null);
   const [activeStep, setActiveStep] = useState("awaiting_orders"); // awaiting_orders | rack_verification | en_route | customer_handover | delivered
@@ -36,40 +38,25 @@ export default function DeliveryCaptainApp() {
   const timerRef = useRef(null);
   const transitRef = useRef(null);
 
-  // Subscribe to BroadcastChannel & Firestore
+  // Subscribe to Instant Zero-Lag Live Orders Store (< 10ms Cross-Tab Sync)
   useEffect(() => {
-    const unsubBus = subscribeToEvents((data) => {
-      if (data.type === "ORDER_STAGED" && data.payload) {
-        setStagedOrders((prev) => [data.payload, ...prev.filter((p) => p.id !== data.payload.id)]);
+    const unsub = subscribeToLiveOrders((liveOrders) => {
+      // 1. Live Orders Assigned to Captain Sinchana B R (Currently being picked by Thrupthi K S)
+      const inPrep = liveOrders.filter(
+        (d) => d.status === "pending" || d.status === "picking" || d.status === "ASSIGNED"
+      );
+      setIncomingAssignedOrders(inPrep);
+
+      // 2. Orders Staged by Thrupthi K S into Racks (D5, T2, B4, R1) ready for pickup
+      const readyDocs = liveOrders.filter((d) => d.status === "staged" || d.status === "Staged");
+      setStagedOrders(readyDocs);
+
+      if ((readyDocs.length > 0 || inPrep.length > 0) && !activeOrder) {
         playOrderAlarm();
       }
     });
 
-    let unsub = () => {};
-    if (db) {
-      try {
-        unsub = onSnapshot(collection(db, "orders"), (snap) => {
-          const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-          const readyDocs = docs.filter((d) => d.status === "staged" || d.status === "Staged");
-          setStagedOrders((prev) => {
-            const merged = [...readyDocs];
-            prev.forEach((p) => {
-              if (!merged.some((m) => m.id === p.id)) merged.push(p);
-            });
-            return merged;
-          });
-
-          if (readyDocs.length > 0 && !activeOrder) {
-            playOrderAlarm();
-          }
-        });
-      } catch (err) {
-        console.warn("Captain Firestore snapshot error:", err);
-      }
-    }
-
     return () => {
-      unsubBus();
       unsub();
       stopOrderAlarm();
     };
@@ -136,6 +123,16 @@ export default function DeliveryCaptainApp() {
       dispatchedAt: new Date().toISOString(),
     };
 
+    updateLiveOrder(activeOrder.id, {
+      status: "dispatched",
+      stage: "Out for Delivery",
+      captainId: "sinchana",
+      captainName: "Sinchana B R",
+      captainPhone: "8088553237",
+      captainMessage: "Hi I am Sinchana B R, your order captain on the way coming soon!",
+      dispatchedAt: new Date().toISOString(),
+    });
+
     if (db) {
       try {
         await updateDoc(doc(db, "orders", activeOrder.id), {
@@ -152,7 +149,6 @@ export default function DeliveryCaptainApp() {
       }
     }
 
-    broadcastEvent("ORDER_DISPATCHED", dispatchedOrder);
     setRemainingSec(CAPTAIN_SLA_SECONDS);
     setElapsedSec(0);
     setTransitProgress(0);
@@ -175,6 +171,14 @@ export default function DeliveryCaptainApp() {
       totalSlaSec: (activeOrder.pickTimeSec || 110) + elapsedSec,
     };
 
+    updateLiveOrder(activeOrder.id, {
+      status: "delivered",
+      stage: "Delivered",
+      deliveredAt: new Date().toISOString(),
+      deliveryDurationSec: elapsedSec,
+      totalSlaSec: (activeOrder.pickTimeSec || 110) + elapsedSec,
+    });
+
     if (db) {
       try {
         await updateDoc(doc(db, "orders", activeOrder.id), {
@@ -189,7 +193,6 @@ export default function DeliveryCaptainApp() {
       }
     }
 
-    broadcastEvent("ORDER_DELIVERED", deliveredOrder);
     setActiveStep("delivered");
     setActionSuccess(`🎉 ORDER #${activeOrder.orderNumber || activeOrder.id} DELIVERED! Handover verified with Customer.`);
   }
@@ -211,7 +214,7 @@ export default function DeliveryCaptainApp() {
       <header style={S.header}>
         <div style={S.headerLeft}>
           <div style={S.brandRow}>
-            <span style={S.brandText}>AUDIT'X</span>
+            <AuditxLogo height={30} href="/" />
             <span style={S.hubBadge}>TIPTUR HUB - KA44</span>
           </div>
           <div style={S.captainProfile}>
@@ -237,6 +240,127 @@ export default function DeliveryCaptainApp() {
             <div style={S.infoBanner}>
               <span>⚡ 10-Min SLA Model: <b>2 Min Pick (OD Picker)</b> + <b>8 Min Delivery (Order Captain)</b></span>
             </div>
+
+            {/* INCOMING ASSIGNED TASK FROM CUSTOMER ORDER (INSTANT 0.1S DISPATCH TO SINCHANA B R) */}
+            {incomingAssignedOrders.length > 0 && (
+              <div style={{ marginBottom: 20 }}>
+                <div style={{
+                  background: "linear-gradient(135deg, #1e1b4b, #312e81)",
+                  border: "2px solid #6366f1",
+                  borderRadius: 14,
+                  padding: 16,
+                  color: "#fff",
+                  boxShadow: "0 0 24px rgba(99, 102, 241, 0.35)",
+                }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span style={{
+                        display: "inline-block",
+                        width: 10,
+                        height: 10,
+                        borderRadius: "50%",
+                        background: "#38bdf8",
+                        boxShadow: "0 0 8px #38bdf8",
+                      }} />
+                      <span style={{ fontSize: 13, fontWeight: 800, letterSpacing: 0.8, color: "#a5b4fc" }}>
+                        ⚡ TASK ASSIGNED TO CAPTAIN SINCHANA B R
+                      </span>
+                    </div>
+                    <span style={{
+                      fontSize: 10,
+                      fontWeight: 800,
+                      background: "#4338ca",
+                      color: "#c7d2fe",
+                      padding: "3px 8px",
+                      borderRadius: 999,
+                    }}>
+                      &lt; 0.1s LIVE DISPATCH
+                    </span>
+                  </div>
+
+                  {incomingAssignedOrders.map((ord) => {
+                    const rackId = ord.assignedRack || "D5";
+                    const rackObj = STAGING_RACKS.find((r) => r.id === rackId) || STAGING_RACKS[0];
+                    return (
+                      <div key={ord.id} style={{
+                        background: "rgba(15, 23, 42, 0.85)",
+                        border: "1px solid rgba(165, 180, 252, 0.3)",
+                        borderRadius: 10,
+                        padding: 14,
+                        marginBottom: 10,
+                      }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                          <span style={{ fontWeight: 800, fontSize: 15, color: "#f8fafc" }}>
+                            #{ord.orderNumber || ord.id}
+                          </span>
+                          <span style={{
+                            fontSize: 11,
+                            fontWeight: 700,
+                            padding: "3px 8px",
+                            borderRadius: 6,
+                            background: rackObj.color,
+                            color: "#fff",
+                          }}>
+                            Target Bay: RACK {rackId}
+                          </span>
+                        </div>
+
+                        <div style={{ fontSize: 13, color: "#cbd5e1", marginBottom: 6 }}>
+                          👤 <b>{ord.customerName || "Customer (Namma Tiptur)"}</b> • 📍 {ord.customerAddress || "Tiptur - 572201"}
+                        </div>
+
+                        <div style={{
+                          background: "rgba(30, 41, 59, 0.8)",
+                          padding: "10px 12px",
+                          borderRadius: 8,
+                          fontSize: 12,
+                          color: "#94a3b8",
+                          borderLeft: "3px solid #f59e0b",
+                          marginBottom: 10,
+                        }}>
+                          <div style={{ color: "#fbbf24", fontWeight: 700, marginBottom: 2 }}>
+                            📦 Warehouse Picking in Progress:
+                          </div>
+                          <div>
+                            OD Picker <b>Thrupthi K S</b> is picking {(ord.items || []).length} SKUs under 2:00 SLA.
+                            Order will be placed into <b>Rack {rackId}</b> for your pickup.
+                          </div>
+                        </div>
+
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <button
+                            style={{
+                              flex: 1,
+                              background: "linear-gradient(135deg, #2563eb, #1d4ed8)",
+                              color: "#fff",
+                              border: "none",
+                              padding: "10px",
+                              borderRadius: 8,
+                              fontWeight: 700,
+                              cursor: "pointer",
+                              fontSize: 12,
+                            }}
+                            onClick={() => {
+                              updateLiveOrder(ord.id, {
+                                status: "staged",
+                                stage: `Staged in Rack ${rackId}`,
+                                assignedRack: rackId,
+                                stagedAt: new Date().toISOString(),
+                                pickTimeSec: 88,
+                              });
+                              playSuccessChime();
+                              setActionSuccess(`⚡ Order #${ord.orderNumber || ord.id} staged into Rack ${rackId}! Ready for pickup.`);
+                            }}
+                          >
+                            ⚡ Fast-Track Staging into Rack {rackId} (Demo)
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             {stagedOrders.length > 0 ? (
               <div>

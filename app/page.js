@@ -4,28 +4,31 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { collection, onSnapshot, query, limit, orderBy, doc, setDoc } from "firebase/firestore";
 import { db } from "@/lib/firebaseClient";
-import { broadcastEvent } from "@/lib/realtimeSync";
+import { broadcastEvent, saveLiveOrder, subscribeToLiveOrders } from "@/lib/realtimeSync";
 import { playNotificationChime, playSuccessChime } from "@/lib/soundSystem";
 import { getRandomStagingRack } from "@/lib/roles";
+import AuditxLogo from "@/components/AuditxLogo";
 
 export default function MultiAppHubLauncher() {
   const router = useRouter();
+
+  useEffect(() => {
+    router.replace("/ordering");
+  }, [router]);
+
   const [activeOrdersCount, setActiveOrdersCount] = useState(3);
   const [recentOrders, setRecentOrders] = useState([]);
   const [creatingDemo, setCreatingDemo] = useState(false);
   const [toast, setToast] = useState("");
 
   useEffect(() => {
-    if (!db) return;
-    try {
-      const q = query(collection(db, "orders"), orderBy("createdAt", "desc"), limit(5));
-      const unsub = onSnapshot(q, (snap) => {
-        const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-        setRecentOrders(docs);
-        if (docs.length > 0) setActiveOrdersCount(docs.length);
-      }, () => {});
-      return () => unsub();
-    } catch (e) { console.warn(e); }
+    const unsub = subscribeToLiveOrders((orders) => {
+      if (orders && orders.length > 0) {
+        setRecentOrders(orders.slice(0, 6));
+        setActiveOrdersCount(orders.filter((o) => o.status !== "delivered").length || orders.length);
+      }
+    });
+    return () => unsub();
   }, []);
 
   function triggerToast(msg) {
@@ -50,7 +53,9 @@ export default function MultiAppHubLauncher() {
       stage: "Awaiting OD Picker",
       assignedRack: rack.id,
       rackQr: rack.qr,
+      pickerId: "thrupthi",
       pickerName: "Thrupthi K S",
+      captainId: "sinchana",
       captainName: "Sinchana B R",
       captainPhone: "8088553237",
       totalAmount: 425,
@@ -63,14 +68,16 @@ export default function MultiAppHubLauncher() {
       qrCode: `AUDITX-ORD-${demoId}-CUSTOMER-QR`,
     };
 
+    // 1. Immediately persist and broadcast to picker & captain terminals in < 1ms
+    saveLiveOrder(demoOrder);
+
     try {
       if (db) await setDoc(doc(db, "orders", demoId), demoOrder);
     } catch (e) { console.warn(e); }
 
-    broadcastEvent("ORDER_CREATED", demoOrder);
     playNotificationChime();
 
-    triggerToast(`🎉 Live Demo Order #${demoId} Placed in Namma Tiptur! Assigned to OD Picker Thrupthi K S & Rack ${rack.id}!`);
+    triggerToast(`🎉 Live Demo Order #${demoId} Placed in Namma Tiptur! Assigned to OD Picker Thrupthi K S & Captain Sinchana B R!`);
     setTimeout(() => router.push(`/track/${demoId}`), 1200);
     setCreatingDemo(false);
   }
@@ -222,7 +229,7 @@ export default function MultiAppHubLauncher() {
         <div style={S.headerContent}>
           <div style={S.logoRow}>
             <div style={S.logoBrand}>
-              <span style={S.logoText}>AUDIT'X</span>
+              <AuditxLogo height={46} href="/" />
               <span style={S.opsTag}>DARK STORE OPERATIONS ECOSYSTEM</span>
             </div>
             <div style={S.systemStatusPill}>

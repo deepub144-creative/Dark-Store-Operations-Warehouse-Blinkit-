@@ -10,7 +10,7 @@ export default function ErdDfdPage() {
       <header style={S.topNav}>
         <div style={S.brandRow}>
           <a href="/dashboard" style={S.backBtn}>← Back to Ops Dashboard</a>
-          <span style={S.brandText}>blinkit</span>
+          <span style={S.brandText}>AUDIT'X</span>
           <span style={S.badge}>ERD & DFD BLUEPRINT</span>
         </div>
         <div style={S.projectTag}>BCA (Data Science) 5th Sem Academic Project • AuditX Architecture</div>

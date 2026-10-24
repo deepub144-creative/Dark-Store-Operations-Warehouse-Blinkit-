@@ -6,8 +6,9 @@ import { db } from "@/lib/firebaseClient";
 import { playOrderAlarm, stopOrderAlarm, playScanSuccess, playScanFail, playSuccessChime } from "@/lib/soundSystem";
 import SharedScanner from "@/components/SharedScanner";
 import SlideButton from "@/components/SlideButton";
-import { subscribeToEvents, broadcastEvent } from "@/lib/realtimeSync";
+import { subscribeToEvents, broadcastEvent, subscribeToLiveOrders, updateLiveOrder } from "@/lib/realtimeSync";
 import { STAGING_RACKS, getRandomStagingRack } from "@/lib/roles";
+import AuditxLogo from "@/components/AuditxLogo";
 
 export default function OdPickerApp() {
   const [isOnline, setIsOnline] = useState(true);
@@ -27,45 +28,25 @@ export default function OdPickerApp() {
   const timerRef = useRef(null);
 
   // Sync orders from BroadcastChannel & Firestore
+  // Instant zero-lag sync of orders across all tabs and local window
   useEffect(() => {
     if (!isOnline) {
       stopOrderAlarm();
       return;
     }
 
-    const unsubBus = subscribeToEvents((data) => {
-      if (data.type === "ORDER_CREATED" && data.payload) {
-        setUnassignedOrders((prev) => [data.payload, ...prev.filter((p) => p.id !== data.payload.id)]);
+    const unsub = subscribeToLiveOrders((liveOrders, event) => {
+      if (!isOnline) return;
+      const pendingDocs = liveOrders.filter((d) => d.status === "pending" || d.status === "ASSIGNED");
+      setUnassignedOrders(pendingDocs);
+
+      if (pendingDocs.length > 0 && !activeOrder) {
         playOrderAlarm();
       }
     });
 
-    let unsubOrders = () => {};
-    if (db) {
-      try {
-        unsubOrders = onSnapshot(collection(db, "orders"), (snap) => {
-          const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-          const pendingDocs = docs.filter((d) => d.status === "pending" || d.status === "ASSIGNED");
-          setUnassignedOrders((prev) => {
-            const merged = [...pendingDocs];
-            prev.forEach((p) => {
-              if (!merged.some((m) => m.id === p.id)) merged.push(p);
-            });
-            return merged;
-          });
-
-          if (pendingDocs.length > 0 && !activeOrder) {
-            playOrderAlarm();
-          }
-        });
-      } catch (err) {
-        console.warn("Firestore listener error:", err);
-      }
-    }
-
     return () => {
-      unsubBus();
-      unsubOrders();
+      unsub();
       stopOrderAlarm();
     };
   }, [isOnline, activeOrder]);
@@ -104,6 +85,7 @@ export default function OdPickerApp() {
     const updated = {
       ...order,
       status: "picking",
+      stage: "Picking Items",
       pickerId: "thrupthi",
       pickerName: "Thrupthi K S",
       assignedRack: rack.id,
@@ -111,10 +93,21 @@ export default function OdPickerApp() {
       acceptedAt: new Date().toISOString(),
     };
 
+    updateLiveOrder(order.id, {
+      status: "picking",
+      stage: "Picking Items",
+      pickerId: "thrupthi",
+      pickerName: "Thrupthi K S",
+      assignedRack: rack.id,
+      rackQr: rack.qr,
+      acceptedAt: new Date().toISOString(),
+    });
+
     if (db) {
       try {
         updateDoc(doc(db, "orders", order.id), {
           status: "picking",
+          stage: "Picking Items",
           pickerId: "thrupthi",
           pickerName: "Thrupthi K S",
           assignedRack: rack.id,
@@ -126,7 +119,6 @@ export default function OdPickerApp() {
       }
     }
 
-    broadcastEvent("ORDER_PICKING_STARTED", updated);
     setActionSuccess(`⚡ Order #${order.orderNumber || order.id} Accepted! 2:00 Min Picker Timer Started.`);
     setTimeout(() => setActionSuccess(""), 3000);
   }
@@ -202,6 +194,19 @@ export default function OdPickerApp() {
       qrCode: `AUDITX-HANDOVER-${activeOrder.id}-${assignedRack.id}`,
     };
 
+    updateLiveOrder(activeOrder.id, {
+      status: "staged",
+      stage: "Staged in Rack " + assignedRack.id,
+      assignedRack: assignedRack.id,
+      rackQr: assignedRack.qr,
+      rackZone: assignedRack.zone,
+      pickerId: "thrupthi",
+      pickerName: "Thrupthi K S",
+      stagedAt: new Date().toISOString(),
+      pickTimeSec: finalSec,
+      qrCode: `AUDITX-HANDOVER-${activeOrder.id}-${assignedRack.id}`,
+    });
+
     if (db) {
       try {
         await updateDoc(doc(db, "orders", activeOrder.id), {
@@ -220,7 +225,6 @@ export default function OdPickerApp() {
       }
     }
 
-    broadcastEvent("ORDER_STAGED", stagedOrder);
     playSuccessChime();
     setActiveStep("complete");
     setActionSuccess(
@@ -251,7 +255,7 @@ export default function OdPickerApp() {
       <header style={S.header}>
         <div style={S.headerLeft}>
           <div style={S.brandTag}>
-            <span style={S.brandName}>AUDIT'X</span>
+            <AuditxLogo height={30} href="/" />
             <span style={S.hubBadge}>TIPTUR HUB - KA44</span>
           </div>
           <div style={S.operatorInfo}>
@@ -278,41 +282,81 @@ export default function OdPickerApp() {
           <div>
             {unassignedOrders.length > 0 ? (
               <div style={S.orderAlertCard}>
-                <div style={S.alertBadge}>
-                  <span style={S.pulseDot} />
-                  <span>NEW INCOMING ORDER FOR TIPTUR HUB!</span>
+                <div style={{ ...S.alertBadge, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={S.pulseDot} />
+                    <span>⚡ TASK ASSIGNED TO THRUPTHI K S (OD PICKER LEAD)</span>
+                  </div>
+                  <span style={{ fontSize: 11, background: "#15803d", padding: "2px 8px", borderRadius: 999 }}>
+                    &lt; 0.1s LIVE DISPATCH
+                  </span>
                 </div>
 
-                {unassignedOrders.map((ord) => (
-                  <div key={ord.id} style={S.orderCard}>
-                    <div style={S.orderTopRow}>
-                      <span style={S.orderId}>{ord.orderNumber || ord.id}</span>
-                      <span style={S.orderPrice}>₹{ord.totalAmount || 180}</span>
-                    </div>
+                {unassignedOrders.map((ord) => {
+                  const targetRack = ord.assignedRack || "D5";
+                  const firstAisle = ord.items?.[0]?.binLocation || ord.items?.[0]?.aisle || "F0 - A1 - 001";
+                  return (
+                    <div key={ord.id} style={S.orderCard}>
+                      <div style={S.orderTopRow}>
+                        <div>
+                          <span style={S.orderId}>{ord.orderNumber || ord.id}</span>
+                          <span style={{
+                            marginLeft: 10,
+                            fontSize: 12,
+                            fontWeight: 700,
+                            padding: "3px 8px",
+                            borderRadius: 6,
+                            background: "#0284c7",
+                            color: "#fff",
+                          }}>
+                            Target Bay: RACK {targetRack}
+                          </span>
+                        </div>
+                        <span style={S.orderPrice}>₹{ord.totalAmount || 180}</span>
+                      </div>
 
-                    <div style={S.customerLine}>
-                      <span>👤 {ord.customerName || "Customer (Namma Tiptur)"}</span>
-                      <span style={S.addressSnippet}>📍 {ord.customerAddress || "Tiptur - 572201"}</span>
-                    </div>
+                      <div style={S.customerLine}>
+                        <span>👤 {ord.customerName || "Customer (Namma Tiptur)"}</span>
+                        <span style={S.addressSnippet}>📍 {ord.customerAddress || "Tiptur - 572201"}</span>
+                      </div>
 
-                    <div style={S.itemCountPill}>
-                      📋 {(ord.items || []).length} SKUs to Pick • Strict 2:00 Min SLA
-                    </div>
+                      <div style={{
+                        display: "flex",
+                        gap: 8,
+                        flexWrap: "wrap",
+                        margin: "8px 0 12px 0",
+                        fontSize: 12,
+                      }}>
+                        <div style={{ background: "#fef3c7", color: "#92400e", padding: "4px 8px", borderRadius: 6, fontWeight: 700 }}>
+                          ⏱️ Strict 2:00 Min SLA Timer
+                        </div>
+                        <div style={{ background: "#e0f2fe", color: "#0369a1", padding: "4px 8px", borderRadius: 6, fontWeight: 600 }}>
+                          🛵 Handover Captain: <b>Sinchana B R</b>
+                        </div>
+                        <div style={{ background: "#f1f5f9", color: "#334155", padding: "4px 8px", borderRadius: 6 }}>
+                          📍 First Pick: <b>{firstAisle}</b>
+                        </div>
+                      </div>
 
-                    <div style={{ marginTop: 14 }}>
-                      <SlideButton
-                        text="SLIDE TO ACCEPT & START 2-MIN PICKER TIMER"
-                        color="#0c831f"
-                        icon="⚡"
-                        onSlideComplete={() => handleAcceptOrder(ord)}
-                      />
-                    </div>
+                      <div style={S.itemCountPill}>
+                        📋 {(ord.items || []).length} SKUs to Pick inside Warehouse Aisles
+                      </div>
 
-                    <button style={S.quickAcceptBtn} onClick={() => handleAcceptOrder(ord)}>
-                      ⚡ Quick Tap Accept
-                    </button>
-                  </div>
-                ))}
+                      <div style={{ marginTop: 14 }}>
+                        <SlideButton
+                          text="SLIDE TO ACCEPT & START 2-MIN PICKER TIMER"
+                          color="#0c831f"
+                          icon="⚡"
+                          onSlideComplete={() => handleAcceptOrder(ord)}
+                        />
+                      </div>
+
+                      <button style={S.quickAcceptBtn} onClick={() => handleAcceptOrder(ord)}>
+                        ⚡ Quick Tap Accept & Start 2:00 Min Timer
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
             ) : (
               <div style={S.idleBox}>

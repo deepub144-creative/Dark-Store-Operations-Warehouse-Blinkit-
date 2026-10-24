@@ -10,7 +10,7 @@ export default function RootLayout({ children }) {
     <html lang="en">
       <head>
         <meta name="theme-color" content="#080c14" />
-        <link rel="icon" href="/favicon.ico" />
+        <link rel="icon" type="image/png" href="/auditx-logo.png" />
       </head>
       <body>{children}</body>
     </html>

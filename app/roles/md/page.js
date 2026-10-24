@@ -6,6 +6,7 @@ import { db } from "@/lib/firebaseClient";
 import { playNotificationChime } from "@/lib/soundSystem";
 import { subscribeToEvents } from "@/lib/realtimeSync";
 import { INITIAL_COMPLAINTS } from "@/lib/seedData";
+import AuditxLogo from "@/components/AuditxLogo";
 
 export default function ManagingDirectorApp() {
   const [complaints, setComplaints] = useState(INITIAL_COMPLAINTS);
@@ -89,7 +90,7 @@ export default function ManagingDirectorApp() {
       <header style={S.header}>
         <div style={S.brandCol}>
           <div style={S.brandRow}>
-            <span style={S.brandTitle}>AUDIT'X</span>
+            <AuditxLogo height={32} href="/" />
             <span style={S.hubBadge}>TIPTUR HUB - KA44</span>
             <span style={S.execBadge}>EXECUTIVE BOARD</span>
           </div>

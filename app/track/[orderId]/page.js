@@ -4,118 +4,130 @@ import { useEffect, useState, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { doc, onSnapshot, addDoc, collection } from "firebase/firestore";
 import { db } from "@/lib/firebaseClient";
-import { subscribeToEvents, broadcastEvent } from "@/lib/realtimeSync";
+import { subscribeToEvents, broadcastEvent, subscribeToLiveOrders } from "@/lib/realtimeSync";
 import { playSuccessChime, playNotificationChime } from "@/lib/soundSystem";
-
-const STAGES = [
-  { key: "PLACED", label: "Order Confirmed", icon: "✅", desc: "Received at Tiptur HUB - KA44" },
-  { key: "PICKING", label: "OD Picker (2 Min SLA)", icon: "📦", desc: "Thrupthi K S is picking fresh items at Tiptur HUB" },
-  { key: "STAGED", label: "Staged in Rack", icon: "🏷️", desc: "Bag packed & staged in designated rack" },
-  { key: "OUT_FOR_DELIVERY", label: "Order Captain Fleet (8 Min SLA)", icon: "🛵", desc: "Sinchana B R is on the way in Namma Tiptur" },
-  { key: "DELIVERED", label: "Delivered", icon: "🎉", desc: "Safely handed over to you!" },
-];
+import AuditxLogo from "@/components/AuditxLogo";
+import {
+  IconArrowLeft,
+  IconPhone,
+  IconCreditCard,
+  IconHome,
+  IconMapPin,
+  IconTarget,
+  IconClose,
+  IconCheck,
+  IconShieldCheck,
+  IconStar,
+  IconScooter,
+  IconBox,
+  IconLightning,
+} from "@/components/RealIcons";
 
 export default function TrackOrderPage() {
   const { orderId } = useParams();
   const router = useRouter();
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
-  
-  // 10-Minute SLA countdown (600s)
-  const TOTAL_SLA_SECONDS = 600;
-  const [remainingSec, setRemainingSec] = useState(TOTAL_SLA_SECONDS);
-  const timerRef = useRef(null);
 
-  // Complaints
+  // Today's live clock
+  const [currentTimeStr, setCurrentTimeStr] = useState("");
+  const [orderPlacedTime, setOrderPlacedTime] = useState("");
+
+  useEffect(() => {
+    function updateClock() {
+      const now = new Date();
+      setCurrentTimeStr(now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }));
+    }
+    updateClock();
+    const interval = setInterval(updateClock, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    const now = new Date();
+    setOrderPlacedTime(now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }));
+  }, []);
+
+  // "Arriving in 10 minutes" auto-reducing without counting background exact seconds timeline
+  const [arrivingMinutes, setArrivingMinutes] = useState(10);
+  const [cancelSecondsLeft, setCancelSecondsLeft] = useState(60);
+  const [isCancelled, setIsCancelled] = useState(false);
+
+  // Auto reduce arrival minutes naturally
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setArrivingMinutes((prev) => (prev > 1 ? prev - 1 : 1));
+      setRiderProgress((prev) => (prev < 90 ? prev + 3 : prev));
+    }, 45000); // naturally reduces from 10 to 9 to 8 etc.
+    return () => clearInterval(interval);
+  }, []);
+
+  // 60-second cancellation window timer
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCancelSecondsLeft((prev) => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Tipping
+  const [selectedTip, setSelectedTip] = useState(null);
+  const [customTipAmount, setCustomTipAmount] = useState("");
+  const [showCustomTipInput, setShowCustomTipInput] = useState(false);
+
+  // Online Payment Simulation
+  const [isPaidOnline, setIsPaidOnline] = useState(false);
+  const [showPayModal, setShowPayModal] = useState(false);
+
+  // Complaints / Support Drawer
   const [showComplaintDrawer, setShowComplaintDrawer] = useState(false);
   const [complaintCategory, setComplaintCategory] = useState("Damaged Goods");
   const [complaintDesc, setComplaintDesc] = useState("");
   const [submittingComplaint, setSubmittingComplaint] = useState(false);
-  const [complaintToast, setComplaintToast] = useState("");
+  const [toastMessage, setToastMessage] = useState("");
 
-  // Tiptur Route Progress
-  const [routeProgress, setRouteProgress] = useState(15);
+  // Live GPS Route Animation Progress (0 to 100%)
+  const [riderProgress, setRiderProgress] = useState(25);
 
-  useEffect(() => {
-    if (!orderId) return;
+  function triggerToast(msg) {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(""), 3500);
+  }
 
-    // Local fallback check
-    const rawLocal = localStorage.getItem("auditx_customer_last_order");
-    if (rawLocal) {
-      try {
-        const parsed = JSON.parse(rawLocal);
-        if (parsed.id === orderId || parsed.orderId === orderId) {
-          setOrder(parsed);
-          setLoading(false);
-        }
-      } catch (e) {
-        console.warn(e);
-      }
+  function handleSelectTip(amount) {
+    if (amount === "Other") {
+      setShowCustomTipInput(true);
+      return;
     }
+    setSelectedTip(amount);
+    setShowCustomTipInput(false);
+    playSuccessChime();
+    triggerToast(`₹${amount} tip added for Sinchana B R! Thank you!`);
+  }
 
-    const unsubBus = subscribeToEvents((data) => {
-      if (data.payload && (data.payload.id === orderId || data.payload.orderId === orderId)) {
-        if (data.type === "ORDER_PICKING_STARTED") {
-          setOrder((prev) => ({ ...(prev || {}), status: "picking", stage: "Picking Items" }));
-          playNotificationChime();
-        } else if (data.type === "ORDER_STAGED") {
-          setOrder((prev) => ({
-            ...(prev || {}),
-            status: "staged",
-            stage: "Staged in Rack",
-            assignedRack: data.payload.assignedRack || "D5",
-          }));
-          playNotificationChime();
-        } else if (data.type === "ORDER_DISPATCHED") {
-          setOrder((prev) => ({
-            ...(prev || {}),
-            status: "dispatched",
-            stage: "Out for Delivery",
-            captainName: "Sinchana B R",
-            captainPhone: "8088553237",
-          }));
-          setRouteProgress(45);
-          playNotificationChime();
-        } else if (data.type === "ORDER_DELIVERED") {
-          setOrder((prev) => ({ ...(prev || {}), status: "delivered", stage: "Delivered" }));
-          setRouteProgress(100);
-          playSuccessChime();
-        }
-      }
+  function handleApplyCustomTip() {
+    const val = parseInt(customTipAmount, 10);
+    if (!isNaN(val) && val > 0) {
+      setSelectedTip(val);
+      setShowCustomTipInput(false);
+      playSuccessChime();
+      triggerToast(`₹${val} tip added for Sinchana B R! Thank you!`);
+    }
+  }
+
+  function handleCancelOrder() {
+    if (cancelSecondsLeft <= 0) {
+      triggerToast("Cancellation window expired. Order is already being packed!");
+      return;
+    }
+    setIsCancelled(true);
+    broadcastEvent("ORDER_CANCELLED", {
+      orderId: order?.id || orderId,
+      customerName: order?.customerName || "Customer",
+      reason: "Customer cancelled within 60s window",
     });
-
-    let unsub = () => {};
-    if (db) {
-      try {
-        const ref = doc(db, "orders", orderId);
-        unsub = onSnapshot(ref, (snap) => {
-          if (snap.exists()) {
-            setOrder({ id: snap.id, ...snap.data() });
-          }
-          setLoading(false);
-        }, () => {
-          setLoading(false);
-        });
-      } catch {
-        setLoading(false);
-      }
-    } else {
-      setLoading(false);
-    }
-
-    return () => {
-      unsubBus();
-      unsub();
-    };
-  }, [orderId]);
-
-  // 10-Minute Countdown Timer
-  useEffect(() => {
-    timerRef.current = setInterval(() => {
-      setRemainingSec((prev) => (prev > 0 ? prev - 1 : 0));
-    }, 1000);
-    return () => clearInterval(timerRef.current);
-  }, []);
+    triggerToast("Order cancelled successfully. Refund initiated to original source.");
+  }
 
   async function submitComplaint(e) {
     e.preventDefault();
@@ -133,7 +145,7 @@ export default function TrackOrderPage() {
       status: "OPEN",
       time: "Just now",
       assignedTo: "Bhaskar N S (SM)",
-      amount: order?.totalAmount || 180,
+      amount: order?.totalAmount || 139,
       createdAt: new Date().toISOString(),
     };
 
@@ -149,246 +161,564 @@ export default function TrackOrderPage() {
     setSubmittingComplaint(false);
     setShowComplaintDrawer(false);
     setComplaintDesc("");
-    setComplaintToast("✅ Complaint received by Store Manager Bhaskar N S! Instant review initiated.");
-    setTimeout(() => setComplaintToast(""), 4000);
+    triggerToast("Complaint received by SM Bhaskar N S! Instant review initiated.");
   }
 
-  const isDelivered = order?.status === "delivered";
-  const isDispatched = order?.status === "dispatched" || isDelivered;
-  const isStaged = order?.status === "staged" || isDispatched;
-  const isPicking = order?.status === "picking" || isStaged;
+  // Active order fallback
+  const activeOrder = order || {
+    id: orderId,
+    orderId,
+    orderNumber: orderId,
+    customerName: "Ramesh Gowda",
+    customerPhone: "9845112233",
+    customerAddress: "Near Kalpataru College Road, Namma Tiptur - 572201",
+    totalAmount: 139,
+    status: "pending",
+    assignedRack: "D5",
+    pickerName: "Thrupthi K S",
+    captainName: "Sinchana B R",
+    items: [
+      { name: "Fresh Milk 1L", qty: 1, price: 60 },
+      { name: "Brown Bread 400g", qty: 2, price: 45 },
+    ],
+  };
 
-  const minStr = Math.floor(remainingSec / 60).toString().padStart(2, "0");
-  const secStr = (remainingSec % 60).toString().padStart(2, "0");
+  const isDelivered = activeOrder.status === "delivered";
+  const isDispatched = activeOrder.status === "dispatched" || isDelivered;
+  const isStaged = activeOrder.status === "staged" || isDispatched;
+  const isPicking = activeOrder.status === "picking" || isStaged;
+
+  // Dynamic status text for top green header
+  let phaseText = "Packing your order";
+  if (isDelivered) phaseText = "Order Delivered";
+  else if (isDispatched) phaseText = "Order Out for Delivery";
+  else if (isStaged) phaseText = "Order Staged & Ready";
+
+  let arrivalTitle = `Arriving in ${arrivingMinutes} ${arrivingMinutes === 1 ? "minute" : "minutes"}`;
+  if (isDelivered) arrivalTitle = "Delivered to your doorstep";
+  if (isCancelled) arrivalTitle = "Order Cancelled";
 
   return (
-    <div style={S.container}>
-      {complaintToast && <div style={S.toast}>{complaintToast}</div>}
-
-      {/* Top Header */}
-      <header style={S.header}>
-        <button style={S.backBtn} onClick={() => router.push("/ordering")}>
-          ← Back to Catalog
-        </button>
-        <div style={S.headerCenter}>
-          <span style={S.brandName}>AUDIT'X</span>
-          <span style={S.hubBadge}>TIPTUR HUB - KA44</span>
+    <div style={S.pageBackground}>
+      {toastMessage && (
+        <div style={S.toast}>
+          <IconCheck size={16} color="#ffffff" />
+          <span>{toastMessage}</span>
         </div>
-        <button style={S.helpBtn} onClick={() => setShowComplaintDrawer(true)}>
-          ⚠️ Need Help?
-        </button>
-      </header>
+      )}
 
-      <main style={S.main}>
-        {/* SLA Hero Countdown Banner */}
-        <div style={S.slaHero}>
-          <div style={S.slaTop}>
-            <div>
-              <div style={S.slaTitle}>
-                {isDelivered ? "🎉 ORDER DELIVERED!" : "⚡ ARRIVING IN 10 MINUTES"}
+      {/* Smartphone Device Shell Container */}
+      <div style={S.mobileShell}>
+        {/* ── 1. TOP GREEN HEADER (EXACT BLINKIT HEADER) ── */}
+        <header style={S.topGreenHeader}>
+          {/* Navigation & Header Content */}
+          <div style={S.greenNavRow}>
+            <button
+              type="button"
+              style={S.backArrowBtn}
+              onClick={() => router.push("/ordering")}
+              title="Back to Ordering"
+            >
+              <IconArrowLeft size={22} color="#ffffff" />
+            </button>
+
+            <div style={S.headerCenterInfo}>
+              <div style={S.packingSubText}>{phaseText}</div>
+              <h1 style={S.arrivingTitle}>{arrivalTitle}</h1>
+            </div>
+
+            <button
+              type="button"
+              style={S.supportHelpBtn}
+              onClick={() => setShowComplaintDrawer(true)}
+              title="Help & Support"
+            >
+              Help
+            </button>
+          </div>
+        </header>
+
+        {/* ── 2. REALISTIC GOOGLE MAPS SECTION WITH ROUTE & RIDER ── */}
+        <section style={S.mapSection}>
+          <div style={S.mapViewport}>
+            {/* SVG Vector Map Canvas (Google Maps Styling) */}
+            <svg
+              viewBox="0 0 360 260"
+              style={S.mapSvg}
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              {/* Map Background */}
+              <rect width="360" height="260" fill="#E8ECEF" />
+
+              {/* City Blocks / Buildings */}
+              <rect x="15" y="10" width="75" height="55" rx="3" fill="#F4F6F8" stroke="#DCE1E6" strokeWidth="1" />
+              <rect x="105" y="10" width="110" height="40" rx="3" fill="#F4F6F8" stroke="#DCE1E6" strokeWidth="1" />
+              <rect x="230" y="15" width="115" height="60" rx="3" fill="#F4F6F8" stroke="#DCE1E6" strokeWidth="1" />
+
+              <rect x="15" y="80" width="85" height="70" rx="3" fill="#F4F6F8" stroke="#DCE1E6" strokeWidth="1" />
+              <rect x="115" y="65" width="60" height="90" rx="3" fill="#F4F6F8" stroke="#DCE1E6" strokeWidth="1" />
+              <rect x="190" y="90" width="45" height="70" rx="3" fill="#F4F6F8" stroke="#DCE1E6" strokeWidth="1" />
+              <rect x="250" y="90" width="95" height="80" rx="3" fill="#F4F6F8" stroke="#DCE1E6" strokeWidth="1" />
+
+              <rect x="15" y="165" width="90" height="85" rx="3" fill="#F4F6F8" stroke="#DCE1E6" strokeWidth="1" />
+              <rect x="120" y="170" width="75" height="80" rx="3" fill="#F4F6F8" stroke="#DCE1E6" strokeWidth="1" />
+              <rect x="210" y="185" width="135" height="65" rx="3" fill="#F4F6F8" stroke="#DCE1E6" strokeWidth="1" />
+
+              {/* Small Parcels & Subdivisions */}
+              <line x1="250" y1="110" x2="345" y2="110" stroke="#E2E6EA" strokeWidth="1" />
+              <line x1="250" y1="130" x2="345" y2="130" stroke="#E2E6EA" strokeWidth="1" />
+              <line x1="250" y1="150" x2="345" y2="150" stroke="#E2E6EA" strokeWidth="1" />
+              <line x1="285" y1="90" x2="285" y2="170" stroke="#E2E6EA" strokeWidth="1" />
+              <line x1="315" y1="90" x2="315" y2="170" stroke="#E2E6EA" strokeWidth="1" />
+
+              {/* Roads (White bands with clean borders) */}
+              {/* B.H. Road / Main Diagonal Arterial */}
+              <path
+                d="M -10 65 Q 120 50 370 75"
+                stroke="#FFFFFF"
+                strokeWidth="14"
+                fill="none"
+              />
+              <path
+                d="M -10 65 Q 120 50 370 75"
+                stroke="#CCD2D8"
+                strokeWidth="1"
+                fill="none"
+              />
+
+              {/* Cross Street: Kalpataru Marg */}
+              <path
+                d="M 100 -10 L 105 270"
+                stroke="#FFFFFF"
+                strokeWidth="12"
+                fill="none"
+              />
+              <path
+                d="M 100 -10 L 105 270"
+                stroke="#CCD2D8"
+                strokeWidth="1"
+                fill="none"
+              />
+
+              {/* Kings Road */}
+              <path
+                d="M 240 -10 L 245 270"
+                stroke="#FFFFFF"
+                strokeWidth="11"
+                fill="none"
+              />
+
+              {/* New Sadashiva Nagar Avenue */}
+              <path
+                d="M -10 160 Q 180 165 370 180"
+                stroke="#FFFFFF"
+                strokeWidth="12"
+                fill="none"
+              />
+
+              {/* Road Labels (Google Maps typography) */}
+              <text x="18" y="62" fontSize="7" fill="#8895A7" fontWeight="bold" transform="rotate(-3, 18, 62)">
+                B.H. Main Road (KA44)
+              </text>
+              <text x="108" y="115" fontSize="6.5" fill="#8895A7" fontWeight="bold" transform="rotate(88, 108, 115)">
+                Kalpataru Marg
+              </text>
+              <text x="248" y="125" fontSize="6.5" fill="#8895A7" fontWeight="bold" transform="rotate(88, 248, 125)">
+                Kings Rd
+              </text>
+              <text x="260" y="176" fontSize="6.5" fill="#8895A7" fontWeight="bold">
+                New Sadashiva Nagar
+              </text>
+
+              {/* ── THE CURVED DASHED TRANSIT ROUTE (MATCHING SCREENSHOT) ── */}
+              {/* Bezier curve from Rider location (140, 55) to Customer Home (220, 155) */}
+              <path
+                d="M 140 55 Q 190 85 220 155"
+                stroke="#1E293B"
+                strokeWidth="2.5"
+                strokeDasharray="5,5"
+                strokeLinecap="round"
+                fill="none"
+              />
+
+              {/* ── CUSTOMER DESTINATION MARKER ── */}
+              {/* Blue ground drop pin */}
+              <g transform="translate(220, 155)">
+                {/* Pin shadow */}
+                <ellipse cx="0" cy="5" rx="6" ry="2.5" fill="rgba(0,0,0,0.2)" />
+                {/* Pin shape */}
+                <path
+                  d="M 0 5 C -6 5 -9 -2 -9 -6 C -9 -11 0 -18 0 -18 C 0 -18 9 -11 9 -6 C 9 -2 6 5 0 5 Z"
+                  fill="#1D72B8"
+                />
+                {/* White circular badge with Home icon */}
+                <circle cx="0" cy="-6" r="8" fill="#FFFFFF" stroke="#1D72B8" strokeWidth="1.5" />
+                <path
+                  d="M -4 -4 L 0 -8 L 4 -4 L 4 0 L -4 0 Z"
+                  fill="#F59E0B"
+                />
+                <rect x="-1.5" y="-2" width="3" height="2" fill="#92400E" />
+              </g>
+
+              {/* ── DELIVERY PARTNER RIDER MARKER ── */}
+              {/* Rider with green helmet and scooter, positioned at (140, 55) */}
+              <g transform="translate(140, 55)">
+                {/* Pulsing radar waves */}
+                <circle cx="0" cy="0" r="18" fill="rgba(12, 131, 31, 0.15)">
+                  <animate
+                    attributeName="r"
+                    values="14;24;14"
+                    dur="2s"
+                    repeatCount="indefinite"
+                  />
+                  <animate
+                    attributeName="opacity"
+                    values="0.6;0;0.6"
+                    dur="2s"
+                    repeatCount="indefinite"
+                  />
+                </circle>
+
+                {/* Black circular background pill */}
+                <circle cx="0" cy="-6" r="11" fill="#111827" />
+
+                {/* Scooter & Helmet Graphic */}
+                <circle cx="0" cy="-6" r="7" fill="#0C831F" />
+                <path
+                  d="M -3 -5 Q 0 -9 3 -5 Q 3 -3 -3 -3 Z"
+                  fill="#FFFFFF"
+                />
+                {/* Scooter body & wheels */}
+                <circle cx="-4" cy="5" r="2" fill="#374151" />
+                <circle cx="4" cy="5" r="2" fill="#374151" />
+                <path d="M -4 5 L 4 5 L 2 1 L -2 1 Z" fill="#10B981" />
+                <circle cx="0" cy="0" r="3" fill="#F59E0B" />
+              </g>
+            </svg>
+
+            {/* Google Watermark Logo on bottom-left */}
+            <div style={S.googleWatermark}>Google</div>
+
+            {/* Re-center / Expand Button on top-right */}
+            <button
+              type="button"
+              style={S.mapRecenterBtn}
+              onClick={() => triggerToast("Map re-centered to delivery route")}
+              title="Re-center map"
+            >
+              <IconTarget size={16} color="#475569" />
+            </button>
+          </div>
+        </section>
+
+        {/* ── 3. PAYMENT / COD CARD (EXACT SCREENSHOT) ── */}
+        <section style={S.cardContainer}>
+          <div style={S.paymentActionCard}>
+            <div style={S.paymentCardLeft}>
+              <div style={S.cardIconCircle}>
+                <IconCreditCard size={20} color="#64748B" />
               </div>
-              <div style={S.slaSub}>
-                {isDelivered
-                  ? "Handover completed at your doorstep in Namma Tiptur"
-                  : "Live Sync with Tiptur HUB KA44 (Tumkur District - 572201)"}
+              <div style={S.paymentTextGroup}>
+                <h3 style={S.paymentCardTitle}>
+                  {isPaidOnline
+                    ? `Paid ₹${activeOrder.totalAmount} online`
+                    : `Pay ₹${activeOrder.totalAmount} before or on delivery`}
+                </h3>
+                <p style={S.paymentCardSub}>
+                  {isPaidOnline
+                    ? "Safe, contactless delivery. No cash needed at your doorstep."
+                    : `Please keep a change of ₹${activeOrder.totalAmount} handy or avoid the hassle by paying online`}
+                </p>
+                {!isPaidOnline && (
+                  <button
+                    type="button"
+                    style={S.payOnlineTextBtn}
+                    onClick={() => setShowPayModal(true)}
+                  >
+                    Pay Online →
+                  </button>
+                )}
               </div>
             </div>
-            {!isDelivered && (
-              <div style={S.digitClock}>
-                <span style={S.clockDigits}>{minStr}:{secStr}</span>
-                <small style={{ fontSize: 10, color: "#94a3b8" }}>EST. TIME</small>
+          </div>
+        </section>
+
+        {/* ── 4. DELIVERY PARTNER CARD (EXACT SCREENSHOT) ── */}
+        <section style={S.cardContainer}>
+          <div style={S.partnerMainCard}>
+            {/* Partner Header Row */}
+            <div style={S.partnerHeader}>
+              <div style={S.partnerLeftProfile}>
+                {/* Driver Avatar with Helmet in Beige Circle */}
+                <div style={S.partnerAvatarBadge}>
+                  <div style={S.avatarHelmet}>
+                    <div style={S.helmetVisor} />
+                  </div>
+                  <span style={S.avatarOnlineIndicator} />
+                </div>
+
+                <div style={S.partnerNameBlock}>
+                  <div style={S.partnerNameLine}>
+                    I'm <b>SINCHANA B R</b>, your delivery partner
+                  </div>
+                  <div style={S.partnerSubLine}>
+                    KA44 Express Fleet • 4.9 <IconStar size={11} color="#F59E0B" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Call Phone Button */}
+              <a
+                href="tel:8088553237"
+                style={S.phoneActionBtn}
+                title="Call Sinchana B R"
+              >
+                <IconPhone size={18} color="#0C831F" />
+              </a>
+            </div>
+
+            {/* Status / Message Bubble */}
+            <div style={S.partnerMessageBubble}>
+              {isDispatched
+                ? "I've picked up your order from Tiptur HUB and am on the way!"
+                : "I've reached the store and will pick up your order soon"}
+            </div>
+
+            {/* Tipping & Happiness Section */}
+            <div style={S.tippingContainer}>
+              <div style={S.tippingTextCol}>
+                <h4 style={S.tippingTitle}>Delivering happiness at your doorstep!</h4>
+                <p style={S.tippingSub}>Thank them by leaving a tip</p>
+              </div>
+
+              {/* Delivery Rider Graphic */}
+              <div style={S.deliveryScooterGraphic}>
+                <svg width="72" height="48" viewBox="0 0 72 48" fill="none">
+                  {/* Scooter */}
+                  <circle cx="16" cy="38" r="7" fill="#1E293B" />
+                  <circle cx="16" cy="38" r="3" fill="#CBD5E1" />
+                  <circle cx="56" cy="38" r="7" fill="#1E293B" />
+                  <circle cx="56" cy="38" r="3" fill="#CBD5E1" />
+                  {/* Chassis */}
+                  <path d="M 16 38 L 30 38 L 40 28 L 56 38" stroke="#F59E0B" strokeWidth="4" strokeLinecap="round" />
+                  <path d="M 40 28 L 48 16 L 52 16" stroke="#1E293B" strokeWidth="2.5" strokeLinecap="round" />
+                  {/* Grocery Box in front */}
+                  <rect x="50" y="16" width="12" height="12" rx="2" fill="#0C831F" />
+                  {/* Driver body & helmet */}
+                  <circle cx="34" cy="12" r="6" fill="#F59E0B" />
+                  <path d="M 31 10 Q 34 8 37 10" stroke="#FFFFFF" strokeWidth="2" strokeLinecap="round" />
+                  <path d="M 28 20 L 34 16 L 40 20 L 36 28 L 28 28 Z" fill="#FBBF24" />
+                </svg>
+              </div>
+            </div>
+
+            {/* Quick Tip Chips */}
+            <div style={S.tipChipsRow}>
+              {[
+                { label: "₹20", value: 20 },
+                { label: "₹30", value: 30 },
+                { label: "₹50", value: 50 },
+                { label: "Other", value: "Other" },
+              ].map((tip) => {
+                const isSelected = selectedTip === tip.value;
+                return (
+                  <button
+                    key={tip.label}
+                    type="button"
+                    style={{
+                      ...S.tipBtn,
+                      ...(isSelected ? S.tipBtnActive : {}),
+                    }}
+                    onClick={() => handleSelectTip(tip.value)}
+                  >
+                    <span>{tip.label}</span>
+                    {isSelected && <IconCheck size={12} color="#0C831F" />}
+                  </button>
+                );
+              })}
+            </div>
+
+            {showCustomTipInput && (
+              <div style={S.customTipRow}>
+                <input
+                  type="number"
+                  placeholder="Enter custom tip amount (₹)..."
+                  value={customTipAmount}
+                  onChange={(e) => setCustomTipAmount(e.target.value)}
+                  style={S.customTipField}
+                />
+                <button
+                  type="button"
+                  style={S.applyCustomTipBtn}
+                  onClick={handleApplyCustomTip}
+                >
+                  Add Tip
+                </button>
               </div>
             )}
           </div>
+        </section>
 
-          <div style={S.progressBarBg}>
-            <div
-              style={{
-                ...S.progressBarFill,
-                width: isDelivered ? "100%" : `${Math.max(15, routeProgress)}%`,
-              }}
-            />
+        {/* ── 5. ORDER SUMMARY & DETAILS ── */}
+        <section style={S.cardContainer}>
+          <div style={S.summaryCard}>
+            <div style={S.summaryTopRow}>
+              <div>
+                <h4 style={S.summaryOrderNum}>Order #{activeOrder.orderNumber || orderId}</h4>
+                <div style={S.summaryHubTag}>
+                  Placed Today at {orderPlacedTime || "10:45 AM"} • Tiptur HUB - KA44
+                </div>
+              </div>
+              <span style={S.summaryGrandTotal}>₹{activeOrder.totalAmount}</span>
+            </div>
+
+            <div style={S.itemsList}>
+              {(activeOrder.items || []).map((it, idx) => (
+                <div key={idx} style={S.itemRow}>
+                  <div style={S.itemNameCol}>
+                    <span style={S.itemName}>{it.name}</span>
+                    <span style={S.itemQty}>x{it.qty || 1}</span>
+                  </div>
+                  <span style={S.itemPrice}>
+                    ₹{(it.price || 45) * (it.qty || 1)}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            {/* Handover QR Code for Sinchana */}
+            <div style={S.handoverQrBox}>
+              <div style={S.qrTitleRow}>
+                <span style={S.qrTitle}>Delivery Handover QR</span>
+                <span style={S.qrScanPill}>Scan upon arrival</span>
+              </div>
+              <p style={S.qrSub}>
+                Show this code to <b>Sinchana B R</b> at doorstep to complete verification:
+              </p>
+              <div style={S.qrGraphicWrapper}>
+                <div style={S.qrVisualMatrix} />
+                <code style={S.qrTextCode}>AUDITX-{activeOrder.orderNumber || orderId}</code>
+              </div>
+            </div>
+
+            {/* 60s Free Cancellation prompt */}
+            {!isCancelled && !isDelivered && cancelSecondsLeft > 0 && (
+              <div style={S.cancelBarRow}>
+                <span style={S.cancelWindowText}>
+                  Cancel available for <b>00:{cancelSecondsLeft.toString().padStart(2, "0")}s</b>
+                </span>
+                <button
+                  type="button"
+                  style={S.cancelOrderBtn}
+                  onClick={handleCancelOrder}
+                >
+                  Cancel Order
+                </button>
+              </div>
+            )}
+          </div>
+        </section>
+
+        <div style={{ height: 40 }} />
+      </div>
+
+      {/* ── PAY ONLINE MODAL ── */}
+      {showPayModal && (
+        <div style={S.modalOverlay} onClick={() => setShowPayModal(false)}>
+          <div style={S.payModalSheet} onClick={(e) => e.stopPropagation()}>
+            <div style={S.modalHeaderRow}>
+              <div>
+                <h3 style={S.modalTitle}>Pay ₹{activeOrder.totalAmount} Online</h3>
+                <div style={S.modalSub}>1-Tap instant UPI checkout for contactless delivery</div>
+              </div>
+              <button
+                type="button"
+                style={S.modalCloseBtn}
+                onClick={() => setShowPayModal(false)}
+              >
+                <IconClose size={20} color="#64748B" />
+              </button>
+            </div>
+
+            <div style={S.upiMethodsGrid}>
+              {[
+                { name: "Google Pay", id: "gpay" },
+                { name: "PhonePe", id: "phonepe" },
+                { name: "Paytm UPI", id: "paytm" },
+                { name: "AUDIT'X Wallet", id: "wallet" },
+              ].map((m) => (
+                <button
+                  key={m.id}
+                  type="button"
+                  style={S.upiOptionBtn}
+                  onClick={() => {
+                    setIsPaidOnline(true);
+                    setShowPayModal(false);
+                    playSuccessChime();
+                    triggerToast(`Payment of ₹${activeOrder.totalAmount} via ${m.name} successful!`);
+                  }}
+                >
+                  <IconCheck size={14} color="#0C831F" />
+                  <span>{m.name}</span>
+                </button>
+              ))}
+            </div>
           </div>
         </div>
+      )}
 
-        {/* ORDER CAPTAIN GREETING BANNER */}
-        <div style={S.captainCard}>
-          <div style={S.captainRow}>
-            <div style={S.captainAvatar}>🛵</div>
-            <div style={S.captainDetails}>
-              <div style={S.captainRole}>Order Captain (Delivery Girl):</div>
-              <div style={S.captainName}>Sinchana B R</div>
-              <div style={S.captainPhone}>📞 +91 8088553237 • Tiptur HUB KA44 Fleet</div>
-            </div>
-            <span style={S.verifiedBadge}>Verified ✓</span>
-          </div>
-
-          {/* Message per prompt */}
-          <div style={S.captainMessageBubble}>
-            💬 <i>"Hi I am Sinchana B R, your order captain on the way coming soon!"</i>
-          </div>
-        </div>
-
-        {/* 10-Minute Live Model Breakdown (2m Picker + 8m Captain) */}
-        <div style={S.opsModelBox}>
-          <div style={S.opsModelHeader}>Dark Store 10-Minute Operations Model:</div>
-          <div style={S.opsModelSplit}>
-            <div style={{ ...S.splitCard, borderColor: isStaged ? "#10b981" : "#f59e0b" }}>
-              <div style={S.splitTime}>2:00 MINS</div>
-              <div style={S.splitTitle}>Inside Warehouse Pick</div>
-              <div style={S.splitName}>Thrupthi K S (OD Picker)</div>
-              <div style={S.splitRack}>
-                Staged at: <b>Rack {order?.assignedRack || "D5"}</b>
-              </div>
-            </div>
-
-            <div style={{ ...S.splitCard, borderColor: isDispatched ? "#10b981" : "#38bdf8" }}>
-              <div style={S.splitTime}>8:00 MINS</div>
-              <div style={S.splitTitle}>Namma Tiptur Last-Mile</div>
-              <div style={S.splitName}>Sinchana B R (Order Captain)</div>
-              <div style={S.splitRack}>Speed Target: &lt; 8 Mins</div>
-            </div>
-          </div>
-        </div>
-
-        {/* Animated Tiptur Transit Route */}
-        <div style={S.routeCard}>
-          <div style={S.routeHeader}>
-            <span>🗺️ Namma Tiptur Live Route Simulation</span>
-            <span style={S.routeStatusPill}>
-              {isDelivered
-                ? "Delivered ✓"
-                : isDispatched
-                ? "On Tiptur Roads 🛵"
-                : isStaged
-                ? `Staged in Rack ${order?.assignedRack || "D5"}`
-                : "Picking at Hub 📦"}
-            </span>
-          </div>
-
-          <div style={S.timeline}>
-            <div style={S.timelineItem}>
-              <div style={{ ...S.timelineDot, background: "#10b981" }}>✓</div>
-              <div style={S.timelineContent}>
-                <div style={S.timelinePlace}>Tiptur HUB - KA44 (Dock Bay)</div>
-                <div style={S.timelineSub}>Order packed in Rack {order?.assignedRack || "D5"} by Thrupthi K S</div>
-              </div>
-            </div>
-
-            <div style={S.timelineItem}>
-              <div style={{ ...S.timelineDot, background: isDispatched ? "#10b981" : "#334155" }}>
-                {isDispatched ? "✓" : "2"}
-              </div>
-              <div style={S.timelineContent}>
-                <div style={S.timelinePlace}>Kalpataru College & APMC Coconut Road</div>
-                <div style={S.timelineSub}>Order Captain Sinchana B R en-route on electric scooter</div>
-              </div>
-            </div>
-
-            <div style={S.timelineItem}>
-              <div style={{ ...S.timelineDot, background: isDispatched ? "#10b981" : "#334155" }}>
-                {isDispatched ? "✓" : "3"}
-              </div>
-              <div style={S.timelineContent}>
-                <div style={S.timelinePlace}>Gandhi Circle & B.H. Road Main Crossing</div>
-                <div style={S.timelineSub}>Approaching delivery sector in Namma Tiptur</div>
-              </div>
-            </div>
-
-            <div style={S.timelineItem}>
-              <div style={{ ...S.timelineDot, background: isDelivered ? "#10b981" : "#334155" }}>
-                {isDelivered ? "✓" : "4"}
-              </div>
-              <div style={S.timelineContent}>
-                <div style={S.timelinePlace}>Your Doorstep (Namma Tiptur - 572201)</div>
-                <div style={S.timelineSub}>{order?.customerAddress || "Near Kalpataru College Road"}</div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* CUSTOMER HANDOVER QR CODE */}
-        <div style={S.qrCard}>
-          <div style={S.qrTitle}>Customer Delivery Handover QR Code</div>
-          <p style={S.qrSub}>
-            Show this QR code to Order Captain <b>Sinchana B R</b> upon arrival to complete delivery:
-          </p>
-
-          <div style={S.qrBox}>
-            <div style={S.qrPlaceholder}>
-              <div style={S.qrPattern}>
-                <span style={{ fontSize: 48 }}>📱</span>
-                <span style={S.qrLabel}>{order?.id || orderId}</span>
-              </div>
-            </div>
-            <code style={S.qrCodeSnippet}>AUDITX-DELIVERY-{order?.id || orderId}</code>
-          </div>
-
-          <div style={S.handoverAlert}>
-            🔒 <i>Once Sinchana scans this QR, order delivery will immediately track on warehouse dashboards!</i>
-          </div>
-        </div>
-
-        {/* Order Details */}
-        <div style={S.orderSummaryCard}>
-          <div style={S.summaryHeader}>
-            <span>Order Summary (#{order?.orderNumber || orderId})</span>
-            <span style={S.totalAmount}>₹{order?.totalAmount || 180}</span>
-          </div>
-
-          <div style={S.itemsList}>
-            {(order?.items || []).map((it, idx) => (
-              <div key={idx} style={S.itemRow}>
-                <span>{it.name} (x{it.qty || 1})</span>
-                <b>₹{(it.price || 50) * (it.qty || 1)}</b>
-              </div>
-            ))}
-          </div>
-        </div>
-      </main>
-
-      {/* COMPLAINTS MODAL DRAWER */}
+      {/* ── COMPLAINT / SUPPORT DRAWER ── */}
       {showComplaintDrawer && (
         <div style={S.modalOverlay} onClick={() => setShowComplaintDrawer(false)}>
-          <div style={S.drawer} onClick={(e) => e.stopPropagation()}>
-            <div style={S.drawerHeader}>
-              <h3 style={S.drawerTitle}>Raise Order Complaint</h3>
-              <button style={S.closeBtn} onClick={() => setShowComplaintDrawer(false)}>✕</button>
+          <div style={S.complaintSheet} onClick={(e) => e.stopPropagation()}>
+            <div style={S.modalHeaderRow}>
+              <div>
+                <h3 style={S.modalTitle}>Help & Live Support</h3>
+                <div style={S.modalSub}>Direct connection to <b>Bhaskar N S (Store Manager - KA44)</b></div>
+              </div>
+              <button
+                type="button"
+                style={S.modalCloseBtn}
+                onClick={() => setShowComplaintDrawer(false)}
+              >
+                <IconClose size={20} color="#64748B" />
+              </button>
             </div>
 
-            <p style={S.drawerSub}>
-              Direct connection to <b>Bhaskar N S (Store Manager - Tiptur HUB KA44)</b>.
-            </p>
-
-            <form onSubmit={submitComplaint}>
+            <form onSubmit={submitComplaint} style={S.complaintForm}>
               <div style={S.formGroup}>
-                <label style={S.label}>Issue Category:</label>
+                <label style={S.formLabel}>Issue Category:</label>
                 <select
                   value={complaintCategory}
                   onChange={(e) => setComplaintCategory(e.target.value)}
-                  style={S.select}
+                  style={S.formSelect}
                 >
                   <option value="Damaged Goods">Damaged Packaging / Leaking Item</option>
                   <option value="Missing Item">Missing Item in Delivery Bag</option>
                   <option value="Delivery SLA">Delivery Took More Than 10 Minutes</option>
                   <option value="Wrong Item">Wrong Item Delivered</option>
+                  <option value="Partner Query">Delivery Partner Query</option>
                 </select>
               </div>
 
               <div style={S.formGroup}>
-                <label style={S.label}>Explain the problem:</label>
+                <label style={S.formLabel}>Explain the problem:</label>
                 <textarea
-                  rows={3}
-                  placeholder="Describe what happened (e.g. Tender coconut was damaged or Nandini milk was missing)..."
+                  rows={4}
+                  placeholder="Describe your issue in detail..."
                   value={complaintDesc}
                   onChange={(e) => setComplaintDesc(e.target.value)}
-                  style={S.textarea}
+                  style={S.formTextarea}
                   required
                 />
               </div>
 
-              <button type="submit" style={S.submitCmpBtn} disabled={submittingComplaint}>
-                {submittingComplaint ? "Submitting..." : "Send Complaint to SM Bhaskar N S →"}
+              <button
+                type="submit"
+                style={S.submitCmpBtn}
+                disabled={submittingComplaint}
+              >
+                {submittingComplaint ? "Sending..." : "Submit to SM Bhaskar N S →"}
               </button>
             </form>
           </div>
@@ -398,443 +728,668 @@ export default function TrackOrderPage() {
   );
 }
 
+// ── BLINKIT STYLES SYSTEM (MATCHING SCREENSHOT WITH HIGH ACCURACY) ──
 const S = {
-  container: {
+  pageBackground: {
     minHeight: "100vh",
-    background: "#080c14",
-    color: "#f8fafc",
-    fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
-    paddingBottom: 40,
+    background: "#080C14",
+    display: "flex",
+    justifyContent: "center",
+    fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Inter', sans-serif",
+    color: "#0F172A",
   },
   toast: {
     position: "fixed",
     top: 16,
     left: "50%",
     transform: "translateX(-50%)",
-    background: "#10b981",
-    color: "#ffffff",
-    padding: "10px 20px",
+    background: "#0C831F",
+    color: "#FFFFFF",
+    padding: "10px 18px",
     borderRadius: 8,
-    fontWeight: 600,
-    zIndex: 9999,
-    boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
-    fontSize: 14,
-  },
-  header: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    padding: "14px 20px",
-    background: "#0f172a",
-    borderBottom: "1px solid #1e293b",
-    position: "sticky",
-    top: 0,
-    zIndex: 40,
-  },
-  backBtn: {
-    background: "transparent",
-    border: "none",
-    color: "#38bdf8",
-    fontSize: 13,
     fontWeight: 700,
-    cursor: "pointer",
-  },
-  headerCenter: {
+    zIndex: 9999,
+    boxShadow: "0 6px 20px rgba(12, 131, 31, 0.4)",
+    fontSize: 13,
     display: "flex",
     alignItems: "center",
     gap: 8,
   },
-  brandName: {
-    fontSize: 18,
+  // Mobile Frame Shell
+  mobileShell: {
+    width: "100%",
+    maxWidth: 440,
+    minHeight: "100vh",
+    background: "#F4F6FB",
+    position: "relative",
+    boxShadow: "0 0 40px rgba(0, 0, 0, 0.4)",
+    overflowX: "hidden",
+  },
+
+  // 1. TOP GREEN HEADER
+  topGreenHeader: {
+    background: "#0C831F",
+    color: "#FFFFFF",
+    padding: "14px 16px",
+    position: "sticky",
+    top: 0,
+    zIndex: 40,
+  },
+  statusBarRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    fontSize: 12,
+    fontWeight: 600,
+    color: "#E8F5E9",
+    marginBottom: 8,
+    opacity: 0.9,
+  },
+  statusTime: {
+    fontWeight: 700,
+  },
+  statusIcons: {
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    fontSize: 11,
+  },
+  batteryShell: {
+    width: 18,
+    height: 9,
+    border: "1px solid #E8F5E9",
+    borderRadius: 2,
+    padding: 1,
+    display: "flex",
+    alignItems: "center",
+  },
+  batteryFill: {
+    width: "75%",
+    height: "100%",
+    background: "#FFFFFF",
+    borderRadius: 1,
+  },
+  greenNavRow: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  backArrowBtn: {
+    background: "transparent",
+    border: "none",
+    color: "#FFFFFF",
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    padding: "4px 8px 4px 0",
+  },
+  headerCenterInfo: {
+    textAlign: "center",
+    flex: 1,
+  },
+  packingSubText: {
+    fontSize: 13,
+    fontWeight: 600,
+    color: "#E2F1E4",
+    letterSpacing: -0.2,
+    lineHeight: 1.2,
+  },
+  arrivingTitle: {
+    fontSize: 21,
     fontWeight: 900,
-    color: "#10b981",
+    color: "#FFFFFF",
+    letterSpacing: -0.5,
+    margin: "2px 0 0",
+    lineHeight: 1.15,
   },
-  hubBadge: {
+  supportHelpBtn: {
+    background: "rgba(255, 255, 255, 0.2)",
+    border: "none",
+    color: "#FFFFFF",
     fontSize: 11,
-    fontWeight: 700,
-    background: "#1e293b",
-    color: "#f59e0b",
-    padding: "2px 8px",
-    borderRadius: 4,
-    border: "1px solid #f59e0b",
-  },
-  helpBtn: {
-    background: "#1e293b",
-    border: "1px solid #ef4444",
-    color: "#ef4444",
-    padding: "6px 12px",
+    fontWeight: 800,
+    padding: "5px 10px",
     borderRadius: 6,
-    fontSize: 11,
-    fontWeight: 700,
     cursor: "pointer",
   },
-  main: {
-    maxWidth: 580,
-    margin: "0 auto",
-    padding: "16px",
+
+  // 2. MAP SECTION
+  mapSection: {
+    position: "relative",
+    width: "100%",
   },
-  slaHero: {
-    background: "#0f172a",
+  mapViewport: {
+    position: "relative",
+    width: "100%",
+    height: 250,
+    overflow: "hidden",
+    background: "#E8ECEF",
+  },
+  mapSvg: {
+    width: "100%",
+    height: "100%",
+    display: "block",
+  },
+  googleWatermark: {
+    position: "absolute",
+    bottom: 8,
+    left: 12,
+    fontSize: 14,
+    fontWeight: 700,
+    color: "#64748B",
+    letterSpacing: -0.5,
+    fontFamily: "'Roboto', sans-serif",
+    opacity: 0.85,
+    pointerEvents: "none",
+  },
+  mapRecenterBtn: {
+    position: "absolute",
+    top: 10,
+    right: 12,
+    width: 32,
+    height: 32,
+    background: "#FFFFFF",
+    border: "1px solid #CBD5E1",
+    borderRadius: "50%",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    boxShadow: "0 2px 6px rgba(0,0,0,0.15)",
+    cursor: "pointer",
+  },
+
+  // CARDS LAYOUT
+  cardContainer: {
+    padding: "0 12px",
+    marginTop: 10,
+  },
+
+  // 3. PAYMENT ACTION CARD
+  paymentActionCard: {
+    background: "#FFFFFF",
     borderRadius: 14,
-    padding: 18,
-    border: "2px solid #10b981",
-    marginBottom: 14,
+    border: "1px solid #E2E8F0",
+    padding: "14px 16px",
+    boxShadow: "0 1px 4px rgba(0,0,0,0.04)",
   },
-  slaTop: {
+  paymentCardLeft: {
+    display: "flex",
+    alignItems: "flex-start",
+    gap: 12,
+  },
+  cardIconCircle: {
+    width: 38,
+    height: 38,
+    borderRadius: "50%",
+    background: "#F1F5F9",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+    marginTop: 2,
+  },
+  paymentTextGroup: {
+    flex: 1,
+    display: "flex",
+    flexDirection: "column",
+    gap: 3,
+  },
+  paymentCardTitle: {
+    fontSize: 14,
+    fontWeight: 800,
+    color: "#0F172A",
+    margin: 0,
+    lineHeight: 1.25,
+  },
+  paymentCardSub: {
+    fontSize: 12,
+    color: "#64748B",
+    lineHeight: 1.35,
+    margin: 0,
+  },
+  payOnlineTextBtn: {
+    background: "transparent",
+    border: "none",
+    color: "#0C831F",
+    fontWeight: 800,
+    fontSize: 13,
+    padding: "4px 0 0",
+    cursor: "pointer",
+    textAlign: "left",
+  },
+
+  // 4. DELIVERY PARTNER CARD
+  partnerMainCard: {
+    background: "#FFFFFF",
+    borderRadius: 14,
+    border: "1px solid #E2E8F0",
+    padding: "16px",
+    boxShadow: "0 1px 4px rgba(0,0,0,0.04)",
+  },
+  partnerHeader: {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
     marginBottom: 12,
   },
-  slaTitle: {
-    fontSize: 16,
-    fontWeight: 900,
-    color: "#10b981",
-  },
-  slaSub: {
-    fontSize: 12,
-    color: "#94a3b8",
-  },
-  digitClock: {
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "flex-end",
-  },
-  clockDigits: {
-    fontSize: 26,
-    fontWeight: 900,
-    color: "#ffffff",
-    fontFamily: "monospace",
-  },
-  progressBarBg: {
-    width: "100%",
-    height: 8,
-    background: "#1e293b",
-    borderRadius: 4,
-    overflow: "hidden",
-  },
-  progressBarFill: {
-    height: "100%",
-    background: "linear-gradient(90deg, #10b981, #38bdf8)",
-    transition: "width 1s linear",
-  },
-  captainCard: {
-    background: "#0f172a",
-    borderRadius: 14,
-    padding: 16,
-    border: "1px solid #1e293b",
-    marginBottom: 14,
-  },
-  captainRow: {
+  partnerLeftProfile: {
     display: "flex",
     alignItems: "center",
-    gap: 12,
-    marginBottom: 10,
-  },
-  captainAvatar: {
-    fontSize: 28,
-  },
-  captainDetails: {
-    flex: 1,
-  },
-  captainRole: {
-    fontSize: 11,
-    color: "#94a3b8",
-  },
-  captainName: {
-    fontSize: 16,
-    fontWeight: 800,
-    color: "#ffffff",
-  },
-  captainPhone: {
-    fontSize: 12,
-    color: "#38bdf8",
-  },
-  verifiedBadge: {
-    fontSize: 11,
-    fontWeight: 700,
-    color: "#10b981",
-    background: "rgba(16, 185, 129, 0.15)",
-    padding: "3px 8px",
-    borderRadius: 4,
-  },
-  captainMessageBubble: {
-    background: "#1e293b",
-    borderRadius: 10,
-    padding: "10px 14px",
-    fontSize: 13,
-    color: "#f8fafc",
-    borderLeft: "3px solid #10b981",
-  },
-  opsModelBox: {
-    background: "#0f172a",
-    borderRadius: 14,
-    padding: 16,
-    border: "1px solid #1e293b",
-    marginBottom: 14,
-  },
-  opsModelHeader: {
-    fontSize: 12,
-    fontWeight: 700,
-    color: "#94a3b8",
-    marginBottom: 10,
-    textTransform: "uppercase",
-  },
-  opsModelSplit: {
-    display: "grid",
-    gridTemplateColumns: "1fr 1fr",
     gap: 10,
   },
-  splitCard: {
-    background: "#1e293b",
-    borderRadius: 10,
-    padding: 12,
-    border: "1px solid",
-  },
-  splitTime: {
-    fontSize: 16,
-    fontWeight: 900,
-    color: "#ffffff",
-    fontFamily: "monospace",
-  },
-  splitTitle: {
-    fontSize: 12,
-    color: "#94a3b8",
-    fontWeight: 600,
-  },
-  splitName: {
-    fontSize: 13,
-    fontWeight: 700,
-    color: "#38bdf8",
-    marginTop: 4,
-  },
-  splitRack: {
-    fontSize: 11,
-    color: "#f59e0b",
-    marginTop: 2,
-  },
-  routeCard: {
-    background: "#0f172a",
-    borderRadius: 14,
-    padding: 16,
-    border: "1px solid #1e293b",
-    marginBottom: 14,
-  },
-  routeHeader: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    fontSize: 13,
-    fontWeight: 700,
-    color: "#ffffff",
-    marginBottom: 14,
-  },
-  routeStatusPill: {
-    fontSize: 11,
-    color: "#38bdf8",
-  },
-  timeline: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 12,
-  },
-  timelineItem: {
-    display: "flex",
-    alignItems: "flex-start",
-    gap: 12,
-  },
-  timelineDot: {
-    width: 22,
-    height: 22,
+  partnerAvatarBadge: {
+    position: "relative",
+    width: 44,
+    height: 44,
     borderRadius: "50%",
-    color: "#fff",
-    fontSize: 11,
+    background: "#FEF3C7",
+    border: "2px solid #FDE68A",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    fontWeight: 800,
     flexShrink: 0,
   },
-  timelineContent: {},
-  timelinePlace: {
-    fontSize: 13,
-    fontWeight: 700,
-    color: "#ffffff",
+  avatarHelmet: {
+    width: 24,
+    height: 24,
+    borderRadius: "50% 50% 40% 40%",
+    background: "#F59E0B",
+    position: "relative",
   },
-  timelineSub: {
-    fontSize: 11,
-    color: "#94a3b8",
+  helmetVisor: {
+    position: "absolute",
+    top: 6,
+    left: 4,
+    right: 4,
+    height: 7,
+    background: "#1E293B",
+    borderRadius: 2,
   },
-  qrCard: {
-    background: "#0f172a",
-    borderRadius: 14,
-    padding: 18,
-    border: "1px solid #1e293b",
-    textAlign: "center",
-    marginBottom: 14,
+  avatarOnlineIndicator: {
+    position: "absolute",
+    bottom: 0,
+    right: 0,
+    width: 10,
+    height: 10,
+    borderRadius: "50%",
+    background: "#0C831F",
+    border: "2px solid #FFFFFF",
   },
-  qrTitle: {
-    fontSize: 15,
-    fontWeight: 800,
-    color: "#ffffff",
-    marginBottom: 4,
-  },
-  qrSub: {
-    fontSize: 12,
-    color: "#94a3b8",
-    marginBottom: 14,
-  },
-  qrBox: {
-    background: "#ffffff",
-    color: "#0f172a",
-    borderRadius: 12,
-    padding: 18,
-    display: "inline-flex",
+  partnerNameBlock: {
+    display: "flex",
     flexDirection: "column",
-    alignItems: "center",
-    gap: 8,
   },
-  qrPlaceholder: {
-    width: 140,
-    height: 140,
-    border: "3px dashed #0f172a",
-    borderRadius: 8,
+  partnerNameLine: {
+    fontSize: 13,
+    color: "#1E293B",
+    lineHeight: 1.25,
+  },
+  partnerSubLine: {
+    fontSize: 11,
+    color: "#64748B",
+    display: "flex",
+    alignItems: "center",
+    gap: 4,
+    marginTop: 2,
+  },
+  phoneActionBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: "50%",
+    background: "#F0FDF4",
+    border: "1px solid #BBF7D0",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
+    textDecoration: "none",
+    cursor: "pointer",
   },
-  qrPattern: {
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
+  partnerMessageBubble: {
+    background: "#EAF7EC",
+    border: "1px solid #C8E6C9",
+    borderRadius: 8,
+    padding: "8px 12px",
+    fontSize: 12,
+    fontWeight: 600,
+    color: "#1B5E20",
+    lineHeight: 1.35,
+    marginBottom: 14,
   },
-  qrLabel: {
-    fontSize: 10,
-    fontWeight: 800,
-  },
-  qrCodeSnippet: {
-    fontSize: 11,
-    fontWeight: 700,
-    background: "#f1f5f9",
-    padding: "2px 8px",
-    borderRadius: 4,
-  },
-  handoverAlert: {
-    fontSize: 11,
-    color: "#10b981",
-    marginTop: 10,
-  },
-  orderSummaryCard: {
-    background: "#0f172a",
-    borderRadius: 14,
-    padding: 16,
-    border: "1px solid #1e293b",
-  },
-  summaryHeader: {
+
+  // Tipping Section
+  tippingContainer: {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
-    fontSize: 13,
-    fontWeight: 700,
-    color: "#ffffff",
-    marginBottom: 10,
+    marginBottom: 12,
   },
-  totalAmount: {
+  tippingTextCol: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 2,
+  },
+  tippingTitle: {
+    fontSize: 13,
+    fontWeight: 800,
+    color: "#0F172A",
+    margin: 0,
+  },
+  tippingSub: {
+    fontSize: 11,
+    color: "#64748B",
+    margin: 0,
+  },
+  deliveryScooterGraphic: {
+    flexShrink: 0,
+  },
+  tipChipsRow: {
+    display: "grid",
+    gridTemplateColumns: "repeat(4, 1fr)",
+    gap: 8,
+  },
+  tipBtn: {
+    background: "#FFFFFF",
+    border: "1px solid #E2E8F0",
+    borderRadius: 8,
+    padding: "8px 4px",
+    fontSize: 12,
+    fontWeight: 700,
+    color: "#334155",
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 4,
+    transition: "all 0.15s ease",
+  },
+  tipBtnActive: {
+    borderColor: "#0C831F",
+    background: "#F0FDF4",
+    color: "#0C831F",
+  },
+  customTipRow: {
+    display: "flex",
+    gap: 8,
+    marginTop: 10,
+  },
+  customTipField: {
+    flex: 1,
+    background: "#F8FAFC",
+    border: "1px solid #CBD5E1",
+    borderRadius: 6,
+    padding: "6px 10px",
+    fontSize: 12,
+    outline: "none",
+  },
+  applyCustomTipBtn: {
+    background: "#0C831F",
+    color: "#FFFFFF",
+    border: "none",
+    borderRadius: 6,
+    padding: "6px 14px",
+    fontSize: 11,
+    fontWeight: 800,
+    cursor: "pointer",
+  },
+
+  // 5. SUMMARY CARD & DETAILS
+  summaryCard: {
+    background: "#FFFFFF",
+    borderRadius: 14,
+    border: "1px solid #E2E8F0",
+    padding: "16px",
+    boxShadow: "0 1px 4px rgba(0,0,0,0.04)",
+  },
+  summaryTopRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    marginBottom: 10,
+    paddingBottom: 8,
+    borderBottom: "1px solid #F1F5F9",
+  },
+  summaryOrderNum: {
+    fontSize: 13,
+    fontWeight: 900,
+    color: "#0F172A",
+    margin: 0,
+  },
+  summaryHubTag: {
+    fontSize: 10,
+    fontWeight: 700,
+    color: "#B45309",
+    marginTop: 2,
+  },
+  summaryGrandTotal: {
     fontSize: 16,
     fontWeight: 900,
-    color: "#10b981",
+    color: "#0C831F",
   },
   itemsList: {
     display: "flex",
     flexDirection: "column",
     gap: 6,
+    marginBottom: 14,
   },
   itemRow: {
     display: "flex",
     justifyContent: "space-between",
+    alignItems: "center",
     fontSize: 12,
-    color: "#cbd5e1",
   },
-  modalOverlay: {
-    position: "fixed",
-    inset: 0,
-    background: "rgba(0,0,0,0.75)",
+  itemNameCol: {
     display: "flex",
     alignItems: "center",
-    justifyContent: "center",
-    padding: 16,
-    zIndex: 100,
+    gap: 6,
   },
-  drawer: {
-    background: "#0f172a",
-    borderRadius: 16,
-    padding: 20,
-    maxWidth: 440,
-    width: "100%",
-    border: "1px solid #1e293b",
+  itemName: {
+    color: "#1E293B",
+    fontWeight: 600,
   },
-  drawerHeader: {
+  itemQty: {
+    color: "#64748B",
+  },
+  itemPrice: {
+    color: "#0F172A",
+    fontWeight: 700,
+  },
+  handoverQrBox: {
+    background: "#F8FAFC",
+    border: "1px dashed #CBD5E1",
+    borderRadius: 10,
+    padding: "12px",
+    marginTop: 8,
+  },
+  qrTitleRow: {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 6,
+    marginBottom: 4,
   },
-  drawerTitle: {
-    fontSize: 18,
+  qrTitle: {
+    fontSize: 12,
     fontWeight: 800,
-    color: "#ffffff",
+    color: "#0F172A",
+  },
+  qrScanPill: {
+    fontSize: 10,
+    fontWeight: 800,
+    color: "#B45309",
+    background: "#FEF3C7",
+    padding: "1px 6px",
+    borderRadius: 4,
+  },
+  qrSub: {
+    fontSize: 11,
+    color: "#64748B",
+    margin: "0 0 8px",
+  },
+  qrGraphicWrapper: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: 6,
+    padding: 8,
+    background: "#FFFFFF",
+    borderRadius: 8,
+    border: "1px solid #E2E8F0",
+  },
+  qrVisualMatrix: {
+    width: 60,
+    height: 60,
+    backgroundImage: "linear-gradient(45deg, #0F172A 25%, transparent 25%), linear-gradient(-45deg, #0F172A 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #0F172A 75%), linear-gradient(-45deg, transparent 75%, #0F172A 75%)",
+    backgroundSize: "8px 8px",
+    backgroundPosition: "0 0, 0 4px, 4px -4px, -4px 0px",
+  },
+  qrTextCode: {
+    fontSize: 10,
+    fontWeight: 700,
+    color: "#475569",
+    background: "#F1F5F9",
+    padding: "2px 6px",
+    borderRadius: 4,
+  },
+  cancelBarRow: {
+    marginTop: 12,
+    paddingTop: 10,
+    borderTop: "1px solid #F1F5F9",
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  cancelWindowText: {
+    fontSize: 11,
+    color: "#64748B",
+  },
+  cancelOrderBtn: {
+    background: "#FEF2F2",
+    border: "1px solid #FEE2E2",
+    color: "#EF4444",
+    fontSize: 11,
+    fontWeight: 800,
+    padding: "4px 10px",
+    borderRadius: 6,
+    cursor: "pointer",
+  },
+
+  // MODALS
+  modalOverlay: {
+    position: "fixed",
+    inset: 0,
+    background: "rgba(15, 23, 42, 0.65)",
+    zIndex: 90,
+    display: "flex",
+    alignItems: "flex-end",
+    justifyContent: "center",
+  },
+  payModalSheet: {
+    background: "#FFFFFF",
+    width: "100%",
+    maxWidth: 440,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: "20px",
+    boxShadow: "0 -8px 30px rgba(0,0,0,0.2)",
+  },
+  complaintSheet: {
+    background: "#FFFFFF",
+    width: "100%",
+    maxWidth: 440,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: "20px",
+    maxHeight: "85vh",
+    overflowY: "auto",
+  },
+  modalHeaderRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    marginBottom: 16,
+    paddingBottom: 10,
+    borderBottom: "1px solid #E2E8F0",
+  },
+  modalTitle: {
+    fontSize: 16,
+    fontWeight: 900,
+    color: "#0F172A",
     margin: 0,
   },
-  closeBtn: {
-    background: "transparent",
+  modalSub: {
+    fontSize: 11,
+    color: "#64748B",
+    marginTop: 2,
+  },
+  modalCloseBtn: {
+    background: "#F1F5F9",
     border: "none",
-    color: "#94a3b8",
-    fontSize: 18,
+    borderRadius: "50%",
+    width: 30,
+    height: 30,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
     cursor: "pointer",
   },
-  drawerSub: {
-    fontSize: 12,
-    color: "#94a3b8",
-    marginBottom: 14,
+  upiMethodsGrid: {
+    display: "grid",
+    gridTemplateColumns: "1fr 1fr",
+    gap: 10,
+    marginTop: 8,
+  },
+  upiOptionBtn: {
+    background: "#F8FAFC",
+    border: "1px solid #E2E8F0",
+    borderRadius: 8,
+    padding: "12px",
+    fontSize: 13,
+    fontWeight: 800,
+    color: "#1E293B",
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+  },
+  complaintForm: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 12,
   },
   formGroup: {
-    marginBottom: 12,
+    display: "flex",
+    flexDirection: "column",
+    gap: 4,
   },
-  label: {
-    display: "block",
+  formLabel: {
     fontSize: 12,
-    fontWeight: 600,
-    color: "#cbd5e1",
-    marginBottom: 6,
+    fontWeight: 700,
+    color: "#334155",
   },
-  select: {
-    width: "100%",
-    background: "#1e293b",
-    border: "1px solid #334155",
-    color: "#ffffff",
-    padding: "10px",
+  formSelect: {
+    padding: "8px 12px",
     borderRadius: 8,
+    border: "1px solid #CBD5E1",
     fontSize: 13,
+    background: "#FFFFFF",
+    outline: "none",
   },
-  textarea: {
-    width: "100%",
-    background: "#1e293b",
-    border: "1px solid #334155",
-    color: "#ffffff",
-    padding: "10px",
+  formTextarea: {
+    padding: "8px 12px",
     borderRadius: 8,
+    border: "1px solid #CBD5E1",
     fontSize: 13,
-    boxSizing: "border-box",
+    outline: "none",
+    fontFamily: "inherit",
   },
   submitCmpBtn: {
-    width: "100%",
-    background: "#ef4444",
+    background: "#0C831F",
+    color: "#FFFFFF",
     border: "none",
-    color: "#ffffff",
-    padding: "12px",
-    borderRadius: 8,
-    fontWeight: 800,
+    borderRadius: 10,
+    padding: "12px 18px",
     fontSize: 13,
+    fontWeight: 900,
     cursor: "pointer",
+    marginTop: 4,
   },
 };

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { collection, onSnapshot, query, orderBy, doc, updateDoc, addDoc, setDoc } from "firebase/firestore";
 import { db } from "@/lib/firebaseClient";
 import { playNotificationChime, playSuccessChime } from "@/lib/soundSystem";
-import { subscribeToEvents, broadcastEvent } from "@/lib/realtimeSync";
+import { subscribeToEvents, broadcastEvent, subscribeToLiveOrders } from "@/lib/realtimeSync";
 import {
   INITIAL_ORDERS,
   INITIAL_COMPLAINTS,
@@ -12,6 +12,7 @@ import {
   INITIAL_PUTAWAY,
   INITIAL_ITEM_DUMP,
 } from "@/lib/seedData";
+import AuditxLogo from "@/components/AuditxLogo";
 
 export default function StoreManagerApp() {
   const [activeTab, setActiveTab] = useState("complaints"); // complaints | queues | expiry | auditing | putaway | itemDump
@@ -53,10 +54,17 @@ export default function StoreManagerApp() {
     },
   ]);
 
-  // Real-time events & Firestore Sync
+  // Real-time events & Live Orders Sync
   useEffect(() => {
+    const unsubOrdersLive = subscribeToLiveOrders((liveOrders) => {
+      if (liveOrders && liveOrders.length > 0) {
+        setOrders(liveOrders);
+      }
+    });
+
     const unsubBus = subscribeToEvents((data) => {
       if (data.type === "ORDER_CREATED" && data.payload) {
+        playNotificationChime();
         setOrders((prev) => [data.payload, ...prev.filter((o) => o.id !== data.payload.id)]);
         playNotificationChime();
       } else if (data.type === "ORDER_STAGED" && data.payload) {
@@ -99,6 +107,7 @@ export default function StoreManagerApp() {
     }
 
     return () => {
+      unsubOrdersLive();
       unsubBus();
       unsubOrders();
       unsubComplaints();
@@ -194,7 +203,7 @@ export default function StoreManagerApp() {
       <header style={S.header}>
         <div style={S.brandCol}>
           <div style={S.brandRow}>
-            <span style={S.brandTitle}>AUDIT'X</span>
+            <AuditxLogo height={32} href="/" />
             <span style={S.storeBadge}>TIPTUR HUB - KA44</span>
             <span style={S.liveBadge}>🟢 STORE ACTIVE</span>
           </div>

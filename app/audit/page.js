@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { collection, onSnapshot, query, orderBy, doc, setDoc, updateDoc } from "firebase/firestore";
 import { db } from "@/lib/firebaseClient";
+import AuditxLogo from "@/components/AuditxLogo";
 
 const AUDIT_SKUS = [
   { id: "SKU001", name: "Amul Taaza Toned Milk (1L)", category: "Dairy", bin: "A01-01", mrp: 68, stock: 142, reorder: 30, barcode: "8901030018274", expiry: "2026-10-25", status: "OK" },
@@ -131,7 +132,7 @@ export default function AuditDashboardPage() {
       <header style={S.header}>
         <div style={S.headerInner}>
           <div style={S.brandRow}>
-            <span style={S.brandText}>AUDIT'X</span>
+            <AuditxLogo height={32} href="/" />
             <span style={S.storeBadge}>TIPTUR-HUB-KA44</span>
             <span style={S.auditBadge}>📦 INVENTORY AUDIT & CONTROL</span>
           </div>

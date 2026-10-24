@@ -8,6 +8,7 @@ import { subscribeToEvents, broadcastEvent } from "@/lib/realtimeSync";
 import { STAFF, STAGE_SEQUENCE } from "@/lib/roles";
 import { INITIAL_SKUS, seedAllDemoData } from "@/lib/seedData";
 import ErdDfdViewer from "@/components/ErdDfdViewer";
+import AuditxLogo from "@/components/AuditxLogo";
 
 // Demo Complaints Data
 const INITIAL_COMPLAINTS = [
@@ -263,7 +264,7 @@ export default function WarehouseDashboardPage() {
       <header style={S.header}>
         <div style={S.brandCol}>
           <div style={S.logoRow}>
-            <span style={S.brandText}>AUDIT'X</span>
+            <AuditxLogo height={32} href="/" />
             <span style={S.storeBadge}>TIPTUR-HUB-KA44</span>
             <span style={{ ...S.pauseBadge, background: isStorePaused ? "#ef4444" : "#10b981" }}>
               {isStorePaused ? "🛑 STORE PAUSED" : "🟢 STORE OPEN"}
@@ -794,7 +795,7 @@ export default function WarehouseDashboardPage() {
             <div style={S.sectionHeader}>
               <div>
                 <h2 style={S.sectionHeading}>⚡ Live Orders Pipeline</h2>
-                <p style={S.sectionSub}>Real-time fulfillment tracking synced with Blinkit ordering app.</p>
+                <p style={S.sectionSub}>Real-time fulfillment tracking synced with customer ordering app.</p>
               </div>
             </div>
 

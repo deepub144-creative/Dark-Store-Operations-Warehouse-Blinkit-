@@ -7,6 +7,7 @@ import { CATALOG } from "@/lib/items";
 import SharedScanner from "@/components/SharedScanner";
 import { playNotificationChime, playSuccessChime, playScanSuccess } from "@/lib/soundSystem";
 import { subscribeToEvents, broadcastEvent } from "@/lib/realtimeSync";
+import AuditxLogo from "@/components/AuditxLogo";
 
 export default function AssistantStoreManagerApp() {
   const [activeTab, setActiveTab] = useState("itemHelp"); // itemHelp | soloAudit | putawayBay
@@ -153,7 +154,7 @@ export default function AssistantStoreManagerApp() {
       <header style={S.header}>
         <div style={S.brandCol}>
           <div style={S.brandRow}>
-            <span style={S.brandTitle}>AUDIT'X</span>
+            <AuditxLogo height={30} href="/" />
             <span style={S.hubBadge}>TIPTUR HUB - KA44</span>
           </div>
           <div style={S.operatorSub}>

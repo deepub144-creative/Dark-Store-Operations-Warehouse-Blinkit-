@@ -5,6 +5,7 @@ export const dynamic = "force-dynamic";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { STAFF, staffByPhone } from "@/lib/roles";
+import AuditxLogo from "@/components/AuditxLogo";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -57,9 +58,9 @@ export default function LoginPage() {
     if (loginMode === "customer") {
       const customerObj = {
         customerId: `cust_${phone}`,
-        name: userName.trim() || "Customer (Namma Tiptur)",
+        name: userName.trim() || "Customer (Tiptur Hub KA - 44)",
         phone,
-        location: "Namma Tiptur KA 44 (Tumkur, KA - 572201)",
+        location: "Tiptur Hub KA - 44 (Tumkur, KA - 572201)",
         walletBalance: 1000000,
       };
       localStorage.setItem("auditx_customer", JSON.stringify(customerObj));
@@ -91,7 +92,7 @@ export default function LoginPage() {
       customerId: `cust_${tel}`,
       name,
       phone: tel,
-      location: "Namma Tiptur KA 44 (Tumkur, KA - 572201)",
+      location: "Tiptur Hub KA - 44 (Tumkur, KA - 572201)",
       walletBalance: 1000000,
     };
     localStorage.setItem("auditx_customer", JSON.stringify(cust));
@@ -105,7 +106,7 @@ export default function LoginPage() {
         {/* Logo & Hub Branding */}
         <div style={S.brandHeader}>
           <div style={S.logoRow}>
-            <span style={S.logoText}>AUDIT'X</span>
+            <AuditxLogo height={38} href="/" />
             <span style={S.hubBadge}>TIPTUR HUB - KA44</span>
           </div>
           <p style={S.locationPill}>
