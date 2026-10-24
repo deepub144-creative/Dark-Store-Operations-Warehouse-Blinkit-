@@ -608,7 +608,7 @@ export default function OrderingAppPage() {
       setCustomer(updated);
     }
 
-    triggerToast(`Order #${orderId} Placed! Assigned to Thrupthi K S & Sinchana B R!`);
+    triggerToast(`Order #${orderId} Placed Successfully! Delivery in 8 mins!`);
 
     // 3. Clear cart and redirect to live tracking screen
     setCart({});
@@ -881,44 +881,7 @@ export default function OrderingAppPage() {
               )}
             </section>
 
-            {/* 2. SMART RECOMMENDATIONS / UPSELL CAROUSEL ("BEFORE YOU CHECKOUT") */}
-            {upsellRecommendations.length > 0 && (
-              <section style={S.checkoutCard}>
-                <div style={S.sectionHeaderRow}>
-                  <div style={S.upsellTitleRow}>
-                    <IconTag size={16} color="#0c831f" />
-                    <h3 style={S.cardSectionTitle}>BEFORE YOU CHECKOUT</h3>
-                  </div>
-                  <span style={S.upsellSubtitle}>Frequently bought together</span>
-                </div>
 
-                <div style={S.upsellCarouselRow}>
-                  {upsellRecommendations.map((rec) => (
-                    <div key={rec.sku} style={S.upsellItemCard}>
-                      <img
-                        src={rec.image}
-                        alt={rec.name}
-                        style={S.upsellImage}
-                      />
-                      <div style={S.upsellCardContent}>
-                        <div style={S.upsellName}>{rec.name}</div>
-                        <div style={S.upsellWeight}>{rec.weight}</div>
-                        <div style={S.upsellFooter}>
-                          <span style={S.upsellPrice}>₹{rec.price}</span>
-                          <button
-                            type="button"
-                            style={S.upsellAddBtn}
-                            onClick={() => updateQty(rec.sku, 1)}
-                          >
-                            + ADD
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </section>
-            )}
 
             {/* 3. COUPON & DISCOUNT ENGINE (APPLY COUPON / VIEW OFFERS) */}
             <section style={S.checkoutCard}>
@@ -1087,8 +1050,7 @@ export default function OrderingAppPage() {
                 <div style={S.guaranteeTextCol}>
                   <span style={S.guaranteeTitle}>Tiptur HUB - KA44 Express Fulfillment</span>
                   <span style={S.guaranteeDesc}>
-                    Picked by <b>Thrupthi K S</b> (2:00 min target) & delivered by{" "}
-                    <b>Sinchana B R</b> (8:00 min target) with OTP verification.
+                    Express dark store order picking (2:00 min SLA) & doorstep delivery (8:00 min SLA) with OTP verification.
                   </span>
                 </div>
               </div>
@@ -2098,9 +2060,9 @@ export default function OrderingAppPage() {
                     <IconMapPin size={18} color="#2563eb" />
                   </div>
                   <div>
-                    <h4 style={S.highlightTitle}>KA44 Dark Store Team</h4>
+                    <h4 style={S.highlightTitle}>KA44 Dark Store Hub</h4>
                     <p style={S.highlightDesc}>
-                      SM: Bhaskar N S • ASM: Deepu B • MD: A B Harshitha • Picker: Thrupthi K S • Rider: Sinchana B R
+                      Tiptur Express Fulfillment Center • 8-Minute Instant Delivery Network
                     </p>
                   </div>
                 </div>
