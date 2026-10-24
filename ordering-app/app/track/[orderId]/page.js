@@ -535,22 +535,6 @@ export default function TrackOrderPage() {
                 <code style={S.qrTextCode}>AUDITX-{activeOrder.orderNumber || orderId}</code>
               </div>
             </div>
-
-            {/* 60s Free Cancellation prompt */}
-            {!isCancelled && !isDelivered && cancelSecondsLeft > 0 && (
-              <div style={S.cancelBarRow}>
-                <span style={S.cancelWindowText}>
-                  Cancel available for <b>00:{cancelSecondsLeft.toString().padStart(2, "0")}s</b>
-                </span>
-                <button
-                  type="button"
-                  style={S.cancelOrderBtn}
-                  onClick={handleCancelOrder}
-                >
-                  Cancel Order
-                </button>
-              </div>
-            )}
           </div>
         </section>
 
