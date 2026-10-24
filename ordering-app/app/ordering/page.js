@@ -116,9 +116,11 @@ const TIPTUR_GANESHA_INFO = {
   ],
 };
 
+const GITHUB_PUBLIC_CDN = "https://raw.githubusercontent.com/deepub144-creative/Dark-Store-Operations-Warehouse-Blinkit-/main/public";
+
 const MERGED_BACKGROUND_VIDEOS = [
-  { id: "v1", src: "/videos/v1.mp4", durationLimit: 21.6 },
-  { id: "v2", src: "/videos/v2.mp4", durationLimit: 5.3 },
+  { id: "v1", src: "/videos/v1.mp4", fallback: `${GITHUB_PUBLIC_CDN}/videos/v1.mp4`, durationLimit: 21.6 },
+  { id: "v2", src: "/videos/v2.mp4", fallback: `${GITHUB_PUBLIC_CDN}/videos/v2.mp4`, durationLimit: 5.3 },
 ];
 
 const TIPTUR_RESTAURANTS = [
@@ -1276,6 +1278,14 @@ export default function OrderingAppPage() {
                           <img
                             src={item.image}
                             alt={item.name}
+                            onError={(e) => {
+                              if (item.image && item.image.startsWith("/frames/")) {
+                                const fb = `${GITHUB_PUBLIC_CDN}${item.image}`;
+                                if (e.target.src !== fb) {
+                                  e.target.src = fb;
+                                }
+                              }
+                            }}
                             style={{
                               ...S.productImg,
                               ...(isSoldOut ? { filter: "grayscale(25%)" } : {}),
@@ -1686,6 +1696,13 @@ export default function OrderingAppPage() {
                 muted
                 playsInline
                 style={S.mergedBgVideoElement}
+                onError={(e) => {
+                  const fb = MERGED_BACKGROUND_VIDEOS[bgVideoIdx]?.fallback;
+                  if (fb && e.target.src !== fb) {
+                    e.target.src = fb;
+                    e.target.play().catch(() => {});
+                  }
+                }}
                 onTimeUpdate={(e) => {
                   const limit = MERGED_BACKGROUND_VIDEOS[bgVideoIdx].durationLimit;
                   if (limit && e.target.currentTime >= limit) {
@@ -1988,6 +2005,13 @@ export default function OrderingAppPage() {
                         muted
                         playsInline
                         style={S.farmVideoPlayer}
+                        onError={(e) => {
+                          const fb = `${GITHUB_PUBLIC_CDN}/videos/AK.mp4`;
+                          if (e.target.src !== fb) {
+                            e.target.src = fb;
+                            e.target.play().catch(() => {});
+                          }
+                        }}
                         onTimeUpdate={(e) => {
                           if (e.target.currentTime >= 45) {
                             e.target.pause();
