@@ -116,11 +116,11 @@ const TIPTUR_GANESHA_INFO = {
   ],
 };
 
-const GITHUB_PUBLIC_CDN = "https://raw.githubusercontent.com/deepub144-creative/Dark-Store-Operations-Warehouse-Blinkit-/main/public";
+const JSDELIVR_PUBLIC_CDN = "https://cdn.jsdelivr.net/gh/deepub144-creative/Dark-Store-Operations-Warehouse-Blinkit-@main/public";
 
 const MERGED_BACKGROUND_VIDEOS = [
-  { id: "v1", src: "/videos/v1.mp4", fallback: `${GITHUB_PUBLIC_CDN}/videos/v1.mp4`, durationLimit: 21.6 },
-  { id: "v2", src: "/videos/v2.mp4", fallback: `${GITHUB_PUBLIC_CDN}/videos/v2.mp4`, durationLimit: 5.3 },
+  { id: "v1", src: "/videos/v1.mp4", fallback: `${JSDELIVR_PUBLIC_CDN}/videos/v1.mp4`, durationLimit: 21.6 },
+  { id: "v2", src: "/videos/v2.mp4", fallback: `${JSDELIVR_PUBLIC_CDN}/videos/v2.mp4`, durationLimit: 5.3 },
 ];
 
 const TIPTUR_RESTAURANTS = [
@@ -1280,7 +1280,7 @@ export default function OrderingAppPage() {
                             alt={item.name}
                             onError={(e) => {
                               if (item.image && item.image.startsWith("/frames/")) {
-                                const fb = `${GITHUB_PUBLIC_CDN}${item.image}`;
+                                const fb = `${JSDELIVR_PUBLIC_CDN}${item.image}`;
                                 if (e.target.src !== fb) {
                                   e.target.src = fb;
                                 }
@@ -1691,10 +1691,18 @@ export default function OrderingAppPage() {
               {/* Merged Background Video Element (Sound OFF permanently) */}
               <video
                 key={bgVideoIdx}
+                ref={(el) => {
+                  if (el) {
+                    el.muted = true;
+                    el.defaultMuted = true;
+                    el.play().catch(() => {});
+                  }
+                }}
                 src={MERGED_BACKGROUND_VIDEOS[bgVideoIdx].src}
                 autoPlay
                 muted
                 playsInline
+                preload="auto"
                 style={S.mergedBgVideoElement}
                 onError={(e) => {
                   const fb = MERGED_BACKGROUND_VIDEOS[bgVideoIdx]?.fallback;
@@ -2000,13 +2008,22 @@ export default function OrderingAppPage() {
                   {farm.video && (
                     <div style={S.farmVideoBox}>
                       <video
+                        ref={(el) => {
+                          if (el) {
+                            el.muted = true;
+                            el.defaultMuted = true;
+                            el.play().catch(() => {});
+                          }
+                        }}
                         src={farm.video}
                         autoPlay
                         muted
                         playsInline
+                        preload="auto"
+                        controls
                         style={S.farmVideoPlayer}
                         onError={(e) => {
-                          const fb = `${GITHUB_PUBLIC_CDN}/videos/AK.mp4`;
+                          const fb = `${JSDELIVR_PUBLIC_CDN}/videos/AK.mp4`;
                           if (e.target.src !== fb) {
                             e.target.src = fb;
                             e.target.play().catch(() => {});

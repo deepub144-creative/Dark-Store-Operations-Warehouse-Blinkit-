@@ -13,20 +13,6 @@ import {
   IconShieldCheck,
 } from "@/components/RealIcons";
 
-const TIPTUR_LOGIN_HOTSPOTS = [
-  { name: "Tiptur Ganesha", tag: "Historic Heritage", img: "/login-assets/tipturganesha.jpg" },
-  { name: "Kalpataru Grand", tag: "Fine Dining", img: "/login-assets/kalpataru grand.jpg" },
-  { name: "Athithya", tag: "Pure Veg Hub", img: "/login-assets/Athithya.png" },
-  { name: "Malgudi Days", tag: "Heritage Cafe", img: "/login-assets/malgudidays.jpg" },
-  { name: "City Garden", tag: "Garden Restaurant", img: "/login-assets/citygarden.jpg" },
-  { name: "Soda Point", tag: "Youth Legend", img: "/login-assets/sodapoint1.png" },
-  { name: "Cosmic Cafe", tag: "Modern Vibes", img: "/login-assets/cosmiccafe.jpg" },
-  { name: "Salagar Cafe", tag: "Oven Bakery", img: "/login-assets/salagar-chai-and-coffee-tiptur-.jpg" },
-  { name: "Lucky Cafe", tag: "Irani Chai Adda", img: "/login-assets/Lucky Cafe.png" },
-  { name: "Juicy Lounge", tag: "Fresh Fruit Sips", img: "/login-assets/Juicy Lounge.png" },
-  { name: "Engineers Cafe", tag: "Campus Hotspot", img: "/login-assets/Engineers Cafe.jpg" },
-];
-
 export default function CustomerInteractiveLoginPage() {
   const router = useRouter();
 
@@ -39,16 +25,7 @@ export default function CustomerInteractiveLoginPage() {
   const [loading, setLoading] = useState(false);
   const [demoOtp, setDemoOtp] = useState("442201");
   const [timer, setTimer] = useState(30);
-  const [activeSpotIdx, setActiveSpotIdx] = useState(0);
   const [existingCustomer, setExistingCustomer] = useState(null);
-
-  // Auto-cycle through the local Tiptur hotspot images
-  useEffect(() => {
-    const spotTimer = setInterval(() => {
-      setActiveSpotIdx((prev) => (prev + 1) % TIPTUR_LOGIN_HOTSPOTS.length);
-    }, 2800);
-    return () => clearInterval(spotTimer);
-  }, []);
 
   // Countdown timer for OTP resend
   useEffect(() => {
@@ -168,51 +145,6 @@ export default function CustomerInteractiveLoginPage() {
             alt="AUDIT'X - Precision Beyond Limits"
             style={styles.heroBannerImg}
           />
-        </div>
-
-        {/* Interactive Tiptur Landmark Carousel Strip */}
-        <div style={styles.hotspotsSection}>
-          <div style={styles.hotspotTickerHeader}>
-            <span style={styles.hotspotBadgeLive}>● Live in Namma Tiptur KA 44</span>
-            <span style={styles.hotspotCount}>{activeSpotIdx + 1} of {TIPTUR_LOGIN_HOTSPOTS.length}</span>
-          </div>
-
-          <div style={styles.hotspotActiveCard}>
-            <img
-              src={TIPTUR_LOGIN_HOTSPOTS[activeSpotIdx].img}
-              alt={TIPTUR_LOGIN_HOTSPOTS[activeSpotIdx].name}
-              style={styles.hotspotActiveImg}
-            />
-            <div style={styles.hotspotActiveInfo}>
-              <div style={styles.hotspotActiveName}>{TIPTUR_LOGIN_HOTSPOTS[activeSpotIdx].name}</div>
-              <div style={styles.hotspotActiveTag}>{TIPTUR_LOGIN_HOTSPOTS[activeSpotIdx].tag}</div>
-            </div>
-            <span style={styles.etaBadgeSmall}>⚡ 8 Mins</span>
-          </div>
-
-          {/* Interactive Thumbnails Row */}
-          <div style={styles.thumbnailsRow}>
-            {TIPTUR_LOGIN_HOTSPOTS.map((spot, idx) => (
-              <div
-                key={spot.name}
-                onClick={() => setActiveSpotIdx(idx)}
-                style={{
-                  ...styles.thumbCircle,
-                  ...(idx === activeSpotIdx ? styles.thumbCircleActive : {}),
-                }}
-                title={spot.name}
-              >
-                <img src={spot.img} alt={spot.name} style={styles.thumbImg} />
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Location Point (Title 'Fixed Delivery Address' removed per request) */}
-        <div style={styles.locationBarClean}>
-          <IconMapPin size={16} color="#0c831f" />
-          <span style={styles.locationText}>KFGSC , Tiptur 572201</span>
-          <span style={styles.locBadge}>8-Min SLA</span>
         </div>
 
         {/* Stepper Dots: 1 (Phone) -> 2 (OTP) -> 3 (Name) */}

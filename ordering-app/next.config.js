@@ -13,15 +13,15 @@ const nextConfig = {
     return [
       {
         source: '/videos/v1.mp4',
-        destination: 'https://raw.githubusercontent.com/deepub144-creative/Dark-Store-Operations-Warehouse-Blinkit-/main/public/videos/v1.mp4',
+        destination: 'https://cdn.jsdelivr.net/gh/deepub144-creative/Dark-Store-Operations-Warehouse-Blinkit-@main/public/videos/v1.mp4',
       },
       {
         source: '/videos/AK.mp4',
-        destination: 'https://raw.githubusercontent.com/deepub144-creative/Dark-Store-Operations-Warehouse-Blinkit-/main/public/videos/AK.mp4',
+        destination: 'https://cdn.jsdelivr.net/gh/deepub144-creative/Dark-Store-Operations-Warehouse-Blinkit-@main/public/videos/AK.mp4',
       },
       {
         source: '/frames/:path*',
-        destination: 'https://raw.githubusercontent.com/deepub144-creative/Dark-Store-Operations-Warehouse-Blinkit-/main/public/frames/:path*',
+        destination: 'https://cdn.jsdelivr.net/gh/deepub144-creative/Dark-Store-Operations-Warehouse-Blinkit-@main/public/frames/:path*',
       },
     ];
   },
