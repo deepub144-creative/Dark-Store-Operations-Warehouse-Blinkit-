@@ -1047,15 +1047,6 @@ export default function OrderingAppPage() {
               </div>
 
               {/* 10-Minute SLA Operations Guarantee */}
-              <div style={S.darkStoreGuaranteeNote}>
-                <IconShieldCheck size={18} color="#0c831f" />
-                <div style={S.guaranteeTextCol}>
-                  <span style={S.guaranteeTitle}>Tiptur HUB - KA44 Express Fulfillment</span>
-                  <span style={S.guaranteeDesc}>
-                    Express dark store order picking (2:00 min SLA) & doorstep delivery (8:00 min SLA) with OTP verification.
-                  </span>
-                </div>
-              </div>
             </section>
 
             {/* Spacer for sticky bar */}
@@ -1546,7 +1537,6 @@ export default function OrderingAppPage() {
                   name: "Chocolates",
                   tag: "In Warehouse",
                   desc: "Beatss, Melody, Kopiko, Boomer, Eclairs, Candyman & 24 varieties in warehouse",
-                  zone: "Zone C2 • Aisle C2-A1",
                   count: "24 items",
                   bg: "#FEF3C7",
                   accent: "#92400E",
@@ -1555,7 +1545,6 @@ export default function OrderingAppPage() {
                   name: "Frames",
                   tag: "In Warehouse",
                   desc: "Kantara, D Boss, Yash KGF, Mahadev, Coding, Anime & 35 A4 Glass Frames",
-                  zone: "Zone D3 • Aisle D3-A1",
                   count: "35 items",
                   bg: "#EDE9FE",
                   accent: "#6B21A8",
@@ -1578,10 +1567,6 @@ export default function OrderingAppPage() {
                     </div>
                     <h3 style={S.catDepartmentTitle}>{cat.name}</h3>
                     <p style={S.catDepartmentDesc}>{cat.desc}</p>
-                    <div style={S.catAisleZone}>
-                      <IconMapPin size={11} color="#64748b" />
-                      <span>{cat.zone}</span>
-                    </div>
                   </div>
                   <div style={S.catArrowIcon}>
                     <IconArrowRight size={16} color="#0c831f" />
@@ -2037,9 +2022,6 @@ export default function OrderingAppPage() {
                   </div>
                   <div>
                     <h4 style={S.highlightTitle}>APMC Yard Procurement</h4>
-                    <p style={S.highlightDesc}>
-                      Procured daily from APMC Coconut Market on B.H. Road, graded by ASM Deepu B.
-                    </p>
                   </div>
                 </div>
 
@@ -2049,9 +2031,6 @@ export default function OrderingAppPage() {
                   </div>
                   <div>
                     <h4 style={S.highlightTitle}>8 Minute Dark Store SLA</h4>
-                    <p style={S.highlightDesc}>
-                      Near Kalpataru College Road, delivering across Tiptur town in fractions of minutes.
-                    </p>
                   </div>
                 </div>
 
@@ -2061,9 +2040,6 @@ export default function OrderingAppPage() {
                   </div>
                   <div>
                     <h4 style={S.highlightTitle}>KA44 Dark Store Hub</h4>
-                    <p style={S.highlightDesc}>
-                      Tiptur Express Fulfillment Center • 8-Minute Instant Delivery Network
-                    </p>
                   </div>
                 </div>
               </div>

@@ -25,12 +25,16 @@ export const ROLES = {
   DELIVERY: "DELIVERY",
 };
 
-// 4 Specific Warehouse Staging Racks with distinct QR codes & alphanumeric digits
+// 8 Fixed Warehouse Staging Racks for Tiptur KA44 Hub
 export const STAGING_RACKS = [
-  { id: "D5", label: "Rack D5", zone: "Ambient Staging 5", qr: "AUDITX-RACK-D5-TIPTUR-KA44", color: "#3b82f6" },
-  { id: "T2", label: "Rack T2", zone: "Cold Chill Staging 2", qr: "AUDITX-RACK-T2-TIPTUR-KA44", color: "#10b981" },
-  { id: "B4", label: "Rack B4", zone: "Bakery & Staples 4", qr: "AUDITX-RACK-B4-TIPTUR-KA44", color: "#f59e0b" },
-  { id: "R1", label: "Rack R1", zone: "Express Dispatch 1", qr: "AUDITX-RACK-R1-TIPTUR-KA44", color: "#ec4899" },
+  { id: "T1", label: "Rack T1", zone: "Cold Chill Staging 1", qr: "AUDITX-RACK-T1-TIPTUR-KA44", color: "#10b981" },
+  { id: "T4", label: "Rack T4", zone: "Cold Chill Staging 4", qr: "AUDITX-RACK-T4-TIPTUR-KA44", color: "#059669" },
+  { id: "T6", label: "Rack T6", zone: "Cold Chill Staging 6", qr: "AUDITX-RACK-T6-TIPTUR-KA44", color: "#047857" },
+  { id: "B5", label: "Rack B5", zone: "Bakery & Staples 5", qr: "AUDITX-RACK-B5-TIPTUR-KA44", color: "#f59e0b" },
+  { id: "B7", label: "Rack B7", zone: "Bakery & Staples 7", qr: "AUDITX-RACK-B7-TIPTUR-KA44", color: "#d97706" },
+  { id: "S4", label: "Rack S4", zone: "Snacks & Sweets 4", qr: "AUDITX-RACK-S4-TIPTUR-KA44", color: "#8b5cf6" },
+  { id: "D5", label: "Rack D5", zone: "Ambient Dispatch 5", qr: "AUDITX-RACK-D5-TIPTUR-KA44", color: "#3b82f6" },
+  { id: "H2", label: "Rack H2", zone: "Heavy & Bulky 2", qr: "AUDITX-RACK-H2-TIPTUR-KA44", color: "#ec4899" },
 ];
 
 export function getRandomStagingRack() {
