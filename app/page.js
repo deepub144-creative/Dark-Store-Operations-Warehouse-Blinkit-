@@ -1,7 +1,7 @@
 "use client";
 
-import DedicatedWarehouseRoute from "@/app/warehouse/page";
+import OrderingApp from "@/app/ordering/page";
 
 export default function RootHomePage() {
-  return <DedicatedWarehouseRoute />;
+  return <OrderingApp />;
 }

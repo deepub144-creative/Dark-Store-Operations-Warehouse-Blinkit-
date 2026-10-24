@@ -1,7 +1,7 @@
 import "./globals.css";
 
 export const metadata = {
-  title: "AUDIT'X — Dark Store Operations & Warehouse Management (Tiptur HUB - KA44)",
+  title: "Blinkit: Everything delivered in 10 minutes | AuditX Tiptur Hub KA44",
   description: "AUDIT'X Quick-Commerce & Dark Store Warehouse Ecosystem for Tiptur HUB KA44 (Tumkur District, Karnataka - 572201). 10-Minute Express Delivery Model.",
 };
 
