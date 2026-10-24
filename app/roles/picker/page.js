@@ -9,6 +9,7 @@ import SlideButton from "@/components/SlideButton";
 import { subscribeToEvents, broadcastEvent, subscribeToLiveOrders, updateLiveOrder } from "@/lib/realtimeSync";
 import { STAGING_RACKS, getRandomStagingRack } from "@/lib/roles";
 import AuditxLogo from "@/components/AuditxLogo";
+import AndroidPhoneShell from "@/components/AndroidPhoneShell";
 
 export default function OdPickerApp() {
   const [isOnline, setIsOnline] = useState(true);
@@ -248,7 +249,8 @@ export default function OdPickerApp() {
   const secStr = (remainingSec % 60).toString().padStart(2, "0");
 
   return (
-    <div style={S.container}>
+    <AndroidPhoneShell appName="ZEBRA TERMINAL • TIPTUR KA44" statusBarBg="#090d16" statusBarColor="#e2e8f0" homeRoute="/picker" navBg="#080c14">
+      <div style={S.container}>
       {actionSuccess && <div style={S.toast}>{actionSuccess}</div>}
 
       {/* Terminal Header */}
@@ -606,13 +608,15 @@ export default function OdPickerApp() {
           </div>
         )}
       </main>
-    </div>
+      </div>
+    </AndroidPhoneShell>
   );
 }
 
 const S = {
   container: {
-    minHeight: "100vh",
+    minHeight: "100%",
+    width: "100%",
     background: "#090d16",
     color: "#f8fafc",
     fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",

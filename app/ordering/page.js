@@ -7,6 +7,7 @@ import { broadcastEvent, subscribeToEvents, saveLiveOrder } from "@/lib/realtime
 import { playNotificationChime, playSuccessChime } from "@/lib/soundSystem";
 import { getRandomStagingRack } from "@/lib/roles";
 import AuditxLogo from "@/components/AuditxLogo";
+import AndroidPhoneShell from "@/components/AndroidPhoneShell";
 import {
   IconLightning,
   IconHome,
@@ -642,7 +643,8 @@ export default function OrderingAppPage() {
   }
 
   return (
-    <div style={S.pageWrapper}>
+    <AndroidPhoneShell appName="NAMMA TIPTUR KA 44" statusBarBg="#0c831f" statusBarColor="#ffffff" homeRoute="/ordering" navBg="#0f172a">
+      <div style={S.pageWrapper}>
       {toastMessage && (
         <div style={S.toast}>
           <IconCheck size={16} color="#ffffff" />
@@ -2913,7 +2915,8 @@ export default function OrderingAppPage() {
           </div>
         </div>
       )}
-    </div>
+      </div>
+    </AndroidPhoneShell>
   );
 }
 

@@ -9,6 +9,7 @@ import SlideButton from "@/components/SlideButton";
 import { subscribeToEvents, broadcastEvent, subscribeToLiveOrders, updateLiveOrder } from "@/lib/realtimeSync";
 import { STAGING_RACKS } from "@/lib/roles";
 import AuditxLogo from "@/components/AuditxLogo";
+import AndroidPhoneShell from "@/components/AndroidPhoneShell";
 
 export default function DeliveryCaptainApp() {
   const [isCheckedIn, setIsCheckedIn] = useState(true);
@@ -207,7 +208,8 @@ export default function DeliveryCaptainApp() {
   const secStr = (remainingSec % 60).toString().padStart(2, "0");
 
   return (
-    <div style={S.container}>
+    <AndroidPhoneShell appName="RIDER DISPATCH • TIPTUR KA44" statusBarBg="#080c14" statusBarColor="#e2e8f0" homeRoute="/rider" navBg="#060910">
+      <div style={S.container}>
       {actionSuccess && <div style={S.toast}>{actionSuccess}</div>}
 
       {/* Captain App Header */}
@@ -629,13 +631,15 @@ export default function DeliveryCaptainApp() {
           </div>
         )}
       </main>
-    </div>
+      </div>
+    </AndroidPhoneShell>
   );
 }
 
 const S = {
   container: {
-    minHeight: "100vh",
+    minHeight: "100%",
+    width: "100%",
     background: "#080c14",
     color: "#f8fafc",
     fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
