@@ -25,7 +25,6 @@ export default function CustomerInteractiveLoginPage() {
   const [loading, setLoading] = useState(false);
   const [demoOtp, setDemoOtp] = useState("442201");
   const [timer, setTimer] = useState(30);
-  const [existingCustomer, setExistingCustomer] = useState(null);
 
   // Countdown timer for OTP resend
   useEffect(() => {
@@ -40,16 +39,13 @@ export default function CustomerInteractiveLoginPage() {
     };
   }, [step, timer]);
 
-  // Load existing name/phone if previously logged in
+  // Load existing profile name/phone if previously logged in
   useEffect(() => {
     try {
       const raw = localStorage.getItem("auditx_customer");
       if (raw) {
         const parsed = JSON.parse(raw);
-        if (parsed?.name) {
-          setName(parsed.name);
-          setExistingCustomer(parsed);
-        }
+        if (parsed?.name) setName(parsed.name);
         if (parsed?.phone) setPhone(parsed.phone);
       }
     } catch (e) {
@@ -163,33 +159,6 @@ export default function CustomerInteractiveLoginPage() {
         </div>
 
         {error && <div style={styles.errorBox}>{error}</div>}
-
-        {/* ── ACTIVE SESSION QUICK RESUME ── */}
-        {existingCustomer?.name && step === "phone" && (
-          <div style={styles.activeSessionCard}>
-            <div style={styles.activeSessionRow}>
-              <div style={styles.activeSessionDot} />
-              <span style={styles.activeSessionTag}>ACTIVE SESSION LOGGED IN</span>
-            </div>
-            <div style={styles.activeSessionName}>
-              Welcome back, <b>{existingCustomer.name}</b>!
-            </div>
-            <div style={styles.activeSessionSub}>
-              Mobile: +91 {existingCustomer.phone || phone} • Delivery: KFGSC , Tiptur 572201
-            </div>
-            <button
-              type="button"
-              onClick={() => router.push("/ordering")}
-              style={styles.activeSessionBtn}
-            >
-              <span>Continue Shopping in Dark Store</span>
-              <IconArrowRight size={16} color="#ffffff" />
-            </button>
-            <div style={styles.orRow}>
-              <span style={styles.orText}>OR LOG IN WITH A DIFFERENT NUMBER</span>
-            </div>
-          </div>
-        )}
 
         {/* ── STEP 1: PHONE NUMBER WITH FIXED INDIAN FLAG +91 ── */}
         {step === "phone" && (
@@ -324,17 +293,6 @@ export default function CustomerInteractiveLoginPage() {
               />
             </div>
 
-            <div style={styles.summaryBar}>
-              <div style={styles.summaryRow}>
-                <span style={styles.summaryKey}>Mobile Number:</span>
-                <span style={styles.summaryVal}>+91 {phone}</span>
-              </div>
-              <div style={styles.summaryRow}>
-                <span style={styles.summaryKey}>Delivery Hub:</span>
-                <span style={styles.summaryVal}>KFGSC , Tiptur 572201</span>
-              </div>
-            </div>
-
             <button
               type="submit"
               disabled={loading || !name.trim()}
@@ -411,125 +369,6 @@ const styles = {
     width: "100%",
     height: "auto",
     display: "block",
-  },
-  hotspotsSection: {
-    background: "#f8fafc",
-    border: "1px solid #e2e8f0",
-    borderRadius: 14,
-    padding: "12px",
-    marginBottom: 14,
-  },
-  hotspotTickerHeader: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 8,
-  },
-  hotspotBadgeLive: {
-    fontSize: 10,
-    fontWeight: 800,
-    color: "#0c831f",
-    letterSpacing: "0.03em",
-  },
-  hotspotCount: {
-    fontSize: 10,
-    color: "#64748b",
-    fontWeight: 700,
-  },
-  hotspotActiveCard: {
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-    background: "#ffffff",
-    border: "1px solid #cbd5e1",
-    borderRadius: 10,
-    padding: "8px 10px",
-    marginBottom: 8,
-  },
-  hotspotActiveImg: {
-    width: 44,
-    height: 44,
-    borderRadius: 8,
-    objectFit: "cover",
-    flexShrink: 0,
-  },
-  hotspotActiveInfo: {
-    flex: 1,
-    overflow: "hidden",
-  },
-  hotspotActiveName: {
-    fontSize: 13,
-    fontWeight: 800,
-    color: "#0f172a",
-    whiteSpace: "nowrap",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-  },
-  hotspotActiveTag: {
-    fontSize: 10,
-    color: "#64748b",
-    fontWeight: 600,
-  },
-  etaBadgeSmall: {
-    fontSize: 10,
-    fontWeight: 800,
-    color: "#b45309",
-    background: "#fef3c7",
-    padding: "3px 7px",
-    borderRadius: 4,
-    flexShrink: 0,
-  },
-  thumbnailsRow: {
-    display: "flex",
-    gap: 6,
-    overflowX: "auto",
-    paddingBottom: 4,
-  },
-  thumbCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: "50%",
-    overflow: "hidden",
-    border: "1.5px solid #cbd5e1",
-    cursor: "pointer",
-    flexShrink: 0,
-    opacity: 0.65,
-    transition: "all 0.15s ease",
-  },
-  thumbCircleActive: {
-    borderColor: "#0c831f",
-    opacity: 1,
-    transform: "scale(1.1)",
-    boxShadow: "0 0 0 2px rgba(12, 131, 31, 0.3)",
-  },
-  thumbImg: {
-    width: "100%",
-    height: "100%",
-    objectFit: "cover",
-  },
-  locationBarClean: {
-    background: "#f0fdf4",
-    border: "1px solid #bbf7d0",
-    borderRadius: 10,
-    padding: "9px 12px",
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
-    marginBottom: 16,
-  },
-  locationText: {
-    fontSize: 12,
-    fontWeight: 800,
-    color: "#166534",
-    flex: 1,
-  },
-  locBadge: {
-    fontSize: 9,
-    fontWeight: 800,
-    color: "#15803d",
-    background: "#dcfce7",
-    padding: "2px 6px",
-    borderRadius: 4,
   },
   stepperRow: {
     display: "flex",
@@ -747,28 +586,6 @@ const styles = {
     background: "#f8fafc",
     boxSizing: "border-box",
   },
-  summaryBar: {
-    background: "#f8fafc",
-    border: "1px solid #e2e8f0",
-    borderRadius: 10,
-    padding: "10px 14px",
-    marginBottom: 16,
-    display: "flex",
-    flexDirection: "column",
-    gap: 4,
-  },
-  summaryRow: {
-    display: "flex",
-    justifyContent: "space-between",
-    fontSize: 12,
-  },
-  summaryKey: {
-    color: "#64748b",
-  },
-  summaryVal: {
-    color: "#0f172a",
-    fontWeight: 800,
-  },
   successBlock: {
     textAlign: "center",
     padding: "16px 0",
@@ -814,71 +631,5 @@ const styles = {
     fontSize: 12,
     fontWeight: 700,
     cursor: "pointer",
-  },
-  activeSessionCard: {
-    background: "#f0fdf4",
-    border: "1.5px solid #86efac",
-    borderRadius: 14,
-    padding: "14px 16px",
-    marginBottom: 20,
-    boxShadow: "0 4px 12px rgba(12, 131, 31, 0.08)",
-  },
-  activeSessionRow: {
-    display: "flex",
-    alignItems: "center",
-    gap: 6,
-    marginBottom: 6,
-  },
-  activeSessionDot: {
-    width: 8,
-    height: 8,
-    borderRadius: "50%",
-    background: "#0c831f",
-    boxShadow: "0 0 6px #0c831f",
-  },
-  activeSessionTag: {
-    fontSize: 10,
-    fontWeight: 800,
-    color: "#166534",
-    letterSpacing: "0.04em",
-  },
-  activeSessionName: {
-    fontSize: 15,
-    fontWeight: 800,
-    color: "#0f172a",
-    marginBottom: 4,
-  },
-  activeSessionSub: {
-    fontSize: 11,
-    color: "#475569",
-    marginBottom: 12,
-    fontWeight: 600,
-  },
-  activeSessionBtn: {
-    width: "100%",
-    background: "#0c831f",
-    color: "#ffffff",
-    border: "none",
-    padding: "12px 16px",
-    borderRadius: 10,
-    fontSize: 13,
-    fontWeight: 800,
-    cursor: "pointer",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    boxShadow: "0 2px 8px rgba(12, 131, 31, 0.25)",
-  },
-  orRow: {
-    textAlign: "center",
-    marginTop: 12,
-    position: "relative",
-  },
-  orText: {
-    fontSize: 10,
-    fontWeight: 800,
-    color: "#64748b",
-    letterSpacing: "0.04em",
   },
 };
