@@ -1,266 +1,1421 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import { doc, onSnapshot, updateDoc } from "firebase/firestore";
-import { db } from "@/lib/firebaseClient";
 import { useParams, useRouter } from "next/navigation";
-
-const CAPTAIN_NAME = "Thrupthi K S";
-
-// Delivery stages with time budgets (seconds)
-// 0–120s = Picker phase, 120–600s = Captain phase
-const STAGES = [
-  { status: ["pending", "picking"], label: "Picking your order", icon: "📦", phase: "picker", maxSec: 120 },
-  { status: ["staged"],             label: "Order packed & ready", icon: "✅", phase: "picker", maxSec: 120 },
-  { status: ["accepted_captain", "dispatched"], label: `${CAPTAIN_NAME} is on the way!`, icon: "🛵", phase: "captain", maxSec: 600 },
-  { status: ["en_route"],           label: `${CAPTAIN_NAME} is almost there!`, icon: "🚀", phase: "captain", maxSec: 600 },
-  { status: ["delivered"],          label: "Order Delivered! 🎉",  icon: "🏠", phase: "done", maxSec: 600 },
-];
-
-function getStageIdx(status) {
-  for (let i = 0; i < STAGES.length; i++) {
-    if (STAGES[i].status.includes(status)) return i;
-  }
-  return 0;
-}
+import { doc, onSnapshot, addDoc, collection } from "firebase/firestore";
+import { db } from "@/lib/firebaseClient";
+import { subscribeToEvents, broadcastEvent, subscribeToLiveOrders } from "@/lib/realtimeSync";
+import { playSuccessChime, playNotificationChime } from "@/lib/soundSystem";
+import AuditxLogo from "@/components/AuditxLogo";
+import {
+  IconArrowLeft,
+  IconPhone,
+  IconCreditCard,
+  IconHome,
+  IconMapPin,
+  IconTarget,
+  IconClose,
+  IconCheck,
+  IconShieldCheck,
+  IconStar,
+  IconScooter,
+  IconBox,
+  IconLightning,
+} from "@/components/RealIcons";
 
 export default function TrackOrderPage() {
   const { orderId } = useParams();
-  const router      = useRouter();
-  const [order, setOrder]   = useState(null);
-  const [elapsed, setElapsed] = useState(0);
-  const [showDeliveryQR, setShowDeliveryQR] = useState(false);
-  const timerRef = useRef(null);
+  const router = useRouter();
+  const [order, setOrder] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  // Today's live clock
+  const [currentTimeStr, setCurrentTimeStr] = useState("");
+  const [orderPlacedTime, setOrderPlacedTime] = useState("");
 
   useEffect(() => {
-    if (!orderId) return;
-    const unsub = onSnapshot(doc(db, "orders", orderId), snap => {
-      if (snap.exists()) setOrder({ id: snap.id, ...snap.data() });
-    });
-    return () => unsub();
-  }, [orderId]);
-
-  // Elapsed timer from order creation
-  useEffect(() => {
-    if (!order || order.status === "delivered") {
-      clearInterval(timerRef.current);
-      return;
+    function updateClock() {
+      const now = new Date();
+      setCurrentTimeStr(now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }));
     }
-    const start = order.createdAt ? new Date(order.createdAt).getTime() : Date.now();
-    timerRef.current = setInterval(() => {
-      setElapsed(Math.floor((Date.now() - start) / 1000));
-    }, 1000);
-    return () => clearInterval(timerRef.current);
-  }, [order?.createdAt, order?.status]);
+    updateClock();
+    const interval = setInterval(updateClock, 1000);
+    return () => clearInterval(interval);
+  }, []);
 
-  if (!order) {
-    return (
-      <div style={S.loading}>
-        <div style={{ fontSize: 40 }}>⏳</div>
-        <div style={{ marginTop: 12, fontWeight: 800 }}>Loading order tracking...</div>
-      </div>
-    );
+  useEffect(() => {
+    const now = new Date();
+    setOrderPlacedTime(now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }));
+  }, []);
+
+  // "Arriving in 10 minutes" auto-reducing without counting background exact seconds timeline
+  const [arrivingMinutes, setArrivingMinutes] = useState(10);
+  const [cancelSecondsLeft, setCancelSecondsLeft] = useState(60);
+  const [isCancelled, setIsCancelled] = useState(false);
+
+  // Auto reduce arrival minutes naturally
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setArrivingMinutes((prev) => (prev > 1 ? prev - 1 : 1));
+      setRiderProgress((prev) => (prev < 90 ? prev + 3 : prev));
+    }, 45000); // naturally reduces from 10 to 9 to 8 etc.
+    return () => clearInterval(interval);
+  }, []);
+
+  // 60-second cancellation window timer
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCancelSecondsLeft((prev) => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Tipping
+  const [selectedTip, setSelectedTip] = useState(null);
+  const [customTipAmount, setCustomTipAmount] = useState("");
+  const [showCustomTipInput, setShowCustomTipInput] = useState(false);
+
+  // Online Payment Simulation
+  const [isPaidOnline, setIsPaidOnline] = useState(false);
+  const [showPayModal, setShowPayModal] = useState(false);
+
+  // Complaints / Support Drawer
+  const [showComplaintDrawer, setShowComplaintDrawer] = useState(false);
+  const [complaintCategory, setComplaintCategory] = useState("Damaged Goods");
+  const [complaintDesc, setComplaintDesc] = useState("");
+  const [submittingComplaint, setSubmittingComplaint] = useState(false);
+  const [toastMessage, setToastMessage] = useState("");
+
+  // Live GPS Route Animation Progress (0 to 100%)
+  const [riderProgress, setRiderProgress] = useState(25);
+
+  function triggerToast(msg) {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(""), 3500);
   }
 
-  const stageIdx      = getStageIdx(order.status);
-  const currentStage  = STAGES[stageIdx];
-  const isPickerPhase = elapsed < 120;
-  const isCaptainPhase = elapsed >= 120 && order.status !== "delivered";
-  const isDelivered    = order.status === "delivered";
+  function handleSelectTip(amount) {
+    if (amount === "Other") {
+      setShowCustomTipInput(true);
+      return;
+    }
+    setSelectedTip(amount);
+    setShowCustomTipInput(false);
+    playSuccessChime();
+    triggerToast(`₹${amount} tip added for your delivery partner! Thank you!`);
+  }
 
-  const totalSec    = 600; // 10 minutes
-  const progress    = Math.min(100, (elapsed / totalSec) * 100);
-  const remaining   = Math.max(0, totalSec - elapsed);
-  const remMins     = Math.floor(remaining / 60);
-  const remSecs     = remaining % 60;
+  function handleApplyCustomTip() {
+    const val = parseInt(customTipAmount, 10);
+    if (!isNaN(val) && val > 0) {
+      setSelectedTip(val);
+      setShowCustomTipInput(false);
+      playSuccessChime();
+      triggerToast(`₹${val} tip added for your delivery partner! Thank you!`);
+    }
+  }
 
-  const pickerProgress  = Math.min(100, (elapsed / 120) * 100);
-  const captainProgress = isCaptainPhase || isDelivered
-    ? Math.min(100, ((elapsed - 120) / 480) * 100) : 0;
+  function handleCancelOrder() {
+    if (cancelSecondsLeft <= 0) {
+      triggerToast("Cancellation window expired. Order is already being packed!");
+      return;
+    }
+    setIsCancelled(true);
+    broadcastEvent("ORDER_CANCELLED", {
+      orderId: order?.id || orderId,
+      customerName: order?.customerName || "Customer",
+      reason: "Customer cancelled within 60s window",
+    });
+    triggerToast("Order cancelled successfully. Refund initiated to original source.");
+  }
+
+  async function submitComplaint(e) {
+    e.preventDefault();
+    setSubmittingComplaint(true);
+
+    const cmp = {
+      id: `CMP-KA44-${Math.floor(100 + Math.random() * 900)}`,
+      orderId: orderId,
+      customerName: order?.customerName || "Customer",
+      phone: order?.customerPhone || "9845112233",
+      issue: complaintDesc || `${complaintCategory} reported on Tiptur delivery`,
+      category: complaintCategory,
+      severity: complaintCategory === "Damaged Goods" ? "CRITICAL" : "MEDIUM",
+      slaMins: 4,
+      status: "OPEN",
+      time: "Just now",
+      assignedTo: "Store Manager",
+      amount: order?.totalAmount || 139,
+      createdAt: new Date().toISOString(),
+    };
+
+    if (db) {
+      try {
+        await addDoc(collection(db, "complaints"), cmp);
+      } catch (err) {
+        console.warn(err);
+      }
+    }
+
+    broadcastEvent("COMPLAINT_RAISED", cmp);
+    setSubmittingComplaint(false);
+    setShowComplaintDrawer(false);
+    setComplaintDesc("");
+    triggerToast("Complaint received by Store Manager! Instant review initiated.");
+  }
+
+  // Active order fallback
+  const activeOrder = order || {
+    id: orderId,
+    orderId,
+    orderNumber: orderId,
+    customerName: "Ramesh Gowda",
+    customerPhone: "9845112233",
+    customerAddress: "Near Kalpataru College Road, Namma Tiptur - 572201",
+    totalAmount: 139,
+    status: "pending",
+    assignedRack: "D5",
+    pickerName: "Dark Store Specialist",
+    captainName: "Delivery Partner",
+    items: [
+      { name: "Fresh Milk 1L", qty: 1, price: 60 },
+      { name: "Brown Bread 400g", qty: 2, price: 45 },
+    ],
+  };
+
+  const isDelivered = activeOrder.status === "delivered";
+  const isDispatched = activeOrder.status === "dispatched" || isDelivered;
+  const isStaged = activeOrder.status === "staged" || isDispatched;
+  const isPicking = activeOrder.status === "picking" || isStaged;
+
+  // Dynamic status text for top green header
+  let phaseText = "Packing your order";
+  if (isDelivered) phaseText = "Order Delivered";
+  else if (isDispatched) phaseText = "Order Out for Delivery";
+  else if (isStaged) phaseText = "Order Staged & Ready";
+
+  let arrivalTitle = `Arriving in ${arrivingMinutes} ${arrivingMinutes === 1 ? "minute" : "minutes"}`;
+  if (isDelivered) arrivalTitle = "Delivered to your doorstep";
+  if (isCancelled) arrivalTitle = "Order Cancelled";
 
   return (
-    <div style={S.wrap}>
-
-      {/* Header */}
-      <div style={S.header}>
-        <button style={S.backBtn} onClick={() => router.push("/")}>← Back</button>
-        <div>
-          <div style={S.headerTitle}>Order Tracker</div>
-          <div style={S.headerSub}>#{order.orderNumber || order.id.slice(-8)}</div>
-        </div>
-        <div style={{ ...S.statusDot, background: isDelivered ? "#10b981" : "#f8cb46" }}>
-          {isDelivered ? "✅" : "🔄"}
-        </div>
-      </div>
-
-      {/* ETA Banner */}
-      {!isDelivered ? (
-        <div style={S.etaBanner}>
-          <div style={S.etaLabel}>Arriving in</div>
-          <div style={S.etaTime}>{remMins}:{String(remSecs).padStart(2,"0")}</div>
-          <div style={S.etaSub}>Tiptur HUB KA44 → Your door</div>
-        </div>
-      ) : (
-        <div style={{ ...S.etaBanner, background: "linear-gradient(135deg,#064e3b,#065f46)" }}>
-          <div style={{ fontSize: 36 }}>🎉</div>
-          <div style={S.etaTime}>DELIVERED!</div>
-          <div style={S.etaSub}>Order confirmed. Enjoy!</div>
+    <div style={S.pageBackground}>
+      {toastMessage && (
+        <div style={S.toast}>
+          <IconCheck size={16} color="#ffffff" />
+          <span>{toastMessage}</span>
         </div>
       )}
 
-      {/* Captain Card (shows after picker phase) */}
-      {(isCaptainPhase || isDelivered) && (
-        <div style={S.captainCard}>
-          <div style={S.captainAvatar}>👩</div>
-          <div style={S.captainText}>
-            <div style={S.captainGreet}>
-              Hi! I am <b>{CAPTAIN_NAME}</b>,<br />
-              your Order Captain {isCaptainPhase ? "on the way coming soon! 🛵" : "— Order Delivered! ✅"}
+      {/* Smartphone Device Shell Container */}
+      <div style={S.mobileShell}>
+        {/* ── 1. TOP GREEN HEADER (EXACT BLINKIT HEADER) ── */}
+        <header style={S.topGreenHeader}>
+          {/* Navigation & Header Content */}
+          <div style={S.greenNavRow}>
+            <button
+              type="button"
+              style={S.backArrowBtn}
+              onClick={() => router.push("/ordering")}
+              title="Back to Ordering"
+            >
+              <IconArrowLeft size={22} color="#ffffff" />
+            </button>
+
+            <div style={S.headerCenterInfo}>
+              <div style={S.packingSubText}>{phaseText}</div>
+              <h1 style={S.arrivingTitle}>{arrivalTitle}</h1>
             </div>
-            <div style={S.captainSub2}>Tiptur HUB KA44 · {isCaptainPhase ? "En route to your location" : "Delivery complete"}</div>
+
+            <button
+              type="button"
+              style={S.supportHelpBtn}
+              onClick={() => setShowComplaintDrawer(true)}
+              title="Help & Support"
+            >
+              Help
+            </button>
           </div>
-        </div>
-      )}
+        </header>
 
-      {/* Picker phase message */}
-      {isPickerPhase && !isDelivered && (
-        <div style={S.pickerCard}>
-          <div style={{ fontSize: 28 }}>📦</div>
-          <div>
-            <div style={{ fontWeight: 900, fontSize: 14, color: "#fff" }}>Sinchana B R is picking your order</div>
-            <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 2 }}>at Tiptur HUB KA44 warehouse</div>
+        {/* ── 2. REALISTIC GOOGLE MAPS SECTION WITH ROUTE & RIDER ── */}
+        <section style={S.mapSection}>
+          <div style={S.mapViewport}>
+            {/* SVG Vector Map Canvas (Google Maps Styling) */}
+            <svg
+              viewBox="0 0 360 260"
+              style={S.mapSvg}
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              {/* Map Background */}
+              <rect width="360" height="260" fill="#E8ECEF" />
+
+              {/* City Blocks / Buildings */}
+              <rect x="15" y="10" width="75" height="55" rx="3" fill="#F4F6F8" stroke="#DCE1E6" strokeWidth="1" />
+              <rect x="105" y="10" width="110" height="40" rx="3" fill="#F4F6F8" stroke="#DCE1E6" strokeWidth="1" />
+              <rect x="230" y="15" width="115" height="60" rx="3" fill="#F4F6F8" stroke="#DCE1E6" strokeWidth="1" />
+
+              <rect x="15" y="80" width="85" height="70" rx="3" fill="#F4F6F8" stroke="#DCE1E6" strokeWidth="1" />
+              <rect x="115" y="65" width="60" height="90" rx="3" fill="#F4F6F8" stroke="#DCE1E6" strokeWidth="1" />
+              <rect x="190" y="90" width="45" height="70" rx="3" fill="#F4F6F8" stroke="#DCE1E6" strokeWidth="1" />
+              <rect x="250" y="90" width="95" height="80" rx="3" fill="#F4F6F8" stroke="#DCE1E6" strokeWidth="1" />
+
+              <rect x="15" y="165" width="90" height="85" rx="3" fill="#F4F6F8" stroke="#DCE1E6" strokeWidth="1" />
+              <rect x="120" y="170" width="75" height="80" rx="3" fill="#F4F6F8" stroke="#DCE1E6" strokeWidth="1" />
+              <rect x="210" y="185" width="135" height="65" rx="3" fill="#F4F6F8" stroke="#DCE1E6" strokeWidth="1" />
+
+              {/* Small Parcels & Subdivisions */}
+              <line x1="250" y1="110" x2="345" y2="110" stroke="#E2E6EA" strokeWidth="1" />
+              <line x1="250" y1="130" x2="345" y2="130" stroke="#E2E6EA" strokeWidth="1" />
+              <line x1="250" y1="150" x2="345" y2="150" stroke="#E2E6EA" strokeWidth="1" />
+              <line x1="285" y1="90" x2="285" y2="170" stroke="#E2E6EA" strokeWidth="1" />
+              <line x1="315" y1="90" x2="315" y2="170" stroke="#E2E6EA" strokeWidth="1" />
+
+              {/* Roads (White bands with clean borders) */}
+              {/* B.H. Road / Main Diagonal Arterial */}
+              <path
+                d="M -10 65 Q 120 50 370 75"
+                stroke="#FFFFFF"
+                strokeWidth="14"
+                fill="none"
+              />
+              <path
+                d="M -10 65 Q 120 50 370 75"
+                stroke="#CCD2D8"
+                strokeWidth="1"
+                fill="none"
+              />
+
+              {/* Cross Street: Kalpataru Marg */}
+              <path
+                d="M 100 -10 L 105 270"
+                stroke="#FFFFFF"
+                strokeWidth="12"
+                fill="none"
+              />
+              <path
+                d="M 100 -10 L 105 270"
+                stroke="#CCD2D8"
+                strokeWidth="1"
+                fill="none"
+              />
+
+              {/* Kings Road */}
+              <path
+                d="M 240 -10 L 245 270"
+                stroke="#FFFFFF"
+                strokeWidth="11"
+                fill="none"
+              />
+
+              {/* New Sadashiva Nagar Avenue */}
+              <path
+                d="M -10 160 Q 180 165 370 180"
+                stroke="#FFFFFF"
+                strokeWidth="12"
+                fill="none"
+              />
+
+              {/* Road Labels (Google Maps typography) */}
+              <text x="18" y="62" fontSize="7" fill="#8895A7" fontWeight="bold" transform="rotate(-3, 18, 62)">
+                B.H. Main Road (KA44)
+              </text>
+              <text x="108" y="115" fontSize="6.5" fill="#8895A7" fontWeight="bold" transform="rotate(88, 108, 115)">
+                Kalpataru Marg
+              </text>
+              <text x="248" y="125" fontSize="6.5" fill="#8895A7" fontWeight="bold" transform="rotate(88, 248, 125)">
+                Kings Rd
+              </text>
+              <text x="260" y="176" fontSize="6.5" fill="#8895A7" fontWeight="bold">
+                New Sadashiva Nagar
+              </text>
+
+              {/* ── THE CURVED DASHED TRANSIT ROUTE (MATCHING SCREENSHOT) ── */}
+              {/* Bezier curve from Rider location (140, 55) to Customer Home (220, 155) */}
+              <path
+                d="M 140 55 Q 190 85 220 155"
+                stroke="#1E293B"
+                strokeWidth="2.5"
+                strokeDasharray="5,5"
+                strokeLinecap="round"
+                fill="none"
+              />
+
+              {/* ── CUSTOMER DESTINATION MARKER ── */}
+              {/* Blue ground drop pin */}
+              <g transform="translate(220, 155)">
+                {/* Pin shadow */}
+                <ellipse cx="0" cy="5" rx="6" ry="2.5" fill="rgba(0,0,0,0.2)" />
+                {/* Pin shape */}
+                <path
+                  d="M 0 5 C -6 5 -9 -2 -9 -6 C -9 -11 0 -18 0 -18 C 0 -18 9 -11 9 -6 C 9 -2 6 5 0 5 Z"
+                  fill="#1D72B8"
+                />
+                {/* White circular badge with Home icon */}
+                <circle cx="0" cy="-6" r="8" fill="#FFFFFF" stroke="#1D72B8" strokeWidth="1.5" />
+                <path
+                  d="M -4 -4 L 0 -8 L 4 -4 L 4 0 L -4 0 Z"
+                  fill="#F59E0B"
+                />
+                <rect x="-1.5" y="-2" width="3" height="2" fill="#92400E" />
+              </g>
+
+              {/* ── DELIVERY PARTNER RIDER MARKER ── */}
+              {/* Rider with green helmet and scooter, positioned at (140, 55) */}
+              <g transform="translate(140, 55)">
+                {/* Pulsing radar waves */}
+                <circle cx="0" cy="0" r="18" fill="rgba(12, 131, 31, 0.15)">
+                  <animate
+                    attributeName="r"
+                    values="14;24;14"
+                    dur="2s"
+                    repeatCount="indefinite"
+                  />
+                  <animate
+                    attributeName="opacity"
+                    values="0.6;0;0.6"
+                    dur="2s"
+                    repeatCount="indefinite"
+                  />
+                </circle>
+
+                {/* Black circular background pill */}
+                <circle cx="0" cy="-6" r="11" fill="#111827" />
+
+                {/* Scooter & Helmet Graphic */}
+                <circle cx="0" cy="-6" r="7" fill="#0C831F" />
+                <path
+                  d="M -3 -5 Q 0 -9 3 -5 Q 3 -3 -3 -3 Z"
+                  fill="#FFFFFF"
+                />
+                {/* Scooter body & wheels */}
+                <circle cx="-4" cy="5" r="2" fill="#374151" />
+                <circle cx="4" cy="5" r="2" fill="#374151" />
+                <path d="M -4 5 L 4 5 L 2 1 L -2 1 Z" fill="#10B981" />
+                <circle cx="0" cy="0" r="3" fill="#F59E0B" />
+              </g>
+            </svg>
+
+            {/* Google Watermark Logo on bottom-left */}
+            <div style={S.googleWatermark}>Google</div>
+
+            {/* Re-center / Expand Button on top-right */}
+            <button
+              type="button"
+              style={S.mapRecenterBtn}
+              onClick={() => triggerToast("Map re-centered to delivery route")}
+              title="Re-center map"
+            >
+              <IconTarget size={16} color="#475569" />
+            </button>
           </div>
-        </div>
-      )}
+        </section>
 
-      {/* Progress Timeline */}
-      <div style={S.timelineCard}>
-        <div style={S.timelineTitle}>📍 Live Delivery Timeline</div>
-
-        {/* 3-stage visual */}
-        {[
-          { label: "Order Received", done: true,                  icon: "✅" },
-          { label: `Picking in Warehouse (0–2 min)`,
-            done: elapsed >= 120,   icon: elapsed >= 120 ? "✅" : "📦",
-            active: isPickerPhase },
-          { label: `${CAPTAIN_NAME} En Route (2–10 min)`,
-            done: isDelivered,      icon: isDelivered ? "✅" : "🛵",
-            active: isCaptainPhase },
-          { label: "Delivered to You",
-            done: isDelivered,      icon: isDelivered ? "✅" : "🏠",
-            active: isDelivered },
-        ].map((s, i) => (
-          <div key={i} style={S.timelineRow}>
-            <div style={{ ...S.timelineDot, background: s.done ? "#10b981" : s.active ? "#f8cb46" : "#334155" }}>
-              {s.icon}
-            </div>
-            <div style={{ flex: 1 }}>
-              <div style={{ ...S.timelineLabel, color: s.done ? "#10b981" : s.active ? "#f8cb46" : "#94a3b8", fontWeight: s.active || s.done ? 800 : 400 }}>
-                {s.label}
+        {/* ── 3. PAYMENT / COD CARD (EXACT SCREENSHOT) ── */}
+        <section style={S.cardContainer}>
+          <div style={S.paymentActionCard}>
+            <div style={S.paymentCardLeft}>
+              <div style={S.cardIconCircle}>
+                <IconCreditCard size={20} color="#64748B" />
+              </div>
+              <div style={S.paymentTextGroup}>
+                <h3 style={S.paymentCardTitle}>
+                  {isPaidOnline
+                    ? `Paid ₹${activeOrder.totalAmount} online`
+                    : `Pay ₹${activeOrder.totalAmount} before or on delivery`}
+                </h3>
+                <p style={S.paymentCardSub}>
+                  {isPaidOnline
+                    ? "Safe, contactless delivery. No cash needed at your doorstep."
+                    : `Please keep a change of ₹${activeOrder.totalAmount} handy or avoid the hassle by paying online`}
+                </p>
+                {!isPaidOnline && (
+                  <button
+                    type="button"
+                    style={S.payOnlineTextBtn}
+                    onClick={() => setShowPayModal(true)}
+                  >
+                    Pay Online →
+                  </button>
+                )}
               </div>
             </div>
           </div>
-        ))}
+        </section>
 
-        {/* Phase progress bars */}
-        <div style={{ marginTop: 16 }}>
-          <div style={S.phaseLabel}>🏭 Picker Phase (0 → 2 min)</div>
-          <div style={S.progressTrack}><div style={{ ...S.progressFill, width: `${pickerProgress}%`, background: "#f8cb46" }} /></div>
+        {/* ── 4. DELIVERY PARTNER CARD (EXACT SCREENSHOT) ── */}
+        <section style={S.cardContainer}>
+          <div style={S.partnerMainCard}>
+            {/* Partner Header Row */}
+            <div style={S.partnerHeader}>
+              <div style={S.partnerLeftProfile}>
+                {/* Driver Avatar with Helmet in Beige Circle */}
+                <div style={S.partnerAvatarBadge}>
+                  <div style={S.avatarHelmet}>
+                    <div style={S.helmetVisor} />
+                  </div>
+                  <span style={S.avatarOnlineIndicator} />
+                </div>
 
-          <div style={{ ...S.phaseLabel, marginTop: 10 }}>🛵 Captain Phase (2 → 10 min)</div>
-          <div style={S.progressTrack}><div style={{ ...S.progressFill, width: `${captainProgress}%`, background: "#10b981" }} /></div>
-        </div>
-      </div>
+                <div style={S.partnerNameBlock}>
+                  <div style={S.partnerNameLine}>
+                    I'm your <b>Delivery Partner</b>
+                  </div>
+                  <div style={S.partnerSubLine}>
+                    KA44 Express Fleet • 4.9 <IconStar size={11} color="#F59E0B" />
+                  </div>
+                </div>
+              </div>
 
-      {/* Order Summary */}
-      <div style={S.orderCard}>
-        <div style={S.orderTitle}>🛍️ Your Order</div>
-        {(order.items || []).map((it, i) => (
-          <div key={i} style={S.orderRow}>
-            <span>{it.name}</span>
-            <span style={{ color: "#f8cb46", fontWeight: 800 }}>×{it.qty} · ₹{it.mrp || it.price || "—"}</span>
-          </div>
-        ))}
-        <div style={{ ...S.orderRow, borderTop: "1px solid #334155", paddingTop: 10, marginTop: 6, fontWeight: 900 }}>
-          <span>Total</span>
-          <span style={{ color: "#10b981" }}>₹{order.totalAmount}</span>
-        </div>
-      </div>
-
-      {/* Delivery QR (for captain to scan) */}
-      {!isDelivered && elapsed >= 120 && (
-        <div style={S.qrCard}>
-          <div style={S.orderTitle}>📱 Your Delivery QR Code</div>
-          <div style={{ fontSize: 12, color: "#94a3b8", marginBottom: 14 }}>
-            Show this to {CAPTAIN_NAME} to confirm delivery
-          </div>
-          <div style={S.qrBox}>
-            <div style={{ fontSize: 48 }}>▣</div>
-            <div style={{ fontFamily: "monospace", fontSize: 10, color: "#10b981", marginTop: 8, wordBreak: "break-all" }}>
-              CUSTOMER-QR-{order.id}
+              {/* Call Phone Button */}
+              <a
+                href="tel:8088553237"
+                style={S.phoneActionBtn}
+                title="Call Delivery Partner"
+              >
+                <IconPhone size={18} color="#0C831F" />
+              </a>
             </div>
+
+            {/* Status / Message Bubble */}
+            <div style={S.partnerMessageBubble}>
+              {isDispatched
+                ? "I've picked up your order from Tiptur HUB and am on the way!"
+                : "I've reached the store and will pick up your order soon"}
+            </div>
+
+            {/* Tipping & Happiness Section */}
+            <div style={S.tippingContainer}>
+              <div style={S.tippingTextCol}>
+                <h4 style={S.tippingTitle}>Delivering happiness at your doorstep!</h4>
+                <p style={S.tippingSub}>Thank them by leaving a tip</p>
+              </div>
+
+              {/* Delivery Rider Graphic */}
+              <div style={S.deliveryScooterGraphic}>
+                <svg width="72" height="48" viewBox="0 0 72 48" fill="none">
+                  {/* Scooter */}
+                  <circle cx="16" cy="38" r="7" fill="#1E293B" />
+                  <circle cx="16" cy="38" r="3" fill="#CBD5E1" />
+                  <circle cx="56" cy="38" r="7" fill="#1E293B" />
+                  <circle cx="56" cy="38" r="3" fill="#CBD5E1" />
+                  {/* Chassis */}
+                  <path d="M 16 38 L 30 38 L 40 28 L 56 38" stroke="#F59E0B" strokeWidth="4" strokeLinecap="round" />
+                  <path d="M 40 28 L 48 16 L 52 16" stroke="#1E293B" strokeWidth="2.5" strokeLinecap="round" />
+                  {/* Grocery Box in front */}
+                  <rect x="50" y="16" width="12" height="12" rx="2" fill="#0C831F" />
+                  {/* Driver body & helmet */}
+                  <circle cx="34" cy="12" r="6" fill="#F59E0B" />
+                  <path d="M 31 10 Q 34 8 37 10" stroke="#FFFFFF" strokeWidth="2" strokeLinecap="round" />
+                  <path d="M 28 20 L 34 16 L 40 20 L 36 28 L 28 28 Z" fill="#FBBF24" />
+                </svg>
+              </div>
+            </div>
+
+            {/* Quick Tip Chips */}
+            <div style={S.tipChipsRow}>
+              {[
+                { label: "₹20", value: 20 },
+                { label: "₹30", value: 30 },
+                { label: "₹50", value: 50 },
+                { label: "Other", value: "Other" },
+              ].map((tip) => {
+                const isSelected = selectedTip === tip.value;
+                return (
+                  <button
+                    key={tip.label}
+                    type="button"
+                    style={{
+                      ...S.tipBtn,
+                      ...(isSelected ? S.tipBtnActive : {}),
+                    }}
+                    onClick={() => handleSelectTip(tip.value)}
+                  >
+                    <span>{tip.label}</span>
+                    {isSelected && <IconCheck size={12} color="#0C831F" />}
+                  </button>
+                );
+              })}
+            </div>
+
+            {showCustomTipInput && (
+              <div style={S.customTipRow}>
+                <input
+                  type="number"
+                  placeholder="Enter custom tip amount (₹)..."
+                  value={customTipAmount}
+                  onChange={(e) => setCustomTipAmount(e.target.value)}
+                  style={S.customTipField}
+                />
+                <button
+                  type="button"
+                  style={S.applyCustomTipBtn}
+                  onClick={handleApplyCustomTip}
+                >
+                  Add Tip
+                </button>
+              </div>
+            )}
           </div>
-          <div style={{ fontSize: 11, color: "#64748b", marginTop: 10, textAlign: "center" }}>
-            Order #{order.orderNumber || order.id.slice(-8)} · {order.customerName}
+        </section>
+
+        {/* ── 5. ORDER SUMMARY & DETAILS ── */}
+        <section style={S.cardContainer}>
+          <div style={S.summaryCard}>
+            <div style={S.summaryTopRow}>
+              <div>
+                <h4 style={S.summaryOrderNum}>Order #{activeOrder.orderNumber || orderId}</h4>
+                <div style={S.summaryHubTag}>
+                  Placed Today at {orderPlacedTime || "10:45 AM"} • Tiptur HUB - KA44
+                </div>
+              </div>
+              <span style={S.summaryGrandTotal}>₹{activeOrder.totalAmount}</span>
+            </div>
+
+            <div style={S.itemsList}>
+              {(activeOrder.items || []).map((it, idx) => (
+                <div key={idx} style={S.itemRow}>
+                  <div style={S.itemNameCol}>
+                    <span style={S.itemName}>{it.name}</span>
+                    <span style={S.itemQty}>x{it.qty || 1}</span>
+                  </div>
+                  <span style={S.itemPrice}>
+                    ₹{(it.price || 45) * (it.qty || 1)}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            {/* Handover QR Code for Sinchana */}
+            <div style={S.handoverQrBox}>
+              <div style={S.qrTitleRow}>
+                <span style={S.qrTitle}>Delivery Handover QR</span>
+                <span style={S.qrScanPill}>Scan upon arrival</span>
+              </div>
+              <p style={S.qrSub}>
+                Show this code to your <b>Delivery Partner</b> at doorstep to complete verification:
+              </p>
+              <div style={S.qrGraphicWrapper}>
+                <div style={S.qrVisualMatrix} />
+                <code style={S.qrTextCode}>AUDITX-{activeOrder.orderNumber || orderId}</code>
+              </div>
+            </div>
+
+            {/* 60s Free Cancellation prompt */}
+            {!isCancelled && !isDelivered && cancelSecondsLeft > 0 && (
+              <div style={S.cancelBarRow}>
+                <span style={S.cancelWindowText}>
+                  Cancel available for <b>00:{cancelSecondsLeft.toString().padStart(2, "0")}s</b>
+                </span>
+                <button
+                  type="button"
+                  style={S.cancelOrderBtn}
+                  onClick={handleCancelOrder}
+                >
+                  Cancel Order
+                </button>
+              </div>
+            )}
+          </div>
+        </section>
+
+        {/* Quick return button to Dark Store Catalog */}
+        <div style={{ padding: "14px 16px 0", textAlign: "center" }}>
+          <button
+            type="button"
+            onClick={() => router.push("/ordering")}
+            style={{
+              width: "100%",
+              background: "#0c831f",
+              color: "#ffffff",
+              border: "none",
+              padding: "13px 18px",
+              borderRadius: 12,
+              fontSize: 14,
+              fontWeight: 800,
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 8,
+              boxShadow: "0 4px 12px rgba(12, 131, 31, 0.25)",
+            }}
+          >
+            <span>← Return to Dark Store Catalog</span>
+          </button>
+        </div>
+
+        <div style={{ height: 40 }} />
+      </div>
+
+      {/* ── PAY ONLINE MODAL ── */}
+      {showPayModal && (
+        <div style={S.modalOverlay} onClick={() => setShowPayModal(false)}>
+          <div style={S.payModalSheet} onClick={(e) => e.stopPropagation()}>
+            <div style={S.modalHeaderRow}>
+              <div>
+                <h3 style={S.modalTitle}>Pay ₹{activeOrder.totalAmount} Online</h3>
+                <div style={S.modalSub}>1-Tap instant UPI checkout for contactless delivery</div>
+              </div>
+              <button
+                type="button"
+                style={S.modalCloseBtn}
+                onClick={() => setShowPayModal(false)}
+              >
+                <IconClose size={20} color="#64748B" />
+              </button>
+            </div>
+
+            <div style={S.upiMethodsGrid}>
+              {[
+                { name: "Google Pay", id: "gpay" },
+                { name: "PhonePe", id: "phonepe" },
+                { name: "Paytm UPI", id: "paytm" },
+                { name: "AUDIT'X Wallet", id: "wallet" },
+              ].map((m) => (
+                <button
+                  key={m.id}
+                  type="button"
+                  style={S.upiOptionBtn}
+                  onClick={() => {
+                    setIsPaidOnline(true);
+                    setShowPayModal(false);
+                    playSuccessChime();
+                    triggerToast(`Payment of ₹${activeOrder.totalAmount} via ${m.name} successful!`);
+                  }}
+                >
+                  <IconCheck size={14} color="#0C831F" />
+                  <span>{m.name}</span>
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       )}
 
-      {/* Delivered confirmation */}
-      {isDelivered && (
-        <div style={S.deliveredCard}>
-          <div style={{ fontSize: 44 }}>🎊</div>
-          <div style={{ fontSize: 18, fontWeight: 900, color: "#10b981", marginTop: 10 }}>Order Delivered Successfully!</div>
-          <div style={{ fontSize: 13, color: "#cbd5e1", marginTop: 6 }}>
-            Delivered by <b style={{ color: "#f8cb46" }}>{CAPTAIN_NAME}</b> from Tiptur HUB KA44
+      {/* ── COMPLAINT / SUPPORT DRAWER ── */}
+      {showComplaintDrawer && (
+        <div style={S.modalOverlay} onClick={() => setShowComplaintDrawer(false)}>
+          <div style={S.complaintSheet} onClick={(e) => e.stopPropagation()}>
+            <div style={S.modalHeaderRow}>
+              <div>
+                <h3 style={S.modalTitle}>Help & Live Support</h3>
+                <div style={S.modalSub}>Direct connection to <b>Store Manager (KA44 Tiptur HUB)</b></div>
+              </div>
+              <button
+                type="button"
+                style={S.modalCloseBtn}
+                onClick={() => setShowComplaintDrawer(false)}
+              >
+                <IconClose size={20} color="#64748B" />
+              </button>
+            </div>
+
+            <form onSubmit={submitComplaint} style={S.complaintForm}>
+              <div style={S.formGroup}>
+                <label style={S.formLabel}>Issue Category:</label>
+                <select
+                  value={complaintCategory}
+                  onChange={(e) => setComplaintCategory(e.target.value)}
+                  style={S.formSelect}
+                >
+                  <option value="Damaged Goods">Damaged Packaging / Leaking Item</option>
+                  <option value="Missing Item">Missing Item in Delivery Bag</option>
+                  <option value="Delivery SLA">Delivery Took More Than 10 Minutes</option>
+                  <option value="Wrong Item">Wrong Item Delivered</option>
+                  <option value="Partner Query">Delivery Partner Query</option>
+                </select>
+              </div>
+
+              <div style={S.formGroup}>
+                <label style={S.formLabel}>Explain the problem:</label>
+                <textarea
+                  rows={4}
+                  placeholder="Describe your issue in detail..."
+                  value={complaintDesc}
+                  onChange={(e) => setComplaintDesc(e.target.value)}
+                  style={S.formTextarea}
+                  required
+                />
+              </div>
+
+              <button
+                type="submit"
+                style={S.submitCmpBtn}
+                disabled={submittingComplaint}
+              >
+                {submittingComplaint ? "Sending..." : "Submit to Store Manager →"}
+              </button>
+            </form>
           </div>
-          <button style={S.reorderBtn} onClick={() => router.push("/")}>
-            🛒 Order Again
-          </button>
         </div>
       )}
     </div>
   );
 }
 
+// ── BLINKIT STYLES SYSTEM (MATCHING SCREENSHOT WITH HIGH ACCURACY) ──
 const S = {
-  wrap:    { minHeight: "100vh", background: "#0a0f1e", color: "#f8fafc", paddingBottom: 40, fontFamily: "Inter, sans-serif" },
-  loading: { minHeight: "100vh", background: "#0a0f1e", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "#fff" },
+  pageBackground: {
+    minHeight: "100vh",
+    background: "#080C14",
+    display: "flex",
+    justifyContent: "center",
+    fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Inter', sans-serif",
+    color: "#0F172A",
+  },
+  toast: {
+    position: "fixed",
+    top: 16,
+    left: "50%",
+    transform: "translateX(-50%)",
+    background: "#0C831F",
+    color: "#FFFFFF",
+    padding: "10px 18px",
+    borderRadius: 8,
+    fontWeight: 700,
+    zIndex: 9999,
+    boxShadow: "0 6px 20px rgba(12, 131, 31, 0.4)",
+    fontSize: 13,
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+  },
+  // Mobile Frame Shell
+  mobileShell: {
+    width: "100%",
+    maxWidth: 440,
+    minHeight: "100vh",
+    background: "#F4F6FB",
+    position: "relative",
+    boxShadow: "0 0 40px rgba(0, 0, 0, 0.4)",
+    overflowX: "hidden",
+  },
 
-  header: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 20px", background: "#1e293b", borderBottom: "1px solid #334155" },
-  backBtn: { background: "none", border: "none", color: "#94a3b8", fontSize: 13, cursor: "pointer", fontWeight: 800 },
-  headerTitle: { fontSize: 16, fontWeight: 900, color: "#fff" },
-  headerSub: { fontSize: 11, color: "#94a3b8", marginTop: 1 },
-  statusDot: { width: 32, height: 32, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 },
+  // 1. TOP GREEN HEADER
+  topGreenHeader: {
+    background: "#0C831F",
+    color: "#FFFFFF",
+    padding: "14px 16px",
+    position: "sticky",
+    top: 0,
+    zIndex: 40,
+  },
+  statusBarRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    fontSize: 12,
+    fontWeight: 600,
+    color: "#E8F5E9",
+    marginBottom: 8,
+    opacity: 0.9,
+  },
+  statusTime: {
+    fontWeight: 700,
+  },
+  statusIcons: {
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    fontSize: 11,
+  },
+  batteryShell: {
+    width: 18,
+    height: 9,
+    border: "1px solid #E8F5E9",
+    borderRadius: 2,
+    padding: 1,
+    display: "flex",
+    alignItems: "center",
+  },
+  batteryFill: {
+    width: "75%",
+    height: "100%",
+    background: "#FFFFFF",
+    borderRadius: 1,
+  },
+  greenNavRow: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  backArrowBtn: {
+    background: "transparent",
+    border: "none",
+    color: "#FFFFFF",
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    padding: "4px 8px 4px 0",
+  },
+  headerCenterInfo: {
+    textAlign: "center",
+    flex: 1,
+  },
+  packingSubText: {
+    fontSize: 13,
+    fontWeight: 600,
+    color: "#E2F1E4",
+    letterSpacing: -0.2,
+    lineHeight: 1.2,
+  },
+  arrivingTitle: {
+    fontSize: 21,
+    fontWeight: 900,
+    color: "#FFFFFF",
+    letterSpacing: -0.5,
+    margin: "2px 0 0",
+    lineHeight: 1.15,
+  },
+  supportHelpBtn: {
+    background: "rgba(255, 255, 255, 0.2)",
+    border: "none",
+    color: "#FFFFFF",
+    fontSize: 11,
+    fontWeight: 800,
+    padding: "5px 10px",
+    borderRadius: 6,
+    cursor: "pointer",
+  },
 
-  etaBanner: { background: "linear-gradient(135deg,#1a1200,#2d1f00)", border: "1px solid #f8cb4640", padding: "24px 20px", textAlign: "center" },
-  etaLabel:  { fontSize: 12, color: "#94a3b8", fontWeight: 700 },
-  etaTime:   { fontSize: 42, fontWeight: 900, color: "#f8cb46", fontFamily: "monospace", letterSpacing: 2 },
-  etaSub:    { fontSize: 12, color: "#94a3b8", marginTop: 4 },
+  // 2. MAP SECTION
+  mapSection: {
+    position: "relative",
+    width: "100%",
+  },
+  mapViewport: {
+    position: "relative",
+    width: "100%",
+    height: 250,
+    overflow: "hidden",
+    background: "#E8ECEF",
+  },
+  mapSvg: {
+    width: "100%",
+    height: "100%",
+    display: "block",
+  },
+  googleWatermark: {
+    position: "absolute",
+    bottom: 8,
+    left: 12,
+    fontSize: 14,
+    fontWeight: 700,
+    color: "#64748B",
+    letterSpacing: -0.5,
+    fontFamily: "'Roboto', sans-serif",
+    opacity: 0.85,
+    pointerEvents: "none",
+  },
+  mapRecenterBtn: {
+    position: "absolute",
+    top: 10,
+    right: 12,
+    width: 32,
+    height: 32,
+    background: "#FFFFFF",
+    border: "1px solid #CBD5E1",
+    borderRadius: "50%",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    boxShadow: "0 2px 6px rgba(0,0,0,0.15)",
+    cursor: "pointer",
+  },
 
-  captainCard: { display: "flex", alignItems: "center", gap: 14, background: "#0c2218", border: "1px solid #10b98140", padding: "16px 20px", margin: 16, borderRadius: 16 },
-  captainAvatar: { fontSize: 36, width: 56, height: 56, background: "#1e293b", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 },
-  captainGreet: { fontSize: 14, fontWeight: 700, color: "#f0fdf4", lineHeight: 1.5 },
-  captainSub2:  { fontSize: 11, color: "#94a3b8", marginTop: 4 },
+  // CARDS LAYOUT
+  cardContainer: {
+    padding: "0 12px",
+    marginTop: 10,
+  },
 
-  pickerCard: { display: "flex", alignItems: "center", gap: 14, background: "#1a1200", border: "1px solid #f8cb4640", padding: "14px 20px", margin: 16, borderRadius: 16 },
+  // 3. PAYMENT ACTION CARD
+  paymentActionCard: {
+    background: "#FFFFFF",
+    borderRadius: 14,
+    border: "1px solid #E2E8F0",
+    padding: "14px 16px",
+    boxShadow: "0 1px 4px rgba(0,0,0,0.04)",
+  },
+  paymentCardLeft: {
+    display: "flex",
+    alignItems: "flex-start",
+    gap: 12,
+  },
+  cardIconCircle: {
+    width: 38,
+    height: 38,
+    borderRadius: "50%",
+    background: "#F1F5F9",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+    marginTop: 2,
+  },
+  paymentTextGroup: {
+    flex: 1,
+    display: "flex",
+    flexDirection: "column",
+    gap: 3,
+  },
+  paymentCardTitle: {
+    fontSize: 14,
+    fontWeight: 800,
+    color: "#0F172A",
+    margin: 0,
+    lineHeight: 1.25,
+  },
+  paymentCardSub: {
+    fontSize: 12,
+    color: "#64748B",
+    lineHeight: 1.35,
+    margin: 0,
+  },
+  payOnlineTextBtn: {
+    background: "transparent",
+    border: "none",
+    color: "#0C831F",
+    fontWeight: 800,
+    fontSize: 13,
+    padding: "4px 0 0",
+    cursor: "pointer",
+    textAlign: "left",
+  },
 
-  timelineCard: { background: "#1e293b", border: "1px solid #334155", borderRadius: 16, padding: 20, margin: "0 16px 16px" },
-  timelineTitle: { fontSize: 14, fontWeight: 900, color: "#f8cb46", marginBottom: 16 },
-  timelineRow:   { display: "flex", alignItems: "center", gap: 12, marginBottom: 14 },
-  timelineDot:   { width: 36, height: 36, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, flexShrink: 0 },
-  timelineLabel: { fontSize: 13 },
-  phaseLabel:    { fontSize: 11, color: "#94a3b8", fontWeight: 700, marginBottom: 4 },
-  progressTrack: { background: "#0f172a", height: 8, borderRadius: 4, overflow: "hidden" },
-  progressFill:  { height: "100%", transition: "width 1s linear" },
+  // 4. DELIVERY PARTNER CARD
+  partnerMainCard: {
+    background: "#FFFFFF",
+    borderRadius: 14,
+    border: "1px solid #E2E8F0",
+    padding: "16px",
+    boxShadow: "0 1px 4px rgba(0,0,0,0.04)",
+  },
+  partnerHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  partnerLeftProfile: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+  },
+  partnerAvatarBadge: {
+    position: "relative",
+    width: 44,
+    height: 44,
+    borderRadius: "50%",
+    background: "#FEF3C7",
+    border: "2px solid #FDE68A",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  avatarHelmet: {
+    width: 24,
+    height: 24,
+    borderRadius: "50% 50% 40% 40%",
+    background: "#F59E0B",
+    position: "relative",
+  },
+  helmetVisor: {
+    position: "absolute",
+    top: 6,
+    left: 4,
+    right: 4,
+    height: 7,
+    background: "#1E293B",
+    borderRadius: 2,
+  },
+  avatarOnlineIndicator: {
+    position: "absolute",
+    bottom: 0,
+    right: 0,
+    width: 10,
+    height: 10,
+    borderRadius: "50%",
+    background: "#0C831F",
+    border: "2px solid #FFFFFF",
+  },
+  partnerNameBlock: {
+    display: "flex",
+    flexDirection: "column",
+  },
+  partnerNameLine: {
+    fontSize: 13,
+    color: "#1E293B",
+    lineHeight: 1.25,
+  },
+  partnerSubLine: {
+    fontSize: 11,
+    color: "#64748B",
+    display: "flex",
+    alignItems: "center",
+    gap: 4,
+    marginTop: 2,
+  },
+  phoneActionBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: "50%",
+    background: "#F0FDF4",
+    border: "1px solid #BBF7D0",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    textDecoration: "none",
+    cursor: "pointer",
+  },
+  partnerMessageBubble: {
+    background: "#EAF7EC",
+    border: "1px solid #C8E6C9",
+    borderRadius: 8,
+    padding: "8px 12px",
+    fontSize: 12,
+    fontWeight: 600,
+    color: "#1B5E20",
+    lineHeight: 1.35,
+    marginBottom: 14,
+  },
 
-  orderCard: { background: "#1e293b", border: "1px solid #334155", borderRadius: 16, padding: 20, margin: "0 16px 16px" },
-  orderTitle: { fontSize: 14, fontWeight: 900, color: "#f8cb46", marginBottom: 12 },
-  orderRow:   { display: "flex", justifyContent: "space-between", fontSize: 13, color: "#cbd5e1", marginBottom: 6 },
+  // Tipping Section
+  tippingContainer: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  tippingTextCol: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 2,
+  },
+  tippingTitle: {
+    fontSize: 13,
+    fontWeight: 800,
+    color: "#0F172A",
+    margin: 0,
+  },
+  tippingSub: {
+    fontSize: 11,
+    color: "#64748B",
+    margin: 0,
+  },
+  deliveryScooterGraphic: {
+    flexShrink: 0,
+  },
+  tipChipsRow: {
+    display: "grid",
+    gridTemplateColumns: "repeat(4, 1fr)",
+    gap: 8,
+  },
+  tipBtn: {
+    background: "#FFFFFF",
+    border: "1px solid #E2E8F0",
+    borderRadius: 8,
+    padding: "8px 4px",
+    fontSize: 12,
+    fontWeight: 700,
+    color: "#334155",
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 4,
+    transition: "all 0.15s ease",
+  },
+  tipBtnActive: {
+    borderColor: "#0C831F",
+    background: "#F0FDF4",
+    color: "#0C831F",
+  },
+  customTipRow: {
+    display: "flex",
+    gap: 8,
+    marginTop: 10,
+  },
+  customTipField: {
+    flex: 1,
+    background: "#F8FAFC",
+    border: "1px solid #CBD5E1",
+    borderRadius: 6,
+    padding: "6px 10px",
+    fontSize: 12,
+    outline: "none",
+  },
+  applyCustomTipBtn: {
+    background: "#0C831F",
+    color: "#FFFFFF",
+    border: "none",
+    borderRadius: 6,
+    padding: "6px 14px",
+    fontSize: 11,
+    fontWeight: 800,
+    cursor: "pointer",
+  },
 
-  qrCard: { background: "#1e293b", border: "1px solid #334155", borderRadius: 16, padding: 20, margin: "0 16px 16px", textAlign: "center" },
-  qrBox:  { background: "#0f172a", border: "2px solid #10b981", borderRadius: 16, padding: 24, display: "inline-block" },
+  // 5. SUMMARY CARD & DETAILS
+  summaryCard: {
+    background: "#FFFFFF",
+    borderRadius: 14,
+    border: "1px solid #E2E8F0",
+    padding: "16px",
+    boxShadow: "0 1px 4px rgba(0,0,0,0.04)",
+  },
+  summaryTopRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    marginBottom: 10,
+    paddingBottom: 8,
+    borderBottom: "1px solid #F1F5F9",
+  },
+  summaryOrderNum: {
+    fontSize: 13,
+    fontWeight: 900,
+    color: "#0F172A",
+    margin: 0,
+  },
+  summaryHubTag: {
+    fontSize: 10,
+    fontWeight: 700,
+    color: "#B45309",
+    marginTop: 2,
+  },
+  summaryGrandTotal: {
+    fontSize: 16,
+    fontWeight: 900,
+    color: "#0C831F",
+  },
+  itemsList: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 6,
+    marginBottom: 14,
+  },
+  itemRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    fontSize: 12,
+  },
+  itemNameCol: {
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+  },
+  itemName: {
+    color: "#1E293B",
+    fontWeight: 600,
+  },
+  itemQty: {
+    color: "#64748B",
+  },
+  itemPrice: {
+    color: "#0F172A",
+    fontWeight: 700,
+  },
+  handoverQrBox: {
+    background: "#F8FAFC",
+    border: "1px dashed #CBD5E1",
+    borderRadius: 10,
+    padding: "12px",
+    marginTop: 8,
+  },
+  qrTitleRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 4,
+  },
+  qrTitle: {
+    fontSize: 12,
+    fontWeight: 800,
+    color: "#0F172A",
+  },
+  qrScanPill: {
+    fontSize: 10,
+    fontWeight: 800,
+    color: "#B45309",
+    background: "#FEF3C7",
+    padding: "1px 6px",
+    borderRadius: 4,
+  },
+  qrSub: {
+    fontSize: 11,
+    color: "#64748B",
+    margin: "0 0 8px",
+  },
+  qrGraphicWrapper: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: 6,
+    padding: 8,
+    background: "#FFFFFF",
+    borderRadius: 8,
+    border: "1px solid #E2E8F0",
+  },
+  qrVisualMatrix: {
+    width: 60,
+    height: 60,
+    backgroundImage: "linear-gradient(45deg, #0F172A 25%, transparent 25%), linear-gradient(-45deg, #0F172A 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #0F172A 75%), linear-gradient(-45deg, transparent 75%, #0F172A 75%)",
+    backgroundSize: "8px 8px",
+    backgroundPosition: "0 0, 0 4px, 4px -4px, -4px 0px",
+  },
+  qrTextCode: {
+    fontSize: 10,
+    fontWeight: 700,
+    color: "#475569",
+    background: "#F1F5F9",
+    padding: "2px 6px",
+    borderRadius: 4,
+  },
+  cancelBarRow: {
+    marginTop: 12,
+    paddingTop: 10,
+    borderTop: "1px solid #F1F5F9",
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  cancelWindowText: {
+    fontSize: 11,
+    color: "#64748B",
+  },
+  cancelOrderBtn: {
+    background: "#FEF2F2",
+    border: "1px solid #FEE2E2",
+    color: "#EF4444",
+    fontSize: 11,
+    fontWeight: 800,
+    padding: "4px 10px",
+    borderRadius: 6,
+    cursor: "pointer",
+  },
 
-  deliveredCard: { background: "#032d16", border: "1px solid #10b981", borderRadius: 16, padding: 24, margin: "0 16px", textAlign: "center" },
-  reorderBtn: { marginTop: 16, background: "#10b981", color: "#000", border: "none", padding: "12px 24px", borderRadius: 12, fontWeight: 900, fontSize: 14, cursor: "pointer" },
+  // MODALS
+  modalOverlay: {
+    position: "fixed",
+    inset: 0,
+    background: "rgba(15, 23, 42, 0.65)",
+    zIndex: 90,
+    display: "flex",
+    alignItems: "flex-end",
+    justifyContent: "center",
+  },
+  payModalSheet: {
+    background: "#FFFFFF",
+    width: "100%",
+    maxWidth: 440,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: "20px",
+    boxShadow: "0 -8px 30px rgba(0,0,0,0.2)",
+  },
+  complaintSheet: {
+    background: "#FFFFFF",
+    width: "100%",
+    maxWidth: 440,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: "20px",
+    maxHeight: "85vh",
+    overflowY: "auto",
+  },
+  modalHeaderRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    marginBottom: 16,
+    paddingBottom: 10,
+    borderBottom: "1px solid #E2E8F0",
+  },
+  modalTitle: {
+    fontSize: 16,
+    fontWeight: 900,
+    color: "#0F172A",
+    margin: 0,
+  },
+  modalSub: {
+    fontSize: 11,
+    color: "#64748B",
+    marginTop: 2,
+  },
+  modalCloseBtn: {
+    background: "#F1F5F9",
+    border: "none",
+    borderRadius: "50%",
+    width: 30,
+    height: 30,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
+  },
+  upiMethodsGrid: {
+    display: "grid",
+    gridTemplateColumns: "1fr 1fr",
+    gap: 10,
+    marginTop: 8,
+  },
+  upiOptionBtn: {
+    background: "#F8FAFC",
+    border: "1px solid #E2E8F0",
+    borderRadius: 8,
+    padding: "12px",
+    fontSize: 13,
+    fontWeight: 800,
+    color: "#1E293B",
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+  },
+  complaintForm: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 12,
+  },
+  formGroup: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 4,
+  },
+  formLabel: {
+    fontSize: 12,
+    fontWeight: 700,
+    color: "#334155",
+  },
+  formSelect: {
+    padding: "8px 12px",
+    borderRadius: 8,
+    border: "1px solid #CBD5E1",
+    fontSize: 13,
+    background: "#FFFFFF",
+    outline: "none",
+  },
+  formTextarea: {
+    padding: "8px 12px",
+    borderRadius: 8,
+    border: "1px solid #CBD5E1",
+    fontSize: 13,
+    outline: "none",
+    fontFamily: "inherit",
+  },
+  submitCmpBtn: {
+    background: "#0C831F",
+    color: "#FFFFFF",
+    border: "none",
+    borderRadius: 10,
+    padding: "12px 18px",
+    fontSize: 13,
+    fontWeight: 900,
+    cursor: "pointer",
+    marginTop: 4,
+  },
 };

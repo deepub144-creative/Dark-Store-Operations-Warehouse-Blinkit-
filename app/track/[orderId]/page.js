@@ -102,7 +102,7 @@ export default function TrackOrderPage() {
     setSelectedTip(amount);
     setShowCustomTipInput(false);
     playSuccessChime();
-    triggerToast(`₹${amount} tip added for Sinchana B R! Thank you!`);
+    triggerToast(`₹${amount} tip added for your delivery partner! Thank you!`);
   }
 
   function handleApplyCustomTip() {
@@ -111,7 +111,7 @@ export default function TrackOrderPage() {
       setSelectedTip(val);
       setShowCustomTipInput(false);
       playSuccessChime();
-      triggerToast(`₹${val} tip added for Sinchana B R! Thank you!`);
+      triggerToast(`₹${val} tip added for your delivery partner! Thank you!`);
     }
   }
 
@@ -144,7 +144,7 @@ export default function TrackOrderPage() {
       slaMins: 4,
       status: "OPEN",
       time: "Just now",
-      assignedTo: "Bhaskar N S (SM)",
+      assignedTo: "Store Manager",
       amount: order?.totalAmount || 139,
       createdAt: new Date().toISOString(),
     };
@@ -161,7 +161,7 @@ export default function TrackOrderPage() {
     setSubmittingComplaint(false);
     setShowComplaintDrawer(false);
     setComplaintDesc("");
-    triggerToast("Complaint received by SM Bhaskar N S! Instant review initiated.");
+    triggerToast("Complaint received by Store Manager! Instant review initiated.");
   }
 
   // Active order fallback
@@ -175,8 +175,8 @@ export default function TrackOrderPage() {
     totalAmount: 139,
     status: "pending",
     assignedRack: "D5",
-    pickerName: "Thrupthi K S",
-    captainName: "Sinchana B R",
+    pickerName: "Dark Store Specialist",
+    captainName: "Delivery Partner",
     items: [
       { name: "Fresh Milk 1L", qty: 1, price: 60 },
       { name: "Brown Bread 400g", qty: 2, price: 45 },
@@ -459,7 +459,7 @@ export default function TrackOrderPage() {
 
                 <div style={S.partnerNameBlock}>
                   <div style={S.partnerNameLine}>
-                    I'm <b>SINCHANA B R</b>, your delivery partner
+                    I'm your <b>Delivery Partner</b>
                   </div>
                   <div style={S.partnerSubLine}>
                     KA44 Express Fleet • 4.9 <IconStar size={11} color="#F59E0B" />
@@ -471,7 +471,7 @@ export default function TrackOrderPage() {
               <a
                 href="tel:8088553237"
                 style={S.phoneActionBtn}
-                title="Call Sinchana B R"
+                title="Call Delivery Partner"
               >
                 <IconPhone size={18} color="#0C831F" />
               </a>
@@ -593,7 +593,7 @@ export default function TrackOrderPage() {
                 <span style={S.qrScanPill}>Scan upon arrival</span>
               </div>
               <p style={S.qrSub}>
-                Show this code to <b>Sinchana B R</b> at doorstep to complete verification:
+                Show this code to your <b>Delivery Partner</b> at doorstep to complete verification:
               </p>
               <div style={S.qrGraphicWrapper}>
                 <div style={S.qrVisualMatrix} />
@@ -618,6 +618,32 @@ export default function TrackOrderPage() {
             )}
           </div>
         </section>
+
+        {/* Quick return button to Dark Store Catalog */}
+        <div style={{ padding: "14px 16px 0", textAlign: "center" }}>
+          <button
+            type="button"
+            onClick={() => router.push("/ordering")}
+            style={{
+              width: "100%",
+              background: "#0c831f",
+              color: "#ffffff",
+              border: "none",
+              padding: "13px 18px",
+              borderRadius: 12,
+              fontSize: 14,
+              fontWeight: 800,
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 8,
+              boxShadow: "0 4px 12px rgba(12, 131, 31, 0.25)",
+            }}
+          >
+            <span>← Return to Dark Store Catalog</span>
+          </button>
+        </div>
 
         <div style={{ height: 40 }} />
       </div>
@@ -674,7 +700,7 @@ export default function TrackOrderPage() {
             <div style={S.modalHeaderRow}>
               <div>
                 <h3 style={S.modalTitle}>Help & Live Support</h3>
-                <div style={S.modalSub}>Direct connection to <b>Bhaskar N S (Store Manager - KA44)</b></div>
+                <div style={S.modalSub}>Direct connection to <b>Store Manager (KA44 Tiptur HUB)</b></div>
               </div>
               <button
                 type="button"
@@ -718,7 +744,7 @@ export default function TrackOrderPage() {
                 style={S.submitCmpBtn}
                 disabled={submittingComplaint}
               >
-                {submittingComplaint ? "Sending..." : "Submit to SM Bhaskar N S →"}
+                {submittingComplaint ? "Sending..." : "Submit to Store Manager →"}
               </button>
             </form>
           </div>
