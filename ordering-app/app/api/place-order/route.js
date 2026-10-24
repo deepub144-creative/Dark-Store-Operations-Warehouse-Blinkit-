@@ -29,7 +29,11 @@ export async function POST(req) {
       };
     });
 
-    const totalAmount = items.reduce((s, i) => s + i.price * i.qty, 0);
+    const hasFrames = items.some((i) => i.sku?.startsWith("FRAME-") || i.name?.toLowerCase().includes("frame"));
+    const handlingFee = hasFrames ? 10 : 0;
+    const deliveryFee = 0;
+    const itemTotal = items.reduce((s, i) => s + i.price * i.qty, 0);
+    const totalAmount = itemTotal + handlingFee + deliveryFee;
     const orderId = `ORD-${Date.now().toString().slice(-6)}`;
 
     const orderData = {
@@ -38,8 +42,10 @@ export async function POST(req) {
       customerName: customerName || "Customer",
       customerPhone: customerPhone || "9000000000",
       items,
+      itemTotal,
+      handlingFee,
+      deliveryFee,
       totalAmount,
-      deliveryFee: 0,
       paymentMethod: "Blinkit Wallet",
       stage: "Picking", // Assigned to OD Picker (Thrupthi K S)
       status: "ASSIGNED",

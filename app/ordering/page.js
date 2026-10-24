@@ -491,7 +491,7 @@ export default function OrderingAppPage() {
 
   const isFreeDeliveryQualified = itemSubtotal >= FREE_DELIVERY_THRESHOLD || appliedCoupon?.freeDelivery;
   const deliveryFee = 0; // Free delivery for ₹1+ (no delivery charges)
-  const handlingFee = appliedCoupon?.freeHandling ? 0 : (hasFramesInCart ? 10 : 4);
+  const handlingFee = appliedCoupon?.freeHandling ? 0 : (hasFramesInCart ? 10 : 0);
 
   let couponSavings = 0;
   if (appliedCoupon && itemSubtotal >= (appliedCoupon.minOrder || 0)) {
@@ -987,11 +987,13 @@ export default function OrderingAppPage() {
                 <div style={S.billRow}>
                   <span style={S.billLabel}>
                     Handling Fee
-                    {hasFramesInCart && (
+                    {hasFramesInCart ? (
                       <span style={S.framesHandlingBadge}>Frames Special Care</span>
+                    ) : (
+                      <span style={S.freeDeliveryPill}>FREE for Chocolates</span>
                     )}
                   </span>
-                  <span style={S.billValue}>
+                  <span style={handlingFee === 0 ? S.billFreeHighlight : S.billValue}>
                     {handlingFee === 0 ? "FREE" : `₹${handlingFee}`}
                   </span>
                 </div>

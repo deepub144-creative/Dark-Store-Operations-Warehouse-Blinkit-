@@ -204,10 +204,10 @@ export default function TrackOrderPage() {
     customerName: "Ramesh Gowda",
     customerPhone: "9845112233",
     customerAddress: "Near Kalpataru College Road, Namma Tiptur - 572201",
-    totalAmount: 154,
+    totalAmount: 150,
     itemTotal: 150,
     deliveryFee: 0,
-    handlingFee: 4,
+    handlingFee: 0,
     status: "pending",
     assignedRack: "D5",
     pickerName: "Dark Store Specialist",
@@ -235,7 +235,7 @@ export default function TrackOrderPage() {
       ? activeOrder.handlingFee
       : hasFramesInOrder
       ? 10
-      : 4;
+      : 0;
   const grandTotalAmount =
     activeOrder.totalAmount || itemsSubtotal + deliveryFee + handlingFee;
 
@@ -593,9 +593,15 @@ export default function TrackOrderPage() {
               <div style={S.trackBillRow}>
                 <span style={S.trackBillLabel}>
                   Handling Charges
-                  {hasFramesInOrder && <span style={S.trackFramesBadge}>Frames Special Care</span>}
+                  {hasFramesInOrder ? (
+                    <span style={S.trackFramesBadge}>Frames Special Care</span>
+                  ) : (
+                    <span style={S.trackFreeDeliveryPill}>FREE for Chocolates</span>
+                  )}
                 </span>
-                <span style={S.trackBillVal}>₹{handlingFee}</span>
+                <span style={handlingFee === 0 ? S.trackBillFree : S.trackBillVal}>
+                  {handlingFee === 0 ? "FREE" : `₹${handlingFee}`}
+                </span>
               </div>
               <div style={S.trackBillDivider} />
               <div style={S.trackBillGrandRow}>

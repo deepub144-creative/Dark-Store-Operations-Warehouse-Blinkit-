@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebaseAdmin";
 import { CATALOG } from "@/lib/items";
-import { getRandomStagingRack } from "@/lib/roles";
 
 export const dynamic = 'force-dynamic';
 
@@ -16,54 +15,49 @@ export async function POST(req) {
     const items = cart.map(({ sku, qty }) => {
       const catItem = CATALOG.find((c) => c.sku === sku) || {};
       return {
-        skuId: sku,
         sku,
         name: catItem.name || sku,
         qty,
         price: catItem.price || 0,
         mrp: catItem.mrp || 0,
         weight: catItem.weight || "",
-        zone: catItem.zone || "Zone F0",
-        binLocation: catItem.aisle || "F0 - A1 - 001",
-        aisle: catItem.aisle || "F0 - A1 - 001",
+        zone: catItem.zone || "CR",
+        aisle: catItem.aisle || "Aisle: A01-01-A-1000",
         barcode: catItem.barcode || sku,
         image: catItem.image || "",
-        status: "pending",
+        scanned: false,
       };
     });
 
-    const totalAmount = items.reduce((s, i) => s + i.price * i.qty, 0);
-    const orderId = `ORD-KA44-${Date.now().toString().slice(-6)}`;
-    const assignedRack = getRandomStagingRack();
+    const hasFrames = items.some((i) => i.sku?.startsWith("FRAME-") || i.name?.toLowerCase().includes("frame"));
+    const handlingFee = hasFrames ? 10 : 0;
+    const deliveryFee = 0;
+    const itemTotal = items.reduce((s, i) => s + i.price * i.qty, 0);
+    const totalAmount = itemTotal + handlingFee + deliveryFee;
+    const orderId = `ORD-${Date.now().toString().slice(-6)}`;
 
     const orderData = {
-      id: orderId,
       orderId,
-      orderNumber: orderId,
       customerId: customerId || `cust_${customerPhone}`,
-      customerName: customerName || "Customer (Namma Tiptur)",
-      customerPhone: customerPhone || "9845112233",
+      customerName: customerName || "Customer",
+      customerPhone: customerPhone || "9000000000",
       items,
+      itemTotal,
+      handlingFee,
+      deliveryFee,
       totalAmount,
-      deliveryFee: 0,
-      paymentMethod: "AUDIT'X Express Wallet",
-      stage: "Awaiting OD Picker",
-      status: "pending",
-      storeId: "TIPTUR-HUB-KA44",
-      storeName: "Tiptur HUB - KA44",
-      assignedRack: assignedRack.id,
-      rackQr: assignedRack.qr,
-      pickerId: "thrupthi",
-      pickerName: "Thrupthi K S",
-      captainId: "sinchana",
-      captainName: "Sinchana B R",
-      captainPhone: "8088553237",
-      estimatedDeliveryMins: 10,
-      location: location || { address: "Near Kalpataru College, Namma Tiptur - 572201" },
-      customerAddress: location?.address || "Namma Tiptur - 572201",
+      paymentMethod: "Blinkit Wallet",
+      stage: "Picking", // Assigned to OD Picker (Thrupthi K S)
+      status: "ASSIGNED",
+      assignedStaffId: "thrupthi",
+      assignedStaffName: "Thrupthi K S (OD Picker)",
+      deliveryCaptainId: "sinchana",
+      deliveryCaptainName: "Sinchana B R (OD Delivery)",
+      deliveryCaptainPhone: "8088553237",
+      estimatedDeliveryMins: 14,
+      location: location || { address: "Muniswamappa Layout, Bengaluru" },
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      qrCode: `AUDITX-ORD-${orderId}-CUSTOMER-QR`,
     };
 
     if (adminDb) {
