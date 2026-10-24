@@ -4,7 +4,7 @@ import { useEffect, useState, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { doc, onSnapshot, addDoc, collection } from "firebase/firestore";
 import { db } from "@/lib/firebaseClient";
-import { subscribeToEvents, broadcastEvent, subscribeToLiveOrders } from "@/lib/realtimeSync";
+import { subscribeToEvents, broadcastEvent, subscribeToLiveOrders, getAllLiveOrders } from "@/lib/realtimeSync";
 import { playSuccessChime, playNotificationChime } from "@/lib/soundSystem";
 import AuditxLogo from "@/components/AuditxLogo";
 import {
@@ -47,6 +47,38 @@ export default function TrackOrderPage() {
     const now = new Date();
     setOrderPlacedTime(now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }));
   }, []);
+
+  // Real-time live order subscription & local synchronization
+  useEffect(() => {
+    const all = getAllLiveOrders();
+    const found = all.find((o) => o.id === orderId || o.orderId === orderId || o.orderNumber === orderId);
+    if (found) {
+      setOrder(found);
+      setLoading(false);
+    } else {
+      try {
+        const last = localStorage.getItem("auditx_customer_last_order");
+        if (last) {
+          const parsed = JSON.parse(last);
+          if (parsed.id === orderId || parsed.orderId === orderId || parsed.orderNumber === orderId) {
+            setOrder(parsed);
+          }
+        }
+      } catch (e) {
+        console.warn(e);
+      }
+      setLoading(false);
+    }
+
+    const unsub = subscribeToLiveOrders((orders) => {
+      const match = orders.find((o) => o.id === orderId || o.orderId === orderId || o.orderNumber === orderId);
+      if (match) {
+        setOrder(match);
+      }
+    });
+
+    return () => unsub();
+  }, [orderId]);
 
   // "Arriving in 10 minutes" auto-reducing without counting background exact seconds timeline
   const [arrivingMinutes, setArrivingMinutes] = useState(10);
@@ -172,7 +204,10 @@ export default function TrackOrderPage() {
     customerName: "Ramesh Gowda",
     customerPhone: "9845112233",
     customerAddress: "Near Kalpataru College Road, Namma Tiptur - 572201",
-    totalAmount: 139,
+    totalAmount: 154,
+    itemTotal: 150,
+    deliveryFee: 0,
+    handlingFee: 4,
     status: "pending",
     assignedRack: "D5",
     pickerName: "Dark Store Specialist",
@@ -182,6 +217,27 @@ export default function TrackOrderPage() {
       { name: "Brown Bread 400g", qty: 2, price: 45 },
     ],
   };
+
+  const itemsSubtotal = (activeOrder.items || []).reduce(
+    (s, it) => s + (it.price || 0) * (it.qty || 1),
+    0
+  );
+  const hasFramesInOrder = (activeOrder.items || []).some(
+    (it) =>
+      it.category === "Frames" ||
+      it.sku?.startsWith("FRAME-") ||
+      it.skuId?.startsWith("FRAME-") ||
+      it.name?.toLowerCase().includes("frame")
+  );
+  const deliveryFee = activeOrder.deliveryFee ?? 0;
+  const handlingFee =
+    activeOrder.handlingFee !== undefined
+      ? activeOrder.handlingFee
+      : hasFramesInOrder
+      ? 10
+      : 4;
+  const grandTotalAmount =
+    activeOrder.totalAmount || itemsSubtotal + deliveryFee + handlingFee;
 
   const isDelivered = activeOrder.status === "delivered";
   const isDispatched = activeOrder.status === "dispatched" || isDelivered;
@@ -519,6 +575,33 @@ export default function TrackOrderPage() {
                   </span>
                 </div>
               ))}
+            </div>
+
+            {/* Bill Summary Breakdown */}
+            <div style={S.trackBillBox}>
+              <div style={S.trackBillRow}>
+                <span style={S.trackBillLabel}>Items Subtotal</span>
+                <span style={S.trackBillVal}>₹{itemsSubtotal}</span>
+              </div>
+              <div style={S.trackBillRow}>
+                <span style={S.trackBillLabel}>
+                  Delivery Charges
+                  <span style={S.trackFreeDeliveryPill}>FREE (₹1+ orders)</span>
+                </span>
+                <span style={S.trackBillFree}>FREE</span>
+              </div>
+              <div style={S.trackBillRow}>
+                <span style={S.trackBillLabel}>
+                  Handling Charges
+                  {hasFramesInOrder && <span style={S.trackFramesBadge}>Frames Special Care</span>}
+                </span>
+                <span style={S.trackBillVal}>₹{handlingFee}</span>
+              </div>
+              <div style={S.trackBillDivider} />
+              <div style={S.trackBillGrandRow}>
+                <span style={S.trackBillGrandLabel}>Total Paid / To Pay</span>
+                <span style={S.trackBillGrandVal}>₹{grandTotalAmount}</span>
+              </div>
             </div>
 
             {/* Handover QR Code for Sinchana */}
@@ -1161,6 +1244,70 @@ const S = {
   itemPrice: {
     color: "#0F172A",
     fontWeight: 700,
+  },
+
+  trackBillBox: {
+    background: "#F8FAFC",
+    borderRadius: 8,
+    border: "1px solid #E2E8F0",
+    padding: "10px 12px",
+    marginBottom: 12,
+  },
+  trackBillRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    fontSize: 11.5,
+    marginBottom: 5,
+  },
+  trackBillLabel: {
+    color: "#475569",
+    fontWeight: 600,
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+  },
+  trackFreeDeliveryPill: {
+    background: "#DCFCE7",
+    color: "#15803D",
+    fontSize: 9.5,
+    fontWeight: 800,
+    padding: "1px 6px",
+    borderRadius: 4,
+  },
+  trackFramesBadge: {
+    background: "#EEF2FF",
+    color: "#4338CA",
+    fontSize: 9.5,
+    fontWeight: 800,
+    padding: "1px 6px",
+    borderRadius: 4,
+  },
+  trackBillVal: {
+    color: "#0F172A",
+    fontWeight: 700,
+  },
+  trackBillFree: {
+    color: "#15803D",
+    fontWeight: 800,
+  },
+  trackBillDivider: {
+    height: 1,
+    background: "#E2E8F0",
+    margin: "6px 0",
+  },
+  trackBillGrandRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    fontSize: 13,
+    fontWeight: 800,
+  },
+  trackBillGrandLabel: {
+    color: "#0F172A",
+  },
+  trackBillGrandVal: {
+    color: "#0C831F",
   },
   handoverQrBox: {
     background: "#F8FAFC",

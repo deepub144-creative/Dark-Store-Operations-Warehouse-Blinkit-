@@ -36,7 +36,7 @@ import {
 } from "@/components/RealIcons";
 
 const WALLET_LIMIT = 1000000;
-const FREE_DELIVERY_THRESHOLD = 199;
+const FREE_DELIVERY_THRESHOLD = 1;
 
 const SAVED_ADDRESSES = [
   {
@@ -480,9 +480,18 @@ export default function OrderingAppPage() {
 
   const productDiscount = Math.max(0, itemTotalMrp - itemSubtotal);
 
+  const hasFramesInCart = useMemo(() => {
+    return cartItemsList.some(
+      (item) =>
+        item.category === "Frames" ||
+        item.sku?.startsWith("FRAME-") ||
+        item.name?.toLowerCase().includes("frame")
+    );
+  }, [cartItemsList]);
+
   const isFreeDeliveryQualified = itemSubtotal >= FREE_DELIVERY_THRESHOLD || appliedCoupon?.freeDelivery;
-  const deliveryFee = isFreeDeliveryQualified ? 0 : 25;
-  const handlingFee = appliedCoupon?.freeHandling ? 0 : 4;
+  const deliveryFee = 0; // Free delivery for ₹1+ (no delivery charges)
+  const handlingFee = appliedCoupon?.freeHandling ? 0 : (hasFramesInCart ? 10 : 4);
 
   let couponSavings = 0;
   if (appliedCoupon && itemSubtotal >= (appliedCoupon.minOrder || 0)) {
@@ -497,7 +506,7 @@ export default function OrderingAppPage() {
   }
 
   const grandTotal = Math.max(0, itemSubtotal - couponSavings + deliveryFee + handlingFee);
-  const totalSavings = productDiscount + couponSavings + (itemSubtotal >= FREE_DELIVERY_THRESHOLD ? 25 : 0);
+  const totalSavings = productDiscount + couponSavings + 25;
 
   // Upsell Recommendations ("Before you checkout")
   const upsellRecommendations = useMemo(() => {
@@ -780,24 +789,18 @@ export default function OrderingAppPage() {
               {/* Free delivery tracker */}
               <div style={S.freeDeliveryNotice}>
                 <div style={S.freeDeliveryLabelRow}>
-                  {isFreeDeliveryQualified ? (
-                    <span style={S.unlockedFreeText}>
-                      <IconCheck size={14} color="#0c831f" /> You have unlocked FREE Delivery!
-                    </span>
-                  ) : (
-                    <span style={S.lockedFreeText}>
-                      Add <b>₹{FREE_DELIVERY_THRESHOLD - itemSubtotal}</b> more for FREE Delivery!
-                    </span>
-                  )}
+                  <span style={S.unlockedFreeText}>
+                    <IconCheck size={14} color="#0c831f" /> You have unlocked <b>FREE Delivery</b>!
+                  </span>
                   <span style={S.deliveryFeeBadge}>
-                    {isFreeDeliveryQualified ? "FREE" : "₹25"}
+                    FREE
                   </span>
                 </div>
                 <div style={S.progressTrack}>
                   <div
                     style={{
                       ...S.progressFill,
-                      width: `${Math.min(100, (itemSubtotal / FREE_DELIVERY_THRESHOLD) * 100)}%`,
+                      width: "100%",
                     }}
                   />
                 </div>
@@ -974,23 +977,20 @@ export default function OrderingAppPage() {
                 <div style={S.billRow}>
                   <span style={S.billLabel}>
                     Delivery Fee
-                    {isFreeDeliveryQualified && (
-                      <span style={S.freeDeliveryPill}>Free above ₹199</span>
-                    )}
+                    <span style={S.freeDeliveryPill}>FREE on ₹1+ orders</span>
                   </span>
-                  <span
-                    style={
-                      isFreeDeliveryQualified
-                        ? S.billFreeHighlight
-                        : S.billValue
-                    }
-                  >
-                    {isFreeDeliveryQualified ? "FREE" : "₹25"}
+                  <span style={S.billFreeHighlight}>
+                    FREE
                   </span>
                 </div>
 
                 <div style={S.billRow}>
-                  <span style={S.billLabel}>Handling / Platform Fee</span>
+                  <span style={S.billLabel}>
+                    Handling Fee
+                    {hasFramesInCart && (
+                      <span style={S.framesHandlingBadge}>Frames Special Care</span>
+                    )}
+                  </span>
                   <span style={S.billValue}>
                     {handlingFee === 0 ? "FREE" : `₹${handlingFee}`}
                   </span>
@@ -3897,6 +3897,15 @@ const S = {
     padding: "1px 5px",
     borderRadius: 4,
     fontWeight: 700,
+  },
+  framesHandlingBadge: {
+    fontSize: 10,
+    color: "#4338CA",
+    background: "#EEF2FF",
+    padding: "1px 6px",
+    borderRadius: 4,
+    fontWeight: 800,
+    marginLeft: 4,
   },
   billFreeHighlight: {
     color: "#0C831F",
