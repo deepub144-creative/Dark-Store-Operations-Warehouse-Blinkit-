@@ -9,15 +9,6 @@ const nextConfig = {
       },
     ],
   },
-  async redirects() {
-    return [
-      {
-        source: '/',
-        destination: '/ordering',
-        permanent: false,
-      },
-    ];
-  },
 };
 
 module.exports = nextConfig;

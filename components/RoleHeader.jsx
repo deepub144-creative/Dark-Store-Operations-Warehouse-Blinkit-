@@ -8,11 +8,11 @@ import { seedAllDemoData } from "@/lib/seedData";
 import AuditxLogo from "@/components/AuditxLogo";
 
 export const ROLE_CONFIGS = [
-  { id: "ordering", label: "🛒 Ordering App", name: "Namma Tiptur KA 44", avatar: "🛍️", route: "/ordering", badgeBg: "#10b981" },
   { id: "sm", label: "👑 Store Manager (SM)", name: "Bhaskar N S", avatar: "👑", route: "/roles/sm", badgeBg: "#ec4899" },
   { id: "asm", label: "⚡ Assistant SM (ASM)", name: "Deepu B", avatar: "⚡", route: "/roles/asm", badgeBg: "#06b6d4" },
-  { id: "picker", label: "📦 OD Picker Terminal", name: "Thrupthi K S", avatar: "📦", route: "/roles/picker", badgeBg: "#f59e0b" },
-  { id: "captain", label: "🛵 Order Captain Fleet", name: "Sinchana B R", avatar: "🛵", route: "/roles/captain", badgeBg: "#3b82f6" },
+  { id: "picker", label: "📦 OD Picker Terminal", name: "Thrupthi K S", avatar: "📦", route: "/picker", badgeBg: "#f59e0b" },
+  { id: "rider", label: "🛵 Express Rider Fleet", name: "Tiptur Fast Rider", avatar: "🛵", route: "/rider", badgeBg: "#22c55e" },
+  { id: "captain", label: "🎯 Order Captain Hub", name: "Sinchana B R", avatar: "🎯", route: "/roles/captain", badgeBg: "#3b82f6" },
   { id: "md", label: "🛡️ Managing Director", name: "A B Harshitha", avatar: "🛡️", route: "/roles/md", badgeBg: "#8b5cf6" },
 ];
 

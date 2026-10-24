@@ -699,14 +699,7 @@ export default function OrderingAppPage() {
               >
                 {isCheckoutView ? "Browse Catalog" : `Cart (${totalItems})`}
               </button>
-              <button
-                style={S.staffPortalBtn}
-                onClick={() => router.push("/login")}
-                title="Staff Portal (SM, ASM, MD, OD Picker, Captain)"
-              >
-                Staff Portal
-                <IconArrowRight size={13} color="currentColor" />
-              </button>
+
             </div>
           </div>
 
@@ -724,9 +717,7 @@ export default function OrderingAppPage() {
               <div style={S.addressSnippetRow}>
                 <IconMapPin size={14} color="#0c831f" />
                 <span style={S.addressSnippetText}>KFGSC , Tiptur 572201</span>
-                <span style={{ fontSize: 9, background: "#dcfce7", color: "#15803d", padding: "1px 6px", borderRadius: 4, fontWeight: 800 }}>
-                  Fixed
-                </span>
+
                 <IconChevronDown size={14} color="#475569" />
               </div>
             </div>
@@ -856,9 +847,7 @@ export default function OrderingAppPage() {
                             {item.mrp > item.price && (
                               <span style={S.itemMrpStrike}>₹{item.mrp}</span>
                             )}
-                            <span style={S.aisleBadge}>
-                              <IconMapPin size={11} color="#64748b" /> {item.aisle}
-                            </span>
+
                           </div>
                         </div>
 
@@ -1382,10 +1371,7 @@ export default function OrderingAppPage() {
                         </div>
 
                         <div style={S.productDetailsCol}>
-                          <div style={S.productAisleRow}>
-                            <IconMapPin size={11} color="#64748b" />
-                            <span>Aisle: <b>{item.aisle}</b></span>
-                          </div>
+
                           <h3 style={S.productName}>{item.name}</h3>
                           <div style={S.productWeight}>{item.weight}</div>
 
@@ -1739,23 +1725,20 @@ export default function OrderingAppPage() {
                   <div style={S.ganeshaTitleArea}>
                     <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 4 }}>
                       <span style={S.ganeshaHeritagePill}>{TIPTUR_GANESHA_INFO.yearsBadge}</span>
-                      <span style={{ fontSize: 10, fontWeight: 800, background: "#fef3c7", color: "#b45309", padding: "2px 8px", borderRadius: 4 }}>
-                        ಶ್ರೀ ಸತ್ಯ ಗಣಪತಿ ಸೇವಾ ಸಂಘ (ರಿ.)
-                      </span>
                     </div>
                     <h3 style={S.ganeshaMainTitle}>
                       {ganeshaLang === "kannada"
-                        ? TIPTUR_GANESHA_INFO.titleKn
+                        ? "ಶ್ರೀ ಸತ್ಯ ಗಣಪತಿ ಸೇವಾ ಸಂಘ (ರಿ.) — ತಿಪಟೂರು ಜಾತ್ರೆ"
                         : ganeshaLang === "hindi"
-                        ? TIPTUR_GANESHA_INFO.titleHi
-                        : TIPTUR_GANESHA_INFO.titleEn}
+                        ? "श्री सत्य गणपति सेवा संघ (रजि.) तिप्तूर उत्सव"
+                        : "The Tiptur Ganesha Utsava • Sri Sathya Ganapathi Jatre"}
                     </h3>
                     <div style={S.ganeshaSubTitle}>
                       {ganeshaLang === "kannada"
-                        ? "ಶ್ರೀ ಸತ್ಯ ಗಣಪತಿ ಸೇವಾ ಸಂಘ (ರಿ.) ತಿಪಟೂರು • ೯೬+ ವರ್ಷಗಳ ಪರಂಪರೆ ೧೯೨೯ ರಿಂದ"
+                        ? "೯೬+ ವರ್ಷಗಳ ಐತಿಹಾಸಿಕ ಸಾಂಸ್ಕೃತಿಕ ಪರಂಪರೆ ಹಾಗೂ ಆಸ್ಥಾನ ಮಂಟಪ"
                         : ganeshaLang === "hindi"
-                        ? "श्री सत्य गणपति सेवा संघ (रजि.) तिप्तूर • 96+ वर्षों की ऐतिहासिक सांस्कृतिक परंपरा 1929 से"
-                        : "Sri Sathya Ganapathi Seva Sangha (Regd.) Tiptur • 96+ Years Cultural Heritage since 1929"}
+                        ? "96+ वर्षों की ऐतिहासिक सांस्कृतिक परंपरा एवं भव्य महा महोत्सव"
+                        : "Sri Sathya Ganapathi Seva Sangha (Regd.) Tiptur • 96+ Years Cultural Heritage"}
                     </div>
                   </div>
                 </div>
@@ -1989,9 +1972,7 @@ export default function OrderingAppPage() {
                       />
                       <div>
                         <h4 style={S.farmTitle}>{farm.name}</h4>
-                        <div style={{ fontSize: 11, fontWeight: 700, color: "#15803d", marginTop: 2 }}>
-                          Official Organic Dairy Partner • Tiptur
-                        </div>
+
                       </div>
                     </div>
                     <span style={S.farmBadge}>{farm.badge}</span>
@@ -2467,7 +2448,7 @@ export default function OrderingAppPage() {
               <div style={S.profileSectionHeading}>
                 <IconMapPin size={14} color="#0c831f" />
                 <span>Delivery Location</span>
-                <span style={S.fixedBadge}>Fixed</span>
+
               </div>
               <div style={S.profileAddressText}>
                 <b style={{ color: "#0f172a" }}>KFGSC Campus Hub</b>
