@@ -1869,7 +1869,6 @@ export default function OrderingAppPage() {
                         {rest.type}
                       </span>
                     </div>
-                    <p style={S.placeDesc}>{rest.desc}</p>
                     <div style={S.placeFooter}>
                       <span style={S.placeLocText}>
                         <IconMapPin size={11} color="#64748b" />
@@ -1911,7 +1910,6 @@ export default function OrderingAppPage() {
                         <h4 style={S.cafeName} title={cafe.name}>{cafe.name}</h4>
                         <span style={S.cafeRating}>★ {cafe.rating}</span>
                       </div>
-                      <p style={S.cafeDesc}>{cafe.desc}</p>
                     </div>
                     <div style={S.cafeBottom}>
                       <span
@@ -5070,7 +5068,7 @@ const S = {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 4,
+    marginBottom: 6,
     gap: 8,
   },
   placeTitleRow: {
@@ -5148,7 +5146,7 @@ const S = {
     flexDirection: "column",
     justifyContent: "space-between",
     height: "100%",
-    minHeight: 200,
+    minHeight: 148,
     boxShadow: "0 1px 4px rgba(0, 0, 0, 0.03)",
   },
   cafeBody: {
