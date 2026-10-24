@@ -40,6 +40,7 @@ export default function CustomerInteractiveLoginPage() {
   const [demoOtp, setDemoOtp] = useState("442201");
   const [timer, setTimer] = useState(30);
   const [activeSpotIdx, setActiveSpotIdx] = useState(0);
+  const [existingCustomer, setExistingCustomer] = useState(null);
 
   // Auto-cycle through the local Tiptur hotspot images
   useEffect(() => {
@@ -68,7 +69,10 @@ export default function CustomerInteractiveLoginPage() {
       const raw = localStorage.getItem("auditx_customer");
       if (raw) {
         const parsed = JSON.parse(raw);
-        if (parsed?.name) setName(parsed.name);
+        if (parsed?.name) {
+          setName(parsed.name);
+          setExistingCustomer(parsed);
+        }
         if (parsed?.phone) setPhone(parsed.phone);
       }
     } catch (e) {
@@ -227,6 +231,33 @@ export default function CustomerInteractiveLoginPage() {
         </div>
 
         {error && <div style={styles.errorBox}>{error}</div>}
+
+        {/* ── ACTIVE SESSION QUICK RESUME ── */}
+        {existingCustomer?.name && step === "phone" && (
+          <div style={styles.activeSessionCard}>
+            <div style={styles.activeSessionRow}>
+              <div style={styles.activeSessionDot} />
+              <span style={styles.activeSessionTag}>ACTIVE SESSION LOGGED IN</span>
+            </div>
+            <div style={styles.activeSessionName}>
+              Welcome back, <b>{existingCustomer.name}</b>!
+            </div>
+            <div style={styles.activeSessionSub}>
+              Mobile: +91 {existingCustomer.phone || phone} • Delivery: KFGSC , Tiptur 572201
+            </div>
+            <button
+              type="button"
+              onClick={() => router.push("/ordering")}
+              style={styles.activeSessionBtn}
+            >
+              <span>Continue Shopping in Dark Store</span>
+              <IconArrowRight size={16} color="#ffffff" />
+            </button>
+            <div style={styles.orRow}>
+              <span style={styles.orText}>OR LOG IN WITH A DIFFERENT NUMBER</span>
+            </div>
+          </div>
+        )}
 
         {/* ── STEP 1: PHONE NUMBER WITH FIXED INDIAN FLAG +91 ── */}
         {step === "phone" && (
@@ -851,5 +882,71 @@ const styles = {
     fontSize: 12,
     fontWeight: 700,
     cursor: "pointer",
+  },
+  activeSessionCard: {
+    background: "#f0fdf4",
+    border: "1.5px solid #86efac",
+    borderRadius: 14,
+    padding: "14px 16px",
+    marginBottom: 20,
+    boxShadow: "0 4px 12px rgba(12, 131, 31, 0.08)",
+  },
+  activeSessionRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 6,
+  },
+  activeSessionDot: {
+    width: 8,
+    height: 8,
+    borderRadius: "50%",
+    background: "#0c831f",
+    boxShadow: "0 0 6px #0c831f",
+  },
+  activeSessionTag: {
+    fontSize: 10,
+    fontWeight: 800,
+    color: "#166534",
+    letterSpacing: "0.04em",
+  },
+  activeSessionName: {
+    fontSize: 15,
+    fontWeight: 800,
+    color: "#0f172a",
+    marginBottom: 4,
+  },
+  activeSessionSub: {
+    fontSize: 11,
+    color: "#475569",
+    marginBottom: 12,
+    fontWeight: 600,
+  },
+  activeSessionBtn: {
+    width: "100%",
+    background: "#0c831f",
+    color: "#ffffff",
+    border: "none",
+    padding: "12px 16px",
+    borderRadius: 10,
+    fontSize: 13,
+    fontWeight: 800,
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    boxShadow: "0 2px 8px rgba(12, 131, 31, 0.25)",
+  },
+  orRow: {
+    textAlign: "center",
+    marginTop: 12,
+    position: "relative",
+  },
+  orText: {
+    fontSize: 10,
+    fontWeight: 800,
+    color: "#64748b",
+    letterSpacing: "0.04em",
   },
 };

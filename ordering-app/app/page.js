@@ -1,7 +1,7 @@
 "use client";
 
-import OrderingApp from "@/app/ordering/page";
+import CustomerInteractiveLoginPage from "@/app/ordering/login/page";
 
 export default function RootHomePage() {
-  return <OrderingApp />;
+  return <CustomerInteractiveLoginPage />;
 }
