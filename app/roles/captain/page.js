@@ -425,10 +425,29 @@ export default function DeliveryCaptainApp() {
               </div>
             ) : (
               <div style={S.idleCard}>
+                <div style={{ textAlign: "center", marginBottom: 16 }}>
+                  <video
+                    autoPlay
+                    loop
+                    muted
+                    playsInline
+                    style={{
+                      width: "100%",
+                      maxWidth: 240,
+                      borderRadius: 14,
+                      boxShadow: "0 8px 24px rgba(0,0,0,0.5)",
+                      display: "inline-block",
+                      border: "1px solid rgba(255, 255, 255, 0.1)",
+                    }}
+                  >
+                    <source src="/videos/task-searching.mp4" type="video/mp4" />
+                    <source src="/task-searching.mp4" type="video/mp4" />
+                  </video>
+                </div>
                 <div style={S.idleIcon}>🛵</div>
-                <h3 style={S.idleTitle}>Ready for Orders at Tiptur HUB Bay</h3>
+                <h3 style={S.idleTitle}>Task Searching • Ready for Orders at Tiptur HUB Bay</h3>
                 <p style={S.idleSub}>
-                  When OD Picker <b>Thrupthi K S</b> completes picking and stages a bag into Rack D5, T2, B4, or R1, your phone will sound an alert!
+                  Scanning live dark store dispatch queue. When OD Picker <b>Thrupthi K S</b> completes picking and stages a bag into racks (T1, T4, T6, B5, B7, S4, D5, H2), your phone will sound an alert!
                 </p>
                 <div style={S.hubInfoPill}>
                   <span>📍 Base: Tiptur HUB - KA44</span>

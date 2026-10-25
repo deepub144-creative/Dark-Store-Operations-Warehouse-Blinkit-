@@ -362,10 +362,29 @@ export default function OdPickerApp() {
               </div>
             ) : (
               <div style={S.idleBox}>
+                <div style={{ textAlign: "center", marginBottom: 16 }}>
+                  <video
+                    autoPlay
+                    loop
+                    muted
+                    playsInline
+                    style={{
+                      width: "100%",
+                      maxWidth: 240,
+                      borderRadius: 14,
+                      boxShadow: "0 8px 24px rgba(0,0,0,0.5)",
+                      display: "inline-block",
+                      border: "1px solid rgba(255, 255, 255, 0.1)",
+                    }}
+                  >
+                    <source src="/videos/task-searching.mp4" type="video/mp4" />
+                    <source src="/task-searching.mp4" type="video/mp4" />
+                  </video>
+                </div>
                 <div style={S.idleIcon}>📡</div>
-                <h3 style={S.idleTitle}>Awaiting Orders at Tiptur HUB - KA44</h3>
+                <h3 style={S.idleTitle}>Task Searching • Awaiting Orders at Tiptur HUB</h3>
                 <p style={S.idleSub}>
-                  When a customer places an order on the Namma Tiptur app, your terminal alarm will ring immediately!
+                  Scanning live queue at Tiptur HUB - KA44. When a customer places an order on the Namma Tiptur app, your terminal alarm will ring immediately!
                 </p>
                 <div style={S.terminalMeta}>
                   <span>Device: Zebra TC52 #04</span>
