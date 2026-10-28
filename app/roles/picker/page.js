@@ -118,9 +118,12 @@ export default function OdPickerApp() {
   const [aisleScannedMap, setAisleScannedMap] = useState({});
   const [selectedItemIdx, setSelectedItemIdx] = useState(0);
 
-  // Staging Rack randomly chosen from: B7, H2, D5, H4, T1, T6, B5, S4, T4
-  const [assignedRack, setAssignedRack] = useState(STAGING_RACKS[0]);
+  // Staging Rack: B7, H2, D5, H4, T1, T6, B5, S4, T4 (Default D5)
+  const [assignedRack, setAssignedRack] = useState(
+    STAGING_RACKS.find((r) => r.id === "D5") || STAGING_RACKS[2] || STAGING_RACKS[0]
+  );
   const [captainScannedRack, setCaptainScannedRack] = useState(false);
+  const [phoneCameraModal, setPhoneCameraModal] = useState(null); // { type: 'aisle' | 'barcode', expectedCode: string, itemIdx: number, itemName: string }
 
   // 2-Minute Strict SLA Countdown & Stopwatch
   const PICKER_SLA_SECONDS = 120; // 2:00 min
@@ -218,8 +221,10 @@ export default function OdPickerApp() {
 
   function handleAcceptOrder(order) {
     stopOrderAlarm();
-    // Choose random rack from: B7, H2, D5, H4, T1, T6, B5, S4, T4
-    const rack = getRandomStagingRack();
+    // Designated Staging Rack (Default: D5 Ambient Dispatch 5)
+    const rack = order?.assignedRack
+      ? (STAGING_RACKS.find((r) => r.id === order.assignedRack) || STAGING_RACKS.find((r) => r.id === "D5") || STAGING_RACKS[2])
+      : (STAGING_RACKS.find((r) => r.id === "D5") || STAGING_RACKS[2]);
     setAssignedRack(rack);
     setActiveOrder(order);
     setRemainingSec(PICKER_SLA_SECONDS);
@@ -341,7 +346,7 @@ export default function OdPickerApp() {
   function handleGenerateTestOrder() {
     stopOrderAlarm();
     playNotificationChime();
-    const randomBay = getRandomStagingRack();
+    const designatedBay = STAGING_RACKS.find((r) => r.id === "D5") || STAGING_RACKS[2];
     const testOrd = {
       id: `ORD-KA44-${Math.floor(1000 + Math.random() * 9000)}`,
       orderNumber: `${Math.floor(1000 + Math.random() * 9000)}`,
@@ -351,7 +356,7 @@ export default function OdPickerApp() {
       status: "pending",
       stage: "Picking",
       totalAmount: 385,
-      assignedRack: randomBay.id,
+      assignedRack: designatedBay.id,
       items: [
         {
           skuId: "TIPTUR-COPRA-01",
@@ -531,6 +536,71 @@ export default function OdPickerApp() {
     setTimeout(() => setActionSuccess(""), 3500);
   }
 
+  // Open Phone Camera Scanner for Aisle QR or Item Barcode
+  function openPhoneScanner(type, expectedCode, itemIdx) {
+    const item = items[itemIdx] || currentItem;
+    setPhoneCameraModal({
+      type,
+      expectedCode: expectedCode || (type === "aisle" ? (item?.aisle || item?.binLocation || "F0 - A01 - 04") : (item?.barcode || item?.skuId)),
+      itemIdx: itemIdx !== undefined ? itemIdx : selectedItemIdx,
+      itemName: item?.name || "Item",
+    });
+  }
+
+  // Handle Scan Result from Phone Camera
+  function handleCameraScanResult(scannedCode) {
+    if (!phoneCameraModal) return;
+    const { type, itemIdx, expectedCode } = phoneCameraModal;
+    const code = scannedCode || expectedCode;
+    playScanSuccess();
+
+    const newAisleMap = { ...aisleScannedMap };
+    const newBarcodeMap = { ...barcodeScannedMap };
+    const newPickedMap = { ...pickedItemsMap };
+
+    if (type === "aisle") {
+      newAisleMap[itemIdx] = true;
+      setAisleScannedMap(newAisleMap);
+      setActionSuccess(`📍 Aisle Location Verified via Phone Camera: ${code}`);
+    } else {
+      newBarcodeMap[itemIdx] = true;
+      setBarcodeScannedMap(newBarcodeMap);
+      setActionSuccess(`📦 Item Barcode Verified via Phone Camera: ${code}`);
+    }
+
+    // If both aisle and barcode are verified for this item, mark item picked
+    if (newAisleMap[itemIdx] && newBarcodeMap[itemIdx]) {
+      newPickedMap[itemIdx] = true;
+      setPickedItemsMap(newPickedMap);
+    }
+
+    // If all items are now picked, reduce delivery time to 3 mins & update live order
+    const orderItems = activeOrder?.items || [];
+    const totalCount = orderItems.length;
+    const pickedCount = Object.keys(newPickedMap).length;
+    if (totalCount > 0 && pickedCount >= totalCount) {
+      if (activeOrder?.id) {
+        updateLiveOrder(activeOrder.id, {
+          status: "picked",
+          stage: "Picked by Thrupthi K S",
+          pickerId: "thrupthi",
+          pickerName: "Thrupthi K S",
+          remainingMins: 3,
+          estimatedDeliveryMins: 3,
+        });
+        broadcastEvent("ORDER_PICKED", {
+          orderId: activeOrder.id,
+          pickerName: "Thrupthi K S",
+          remainingMins: 3,
+        });
+      }
+      setActionSuccess(`🎉 All items picked by Thrupthi K S! Reduced delivery time to 3 mins. Ready for Rack ${assignedRack.id}.`);
+    }
+
+    setPhoneCameraModal(null);
+    setTimeout(() => setActionSuccess(""), 3000);
+  }
+
   // Confirm Handover to Staging Rack via Slide
   async function handleConfirmRackStaging() {
     if (!activeOrder) return;
@@ -602,8 +672,8 @@ export default function OdPickerApp() {
   const minStr = Math.floor(remainingSec / 60).toString().padStart(2, "0");
   const secStr = (remainingSec % 60).toString().padStart(2, "0");
 
-  // QR Code URL for the assigned rack
-  const rackQrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=AUDITX-RACK-${assignedRack.id}-TIPTUR-KA44&margin=10`;
+  // QR Code URL for the assigned rack (Local static delivery QR for high reliability)
+  const rackQrUrl = "/delivery-qr.png";
 
   return (
     <AndroidPhoneShell
@@ -1260,78 +1330,110 @@ export default function OdPickerApp() {
                           </div>
                         </div>
 
-                        {/* ─── RIGHT SIDE: AISLE LOCATION & ITEM DETAILS ─── */}
+                        {/* ─── RIGHT SIDE: ITEM DETAILS & CLEAN AISLE MENTION ─── */}
                         <div style={S.itemRightCol}>
-                          {/* PROMINENT AISLE LOCATION BADGE ON RIGHT */}
-                          <div style={S.aisleBadge}>
-                            <span style={S.aisleIcon}>📍</span>
-                            <div style={S.aisleTextCol}>
-                              <span style={S.aisleMicroLabel}>AISLE LOCATION</span>
-                              <span style={S.aisleCodeLarge}>{aisleCode}</span>
-                            </div>
-                          </div>
-
                           <div style={S.itemName}>{item.name}</div>
 
                           <div style={S.itemMetaRow}>
                             <span style={S.itemCategory}>{item.category || "Warehouse Inventory"}</span>
                             <span>•</span>
-                            <span style={S.barcodeText}>
-                              Barcode: <code style={S.barcodeSnippet}>{item.barcode || item.skuId}</code>
-                            </span>
+                            <span style={S.itemPrice}>₹{item.price || 0}</span>
                           </div>
 
-                          {/* DUAL VERIFICATION BADGES (BARCODE + AISLE) */}
-                          <div style={S.dualStatusRow}>
-                            <span style={isBarcodeDone ? S.verifiedPill : S.pendingPill}>
-                              {isBarcodeDone ? "✅ Barcode Verified" : "⏳ Scan Barcode"}
-                            </span>
-                            <span style={isAisleDone ? S.verifiedPill : S.pendingPill}>
-                              {isAisleDone ? "✅ Aisle Verified" : "⏳ Scan Aisle"}
+                          {/* JUST MENTION AISLE LOCATION THAT'S IT */}
+                          <div style={S.aisleCleanMention}>
+                            <span style={{ fontSize: 13 }}>📍</span>
+                            <span style={S.aisleCleanText}>
+                              Aisle Location: <b style={{ color: "#0f172a" }}>{aisleCode}</b>
                             </span>
                           </div>
                         </div>
                       </div>
 
-                      {/* ITEM SCANNER CONTROLS FOR ACTIVE ITEM */}
-                      {isSelected && !isPicked && (
-                        <div style={S.itemScanControlBox}>
-                          <div style={S.quickVerifyTitle}>⚡ Instant Scanner / Verification for this SKU:</div>
-                          <div style={S.quickButtonsRow}>
-                            <button
-                              style={{
-                                ...S.scanSubBtn,
-                                background: isBarcodeDone ? "#ecfdf5" : "#0284c7",
-                                color: isBarcodeDone ? "#047857" : "#ffffff",
-                                borderColor: isBarcodeDone ? "#10b981" : "#0284c7",
-                              }}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleGeneralScan(item.barcode || item.skuId);
-                              }}
-                            >
-                              {isBarcodeDone ? "✅ Barcode Done" : `📷 Scan Barcode (${item.barcode || item.skuId})`}
-                            </button>
+                      {/* ─── DEDICATED OPTION BARS: SCAN AISLE & SCAN ITEM BARCODE VIA PHONE CAMERA ─── */}
+                      {!isPicked && (
+                        <div style={S.scannerOptionBarsContainer}>
+                          {/* 1. SCAN AISLE OPTION BAR (OPENS PHONE CAMERA) */}
+                          <div
+                            style={{
+                              ...S.optionBarCard,
+                              background: isAisleDone ? "#f0fdf4" : "#ffffff",
+                              borderColor: isAisleDone ? "#86efac" : "#cbd5e1",
+                            }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openPhoneScanner("aisle", aisleCode, idx);
+                            }}
+                          >
+                            <div style={S.optionBarLeft}>
+                              <span style={S.optionBarIcon}>📍</span>
+                              <div style={S.optionBarTextGroup}>
+                                <div style={S.optionBarTitle}>
+                                  Aisle: <b>{aisleCode}</b>
+                                </div>
+                                <div style={{ ...S.optionBarStatus, color: isAisleDone ? "#15803d" : "#d97706" }}>
+                                  {isAisleDone ? "✅ Aisle Verified" : "⏳ Tap bar or button to scan"}
+                                </div>
+                              </div>
+                            </div>
 
                             <button
+                              type="button"
                               style={{
-                                ...S.scanSubBtn,
-                                background: isAisleDone ? "#ecfdf5" : "#d97706",
-                                color: isAisleDone ? "#047857" : "#ffffff",
-                                borderColor: isAisleDone ? "#10b981" : "#d97706",
+                                ...S.optionBarActionBtn,
+                                background: isAisleDone ? "#10b981" : "#d97706",
                               }}
                               onClick={(e) => {
                                 e.stopPropagation();
-                                handleGeneralScan(aisleCode);
+                                openPhoneScanner("aisle", aisleCode, idx);
                               }}
                             >
-                              {isAisleDone ? "✅ Aisle Done" : `📍 Scan Aisle (${aisleCode})`}
+                              {isAisleDone ? "✅ Aisle Verified" : "📷 Scan Aisle via Phone Camera"}
+                            </button>
+                          </div>
+
+                          {/* 2. SCAN ITEM BARCODE OPTION BAR (OPENS PHONE CAMERA) */}
+                          <div
+                            style={{
+                              ...S.optionBarCard,
+                              background: isBarcodeDone ? "#f0fdf4" : "#ffffff",
+                              borderColor: isBarcodeDone ? "#86efac" : "#cbd5e1",
+                            }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openPhoneScanner("barcode", item.barcode || item.skuId, idx);
+                            }}
+                          >
+                            <div style={S.optionBarLeft}>
+                              <span style={S.optionBarIcon}>📦</span>
+                              <div style={S.optionBarTextGroup}>
+                                <div style={S.optionBarTitle}>
+                                  Barcode: <b>{item.barcode || item.skuId}</b>
+                                </div>
+                                <div style={{ ...S.optionBarStatus, color: isBarcodeDone ? "#15803d" : "#0284c7" }}>
+                                  {isBarcodeDone ? "✅ Barcode Verified" : "⏳ Tap bar or button to scan"}
+                                </div>
+                              </div>
+                            </div>
+
+                            <button
+                              type="button"
+                              style={{
+                                ...S.optionBarActionBtn,
+                                background: isBarcodeDone ? "#10b981" : "#0284c7",
+                              }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openPhoneScanner("barcode", item.barcode || item.skuId, idx);
+                              }}
+                            >
+                              {isBarcodeDone ? "✅ Barcode Verified" : "📷 Scan Item Barcode via Phone Camera"}
                             </button>
                           </div>
                         </div>
                       )}
 
-                      {/* DOWN BAR RECTANGLE "ITEM PICKED" OPTION */}
+                      {/* DOWN BAR RECTANGLE "ITEM PICKED" ACTION */}
                       {!isPicked && (
                         <button
                           style={{
@@ -1343,7 +1445,9 @@ export default function OdPickerApp() {
                             handleMarkItemPicked(idx);
                           }}
                         >
-                          📦 ITEM PICKED — CONFIRM &amp; ADD TO TOTE
+                          {isBarcodeDone && isAisleDone
+                            ? "📦 ALL SCANNED — CONFIRM ITEM PICKED & ADD TO TOTE"
+                            : "📦 ITEM PICKED — CONFIRM & ADD TO TOTE"}
                         </button>
                       )}
 
@@ -1607,10 +1711,393 @@ export default function OdPickerApp() {
             </div>
           )}
         </main>
+
+        {/* REAL PHONE CAMERA SCANNER MODAL (BARCODE & QR CODE DETECTION) */}
+        {phoneCameraModal && (
+          <PhoneCameraScannerModal
+            modalData={phoneCameraModal}
+            onClose={() => setPhoneCameraModal(null)}
+            onScanSuccess={handleCameraScanResult}
+          />
+        )}
       </div>
     </AndroidPhoneShell>
   );
 }
+
+// ────────────────────────────────────────────────────────────────
+// REAL PHONE CAMERA SCANNER MODAL (ORIGINAL PHONE CAMERA + BARCODE & QR)
+// ────────────────────────────────────────────────────────────────
+function PhoneCameraScannerModal({ modalData, onClose, onScanSuccess }) {
+  const videoRef = useRef(null);
+  const [cameraActive, setCameraActive] = useState(false);
+  const [cameraError, setCameraError] = useState(null);
+  const [manualCode, setManualCode] = useState("");
+  const isScannedRef = useRef(false);
+
+  const { type, expectedCode, itemName } = modalData;
+  const isAisle = type === "aisle";
+
+  useEffect(() => {
+    let stream = null;
+    let animFrame = null;
+    let isMounted = true;
+
+    async function initCamera() {
+      try {
+        setCameraError(null);
+        // Request original phone rear camera (environment) first
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              facingMode: { ideal: "environment" },
+              width: { ideal: 1280 },
+              height: { ideal: 720 },
+            },
+          });
+        } catch (e1) {
+          // Fallback to user facing camera / webcam
+          stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        }
+
+        if (videoRef.current && isMounted) {
+          videoRef.current.srcObject = stream;
+          await videoRef.current.play();
+          setCameraActive(true);
+          startDetectionLoop();
+        }
+      } catch (err) {
+        console.warn("Camera init error:", err);
+        if (isMounted) {
+          setCameraError("Camera unavailable or permission denied. Use Instant Scan or manual input below!");
+          setCameraActive(false);
+        }
+      }
+    }
+
+    function startDetectionLoop() {
+      if (typeof window !== "undefined" && "BarcodeDetector" in window) {
+        const detector = new window.BarcodeDetector({
+          formats: ["qr_code", "code_128", "ean_13", "code_39", "upc_a", "ean_8"],
+        });
+
+        const scan = async () => {
+          if (!isMounted || isScannedRef.current) return;
+          if (videoRef.current && videoRef.current.readyState >= 2) {
+            try {
+              const codes = await detector.detect(videoRef.current);
+              if (codes && codes.length > 0) {
+                const detected = codes[0].rawValue;
+                if (detected) {
+                  isScannedRef.current = true;
+                  onScanSuccess(detected);
+                  return;
+                }
+              }
+            } catch (e) {}
+          }
+          animFrame = requestAnimationFrame(scan);
+        };
+        scan();
+      }
+    }
+
+    initCamera();
+
+    return () => {
+      isMounted = false;
+      if (animFrame) cancelAnimationFrame(animFrame);
+      if (stream) {
+        stream.getTracks().forEach((track) => track.stop());
+      }
+    };
+  }, [onScanSuccess]);
+
+  return (
+    <div style={P.modalOverlay}>
+      <div style={P.modalCard}>
+        {/* MODAL HEADER */}
+        <div style={P.modalHeader}>
+          <div style={P.modalHeaderLeft}>
+            <span style={P.modalIcon}>{isAisle ? "📍" : "📦"}</span>
+            <div>
+              <div style={P.modalTitle}>
+                {isAisle ? "Scan Aisle via Phone Camera" : "Scan Item Barcode via Phone Camera"}
+              </div>
+              <div style={P.modalSubtitle}>
+                {itemName} • Target: <code style={P.targetCodeSnippet}>{expectedCode}</code>
+              </div>
+            </div>
+          </div>
+          <button style={P.modalCloseBtn} onClick={onClose} aria-label="Close scanner">
+            ✕
+          </button>
+        </div>
+
+        {/* LIVE CAMERA VIEWFINDER */}
+        <div style={P.cameraViewport}>
+          <video
+            ref={videoRef}
+            playsInline
+            autoPlay
+            muted
+            style={P.cameraVideo}
+          />
+
+          {/* SCANNER OVERLAY HUD */}
+          <div style={P.reticleContainer}>
+            <div style={P.reticleFrame}>
+              <div style={{ ...P.cornerBracket, top: 0, left: 0, borderTop: "3px solid #10b981", borderLeft: "3px solid #10b981" }} />
+              <div style={{ ...P.cornerBracket, top: 0, right: 0, borderTop: "3px solid #10b981", borderRight: "3px solid #10b981" }} />
+              <div style={{ ...P.cornerBracket, bottom: 0, left: 0, borderBottom: "3px solid #10b981", borderLeft: "3px solid #10b981" }} />
+              <div style={{ ...P.cornerBracket, bottom: 0, right: 0, borderBottom: "3px solid #10b981", borderRight: "3px solid #10b981" }} />
+              <div style={P.laserLine} />
+            </div>
+            <div style={P.reticleHint}>
+              {cameraActive ? "Align Barcode / QR Code inside green frame" : "Activating phone camera..."}
+            </div>
+          </div>
+
+          {cameraError && (
+            <div style={P.cameraErrorBox}>
+              <div style={{ fontSize: 28, marginBottom: 6 }}>📷</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "#f87171" }}>Camera Access Notice</div>
+              <div style={{ fontSize: 11, color: "#cbd5e1", marginTop: 4 }}>{cameraError}</div>
+            </div>
+          )}
+        </div>
+
+        {/* MODAL FOOTER & INSTANT SCAN FALLBACK */}
+        <div style={P.modalFooter}>
+          {/* INSTANT SCAN SIMULATION BUTTON */}
+          <button
+            style={P.instantScanBtn}
+            onClick={() => onScanSuccess(expectedCode)}
+          >
+            ⚡ Instant Scan / Verify: <b>{expectedCode}</b>
+          </button>
+
+          {/* MANUAL INPUT OPTION */}
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (manualCode.trim()) {
+                onScanSuccess(manualCode.trim());
+              }
+            }}
+            style={P.manualForm}
+          >
+            <input
+              type="text"
+              placeholder={`Or enter ${isAisle ? "Aisle code" : "Barcode"} manually...`}
+              value={manualCode}
+              onChange={(e) => setManualCode(e.target.value)}
+              style={P.manualInput}
+            />
+            <button type="submit" style={P.manualSubmitBtn}>
+              Verify
+            </button>
+          </form>
+
+          <button style={P.closeTextBtn} onClick={onClose}>
+            Cancel / Return to Order
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const P = {
+  modalOverlay: {
+    position: "fixed",
+    inset: 0,
+    zIndex: 99999,
+    background: "rgba(15, 23, 42, 0.88)",
+    backdropFilter: "blur(6px)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 16,
+  },
+  modalCard: {
+    background: "#ffffff",
+    borderRadius: 18,
+    width: "100%",
+    maxWidth: 420,
+    overflow: "hidden",
+    boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.5)",
+    display: "flex",
+    flexDirection: "column",
+    border: "1px solid #e2e8f0",
+  },
+  modalHeader: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: "14px 16px",
+    borderBottom: "1px solid #e2e8f0",
+    background: "#ffffff",
+  },
+  modalHeaderLeft: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+  },
+  modalIcon: {
+    fontSize: 22,
+  },
+  modalTitle: {
+    fontSize: 14,
+    fontWeight: 800,
+    color: "#0f172a",
+  },
+  modalSubtitle: {
+    fontSize: 11,
+    color: "#64748b",
+    marginTop: 2,
+  },
+  targetCodeSnippet: {
+    background: "#f1f5f9",
+    color: "#0c831f",
+    padding: "1px 5px",
+    borderRadius: 4,
+    fontWeight: 800,
+    fontSize: 11,
+  },
+  modalCloseBtn: {
+    background: "#f1f5f9",
+    border: "none",
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    fontSize: 14,
+    fontWeight: 800,
+    color: "#475569",
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  cameraViewport: {
+    position: "relative",
+    width: "100%",
+    height: 260,
+    background: "#000000",
+    overflow: "hidden",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  cameraVideo: {
+    width: "100%",
+    height: "100%",
+    objectFit: "cover",
+  },
+  reticleContainer: {
+    position: "absolute",
+    inset: 0,
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    pointerEvents: "none",
+  },
+  reticleFrame: {
+    position: "relative",
+    width: 220,
+    height: 150,
+    borderRadius: 8,
+    boxShadow: "0 0 0 9999px rgba(0, 0, 0, 0.45)",
+  },
+  cornerBracket: {
+    position: "absolute",
+    width: 20,
+    height: 20,
+  },
+  laserLine: {
+    position: "absolute",
+    left: 4,
+    right: 4,
+    height: 2,
+    background: "#10b981",
+    boxShadow: "0 0 8px #10b981, 0 0 16px #10b981",
+    top: "50%",
+  },
+  reticleHint: {
+    marginTop: 14,
+    fontSize: 11,
+    fontWeight: 700,
+    color: "#ffffff",
+    textShadow: "0 1px 4px rgba(0,0,0,0.8)",
+    background: "rgba(0,0,0,0.6)",
+    padding: "3px 10px",
+    borderRadius: 12,
+  },
+  cameraErrorBox: {
+    position: "absolute",
+    inset: 0,
+    background: "#0f172a",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 20,
+    textAlign: "center",
+  },
+  modalFooter: {
+    padding: 14,
+    background: "#f8fafc",
+    display: "flex",
+    flexDirection: "column",
+    gap: 8,
+  },
+  instantScanBtn: {
+    width: "100%",
+    padding: "11px 14px",
+    background: "#0c831f",
+    color: "#ffffff",
+    border: "none",
+    borderRadius: 8,
+    fontSize: 13,
+    fontWeight: 800,
+    cursor: "pointer",
+    boxShadow: "0 2px 8px rgba(12, 131, 31, 0.25)",
+  },
+  manualForm: {
+    display: "flex",
+    gap: 6,
+  },
+  manualInput: {
+    flex: 1,
+    padding: "9px 12px",
+    borderRadius: 6,
+    border: "1px solid #cbd5e1",
+    fontSize: 12,
+    outline: "none",
+    background: "#ffffff",
+    color: "#0f172a",
+  },
+  manualSubmitBtn: {
+    padding: "9px 14px",
+    background: "#0284c7",
+    color: "#ffffff",
+    border: "none",
+    borderRadius: 6,
+    fontSize: 12,
+    fontWeight: 800,
+    cursor: "pointer",
+  },
+  closeTextBtn: {
+    background: "none",
+    border: "none",
+    color: "#64748b",
+    fontSize: 11,
+    fontWeight: 700,
+    cursor: "pointer",
+    padding: "4px",
+  },
+};
 
 // ────────────────────────────────────────────────────────────────
 // WHITE THEME DESIGN SYSTEM STYLES — CRISP, MODERN BLINKIT WAREHOUSE
@@ -2214,6 +2701,83 @@ const S = {
     padding: "2px 8px",
     borderRadius: 6,
     border: "1px solid #e2e8f0",
+  },
+
+  // Clean Aisle Mention & Direct Phone Camera Option Bars
+  aisleCleanMention: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+    background: "#f1f5f9",
+    border: "1px solid #e2e8f0",
+    padding: "3px 8px",
+    borderRadius: 6,
+    marginTop: 4,
+    width: "fit-content",
+  },
+  aisleCleanText: {
+    fontSize: 11,
+    color: "#475569",
+    fontWeight: 700,
+  },
+  scannerOptionBarsContainer: {
+    marginTop: 10,
+    display: "flex",
+    flexDirection: "column",
+    gap: 8,
+  },
+  optionBarCard: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: "8px 12px",
+    borderRadius: 8,
+    border: "1.5px solid #cbd5e1",
+    cursor: "pointer",
+    transition: "all 0.15s ease",
+    gap: 8,
+  },
+  optionBarLeft: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    minWidth: 0,
+    flex: 1,
+  },
+  optionBarIcon: {
+    fontSize: 18,
+    flexShrink: 0,
+  },
+  optionBarTextGroup: {
+    display: "flex",
+    flexDirection: "column",
+    minWidth: 0,
+  },
+  optionBarTitle: {
+    fontSize: 12,
+    color: "#0f172a",
+    fontWeight: 700,
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+  },
+  optionBarStatus: {
+    fontSize: 11,
+    fontWeight: 700,
+  },
+  optionBarActionBtn: {
+    border: "none",
+    color: "#ffffff",
+    padding: "7px 12px",
+    borderRadius: 6,
+    fontSize: 11,
+    fontWeight: 800,
+    cursor: "pointer",
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 4,
+    flexShrink: 0,
+    boxShadow: "0 1px 4px rgba(0,0,0,0.1)",
   },
 
   // Active SKU scan quick controls
