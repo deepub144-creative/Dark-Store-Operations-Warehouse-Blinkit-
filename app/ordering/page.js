@@ -2249,9 +2249,7 @@ export default function OrderingAppPage() {
               >
                 {activeDeliveryOrder.status === "delivered"
                   ? "Delivered at KFGSC • Tap to view"
-                  : activeDeliveryOrder.status === "en_route"
-                  ? "Out for delivery with Sinchana B R"
-                  : "Packing at Tiptur Dark Store with Thrupthi K S"}
+                  : "Out for delivery with Sinchana B R"}
               </div>
             </div>
           </div>
