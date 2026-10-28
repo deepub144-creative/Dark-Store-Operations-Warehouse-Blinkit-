@@ -330,110 +330,129 @@ export default function TrackOrderPage() {
 
         {/* ── 2. AUTHENTIC TIPTUR KA44 GOOGLE MAPS WITH LIVE ROUTE & RIDER ── */}
         <section style={S.mapSection}>
-          <div style={S.mapViewport}>
-            <svg
-              viewBox="230 70 530 250"
-              style={S.mapSvg}
-              xmlns="http://www.w3.org/2000/svg"
-            >
-              {/* Actual Google Maps of Tiptur centered on Kalpatharu First Grade Science College */}
-              <image
-                href="/tiptur-live-map.png"
-                x="0"
-                y="0"
-                width="1024"
-                height="411"
+          {isDispatched ? (
+            <div style={{ position: "relative", width: "100%", borderRadius: "0 0 16px 16px", overflow: "hidden", background: "#0f172a" }}>
+              <img
+                src="/tiptur-gps-route.jpg"
+                alt="Two-wheeler 3 min 1.7 km route from Madihalli to KFGSC Tiptur"
+                style={{
+                  width: "100%",
+                  height: "auto",
+                  display: "block",
+                }}
               />
-
-              {/* Highway NH 73 Live Delivery Route line from Tiptur Hub to KFGSC */}
-              <path
-                d="M 320 185 Q 380 195 440 228 T 530 254 T 598 248"
-                stroke="rgba(0, 0, 0, 0.45)"
-                strokeWidth="6"
-                strokeLinecap="round"
-                fill="none"
-              />
-              <path
-                d="M 320 185 Q 380 195 440 228 T 530 254 T 598 248"
-                stroke="#0c831f"
-                strokeWidth="4"
-                strokeLinecap="round"
-                fill="none"
-              />
-              <path
-                d="M 320 185 Q 380 195 440 228 T 530 254 T 598 248"
-                stroke="#ffffff"
-                strokeWidth="2"
-                strokeDasharray="6,6"
-                strokeLinecap="round"
-                fill="none"
-              />
-
-              {/* ── TIPTUR HUB KA44 (DARK STORE DISPATCH POINT) ── */}
-              <g transform="translate(320, 185)">
-                {/* Hub pulse */}
-                <circle cx="0" cy="0" r="15" fill="rgba(12, 131, 31, 0.3)">
-                  <animate attributeName="r" values="10;20;10" dur="2s" repeatCount="indefinite" />
-                  <animate attributeName="opacity" values="0.8;0.1;0.8" dur="2s" repeatCount="indefinite" />
-                </circle>
-                <circle cx="0" cy="0" r="10" fill="#0c831f" stroke="#ffffff" strokeWidth="2" />
-                <text x="0" y="3.5" textAnchor="middle" fontSize="9" fill="#ffffff" fontWeight="bold">🏬</text>
-                <rect x="-44" y="-24" width="88" height="15" rx="4" fill="#0f172a" opacity="0.92" />
-                <text x="0" y="-13" textAnchor="middle" fontSize="7.5" fill="#ffffff" fontWeight="800">
-                  Tiptur HUB KA44
-                </text>
-              </g>
-
-              {/* ── KFGSC DESTINATION PIN (PULSING RED MARKER) ── */}
-              <g transform="translate(598, 246)">
-                {/* Destination pulse ring */}
-                <circle cx="0" cy="0" r="14" fill="rgba(220, 38, 38, 0.35)">
-                  <animate attributeName="r" values="8;18;8" dur="2s" repeatCount="indefinite" />
-                  <animate attributeName="opacity" values="0.8;0.2;0.8" dur="2s" repeatCount="indefinite" />
-                </circle>
-                <circle cx="0" cy="0" r="4.5" fill="#dc2626" stroke="#ffffff" strokeWidth="1.5" />
-                {/* Destination Badge */}
-                <rect x="-52" y="8" width="104" height="16" rx="4" fill="#1e293b" opacity="0.94" />
-                <text x="0" y="19" textAnchor="middle" fontSize="7" fill="#f8fafc" fontWeight="bold">
-                  📍 KFGSC , Tiptur 572201
-                </text>
-              </g>
-
-              {/* ── LIVE ANIMATED DELIVERY RIDER SCOOTER ── */}
-              <g transform="translate(470, 238)">
-                {/* Pulsing radar */}
-                <circle cx="0" cy="0" r="16" fill="rgba(16, 185, 129, 0.35)">
-                  <animate attributeName="r" values="12;22;12" dur="1.6s" repeatCount="indefinite" />
-                  <animate attributeName="opacity" values="0.7;0.1;0.7" dur="1.6s" repeatCount="indefinite" />
-                </circle>
-                <circle cx="0" cy="-2" r="12" fill="#0f172a" stroke="#10b981" strokeWidth="2" />
-                <text x="0" y="2.5" textAnchor="middle" fontSize="11">🛵</text>
-                <rect x="-28" y="-22" width="56" height="13" rx="4" fill="#0c831f" />
-                <text x="0" y="-13" textAnchor="middle" fontSize="6.5" fill="#ffffff" fontWeight="800">
-                  ⚡ {arrivingMinutes} Mins SLA
-                </text>
-              </g>
-            </svg>
-
-            {/* Live Route Info Strip */}
-            <div style={S.mapLiveRouteBadge}>
-              <span style={S.mapLiveGreenDot} />
-              <span><b>Live Route:</b> Tiptur Hub KA44 → <b>KFGSC, Tiptur 572201</b></span>
+              {/* Live Route Info Strip */}
+              <div style={S.mapLiveRouteBadge}>
+                <span style={S.mapLiveGreenDot} />
+                <span><b>Live Route:</b> Madihalli Hub → <b>KFGSC, Tiptur (3 min • 1.7 km)</b></span>
+              </div>
             </div>
+          ) : (
+            <div style={S.mapViewport}>
+              <svg
+                viewBox="230 70 530 250"
+                style={S.mapSvg}
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                {/* Actual Google Maps of Tiptur centered on Kalpatharu First Grade Science College */}
+                <image
+                  href="/tiptur-live-map.png"
+                  x="0"
+                  y="0"
+                  width="1024"
+                  height="411"
+                />
 
-            {/* Google Watermark Logo on bottom-left */}
-            <div style={S.googleWatermark}>Google</div>
+                {/* Highway NH 73 Live Delivery Route line from Tiptur Hub to KFGSC */}
+                <path
+                  d="M 320 185 Q 380 195 440 228 T 530 254 T 598 248"
+                  stroke="rgba(0, 0, 0, 0.45)"
+                  strokeWidth="6"
+                  strokeLinecap="round"
+                  fill="none"
+                />
+                <path
+                  d="M 320 185 Q 380 195 440 228 T 530 254 T 598 248"
+                  stroke="#0c831f"
+                  strokeWidth="4"
+                  strokeLinecap="round"
+                  fill="none"
+                />
+                <path
+                  d="M 320 185 Q 380 195 440 228 T 530 254 T 598 248"
+                  stroke="#ffffff"
+                  strokeWidth="2"
+                  strokeDasharray="6,6"
+                  strokeLinecap="round"
+                  fill="none"
+                />
 
-            {/* Re-center / Expand Button on top-right */}
-            <button
-              type="button"
-              style={S.mapRecenterBtn}
-              onClick={() => triggerToast("Map re-centered to KFGSC, Tiptur 572201")}
-              title="Re-center map"
-            >
-              <IconTarget size={16} color="#0c831f" />
-            </button>
-          </div>
+                {/* ── TIPTUR HUB KA44 (DARK STORE DISPATCH POINT) ── */}
+                <g transform="translate(320, 185)">
+                  {/* Hub pulse */}
+                  <circle cx="0" cy="0" r="15" fill="rgba(12, 131, 31, 0.3)">
+                    <animate attributeName="r" values="10;20;10" dur="2s" repeatCount="indefinite" />
+                    <animate attributeName="opacity" values="0.8;0.1;0.8" dur="2s" repeatCount="indefinite" />
+                  </circle>
+                  <circle cx="0" cy="0" r="10" fill="#0c831f" stroke="#ffffff" strokeWidth="2" />
+                  <text x="0" y="3.5" textAnchor="middle" fontSize="9" fill="#ffffff" fontWeight="bold">🏬</text>
+                  <rect x="-44" y="-24" width="88" height="15" rx="4" fill="#0f172a" opacity="0.92" />
+                  <text x="0" y="-13" textAnchor="middle" fontSize="7.5" fill="#ffffff" fontWeight="800">
+                    Tiptur HUB KA44
+                  </text>
+                </g>
+
+                {/* ── KFGSC DESTINATION PIN (PULSING RED MARKER) ── */}
+                <g transform="translate(598, 246)">
+                  {/* Destination pulse ring */}
+                  <circle cx="0" cy="0" r="14" fill="rgba(220, 38, 38, 0.35)">
+                    <animate attributeName="r" values="8;18;8" dur="2s" repeatCount="indefinite" />
+                    <animate attributeName="opacity" values="0.8;0.2;0.8" dur="2s" repeatCount="indefinite" />
+                  </circle>
+                  <circle cx="0" cy="0" r="4.5" fill="#dc2626" stroke="#ffffff" strokeWidth="1.5" />
+                  {/* Destination Badge */}
+                  <rect x="-52" y="8" width="104" height="16" rx="4" fill="#1e293b" opacity="0.94" />
+                  <text x="0" y="19" textAnchor="middle" fontSize="7" fill="#f8fafc" fontWeight="bold">
+                    📍 KFGSC , Tiptur 572201
+                  </text>
+                </g>
+
+                {/* ── LIVE ANIMATED DELIVERY RIDER SCOOTER ── */}
+                <g transform="translate(470, 238)">
+                  {/* Pulsing radar */}
+                  <circle cx="0" cy="0" r="16" fill="rgba(16, 185, 129, 0.35)">
+                    <animate attributeName="r" values="12;22;12" dur="1.6s" repeatCount="indefinite" />
+                    <animate attributeName="opacity" values="0.7;0.1;0.7" dur="1.6s" repeatCount="indefinite" />
+                  </circle>
+                  <circle cx="0" cy="-2" r="12" fill="#0f172a" stroke="#10b981" strokeWidth="2" />
+                  <text x="0" y="2.5" textAnchor="middle" fontSize="11">🛵</text>
+                  <rect x="-28" y="-22" width="56" height="13" rx="4" fill="#0c831f" />
+                  <text x="0" y="-13" textAnchor="middle" fontSize="6.5" fill="#ffffff" fontWeight="800">
+                    ⚡ {arrivingMinutes} Mins SLA
+                  </text>
+                </g>
+              </svg>
+
+              {/* Live Route Info Strip */}
+              <div style={S.mapLiveRouteBadge}>
+                <span style={S.mapLiveGreenDot} />
+                <span><b>Live Route:</b> Tiptur Hub KA44 → <b>KFGSC, Tiptur 572201</b></span>
+              </div>
+
+              {/* Google Watermark Logo on bottom-left */}
+              <div style={S.googleWatermark}>Google</div>
+
+              {/* Re-center / Expand Button on top-right */}
+              <button
+                type="button"
+                style={S.mapRecenterBtn}
+                onClick={() => triggerToast("Map re-centered to KFGSC, Tiptur 572201")}
+                title="Re-center map"
+              >
+                <IconTarget size={16} color="#0c831f" />
+              </button>
+            </div>
+          )}
         </section>
 
         {/* ── 3. PAYMENT / COD CARD (EXACT SCREENSHOT) ── */}

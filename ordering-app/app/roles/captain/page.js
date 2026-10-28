@@ -555,8 +555,21 @@ export default function DeliveryCaptainApp() {
                 />
               </div>
 
+              {/* Delivery Route Preview */}
+              <div style={S.routePreviewCard}>
+                <div style={S.routePreviewHeader}>
+                  <span style={{ fontSize: 14 }}>📍</span>
+                  <span style={S.routePreviewTitle}>Assigned Express Route: Madihalli Hub → KFGSC Tiptur (3 min • 1.7 km)</span>
+                </div>
+                <img
+                  src="/tiptur-gps-route.jpg"
+                  alt="Delivery Route: Madihalli to KFGSC Tiptur"
+                  style={S.routePreviewImg}
+                />
+              </div>
+
               {/* Slide to confirm pickup */}
-              <div style={{ marginTop: 18 }}>
+              <div style={{ marginTop: 16 }}>
                 <SlideButton
                   text="SLIDE TO CONFIRM PICKUP & START 8-MIN DELIVERY"
                   color="#0c831f"
@@ -645,20 +658,18 @@ export default function DeliveryCaptainApp() {
                       display: "block",
                       border: "1.5px solid #1e293b",
                       boxShadow: "0 4px 20px rgba(0,0,0,0.3)",
-                      maxHeight: 380,
-                      objectFit: "cover",
-                      objectPosition: "top center",
+                      height: "auto",
                     }}
                   />
-                  <div style={S.gpsFloatBar}>
+                  <div style={{ ...S.gpsFloatBar, position: "relative", bottom: "auto", left: "auto", right: "auto", marginTop: 10 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                       <img
                         src="/sinchana-logo.png"
                         alt="Sinchana"
-                        style={{ width: 24, height: 24, borderRadius: "50%", border: "1.5px solid #ca8a04" }}
+                        style={{ width: 26, height: 26, borderRadius: "50%", border: "1.5px solid #ca8a04", flexShrink: 0 }}
                       />
                       <span style={{ fontSize: 12, fontWeight: 800, color: "#ffffff" }}>
-                        Sinchana B R • Fastest Route via APMC Road
+                        Sinchana B R • Fastest Route via APMC Road (1.7 km)
                       </span>
                     </div>
                     <button
@@ -1503,6 +1514,32 @@ const S = {
     fontSize: 14,
     cursor: "pointer",
     boxShadow: "0 4px 12px rgba(12, 131, 31, 0.25)",
+  },
+  routePreviewCard: {
+    marginTop: 14,
+    background: "#0f172a",
+    borderRadius: 12,
+    padding: 10,
+    border: "1px solid #1e293b",
+    boxShadow: "0 2px 10px rgba(0,0,0,0.15)",
+  },
+  routePreviewHeader: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 8,
+  },
+  routePreviewTitle: {
+    fontSize: 11,
+    fontWeight: 800,
+    color: "#93c5fd",
+  },
+  routePreviewImg: {
+    width: "100%",
+    borderRadius: 8,
+    display: "block",
+    height: "auto",
+    border: "1px solid #1e293b",
   },
   gpsNavCard: {
     background: "#0f172a",
