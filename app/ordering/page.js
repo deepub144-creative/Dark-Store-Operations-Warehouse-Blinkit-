@@ -775,7 +775,7 @@ export default function OrderingAppPage() {
                     <span style={S.checkoutEtaTime}>Delivery in 8 MINS</span>
                   </div>
                   <div style={S.checkoutAddressSub}>
-                    <b>Fixed Delivery Point</b> — KFGSC , Tiptur 572201
+                    KFGSC , Tiptur 572201
                   </div>
                 </div>
                 <button
@@ -1016,7 +1016,6 @@ export default function OrderingAppPage() {
             <section style={S.checkoutCard}>
               <div style={S.sectionHeaderRow}>
                 <h3 style={S.cardSectionTitle}>DELIVERY INSTRUCTIONS</h3>
-                <span style={S.instructionsSubtext}>Toggle for delivery partner</span>
               </div>
 
               <div style={S.instructionsGrid}>
