@@ -440,20 +440,27 @@ export default function TrackOrderPage() {
             {/* Partner Header Row */}
             <div style={S.partnerHeader}>
               <div style={S.partnerLeftProfile}>
-                {/* Driver Avatar with Helmet in Beige Circle */}
+                {/* Sinchana B R Official Rider Captain Logo */}
                 <div style={S.partnerAvatarBadge}>
-                  <div style={S.avatarHelmet}>
-                    <div style={S.helmetVisor} />
-                  </div>
+                  <img
+                    src="/sinchana-logo.png"
+                    alt="Sinchana B R - Rider Captain Logo"
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                      objectFit: "cover",
+                      borderRadius: "50%",
+                    }}
+                  />
                   <span style={S.avatarOnlineIndicator} />
                 </div>
 
                 <div style={S.partnerNameBlock}>
                   <div style={S.partnerNameLine}>
-                    I'm your <b>Delivery Partner</b>
+                    I'm your <b>Delivery Partner, Sinchana B R</b>
                   </div>
                   <div style={S.partnerSubLine}>
-                    KA44 Express Fleet • 4.9 <IconStar size={11} color="#F59E0B" />
+                    Rider Captain • KA44 Express Fleet • 4.9 <IconStar size={11} color="#F59E0B" />
                   </div>
                 </div>
               </div>
@@ -1040,12 +1047,13 @@ const S = {
     width: 44,
     height: 44,
     borderRadius: "50%",
-    background: "#FEF3C7",
-    border: "2px solid #FDE68A",
+    background: "#000000",
+    border: "2px solid #CA8A04",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
     flexShrink: 0,
+    boxShadow: "0 2px 8px rgba(0,0,0,0.25)",
   },
   avatarHelmet: {
     width: 24,

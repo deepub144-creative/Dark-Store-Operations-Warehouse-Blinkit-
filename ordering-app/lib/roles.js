@@ -148,6 +148,7 @@ export const STAFF = [
     roleCode: "DELIVERY",
     phone: "8088553237",
     avatar: "🛵",
+    logo: "/sinchana-logo.png",
     roles: [ROLES.DELIVERY],
     storeName: "Tiptur HUB - KA44",
     storeLocation: "Tiptur (Tumkur Dist, KA - 572201)",

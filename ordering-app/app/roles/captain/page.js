@@ -249,8 +249,19 @@ export default function DeliveryCaptainApp() {
 
               <div style={S.headerActions}>
                 {/* Captain Profile Pill */}
-                <div style={S.profileBtn} title="Order Captain Lead">
-                  <div style={S.profileAvatar}>S</div>
+                <div style={S.profileBtn} title="Order Captain Lead - Sinchana B R">
+                  <div style={S.profileAvatar}>
+                    <img
+                      src="/sinchana-logo.png"
+                      alt="Sinchana B R Logo"
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                        objectFit: "cover",
+                        borderRadius: "50%",
+                      }}
+                    />
+                  </div>
                   <span style={S.profileBtnName}>Sinchana B R</span>
                 </div>
 
@@ -442,6 +453,24 @@ export default function DeliveryCaptainApp() {
                   <div style={S.idleIcon}>
                     <IconRealisticScooter size={76} color="#0c831f" animated={true} />
                   </div>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, margin: "8px 0 14px" }}>
+                    <img
+                      src="/sinchana-logo.png"
+                      alt="Sinchana B R Logo"
+                      style={{
+                        width: 32,
+                        height: 32,
+                        borderRadius: "50%",
+                        objectFit: "cover",
+                        border: "1.5px solid #ca8a04",
+                        background: "#000000",
+                        boxShadow: "0 2px 8px rgba(0,0,0,0.25)",
+                      }}
+                    />
+                    <span style={{ fontSize: 13, fontWeight: 800, color: "#0f172a" }}>
+                      Sinchana B R • Delivery Partner Rider Captain
+                    </span>
+                  </div>
                   <h3 style={S.idleTitle}>Task Searching • Ready for Orders at Tiptur HUB Bay</h3>
                   <p style={S.idleSub}>
                     Scanning live dark store dispatch queue. When OD Picker <b>Thrupthi K S</b> completes picking and stages a bag into racks (B7, H2, D5, H4, T1, T6, B5, S4, T4), your phone will sound an alert!
@@ -545,9 +574,22 @@ export default function DeliveryCaptainApp() {
 
               {/* Sinchana Greeting Banner */}
               <div style={S.greetingBanner}>
-                <span style={{ fontSize: 24 }}>💬</span>
+                <img
+                  src="/sinchana-logo.png"
+                  alt="Sinchana B R Logo"
+                  style={{
+                    width: 44,
+                    height: 44,
+                    borderRadius: "50%",
+                    objectFit: "cover",
+                    border: "2px solid #ca8a04",
+                    background: "#000000",
+                    flexShrink: 0,
+                    boxShadow: "0 2px 8px rgba(0,0,0,0.25)",
+                  }}
+                />
                 <div>
-                  <div style={S.greetingFrom}>Customer App Notification:</div>
+                  <div style={S.greetingFrom}>Customer App Notification (Captain Sinchana B R):</div>
                   <div style={S.greetingMessage}>
                     "Hi I am Sinchana B R, your order captain on the way coming soon!"
                   </div>
@@ -741,16 +783,15 @@ const S = {
     gap: 6,
   },
   profileAvatar: {
-    width: 22,
-    height: 22,
+    width: 24,
+    height: 24,
     borderRadius: "50%",
-    background: "#0c831f",
-    color: "#ffffff",
+    background: "#000000",
+    border: "1.5px solid #ca8a04",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    fontSize: 11,
-    fontWeight: 900,
+    overflow: "hidden",
   },
   profileBtnName: {
     maxWidth: 90,
