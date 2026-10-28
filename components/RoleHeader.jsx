@@ -10,9 +10,9 @@ import AuditxLogo from "@/components/AuditxLogo";
 export const ROLE_CONFIGS = [
   { id: "sm", label: "👑 Store Manager (SM)", name: "Bhaskar N S", avatar: "👑", route: "/roles/sm", badgeBg: "#ec4899" },
   { id: "asm", label: "⚡ Assistant SM (ASM)", name: "Deepu B", avatar: "⚡", route: "/roles/asm", badgeBg: "#06b6d4" },
-  { id: "picker", label: "📦 OD Picker Terminal", name: "Thrupthi K S", avatar: "📦", route: "/picker", badgeBg: "#f59e0b" },
+  { id: "picker", label: "📦 OD Picker Terminal", name: "Thrupthi K S", avatar: "📦", logo: "/thrupthi-logo.png", route: "/picker", badgeBg: "#f59e0b" },
   { id: "rider", label: "🛵 Express Rider Fleet", name: "Tiptur Fast Rider", avatar: "🛵", route: "/rider", badgeBg: "#22c55e" },
-  { id: "captain", label: "🎯 Order Captain Hub", name: "Sinchana B R", avatar: "🎯", route: "/roles/captain", badgeBg: "#3b82f6" },
+  { id: "captain", label: "🎯 Order Captain Hub", name: "Sinchana B R", avatar: "🎯", logo: "/sinchana-logo.png", route: "/roles/captain", badgeBg: "#3b82f6" },
   { id: "md", label: "🛡️ Managing Director", name: "A B Harshitha", avatar: "🛡️", route: "/roles/md", badgeBg: "#8b5cf6" },
 ];
 
@@ -105,7 +105,22 @@ export default function RoleHeader({ activeRole = "sm", onRoleSelect, currentSto
                   else window.location.href = r.route;
                 }}
               >
-                <span>{r.avatar}</span>
+                {r.logo ? (
+                  <img
+                    src={r.logo}
+                    alt={r.name}
+                    style={{
+                      width: 20,
+                      height: 20,
+                      borderRadius: "50%",
+                      objectFit: "cover",
+                      border: "1.5px solid rgba(255,255,255,0.4)",
+                      verticalAlign: "middle",
+                    }}
+                  />
+                ) : (
+                  <span>{r.avatar}</span>
+                )}
                 <span><b>{r.name}</b> • {r.label}</span>
               </button>
             );

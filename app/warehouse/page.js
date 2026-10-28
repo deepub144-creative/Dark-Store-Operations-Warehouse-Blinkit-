@@ -723,7 +723,22 @@ export default function DedicatedWarehouseRoute() {
                 </div>
               </div>
               <h4 style={styles.androidCardTitle}>OD Picker Handheld Terminal</h4>
-              <div style={styles.androidAssignee}>Assigned: <b>Thrupthi K S</b></div>
+              <div style={styles.androidAssignee}>
+                <img
+                  src="/thrupthi-logo.png"
+                  alt="Thrupthi K S"
+                  style={{
+                    width: 22,
+                    height: 22,
+                    borderRadius: "50%",
+                    objectFit: "cover",
+                    border: "1.5px solid #f59e0b",
+                    verticalAlign: "middle",
+                    marginRight: 6,
+                  }}
+                />
+                Assigned: <b>Thrupthi K S</b> (OD Picker Lead)
+              </div>
               <p style={styles.androidCardDesc}>
                 Handheld Zebra scanner terminal. Scan item barcodes, pick items under 2-minute SLA, and stage to physical racks (T1, T4, T6, B5, B7, S4, D5, H2).
               </p>
@@ -753,8 +768,23 @@ export default function DedicatedWarehouseRoute() {
                   <span style={styles.notDashboardPill}>Not Dashboard Mode • Mobile App</span>
                 </div>
               </div>
-              <h4 style={styles.androidCardTitle}>Express Rider & Captain Terminal</h4>
-              <div style={styles.androidAssignee}>Assigned: <b>Sinchana B R</b> & <b>Fast Rider</b></div>
+              <h4 style={styles.androidCardTitle}>Express Rider &amp; Captain Terminal</h4>
+              <div style={styles.androidAssignee}>
+                <img
+                  src="/sinchana-logo.png"
+                  alt="Sinchana B R"
+                  style={{
+                    width: 22,
+                    height: 22,
+                    borderRadius: "50%",
+                    objectFit: "cover",
+                    border: "1.5px solid #22c55e",
+                    verticalAlign: "middle",
+                    marginRight: 6,
+                  }}
+                />
+                Assigned: <b>Sinchana B R</b> &amp; <b>Fast Rider</b>
+              </div>
               <p style={styles.androidCardDesc}>
                 Android smartphone delivery terminal. Collect staged orders from racks, view live route to KFGSC Tiptur hub, and verify OTP on delivery.
               </p>

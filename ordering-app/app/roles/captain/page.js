@@ -340,6 +340,19 @@ export default function DeliveryCaptainApp() {
                               📦 Warehouse Picking in Progress:
                             </div>
                             <div style={S.pickingNoticeSub}>
+                              <img
+                                src="/thrupthi-logo.png"
+                                alt="Thrupthi K S"
+                                style={{
+                                  width: 18,
+                                  height: 18,
+                                  borderRadius: "50%",
+                                  objectFit: "cover",
+                                  border: "1px solid #f59e0b",
+                                  verticalAlign: "middle",
+                                  marginRight: 6,
+                                }}
+                              />
                               OD Picker <b>Thrupthi K S</b> is picking {(ord.items || []).length} SKUs under 2:00 SLA. Order will be placed into <b>Rack {rackId}</b> for your pickup.
                             </div>
                           </div>
@@ -473,6 +486,19 @@ export default function DeliveryCaptainApp() {
                   </div>
                   <h3 style={S.idleTitle}>Task Searching • Ready for Orders at Tiptur HUB Bay</h3>
                   <p style={S.idleSub}>
+                    <img
+                      src="/thrupthi-logo.png"
+                      alt="Thrupthi K S"
+                      style={{
+                        width: 18,
+                        height: 18,
+                        borderRadius: "50%",
+                        objectFit: "cover",
+                        border: "1px solid #f59e0b",
+                        verticalAlign: "middle",
+                        marginRight: 6,
+                      }}
+                    />
                     Scanning live dark store dispatch queue. When OD Picker <b>Thrupthi K S</b> completes picking and stages a bag into racks (B7, H2, D5, H4, T1, T6, B5, S4, T4), your phone will sound an alert!
                   </p>
                   <div style={S.hubInfoPill}>
@@ -592,6 +618,64 @@ export default function DeliveryCaptainApp() {
                   <div style={S.greetingFrom}>Customer App Notification (Captain Sinchana B R):</div>
                   <div style={S.greetingMessage}>
                     "Hi I am Sinchana B R, your order captain on the way coming soon!"
+                  </div>
+                </div>
+              </div>
+
+              {/* REAL GOOGLE MAPS NAVIGATION (MADIHALLI -> KFGSC TIPTUR) */}
+              <div style={S.gpsNavCard}>
+                <div style={S.gpsNavHeader}>
+                  <div style={S.gpsNavLeft}>
+                    <span style={S.gpsLiveDot} />
+                    <div>
+                      <div style={S.gpsNavTitle}>📍 LIVE GOOGLE MAPS TWO-WHEELER ROUTE</div>
+                      <div style={S.gpsNavSub}>Madihalli Hub → Kalpataru First Grade Science (KFGSC)</div>
+                    </div>
+                  </div>
+                  <div style={S.gpsBadge}>3 min (1.7 km)</div>
+                </div>
+
+                <div style={S.gpsMapImgWrap}>
+                  <img
+                    src="/tiptur-gps-route.jpg"
+                    alt="Two-wheeler 3 min 1.7 km route from Madihalli to KFGSC Tiptur"
+                    style={{
+                      width: "100%",
+                      borderRadius: 12,
+                      display: "block",
+                      border: "1.5px solid #1e293b",
+                      boxShadow: "0 4px 20px rgba(0,0,0,0.3)",
+                      maxHeight: 380,
+                      objectFit: "cover",
+                      objectPosition: "top center",
+                    }}
+                  />
+                  <div style={S.gpsFloatBar}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <img
+                        src="/sinchana-logo.png"
+                        alt="Sinchana"
+                        style={{ width: 24, height: 24, borderRadius: "50%", border: "1.5px solid #ca8a04" }}
+                      />
+                      <span style={{ fontSize: 12, fontWeight: 800, color: "#ffffff" }}>
+                        Sinchana B R • Fastest Route via APMC Road
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      style={S.fastTransitBtn}
+                      onClick={() => {
+                        setRemainingSec(180);
+                        setElapsedSec(180);
+                        setTransitProgress(100);
+                        setCurrentWaypointIdx(TIPTUR_WAYPOINTS.length - 1);
+                        playSuccessChime();
+                        setActionSuccess("⚡ Fast 3-min transit speed recorded! Arrived at KFGSC doorstep.");
+                      }}
+                      title="Simulate superfast 3-minute delivery"
+                    >
+                      ⚡ Fast 3-Min Arrival
+                    </button>
                   </div>
                 </div>
               </div>
@@ -1419,5 +1503,80 @@ const S = {
     fontSize: 14,
     cursor: "pointer",
     boxShadow: "0 4px 12px rgba(12, 131, 31, 0.25)",
+  },
+  gpsNavCard: {
+    background: "#0f172a",
+    border: "1px solid #1e293b",
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 16,
+    boxShadow: "0 4px 20px rgba(0,0,0,0.25)",
+  },
+  gpsNavHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  gpsNavLeft: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+  },
+  gpsLiveDot: {
+    width: 10,
+    height: 10,
+    borderRadius: "50%",
+    background: "#22c55e",
+    boxShadow: "0 0 10px #22c55e",
+    flexShrink: 0,
+  },
+  gpsNavTitle: {
+    fontSize: 13,
+    fontWeight: 900,
+    color: "#f8fafc",
+    letterSpacing: "0.5px",
+  },
+  gpsNavSub: {
+    fontSize: 11,
+    color: "#94a3b8",
+    marginTop: 2,
+  },
+  gpsBadge: {
+    background: "#1e3a8a",
+    color: "#93c5fd",
+    border: "1px solid #3b82f6",
+    padding: "4px 8px",
+    borderRadius: 6,
+    fontSize: 11,
+    fontWeight: 900,
+    whiteSpace: "nowrap",
+  },
+  gpsMapImgWrap: {
+    position: "relative",
+  },
+  gpsFloatBar: {
+    position: "absolute",
+    bottom: 12,
+    left: 12,
+    right: 12,
+    background: "rgba(15, 23, 42, 0.92)",
+    backdropFilter: "blur(8px)",
+    borderRadius: 10,
+    padding: "8px 12px",
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    border: "1px solid rgba(255,255,255,0.15)",
+  },
+  fastTransitBtn: {
+    background: "#0c831f",
+    color: "#ffffff",
+    border: "none",
+    borderRadius: 6,
+    padding: "5px 10px",
+    fontSize: 11,
+    fontWeight: 900,
+    cursor: "pointer",
   },
 };

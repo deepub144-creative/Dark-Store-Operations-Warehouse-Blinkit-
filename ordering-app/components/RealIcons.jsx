@@ -993,7 +993,7 @@ export function IconRealisticScooter({
         {animated && (
           <path
             d="M41 10.5L51 7v7l-10-3.5z"
-            fill="url(#scooterBeamApp)"
+            fill="url(#scooterBeam)"
             opacity="0.6"
           />
         )}
@@ -1080,7 +1080,7 @@ export function IconRealisticScooter({
         )}
 
         <defs>
-          <linearGradient id="scooterBeamApp" x1="41" y1="10.5" x2="51" y2="10.5" gradientUnits="userSpaceOnUse">
+          <linearGradient id="scooterBeam" x1="41" y1="10.5" x2="51" y2="10.5" gradientUnits="userSpaceOnUse">
             <stop stopColor="#fef08a" stopOpacity="0.85" />
             <stop offset="1" stopColor="#fef08a" stopOpacity="0" />
           </linearGradient>
@@ -1307,6 +1307,225 @@ export function IconRealisticBell({ size = 20, color = "#f59e0b", className = ""
       />
       <path d="M13.73 21a2 2 0 0 1-3.46 0" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
       <circle cx="18" cy="4" r="2.5" fill="#ef4444" />
+    </svg>
+  );
+}
+
+// Real Authentic UPI (NPCI) Logo
+export function IconRealLogoUPI({ width = 48, height = 24, className = "" }) {
+  return (
+    <svg
+      width={width}
+      height={height}
+      viewBox="0 0 100 36"
+      fill="none"
+      className={className}
+      style={{ display: "inline-block", verticalAlign: "middle", flexShrink: 0 }}
+    >
+      <rect width="100" height="36" rx="6" fill="#FFFFFF" stroke="#E2E8F0" strokeWidth="1" />
+      {/* NPCI Dual Chevron Triangles */}
+      <polygon points="12,7 28,18 20,18 4,7" fill="#F47920" />
+      <polygon points="20,18 28,18 12,29 4,29" fill="#0F823D" />
+      <polygon points="24,7 40,18 32,18 16,7" fill="#F47920" />
+      <polygon points="32,18 40,18 24,29 16,29" fill="#0F823D" />
+      {/* UPI Official Bold Text */}
+      <text
+        x="47"
+        y="25"
+        fontFamily="system-ui, -apple-system, 'Inter', sans-serif"
+        fontWeight="900"
+        fontSize="20"
+        fill="#0F172A"
+        letterSpacing="0.8"
+      >
+        UPI
+      </text>
+    </svg>
+  );
+}
+
+// Real Authentic PhonePe Logo
+export function IconRealLogoPhonePe({ size = 32, className = "" }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 40 40"
+      fill="none"
+      className={className}
+      style={{ display: "inline-block", verticalAlign: "middle", flexShrink: 0 }}
+    >
+      <rect width="40" height="40" rx="10" fill="#5F259F" />
+      {/* PhonePe white circular ring accent */}
+      <circle cx="20" cy="20" r="16.5" stroke="rgba(255,255,255,0.15)" strokeWidth="1.5" />
+      {/* Devanagari Pe 'पे' authentic vector */}
+      <path
+        d="M13 13.5h14"
+        stroke="#FFFFFF"
+        strokeWidth="2.8"
+        strokeLinecap="round"
+      />
+      <path
+        d="M17.5 13.5v9.2a3.8 3.8 0 0 1-3.8-3.8"
+        stroke="#FFFFFF"
+        strokeWidth="2.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        fill="none"
+      />
+      <path
+        d="M21.5 13.5v13.5"
+        stroke="#FFFFFF"
+        strokeWidth="2.8"
+        strokeLinecap="round"
+      />
+      {/* Diagonal Matra accent */}
+      <path
+        d="M16 13.5l4-5"
+        stroke="#FFFFFF"
+        strokeWidth="2.6"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+// Real Authentic Google Pay (GPay) Logo
+export function IconRealLogoGooglePay({ width = 52, height = 28, className = "" }) {
+  return (
+    <svg
+      width={width}
+      height={height}
+      viewBox="0 0 84 34"
+      fill="none"
+      className={className}
+      style={{ display: "inline-block", verticalAlign: "middle", flexShrink: 0 }}
+    >
+      <rect width="84" height="34" rx="7" fill="#FFFFFF" stroke="#E2E8F0" strokeWidth="1" />
+      {/* Google G Official 4-Color Path */}
+      <g transform="translate(10, 8)">
+        <path
+          d="M17 9.2c0-.6-.05-1.2-.15-1.7H9v3.4h4.6c-.2 1.2-.9 2.2-1.9 2.9v2.4h3c1.8-1.6 2.8-4.1 2.8-7z"
+          fill="#4285F4"
+        />
+        <path
+          d="M9 17.5c2.6 0 4.8-.8 6.4-2.3l-3-2.4c-.9.6-2 1-3.4 1-2.5 0-4.6-1.7-5.4-4H.5v2.5c1.6 3.1 4.9 5.2 8.5 5.2z"
+          fill="#34A853"
+        />
+        <path
+          d="M3.6 9.8c-.2-.6-.3-1.3-.3-2s.1-1.4.3-2V3.3H.5C-.2 4.7-.6 6.2-.6 7.8s.4 3.1 1.1 4.5l3.1-2.5z"
+          fill="#FBBC04"
+        />
+        <path
+          d="M9 3.2c1.4 0 2.7.5 3.7 1.4l2.8-2.8C13.8.6 11.6 0 9 0 5.4 0 2.1 2.1.5 5.2l3.1 2.5c.8-2.3 2.9-4.5 5.4-4.5z"
+          fill="#EA4335"
+        />
+      </g>
+      {/* "Pay" wordmark */}
+      <text
+        x="33"
+        y="23"
+        fontFamily="system-ui, -apple-system, 'Google Sans', Roboto, sans-serif"
+        fontWeight="600"
+        fontSize="17"
+        fill="#5F6368"
+        letterSpacing="-0.3"
+      >
+        Pay
+      </text>
+    </svg>
+  );
+}
+
+// Real Authentic Paytm Logo
+export function IconRealLogoPaytm({ width = 52, height = 28, className = "" }) {
+  return (
+    <svg
+      width={width}
+      height={height}
+      viewBox="0 0 84 34"
+      fill="none"
+      className={className}
+      style={{ display: "inline-block", verticalAlign: "middle", flexShrink: 0 }}
+    >
+      <rect width="84" height="34" rx="7" fill="#FFFFFF" stroke="#E2E8F0" strokeWidth="1" />
+      <g transform="translate(10, 8)">
+        {/* "Pay" in Paytm Deep Navy */}
+        <text
+          x="0"
+          y="15"
+          fontFamily="system-ui, -apple-system, 'Inter', Arial, sans-serif"
+          fontWeight="900"
+          fontSize="17"
+          fill="#002970"
+          letterSpacing="-0.2"
+        >
+          Pay
+        </text>
+        {/* "tm" in Paytm Vibrant Cyan */}
+        <text
+          x="34"
+          y="15"
+          fontFamily="system-ui, -apple-system, 'Inter', Arial, sans-serif"
+          fontWeight="900"
+          fontSize="17"
+          fill="#00BAF2"
+          letterSpacing="-0.2"
+        >
+          tm
+        </text>
+      </g>
+    </svg>
+  );
+}
+
+// Real Audit'X Demo Wallet Logo
+export function IconRealLogoAuditxWallet({ size = 36, className = "" }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 40 40"
+      fill="none"
+      className={className}
+      style={{ display: "inline-block", verticalAlign: "middle", flexShrink: 0 }}
+    >
+      <defs>
+        <linearGradient id="axWalletGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#0c831f" />
+          <stop offset="100%" stopColor="#059669" />
+        </linearGradient>
+      </defs>
+      <rect width="40" height="40" rx="10" fill="url(#axWalletGrad)" />
+      {/* Wallet Body */}
+      <rect x="7" y="11" width="26" height="18" rx="4" fill="#064e3b" stroke="#34d399" strokeWidth="1.2" />
+      {/* Flap */}
+      <path d="M7 15h26v2H7z" fill="#047857" />
+      {/* Golden Clasp with Rupee Symbol */}
+      <circle cx="27" cy="20" r="4" fill="#fbbf24" stroke="#d97706" strokeWidth="1" />
+      <text
+        x="27"
+        y="22.5"
+        fontFamily="system-ui, sans-serif"
+        fontWeight="900"
+        fontSize="6"
+        fill="#78350f"
+        textAnchor="middle"
+      >
+        ₹
+      </text>
+      {/* Small AX brand pill in bottom left */}
+      <text
+        x="11"
+        y="24"
+        fontFamily="system-ui, sans-serif"
+        fontWeight="800"
+        fontSize="7"
+        fill="#a7f3d0"
+        letterSpacing="0.5"
+      >
+        A'X
+      </text>
     </svg>
   );
 }

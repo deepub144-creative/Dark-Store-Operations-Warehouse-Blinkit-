@@ -33,6 +33,11 @@ import {
   IconClock,
   IconTag,
   IconAlertTriangle,
+  IconRealLogoUPI,
+  IconRealLogoPhonePe,
+  IconRealLogoGooglePay,
+  IconRealLogoPaytm,
+  IconRealLogoAuditxWallet,
 } from "@/components/RealIcons";
 
 const WALLET_LIMIT = 1000000;
@@ -299,7 +304,7 @@ export default function OrderingAppPage() {
   const [appliedCoupon, setAppliedCoupon] = useState(AVAILABLE_COUPONS[0]);
   const [showCouponModal, setShowCouponModal] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState("upi"); // 'upi' | 'wallet' | 'card' | 'cod'
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState("wallet"); // 'wallet' (Audit'X Demo Wallet) | 'upi' | 'card' | 'cod'
   const [selectedUpiApp, setSelectedUpiApp] = useState("gpay"); // 'gpay' | 'phonepe' | 'paytm' | 'cred'
   const [ganeshaLang, setGaneshaLang] = useState("english"); // 'english' | 'kannada' | 'hindi'
   const [bgVideoIdx, setBgVideoIdx] = useState(0);
@@ -575,7 +580,7 @@ export default function OrderingAppPage() {
       captainPhone: "8088553237",
       paymentMethod:
         selectedPaymentMethod === "wallet"
-          ? "AUDIT'X Express Wallet"
+          ? "Audit'X Demo Wallet"
           : selectedPaymentMethod === "upi"
           ? `UPI Direct (${selectedUpiApp.toUpperCase()})`
           : selectedPaymentMethod === "card"
@@ -1048,6 +1053,41 @@ export default function OrderingAppPage() {
               {/* 10-Minute SLA Operations Guarantee */}
             </section>
 
+            {/* 5B. PAYMENT METHOD SUMMARY STRIP */}
+            <section style={S.checkoutCard}>
+              <div style={S.sectionHeaderRow}>
+                <h3 style={S.cardSectionTitle}>PAYMENT METHOD</h3>
+                <button
+                  type="button"
+                  style={S.changeLinkBtn}
+                  onClick={() => setShowPaymentModal(true)}
+                >
+                  Change
+                </button>
+              </div>
+
+              <div
+                style={S.selectedPaymentMethodRow}
+                onClick={() => setShowPaymentModal(true)}
+              >
+                <div style={S.paymentMethodLeftPreview}>
+                  <IconRealLogoAuditxWallet size={36} />
+                  <div>
+                    <div style={S.paymentMethodSelectedTitle}>
+                      Audit'X Demo Wallet
+                      <span style={S.oneClickPill}>1-CLICK INSTANT</span>
+                    </div>
+                    <div style={S.paymentMethodSelectedSub}>
+                      Paid through demo wallet • Balance: ₹{(customer?.walletBalance || WALLET_LIMIT).toLocaleString("en-IN")}
+                    </div>
+                  </div>
+                </div>
+                <div style={S.paymentMethodCheckActive}>
+                  <IconCheck size={14} color="#0c831f" />
+                </div>
+              </div>
+            </section>
+
             {/* Spacer for sticky bar */}
             <div style={{ height: 110 }} />
           </div>
@@ -1061,7 +1101,7 @@ export default function OrderingAppPage() {
                   <span style={S.stickyTotalWord}>Total</span>
                 </div>
                 <div style={S.stickySavingsNote}>
-                  {totalSavings > 0 ? `Saved ₹${totalSavings}` : "Safe & Contactless"}
+                  Paid through <b>Audit'X Demo Wallet</b>
                 </div>
               </div>
 
@@ -1071,7 +1111,7 @@ export default function OrderingAppPage() {
                 onClick={() => setShowPaymentModal(true)}
                 disabled={placingOrder || cartItemsList.length === 0}
               >
-                <span>{placingOrder ? "DISPATCHING..." : "PROCEED TO PAY"}</span>
+                <span>{placingOrder ? "DISPATCHING..." : "PAY VIA AUDIT'X WALLET"}</span>
                 <IconArrowRight size={18} color="#ffffff" />
               </button>
             </div>
@@ -2217,84 +2257,32 @@ export default function OrderingAppPage() {
             </div>
 
             <div style={S.paymentOptionsList}>
-              {/* Option 1: UPI Direct */}
+              {/* Option 1: Audit'X Demo Wallet (ACTIVE & DEFAULT) */}
               <div
                 style={{
                   ...S.paymentCardOption,
-                  ...(selectedPaymentMethod === "upi"
-                    ? S.paymentCardOptionActive
-                    : {}),
-                }}
-                onClick={() => setSelectedPaymentMethod("upi")}
-              >
-                <div style={S.paymentOptionLeft}>
-                  <div style={S.paymentIconBadge}>
-                    <IconUpi size={20} color="#0c831f" />
-                  </div>
-                  <div>
-                    <div style={S.paymentMethodTitle}>UPI Direct (1-Tap Fast Checkout)</div>
-                    <div style={S.paymentMethodSub}>
-                      Google Pay, PhonePe, Paytm, CRED UPI
-                    </div>
-                  </div>
-                </div>
-                <input
-                  type="radio"
-                  name="payment"
-                  checked={selectedPaymentMethod === "upi"}
-                  onChange={() => setSelectedPaymentMethod("upi")}
-                  style={S.radioBtn}
-                />
-              </div>
-
-              {selectedPaymentMethod === "upi" && (
-                <div style={S.upiAppsGrid}>
-                  {[
-                    { id: "gpay", label: "Google Pay" },
-                    { id: "phonepe", label: "PhonePe" },
-                    { id: "paytm", label: "Paytm UPI" },
-                    { id: "cred", label: "CRED UPI" },
-                  ].map((app) => (
-                    <button
-                      key={app.id}
-                      type="button"
-                      style={{
-                        ...S.upiAppBtn,
-                        ...(selectedUpiApp === app.id ? S.upiAppBtnActive : {}),
-                      }}
-                      onClick={() => setSelectedUpiApp(app.id)}
-                    >
-                      <IconCheck
-                        size={14}
-                        color={selectedUpiApp === app.id ? "#0c831f" : "#cbd5e1"}
-                      />
-                      <span>{app.label}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              {/* Option 2: Express Ops Wallet */}
-              <div
-                style={{
-                  ...S.paymentCardOption,
-                  ...(selectedPaymentMethod === "wallet"
-                    ? S.paymentCardOptionActive
-                    : {}),
+                  ...(selectedPaymentMethod === "wallet" ? S.paymentCardOptionActive : {}),
+                  border: selectedPaymentMethod === "wallet" ? "2px solid #0c831f" : "1px solid #E2E8F0",
+                  background: selectedPaymentMethod === "wallet" ? "#f0fdf4" : "#ffffff",
                 }}
                 onClick={() => setSelectedPaymentMethod("wallet")}
               >
                 <div style={S.paymentOptionLeft}>
-                  <div style={S.paymentIconBadge}>
-                    <IconWallet size={20} color="#0c831f" />
+                  <div style={{ flexShrink: 0 }}>
+                    <IconRealLogoAuditxWallet size={40} />
                   </div>
                   <div>
-                    <div style={S.paymentMethodTitle}>AUDIT'X Express Wallet</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <span style={{ ...S.paymentMethodTitle, color: "#0c831f", fontSize: 14 }}>
+                        Audit'X Demo Wallet
+                      </span>
+                      <span style={S.activeMethodPill}>ACTIVE • DEFAULT</span>
+                    </div>
                     <div style={S.paymentMethodSub}>
-                      Available Balance: ₹
-                      {(customer?.walletBalance || WALLET_LIMIT).toLocaleString(
-                        "en-IN"
-                      )}
+                      Paid through demo wallet • Balance: ₹{(customer?.walletBalance || WALLET_LIMIT).toLocaleString("en-IN")}
+                    </div>
+                    <div style={{ fontSize: 10, color: "#15803d", fontWeight: 700, marginTop: 2 }}>
+                      ⚡ Instant 1-Click Zero Friction Checkout
                     </div>
                   </div>
                 </div>
@@ -2303,68 +2291,128 @@ export default function OrderingAppPage() {
                   name="payment"
                   checked={selectedPaymentMethod === "wallet"}
                   onChange={() => setSelectedPaymentMethod("wallet")}
-                  style={S.radioBtn}
+                  style={{ ...S.radioBtn, accentColor: "#0c831f" }}
                 />
               </div>
 
-              {/* Option 3: Credit / Debit Card & Net Banking */}
-              <div
-                style={{
-                  ...S.paymentCardOption,
-                  ...(selectedPaymentMethod === "card"
-                    ? S.paymentCardOptionActive
-                    : {}),
-                }}
-                onClick={() => setSelectedPaymentMethod("card")}
-              >
-                <div style={S.paymentOptionLeft}>
-                  <div style={S.paymentIconBadge}>
-                    <IconCreditCard size={20} color="#0c831f" />
+              {/* SECTION: UPI & DIGITAL APPS - COMING SOON WITH REAL LOGOS */}
+              <div style={{ marginTop: 14, marginBottom: 4 }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8, padding: "0 2px" }}>
+                  <span style={{ fontSize: 11, fontWeight: 900, color: "#475569", letterSpacing: "0.5px", textTransform: "uppercase" }}>
+                    Select Payment Method (UPI &amp; Wallets)
+                  </span>
+                  <span style={S.comingSoonHeaderBadge}>COMING SOON</span>
+                </div>
+
+                <div style={S.comingSoonMethodsGrid}>
+                  {/* Real Logo: Google Pay */}
+                  <div
+                    style={S.comingSoonMethodCard}
+                    onClick={() => triggerToast("⚡ Google Pay integration coming soon! Paid through Audit'X Demo Wallet for now.")}
+                  >
+                    <div style={S.comingSoonLogoWrap}>
+                      <IconRealLogoGooglePay width={58} height={28} />
+                    </div>
+                    <div style={S.comingSoonMethodInfo}>
+                      <div style={S.comingSoonMethodName}>Google Pay</div>
+                      <span style={S.comingSoonSmallPill}>Coming Soon</span>
+                    </div>
                   </div>
-                  <div>
-                    <div style={S.paymentMethodTitle}>Saved Credit / Debit Cards</div>
-                    <div style={S.paymentMethodSub}>
-                      Visa, MasterCard, RuPay (CVV 843)
+
+                  {/* Real Logo: PhonePe */}
+                  <div
+                    style={S.comingSoonMethodCard}
+                    onClick={() => triggerToast("⚡ PhonePe integration coming soon! Paid through Audit'X Demo Wallet for now.")}
+                  >
+                    <div style={S.comingSoonLogoWrap}>
+                      <IconRealLogoPhonePe size={30} />
+                    </div>
+                    <div style={S.comingSoonMethodInfo}>
+                      <div style={S.comingSoonMethodName}>PhonePe UPI</div>
+                      <span style={S.comingSoonSmallPill}>Coming Soon</span>
+                    </div>
+                  </div>
+
+                  {/* Real Logo: Paytm */}
+                  <div
+                    style={S.comingSoonMethodCard}
+                    onClick={() => triggerToast("⚡ Paytm integration coming soon! Paid through Audit'X Demo Wallet for now.")}
+                  >
+                    <div style={S.comingSoonLogoWrap}>
+                      <IconRealLogoPaytm width={58} height={28} />
+                    </div>
+                    <div style={S.comingSoonMethodInfo}>
+                      <div style={S.comingSoonMethodName}>Paytm UPI</div>
+                      <span style={S.comingSoonSmallPill}>Coming Soon</span>
+                    </div>
+                  </div>
+
+                  {/* Real Logo: UPI Direct */}
+                  <div
+                    style={S.comingSoonMethodCard}
+                    onClick={() => triggerToast("⚡ NPCI UPI integration coming soon! Paid through Audit'X Demo Wallet for now.")}
+                  >
+                    <div style={S.comingSoonLogoWrap}>
+                      <IconRealLogoUPI width={58} height={26} />
+                    </div>
+                    <div style={S.comingSoonMethodInfo}>
+                      <div style={S.comingSoonMethodName}>UPI Direct</div>
+                      <span style={S.comingSoonSmallPill}>Coming Soon</span>
                     </div>
                   </div>
                 </div>
-                <input
-                  type="radio"
-                  name="payment"
-                  checked={selectedPaymentMethod === "card"}
-                  onChange={() => setSelectedPaymentMethod("card")}
-                  style={S.radioBtn}
-                />
               </div>
 
-              {/* Option 4: Cash on Delivery (COD) */}
-              <div
-                style={{
-                  ...S.paymentCardOption,
-                  ...(selectedPaymentMethod === "cod"
-                    ? S.paymentCardOptionActive
-                    : {}),
-                }}
-                onClick={() => setSelectedPaymentMethod("cod")}
-              >
-                <div style={S.paymentOptionLeft}>
-                  <div style={S.paymentIconBadge}>
-                    <IconCash size={20} color="#0c831f" />
-                  </div>
-                  <div>
-                    <div style={S.paymentMethodTitle}>Cash on Delivery (COD)</div>
-                    <div style={S.paymentMethodSub}>
-                      Pay cash or scan QR upon arrival in Tiptur Hub KA - 44
+              {/* SECTION: CARDS & COD */}
+              <div style={{ marginTop: 10 }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8, padding: "0 2px" }}>
+                  <span style={{ fontSize: 11, fontWeight: 900, color: "#475569", letterSpacing: "0.5px", textTransform: "uppercase" }}>
+                    Other Payment Methods
+                  </span>
+                </div>
+
+                {/* Cards (Coming Soon) */}
+                <div
+                  style={{ ...S.paymentCardOption, opacity: 0.75, cursor: "not-allowed", marginBottom: 8 }}
+                  onClick={() => triggerToast("⚡ Card payments coming soon! Paid through Audit'X Demo Wallet for now.")}
+                >
+                  <div style={S.paymentOptionLeft}>
+                    <div style={S.paymentIconBadge}>
+                      <IconCreditCard size={20} color="#64748b" />
+                    </div>
+                    <div>
+                      <div style={S.paymentMethodTitle}>Saved Credit / Debit Cards</div>
+                      <div style={S.paymentMethodSub}>Visa, MasterCard, RuPay</div>
                     </div>
                   </div>
+                  <span style={S.comingSoonSmallPill}>Coming Soon</span>
                 </div>
-                <input
-                  type="radio"
-                  name="payment"
-                  checked={selectedPaymentMethod === "cod"}
-                  onChange={() => setSelectedPaymentMethod("cod")}
-                  style={S.radioBtn}
-                />
+
+                {/* Cash on Delivery */}
+                <div
+                  style={{
+                    ...S.paymentCardOption,
+                    ...(selectedPaymentMethod === "cod" ? S.paymentCardOptionActive : {}),
+                  }}
+                  onClick={() => setSelectedPaymentMethod("cod")}
+                >
+                  <div style={S.paymentOptionLeft}>
+                    <div style={S.paymentIconBadge}>
+                      <IconCash size={20} color="#0c831f" />
+                    </div>
+                    <div>
+                      <div style={S.paymentMethodTitle}>Cash on Delivery (COD)</div>
+                      <div style={S.paymentMethodSub}>Pay cash at your doorstep in Tiptur</div>
+                    </div>
+                  </div>
+                  <input
+                    type="radio"
+                    name="payment"
+                    checked={selectedPaymentMethod === "cod"}
+                    onChange={() => setSelectedPaymentMethod("cod")}
+                    style={S.radioBtn}
+                  />
+                </div>
               </div>
             </div>
 
@@ -2378,7 +2426,7 @@ export default function OrderingAppPage() {
                 <span>
                   {placingOrder
                     ? "Dispatching to OD Picker..."
-                    : `Pay ₹${grandTotal} & Place Order`}
+                    : `Pay ₹${grandTotal} via ${selectedPaymentMethod === "wallet" ? "Audit'X Demo Wallet" : "Cash on Delivery"}`}
                 </span>
                 <IconArrowRight size={18} color="#ffffff" />
               </button>
@@ -4453,6 +4501,127 @@ const S = {
     borderColor: "#0C831F",
     color: "#0C831F",
     background: "#F0FDF4",
+  },
+  activeMethodPill: {
+    fontSize: 9,
+    fontWeight: 900,
+    background: "#dcfce7",
+    color: "#166534",
+    padding: "2px 6px",
+    borderRadius: 4,
+    letterSpacing: "0.5px",
+  },
+  comingSoonHeaderBadge: {
+    fontSize: 10,
+    fontWeight: 800,
+    background: "#fef3c7",
+    color: "#b45309",
+    padding: "2px 8px",
+    borderRadius: 10,
+    letterSpacing: "0.4px",
+  },
+  comingSoonMethodsGrid: {
+    display: "grid",
+    gridTemplateColumns: "1fr 1fr",
+    gap: 8,
+  },
+  comingSoonMethodCard: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    padding: "10px 12px",
+    background: "#f8fafc",
+    border: "1px dashed #cbd5e1",
+    borderRadius: 8,
+    cursor: "pointer",
+    transition: "all 0.15s ease",
+  },
+  comingSoonLogoWrap: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  comingSoonMethodInfo: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 2,
+    minWidth: 0,
+  },
+  comingSoonMethodName: {
+    fontSize: 12,
+    fontWeight: 700,
+    color: "#334155",
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+  },
+  comingSoonSmallPill: {
+    fontSize: 9,
+    fontWeight: 800,
+    background: "#f1f5f9",
+    color: "#64748b",
+    padding: "1px 5px",
+    borderRadius: 4,
+    alignSelf: "flex-start",
+    letterSpacing: "0.3px",
+    textTransform: "uppercase",
+  },
+  changeLinkBtn: {
+    background: "none",
+    border: "none",
+    color: "#0c831f",
+    fontWeight: 800,
+    fontSize: 12,
+    cursor: "pointer",
+    padding: 0,
+  },
+  selectedPaymentMethodRow: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: "12px 14px",
+    background: "#f0fdf4",
+    border: "1.5px solid #bbf7d0",
+    borderRadius: 10,
+    cursor: "pointer",
+  },
+  paymentMethodLeftPreview: {
+    display: "flex",
+    alignItems: "center",
+    gap: 12,
+  },
+  paymentMethodSelectedTitle: {
+    fontSize: 13,
+    fontWeight: 800,
+    color: "#0c831f",
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+  },
+  paymentMethodSelectedSub: {
+    fontSize: 11,
+    color: "#166534",
+    marginTop: 2,
+  },
+  oneClickPill: {
+    fontSize: 9,
+    fontWeight: 900,
+    background: "#0c831f",
+    color: "#ffffff",
+    padding: "2px 6px",
+    borderRadius: 4,
+    letterSpacing: "0.4px",
+  },
+  paymentMethodCheckActive: {
+    width: 22,
+    height: 22,
+    borderRadius: "50%",
+    background: "#dcfce7",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
   },
   modalFooterCTA: {
     paddingTop: 8,

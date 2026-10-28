@@ -611,8 +611,18 @@ export default function OdPickerApp() {
 
               <div style={S.headerActions}>
                 {/* Profile Pill */}
-                <div style={S.profileBtn} title="OD Picker Lead">
-                  <div style={S.profileAvatar}>T</div>
+                <div style={S.profileBtn} title="OD Picker Lead - Thrupthi K S">
+                  <img
+                    src="/thrupthi-logo.png"
+                    alt="Thrupthi K S - OD Picker Lead Logo"
+                    style={{
+                      width: 24,
+                      height: 24,
+                      borderRadius: "50%",
+                      objectFit: "cover",
+                      border: "1.5px solid #0c831f",
+                    }}
+                  />
                   <span style={S.profileBtnName}>Thrupthi K S</span>
                 </div>
 
@@ -656,6 +666,18 @@ export default function OdPickerApp() {
                 <div style={S.orderAlertCard}>
                   <div style={S.alertHeader}>
                     <div style={S.pulseRow}>
+                      <img
+                        src="/thrupthi-logo.png"
+                        alt="Thrupthi K S"
+                        style={{
+                          width: 24,
+                          height: 24,
+                          borderRadius: "50%",
+                          objectFit: "cover",
+                          border: "1.5px solid #0c831f",
+                          marginRight: 4,
+                        }}
+                      />
                       <span style={S.pulseDot} />
                       <span style={S.alertTitle}>⚡ LIVE TASK FOR THRUPTHI K S (OD PICKER LEAD)</span>
                     </div>
@@ -729,10 +751,21 @@ export default function OdPickerApp() {
                   {/* Top Operational Status Banner */}
                   <div style={S.opStatusBanner}>
                     <div style={S.opStatusLeft}>
-                      <span style={S.radarRingDot} />
+                      <img
+                        src="/thrupthi-logo.png"
+                        alt="Thrupthi K S"
+                        style={{
+                          width: 38,
+                          height: 38,
+                          borderRadius: "50%",
+                          objectFit: "cover",
+                          border: "2px solid #0c831f",
+                          boxShadow: "0 2px 8px rgba(12,131,31,0.25)",
+                        }}
+                      />
                       <div>
                         <div style={S.opStatusTitle}>⚡ TIPTUR DARK STORE OPERATIONS DESK</div>
-                        <div style={S.opStatusSub}>Terminal Zebra TC52 #04 • Thrupthi K S</div>
+                        <div style={S.opStatusSub}>OD Picker Lead • Thrupthi K S • Zebra TC52 #04</div>
                       </div>
                     </div>
                     <span style={S.onlineLivePill}>READY</span>
@@ -1143,9 +1176,24 @@ export default function OdPickerApp() {
                   <h3 style={S.pickListTitle}>Pick List ({pickedCount}/{items.length} Picked)</h3>
                   <div style={S.pickListSub}>Scan item barcode & aisle location to verify</div>
                 </div>
-                <button style={S.bypassSmallBtn} onClick={handlePickAllBypass}>
-                  ⚡ Pick All Bypass
-                </button>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  <button
+                    style={{ ...S.bypassSmallBtn, background: "#0c831f", borderColor: "#0c831f" }}
+                    onClick={() => {
+                      handlePickAllBypass();
+                      setElapsedSec(45);
+                      setRemainingSec(75);
+                      setActiveStep("staging");
+                      setActionSuccess("⚡ Fast 45-Second picking completed by Thrupthi K S! Proceeding to rack staging.");
+                    }}
+                    title="Simulate superfast 45-second picking"
+                  >
+                    ⚡ Fast 45s Pick &amp; Stage
+                  </button>
+                  <button style={S.bypassSmallBtn} onClick={handlePickAllBypass}>
+                    ✓ Pick All
+                  </button>
+                </div>
               </div>
 
               {/* ITEMS LIST WITH EXACT USER LAYOUT */}

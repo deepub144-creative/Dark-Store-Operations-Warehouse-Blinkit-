@@ -21,6 +21,7 @@ import {
   IconScooter,
   IconBox,
   IconLightning,
+  IconRealLogoAuditxWallet,
 } from "@/components/RealIcons";
 
 export default function TrackOrderPage() {
@@ -407,20 +408,24 @@ export default function TrackOrderPage() {
           <div style={S.paymentActionCard}>
             <div style={S.paymentCardLeft}>
               <div style={S.cardIconCircle}>
-                <IconCreditCard size={20} color="#64748B" />
+                {activeOrder.paymentMethod?.includes("Wallet") || activeOrder.paymentMethod?.includes("Audit'X") || isPaidOnline ? (
+                  <IconRealLogoAuditxWallet size={26} />
+                ) : (
+                  <IconCreditCard size={20} color="#64748B" />
+                )}
               </div>
               <div style={S.paymentTextGroup}>
                 <h3 style={S.paymentCardTitle}>
-                  {isPaidOnline
-                    ? `Paid ₹${activeOrder.totalAmount} online`
-                    : `Pay ₹${activeOrder.totalAmount} before or on delivery`}
+                  {activeOrder.paymentMethod?.includes("Wallet") || activeOrder.paymentMethod?.includes("Audit'X") || isPaidOnline
+                    ? `Paid ₹${grandTotalAmount} via Audit'X Demo Wallet`
+                    : `Pay ₹${grandTotalAmount} before or on delivery`}
                 </h3>
                 <p style={S.paymentCardSub}>
-                  {isPaidOnline
-                    ? "Safe, contactless delivery. No cash needed at your doorstep."
-                    : `Please keep a change of ₹${activeOrder.totalAmount} handy or avoid the hassle by paying online`}
+                  {activeOrder.paymentMethod?.includes("Wallet") || activeOrder.paymentMethod?.includes("Audit'X") || isPaidOnline
+                    ? "Safe, contactless 1-click payment confirmed. No cash needed at your doorstep."
+                    : `Please keep a change of ₹${grandTotalAmount} handy or avoid the hassle by paying online`}
                 </p>
-                {!isPaidOnline && (
+                {!(activeOrder.paymentMethod?.includes("Wallet") || activeOrder.paymentMethod?.includes("Audit'X") || isPaidOnline) && (
                   <button
                     type="button"
                     style={S.payOnlineTextBtn}
@@ -473,6 +478,38 @@ export default function TrackOrderPage() {
               >
                 <IconPhone size={18} color="#0C831F" />
               </a>
+            </div>
+
+            {/* OD Picker Card (Thrupthi K S) */}
+            <div style={{ ...S.partnerHeader, borderTop: "1px solid #f1f5f9", marginTop: 12, paddingTop: 12 }}>
+              <div style={S.partnerLeftProfile}>
+                <div style={S.partnerAvatarBadge}>
+                  <img
+                    src="/thrupthi-logo.png"
+                    alt="Thrupthi K S - OD Picker Lead Logo"
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                      objectFit: "cover",
+                      borderRadius: "50%",
+                    }}
+                  />
+                  <span style={{ ...S.avatarOnlineIndicator, background: "#0c831f" }} />
+                </div>
+
+                <div style={S.partnerNameBlock}>
+                  <div style={S.partnerNameLine}>
+                    Picked &amp; Staged by <b>Thrupthi K S</b>
+                  </div>
+                  <div style={S.partnerSubLine}>
+                    OD Picker Lead • Dark Store Staging Rack {activeOrder.assignedRack || "D5"}
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ fontSize: 11, fontWeight: 800, color: "#0c831f", background: "#f0fdf4", padding: "4px 8px", borderRadius: 6, border: "1px solid #bbf7d0" }}>
+                ✓ STAGED
+              </div>
             </div>
 
             {/* Status / Message Bubble */}
