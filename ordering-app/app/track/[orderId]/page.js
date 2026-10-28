@@ -493,26 +493,6 @@ export default function TrackOrderPage() {
                 <h4 style={S.tippingTitle}>Delivering happiness at your doorstep!</h4>
                 <p style={S.tippingSub}>Thank them by leaving a tip</p>
               </div>
-
-              {/* Delivery Rider Graphic */}
-              <div style={S.deliveryScooterGraphic}>
-                <svg width="72" height="48" viewBox="0 0 72 48" fill="none">
-                  {/* Scooter */}
-                  <circle cx="16" cy="38" r="7" fill="#1E293B" />
-                  <circle cx="16" cy="38" r="3" fill="#CBD5E1" />
-                  <circle cx="56" cy="38" r="7" fill="#1E293B" />
-                  <circle cx="56" cy="38" r="3" fill="#CBD5E1" />
-                  {/* Chassis */}
-                  <path d="M 16 38 L 30 38 L 40 28 L 56 38" stroke="#F59E0B" strokeWidth="4" strokeLinecap="round" />
-                  <path d="M 40 28 L 48 16 L 52 16" stroke="#1E293B" strokeWidth="2.5" strokeLinecap="round" />
-                  {/* Grocery Box in front */}
-                  <rect x="50" y="16" width="12" height="12" rx="2" fill="#0C831F" />
-                  {/* Driver body & helmet */}
-                  <circle cx="34" cy="12" r="6" fill="#F59E0B" />
-                  <path d="M 31 10 Q 34 8 37 10" stroke="#FFFFFF" strokeWidth="2" strokeLinecap="round" />
-                  <path d="M 28 20 L 34 16 L 40 20 L 36 28 L 28 28 Z" fill="#FBBF24" />
-                </svg>
-              </div>
             </div>
 
             {/* Quick Tip Chips */}
