@@ -210,6 +210,14 @@ export default function StoreManagerApp() {
           <div style={S.subTitle}>
             Dark Store Operations Command Center • Namma Tiptur (Tumkur Dist, KA - 572201)
           </div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
+            <a href="/dashboard" style={S.quickLinkPill}>📊 Command Tower</a>
+            <a href="/roles/asm" style={S.quickLinkPill}>🛠️ ASM: Deepu B</a>
+            <a href="/roles/md" style={S.quickLinkPill}>👑 MD: A B Harshitha</a>
+            <a href="/picker" style={S.quickLinkPill}>📦 Picker: Thrupthi K S</a>
+            <a href="/rider" style={S.quickLinkPill}>🛵 Rider: Sinchana B R</a>
+            <a href="/warehouse" style={S.quickLinkPill}>🏬 Staging Racks</a>
+          </div>
         </div>
 
         <div style={S.managerProfile}>
@@ -628,8 +636,8 @@ export default function StoreManagerApp() {
 const S = {
   container: {
     minHeight: "100vh",
-    background: "#080c14",
-    color: "#f8fafc",
+    background: "#F4F6FB",
+    color: "#1E293B",
     fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
     paddingBottom: 40,
   },
@@ -638,13 +646,13 @@ const S = {
     top: 16,
     left: "50%",
     transform: "translateX(-50%)",
-    background: "#10b981",
+    background: "#0C831F",
     color: "#ffffff",
     padding: "10px 20px",
     borderRadius: 8,
     fontWeight: 600,
     zIndex: 9999,
-    boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
+    boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
     fontSize: 14,
   },
   header: {
@@ -652,10 +660,11 @@ const S = {
     justifyContent: "space-between",
     alignItems: "center",
     padding: "16px 24px",
-    background: "#0f172a",
-    borderBottom: "1px solid #1e293b",
+    background: "#FFFDF2",
+    borderBottom: "2px solid #F2E3A0",
     flexWrap: "wrap",
     gap: 12,
+    boxShadow: "0 2px 8px rgba(0,0,0,0.03)",
   },
   brandCol: {
     display: "flex",
@@ -666,64 +675,81 @@ const S = {
     display: "flex",
     alignItems: "center",
     gap: 10,
+    flexWrap: "wrap",
   },
   brandTitle: {
     fontSize: 20,
     fontWeight: 900,
-    color: "#f59e0b",
+    color: "#0c831f",
     letterSpacing: 1,
   },
   storeBadge: {
-    fontSize: 12,
-    fontWeight: 700,
-    background: "#1e293b",
-    color: "#38bdf8",
+    fontSize: 11,
+    fontWeight: 800,
+    background: "#FEF3C7",
+    color: "#92400E",
     padding: "3px 10px",
     borderRadius: 6,
-    border: "1px solid #38bdf8",
+    border: "1px solid #FDE68A",
   },
   liveBadge: {
     fontSize: 11,
     fontWeight: 700,
-    background: "rgba(16, 185, 129, 0.15)",
-    color: "#10b981",
+    background: "#DCFCE7",
+    color: "#15803D",
     padding: "3px 8px",
     borderRadius: 20,
   },
   subTitle: {
     fontSize: 12,
-    color: "#94a3b8",
+    color: "#64748B",
+  },
+  quickLinkPill: {
+    background: "#FFFFFF",
+    border: "1px solid #CBD5E1",
+    color: "#1E293B",
+    borderRadius: 8,
+    fontSize: 11,
+    fontWeight: 700,
+    padding: "4px 10px",
+    textDecoration: "none",
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 4,
+    transition: "all 0.2s ease",
   },
   managerProfile: {
     display: "flex",
     alignItems: "center",
     gap: 10,
-    background: "#1e293b",
+    background: "#FFFFFF",
     padding: "8px 16px",
     borderRadius: 10,
-    border: "1px solid #334155",
+    border: "1px solid #E2E8F0",
+    boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
   },
   mgrName: {
     fontSize: 14,
     fontWeight: 800,
-    color: "#ffffff",
+    color: "#0F172A",
   },
   mgrTitle: {
     fontSize: 11,
-    color: "#94a3b8",
+    color: "#64748B",
   },
   statsBar: {
     display: "grid",
     gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
     gap: 12,
     padding: "16px 24px",
-    background: "#0a0f1d",
+    background: "#FFFFFF",
+    borderBottom: "1px solid #E2E8F0",
   },
   statCard: {
-    background: "#0f172a",
+    background: "#F8FAFC",
     borderRadius: 10,
     padding: 14,
-    border: "1px solid #1e293b",
+    border: "1px solid #E2E8F0",
     display: "flex",
     flexDirection: "column",
     gap: 4,
@@ -731,19 +757,19 @@ const S = {
   statNum: {
     fontSize: 24,
     fontWeight: 900,
-    color: "#ffffff",
+    color: "#0F172A",
   },
   statLabel: {
     fontSize: 12,
-    color: "#94a3b8",
+    color: "#64748B",
     fontWeight: 600,
   },
   tabBar: {
     display: "flex",
     gap: 8,
     padding: "12px 24px",
-    background: "#0f172a",
-    borderBottom: "1px solid #1e293b",
+    background: "#FFFFFF",
+    borderBottom: "1px solid #E2E8F0",
     overflowX: "auto",
   },
   tabBtn: {
@@ -752,7 +778,7 @@ const S = {
     gap: 8,
     background: "transparent",
     border: "none",
-    color: "#94a3b8",
+    color: "#64748B",
     padding: "8px 16px",
     borderRadius: 8,
     fontSize: 13,
@@ -761,9 +787,9 @@ const S = {
     whiteSpace: "nowrap",
   },
   tabBtnActive: {
-    background: "#1e293b",
-    color: "#38bdf8",
-    border: "1px solid #38bdf8",
+    background: "#F0FDF4",
+    color: "#0C831F",
+    border: "1px solid #86EFAC",
   },
   tabBadge: {
     fontSize: 11,
@@ -787,12 +813,12 @@ const S = {
   panelHeading: {
     fontSize: 18,
     fontWeight: 800,
-    color: "#ffffff",
+    color: "#0F172A",
     margin: 0,
   },
   panelSub: {
     fontSize: 13,
-    color: "#94a3b8",
+    color: "#64748B",
     margin: "4px 0 0",
   },
   queueRefreshRow: {
@@ -802,12 +828,12 @@ const S = {
   },
   lastRefreshText: {
     fontSize: 12,
-    color: "#94a3b8",
+    color: "#64748B",
   },
   refreshBtn: {
-    background: "#1e293b",
-    border: "1px solid #38bdf8",
-    color: "#38bdf8",
+    background: "#FFFFFF",
+    border: "1px solid #CBD5E1",
+    color: "#0F172A",
     padding: "8px 14px",
     borderRadius: 8,
     fontWeight: 700,
@@ -820,10 +846,11 @@ const S = {
     gap: 12,
   },
   complaintCard: {
-    background: "#0f172a",
+    background: "#FFFFFF",
     borderRadius: 12,
     padding: 16,
-    border: "1px solid",
+    border: "1px solid #E2E8F0",
+    boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
   },
   complaintTop: {
     display: "flex",
@@ -857,7 +884,7 @@ const S = {
   },
   issueDesc: {
     fontSize: 14,
-    color: "#ffffff",
+    color: "#0F172A",
     fontWeight: 600,
     marginBottom: 10,
   },
@@ -865,7 +892,7 @@ const S = {
     display: "flex",
     gap: 16,
     fontSize: 12,
-    color: "#94a3b8",
+    color: "#64748B",
     marginBottom: 12,
     flexWrap: "wrap",
   },
@@ -873,11 +900,11 @@ const S = {
     display: "flex",
     gap: 8,
     flexWrap: "wrap",
-    borderTop: "1px solid #1e293b",
+    borderTop: "1px solid #E2E8F0",
     paddingTop: 10,
   },
   resolveBtn: {
-    background: "#10b981",
+    background: "#0C831F",
     border: "none",
     color: "#ffffff",
     padding: "6px 12px",
@@ -907,10 +934,11 @@ const S = {
     cursor: "pointer",
   },
   queueTableWrap: {
-    background: "#0f172a",
+    background: "#FFFFFF",
     borderRadius: 12,
-    border: "1px solid #1e293b",
+    border: "1px solid #E2E8F0",
     overflowX: "auto",
+    boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
   },
   table: {
     width: "100%",
@@ -918,39 +946,39 @@ const S = {
     fontSize: 13,
   },
   thRow: {
-    background: "#1e293b",
+    background: "#F8FAFC",
     textAlign: "left",
   },
   th: {
     padding: "12px 14px",
-    color: "#94a3b8",
+    color: "#64748B",
     fontWeight: 700,
     fontSize: 11,
     textTransform: "uppercase",
   },
   tr: {
-    borderBottom: "1px solid #1e293b",
+    borderBottom: "1px solid #E2E8F0",
   },
   tdBold: {
     padding: "12px 14px",
     fontWeight: 800,
-    color: "#38bdf8",
+    color: "#0F172A",
   },
   td: {
     padding: "12px 14px",
-    color: "#e2e8f0",
+    color: "#1E293B",
   },
   tdPrice: {
     padding: "12px 14px",
     fontWeight: 800,
-    color: "#10b981",
+    color: "#0C831F",
   },
   rackCellBadge: {
-    background: "#1e293b",
-    color: "#f59e0b",
+    background: "#FEF3C7",
+    color: "#92400E",
     padding: "3px 8px",
     borderRadius: 4,
-    border: "1px solid #f59e0b",
+    border: "1px solid #FDE68A",
     fontWeight: 700,
     fontSize: 12,
   },
@@ -967,10 +995,11 @@ const S = {
     gap: 14,
   },
   expiryCard: {
-    background: "#0f172a",
+    background: "#FFFFFF",
     borderRadius: 12,
     padding: 16,
-    border: "1px solid",
+    border: "1px solid #E2E8F0",
+    boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
   },
   expiryTop: {
     display: "flex",
@@ -982,7 +1011,7 @@ const S = {
   expirySku: {
     fontSize: 14,
     fontWeight: 800,
-    color: "#ffffff",
+    color: "#0F172A",
   },
   daysLeftBadge: {
     fontSize: 11,
@@ -994,7 +1023,7 @@ const S = {
   },
   expiryDetails: {
     fontSize: 12,
-    color: "#cbd5e1",
+    color: "#475569",
     display: "flex",
     flexDirection: "column",
     gap: 4,
@@ -1004,12 +1033,12 @@ const S = {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
-    borderTop: "1px solid #1e293b",
+    borderTop: "1px solid #E2E8F0",
     paddingTop: 10,
   },
   actionTag: {
     fontSize: 11,
-    color: "#94a3b8",
+    color: "#64748B",
     fontStyle: "italic",
   },
   quarantineBtn: {
@@ -1028,10 +1057,11 @@ const S = {
     gap: 12,
   },
   auditCard: {
-    background: "#0f172a",
+    background: "#FFFFFF",
     borderRadius: 12,
     padding: 16,
-    border: "1px solid #1e293b",
+    border: "1px solid #E2E8F0",
+    boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
   },
   auditHeader: {
     display: "flex",
@@ -1042,11 +1072,11 @@ const S = {
   auditId: {
     fontSize: 15,
     fontWeight: 800,
-    color: "#38bdf8",
+    color: "#0C831F",
   },
   auditZone: {
     fontSize: 13,
-    color: "#cbd5e1",
+    color: "#64748B",
     marginLeft: 6,
   },
   auditStatusTag: {
@@ -1060,10 +1090,11 @@ const S = {
     display: "grid",
     gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
     gap: 8,
-    background: "#1e293b",
+    background: "#F8FAFC",
     padding: 12,
     borderRadius: 8,
     marginBottom: 10,
+    border: "1px solid #E2E8F0",
   },
   auditStatBox: {
     display: "flex",
@@ -1073,18 +1104,18 @@ const S = {
   },
   auditNotes: {
     fontSize: 13,
-    color: "#e2e8f0",
+    color: "#1E293B",
     marginBottom: 12,
   },
   auditFooter: {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
-    borderTop: "1px solid #1e293b",
+    borderTop: "1px solid #E2E8F0",
     paddingTop: 10,
   },
   approveAuditBtn: {
-    background: "#10b981",
+    background: "#0C831F",
     border: "none",
     color: "#fff",
     padding: "6px 14px",
@@ -1095,7 +1126,7 @@ const S = {
   },
   approvedBadge: {
     fontSize: 12,
-    color: "#10b981",
+    color: "#0C831F",
     fontWeight: 700,
   },
   putawayList: {
@@ -1104,10 +1135,11 @@ const S = {
     gap: 12,
   },
   putawayCard: {
-    background: "#0f172a",
+    background: "#FFFFFF",
     borderRadius: 12,
     padding: 16,
-    border: "1px solid #1e293b",
+    border: "1px solid #E2E8F0",
+    boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
   },
   putawayTop: {
     display: "flex",
@@ -1118,15 +1150,15 @@ const S = {
   poBadge: {
     fontSize: 12,
     fontWeight: 800,
-    color: "#f59e0b",
-    background: "rgba(245, 158, 11, 0.1)",
+    color: "#D97706",
+    background: "#FEF3C7",
     padding: "2px 8px",
     borderRadius: 4,
-    border: "1px solid rgba(245, 158, 11, 0.3)",
+    border: "1px solid #FDE68A",
   },
   vendorName: {
     fontSize: 13,
-    color: "#cbd5e1",
+    color: "#64748B",
     marginLeft: 8,
   },
   putawayStatus: {
@@ -1142,15 +1174,16 @@ const S = {
   putawaySkuName: {
     fontSize: 15,
     fontWeight: 800,
-    color: "#ffffff",
+    color: "#0F172A",
     marginBottom: 4,
   },
   putawayLocationPill: {
     fontSize: 12,
-    color: "#38bdf8",
+    color: "#0284C7",
+    fontWeight: 700,
   },
   confirmPutawayBtn: {
-    background: "#10b981",
+    background: "#0C831F",
     border: "none",
     color: "#fff",
     padding: "8px 14px",
@@ -1160,12 +1193,13 @@ const S = {
     cursor: "pointer",
   },
   totalDumpBadge: {
-    background: "rgba(244, 63, 94, 0.15)",
-    border: "1px solid #f43f5e",
-    color: "#f43f5e",
+    background: "#FEE2E2",
+    border: "1px solid #FCA5A5",
+    color: "#DC2626",
     padding: "6px 14px",
     borderRadius: 8,
     fontSize: 13,
+    fontWeight: 800,
   },
   dumpList: {
     display: "flex",
@@ -1173,10 +1207,11 @@ const S = {
     gap: 10,
   },
   dumpCard: {
-    background: "#0f172a",
+    background: "#FFFFFF",
     borderRadius: 12,
     padding: 14,
-    border: "1px solid #1e293b",
+    border: "1px solid #E2E8F0",
+    boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
   },
   dumpHeader: {
     display: "flex",
@@ -1187,30 +1222,30 @@ const S = {
   dumpId: {
     fontSize: 13,
     fontWeight: 800,
-    color: "#f43f5e",
+    color: "#DC2626",
   },
   dumpSku: {
     fontSize: 13,
-    color: "#ffffff",
+    color: "#0F172A",
   },
   dumpLossAmt: {
     fontSize: 14,
     fontWeight: 800,
-    color: "#f43f5e",
+    color: "#DC2626",
   },
   dumpReasonBox: {
     fontSize: 12,
-    color: "#cbd5e1",
+    color: "#475569",
     marginBottom: 8,
   },
   dumpMetaRow: {
     display: "flex",
     gap: 14,
     fontSize: 11,
-    color: "#94a3b8",
+    color: "#64748B",
   },
   dumpStatusTag: {
-    color: "#10b981",
+    color: "#0C831F",
     fontWeight: 700,
   },
 };

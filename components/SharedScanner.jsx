@@ -5,6 +5,7 @@ import { playScanSuccess, playScanFail } from "@/lib/soundSystem";
 
 export default function SharedScanner({
   onScanSuccess,
+  onScan,
   expectedCode = null,
   title = "Camera Scanner",
   subtitle = "Align QR/Barcode inside the green frame",
@@ -98,6 +99,7 @@ export default function SharedScanner({
       setFlashState(null);
       isProcessingRef.current = false;
       if (onScanSuccess) onScanSuccess(code);
+      if (onScan) onScan(code);
     }, 600);
   }
 

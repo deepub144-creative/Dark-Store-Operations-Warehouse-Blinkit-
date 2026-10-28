@@ -6,9 +6,29 @@ import { collection, doc, onSnapshot, orderBy, query, setDoc, updateDoc } from "
 import { db } from "@/lib/firebaseClient";
 import { subscribeToEvents, broadcastEvent } from "@/lib/realtimeSync";
 import { STAFF, STAGE_SEQUENCE } from "@/lib/roles";
-import { INITIAL_SKUS, seedAllDemoData } from "@/lib/seedData";
+import { CATALOG } from "@/lib/items";
+import { seedAllDemoData } from "@/lib/seedData";
+import {
+  playNotificationChime,
+  playSuccessChime,
+  playScanSuccess,
+  playOrderAlarm,
+  setSoundMuted,
+  isSoundMuted,
+} from "@/lib/soundSystem";
 import ErdDfdViewer from "@/components/ErdDfdViewer";
 import AuditxLogo from "@/components/AuditxLogo";
+import {
+  IconAnimPicker,
+  IconAnimPutaway,
+  IconAnimInventoryAudit,
+  IconAnimExpiryAudit,
+  IconAnimFnvAudit,
+  IconAnimFrzAudit,
+  IconAnimBarcodeScanner,
+  AuditxAnimatedStyles,
+} from "@/components/RealIcons";
+
 
 // Demo Complaints Data
 const INITIAL_COMPLAINTS = [
@@ -146,6 +166,7 @@ export default function WarehouseDashboardPage() {
   }, [staff]);
 
   function switchStaff(member) {
+    playNotificationChime();
     localStorage.setItem("auditx_staff", JSON.stringify(member));
     setStaff(member);
     setActionSuccess(`Switched personnel profile to ${member.name} (${member.designation})`);
@@ -160,6 +181,11 @@ export default function WarehouseDashboardPage() {
   function toggleStorePause() {
     const nextState = !isStorePaused;
     setIsStorePaused(nextState);
+    if (nextState) {
+      playOrderAlarm();
+    } else {
+      playSuccessChime();
+    }
     const logMsg = nextState
       ? `🛑 STORE ORDERS PAUSED by ${staff?.name} (${staff?.designation})`
       : `🟢 STORE ORDERS RESUMED by ${staff?.name} (${staff?.designation})`;
@@ -167,12 +193,14 @@ export default function WarehouseDashboardPage() {
   }
 
   function handleCapChange(newLimit) {
+    playNotificationChime();
     setOrderCapLimit(newLimit);
     const logMsg = `Order cap updated to ${newLimit} orders/hr by ${staff?.name} (${staff?.designation})`;
     setCapLogs((prev) => [{ id: Date.now(), time: new Date().toLocaleTimeString(), msg: logMsg }, ...prev]);
   }
 
   function resolveComplaint(id, refund = false) {
+    playSuccessChime();
     setComplaints((prev) =>
       prev.map((c) => {
         if (c.id === id) {
@@ -186,18 +214,19 @@ export default function WarehouseDashboardPage() {
   }
 
   async function dispatchReplacementOrder(c) {
+    playSuccessChime();
     const replacementId = `ORD-RPL-${Math.floor(100000 + Math.random() * 900000)}`;
     const newOrderData = {
       orderId: replacementId,
       customerName: c.customerName || "Customer",
       customerPhone: c.phone || "9876543210",
-      customerAddress: "Muniswamappa Layout, Bengaluru (REPLACEMENT PRIORITY)",
+      customerAddress: "Kalpataru College Road, Tiptur - 572201 (REPLACEMENT PRIORITY)",
       status: "pending",
       stage: "Picking",
       totalAmount: c.amount || 0,
       items: [
-        { skuId: "MILK008", name: "Amul Taaza Toned Milk", qty: 1, mrp: 27, binLocation: "Aisle A01-01" },
-        { skuId: "CHIPS015", name: "Lays Potato Chips", qty: 1, mrp: 20, binLocation: "Aisle B02-04" },
+        { skuId: "NANDINI-MILK-04", name: "Nandini Pasteurized Toned Milk (500ml)", qty: 1, mrp: 24, binLocation: "Aisle A1 - C1 - 004" },
+        { skuId: "BOOMER-GUM-01", name: "Boomer Strawberry Bubble Gum", qty: 2, mrp: 2, binLocation: "Aisle C2 - A1 - 002" },
       ],
       createdAt: new Date().toISOString(),
       priorityTag: "EXPRESS_REPLACEMENT",
@@ -219,14 +248,22 @@ export default function WarehouseDashboardPage() {
   }
 
   function handlePingDevice(deviceName) {
+    playScanSuccess();
     setPingedDevice(deviceName);
     setTimeout(() => setPingedDevice(""), 3000);
   }
 
+  function handleTabChange(tabId) {
+    playNotificationChime();
+    setActiveTab(tabId);
+  }
+
   async function handleSeedDemoData() {
+    playNotificationChime();
     setActionSuccess("Seeding initial SKU catalog & demo orders to Cloud Firestore...");
     const res = await seedAllDemoData();
     if (res.success) {
+      playSuccessChime();
       setActionSuccess("✅ Demo data seeded successfully!");
     } else {
       setActionSuccess(`⚠️ Cloud sync offline, local fallback active.`);
@@ -251,11 +288,13 @@ export default function WarehouseDashboardPage() {
     };
   });
 
-  const filteredSKUs = INITIAL_SKUS.filter(
+  const filteredSKUs = CATALOG.filter(
     (s) =>
       s.name.toLowerCase().includes(skuSearch.toLowerCase()) ||
       s.category.toLowerCase().includes(skuSearch.toLowerCase()) ||
-      s.binLocation.toLowerCase().includes(skuSearch.toLowerCase())
+      (s.aisle && s.aisle.toLowerCase().includes(skuSearch.toLowerCase())) ||
+      (s.barcode && s.barcode.includes(skuSearch)) ||
+      (s.sku && s.sku.toLowerCase().includes(skuSearch.toLowerCase()))
   );
 
   return (
@@ -269,15 +308,36 @@ export default function WarehouseDashboardPage() {
             <span style={{ ...S.pauseBadge, background: isStorePaused ? "#ef4444" : "#10b981" }}>
               {isStorePaused ? "🛑 STORE PAUSED" : "🟢 STORE OPEN"}
             </span>
+            <button
+              onClick={() => {
+                playNotificationChime();
+                setActionSuccess("🔊 Live audio synthesizer active & tested!");
+                setTimeout(() => setActionSuccess(""), 2500);
+              }}
+              style={S.audioBadgeBtn}
+              title="Click to test live Web Audio Synthesizer"
+            >
+              🔊 Audio: Live Synthesizer
+            </button>
           </div>
           <div style={S.subText}>
-            Dark Store Operations Command Tower • Tiptur HUB - KA44, Tumkur District - 572201
+            ⚡ Blinkit Dark Store Operations Command Tower • Tiptur HUB - KA44, Tumkur District - 572201 • 10-Min Delivery SLA
+          </div>
+          {/* Quick Leadership & Terminal Links */}
+          <div style={S.quickPortalsRow}>
+            <button onClick={() => router.push("/roles/sm")} style={S.quickLinkPill}>👔 SM: Bhasker N S</button>
+            <button onClick={() => router.push("/roles/asm")} style={S.quickLinkPill}>🛠️ ASM: Deepu B</button>
+            <button onClick={() => router.push("/roles/md")} style={S.quickLinkPill}>👑 MD: A B Harshitha</button>
+            <button onClick={() => router.push("/picker")} style={S.quickLinkPill}>📦 OD Picker: Thrupthi K S</button>
+            <button onClick={() => router.push("/rider")} style={S.quickLinkPill}>🛵 Rider: Sinchana B R</button>
+            <button onClick={() => router.push("/warehouse")} style={S.quickLinkPill}>🏬 Staging Racks</button>
+            <button onClick={() => router.push("/ordering")} style={{ ...S.quickLinkPill, background: "#0C831F", color: "#FFFFFF", borderColor: "#0C831F" }}>🛒 Customer App</button>
           </div>
         </div>
 
         <div style={S.headerRight}>
           <div style={S.staffSwitcherBlock}>
-            <span style={S.switcherLabel}>Personnel Login:</span>
+            <span style={S.switcherLabel}>Personnel:</span>
             <div style={S.activeStaffPill}>
               <span>{staff.avatar}</span>
               <div>
@@ -320,7 +380,7 @@ export default function WarehouseDashboardPage() {
           { id: "orderCap", label: "🎯 Order Cap & Throttling", count: `${capacityPercent}%` },
           { id: "complaints", label: "⚠️ Complaints & Quality", count: openComplaintsCount },
           { id: "devices", label: "📱 Personnel & Terminals", count: fullRoster.length },
-          { id: "inventory", label: "📦 SKU Inventory & Barcodes", count: INITIAL_SKUS.length },
+          { id: "inventory", label: "📦 SKU Inventory & Barcodes", count: CATALOG.length },
           { id: "orders", label: "⚡ Live Orders Pipeline", count: orders.length },
         ].map((tab) => {
           const active = activeTab === tab.id;
@@ -331,15 +391,15 @@ export default function WarehouseDashboardPage() {
                 ...S.tabBtn,
                 ...(active ? S.tabBtnActive : {}),
               }}
-              onClick={() => setActiveTab(tab.id)}
+              onClick={() => handleTabChange(tab.id)}
             >
               {tab.label}
               {tab.count !== null && (
                 <span
                   style={{
                     ...S.tabBadge,
-                    background: active ? "#0c831f" : "#334155",
-                    color: "#fff",
+                    background: active ? "#0c831f" : "#E2E8F0",
+                    color: active ? "#fff" : "#475569",
                   }}
                 >
                   {tab.count}
@@ -766,23 +826,57 @@ export default function WarehouseDashboardPage() {
 
             <div style={S.skuGrid}>
               {filteredSKUs.map((sku) => (
-                <div key={sku.id} style={S.skuCard}>
+                <div key={sku.sku || sku.id} style={S.skuCard}>
                   <div style={S.skuHeader}>
-                    <span style={S.skuCode}>{sku.skuId}</span>
-                    <span style={S.skuBin}>{sku.binLocation}</span>
+                    <span style={S.skuCode}>{sku.sku}</span>
+                    <span style={S.skuBin}>{sku.aisle || sku.zone}</span>
                   </div>
-                  <h4 style={S.skuName}>{sku.name}</h4>
-                  <div style={S.skuMeta}>Category: <b>{sku.category}</b></div>
+                  <div style={{ display: "flex", gap: 10, alignItems: "center", margin: "6px 0" }}>
+                    {sku.image && (
+                      <img
+                        src={sku.image}
+                        alt={sku.name}
+                        style={{ width: 48, height: 48, objectFit: "cover", borderRadius: 8, border: "1px solid #E2E8F0" }}
+                      />
+                    )}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <h4 style={S.skuName}>{sku.name}</h4>
+                      <div style={S.skuMeta}>
+                        Cat: <b>{sku.category}</b> • {sku.weight || "1 unit"}
+                      </div>
+                    </div>
+                  </div>
                   <div style={S.skuPriceRow}>
-                    <span style={S.priceVal}>₹{sku.price} <s style={{ fontSize: 12, color: "#64748b" }}>₹{sku.mrp}</s></span>
-                    <span style={{ fontSize: 13, fontWeight: 800, color: sku.quantityAvailable <= sku.reorderPoint ? "#ef4444" : "#10b981" }}>
-                      Qty: {sku.quantityAvailable} units
+                    <span style={S.priceVal}>
+                      ₹{sku.price} <s style={{ fontSize: 12, color: "#64748b" }}>₹{sku.mrp}</s>
+                    </span>
+                    <span
+                      style={{
+                        fontSize: 11,
+                        fontWeight: 800,
+                        color: (sku.stock || 45) < 15 ? "#ef4444" : "#10b981",
+                        background: (sku.stock || 45) < 15 ? "#fee2e2" : "#dcfce7",
+                        padding: "2px 8px",
+                        borderRadius: 6,
+                      }}
+                    >
+                      Stock: {sku.stock || 45} units
                     </span>
                   </div>
                   <div style={S.barcodeBox}>
                     <div style={S.barcodeLines}>|||| ||| ||||| |||| || |||</div>
                     <code style={S.barcodeCode}>{sku.barcode}</code>
                   </div>
+                  <button
+                    style={S.testScanBtn}
+                    onClick={() => {
+                      playScanSuccess();
+                      setActionSuccess(`🎯 Scan Verified: [${sku.barcode}] ${sku.name} at Aisle ${sku.aisle || sku.zone}!`);
+                      setTimeout(() => setActionSuccess(""), 3000);
+                    }}
+                  >
+                    ⚡ Test Scan Barcode
+                  </button>
                 </div>
               ))}
             </div>
@@ -855,163 +949,167 @@ function statusBadge(status) {
 }
 
 const S = {
-  wrap: { minHeight: "100vh", background: "#0f172a", color: "#f8fafc", fontFamily: "'Inter', system-ui, sans-serif" },
-  header: { background: "#1e293b", padding: "16px 24px", borderBottom: "1px solid #334155", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 16 },
-  brandCol: {},
-  logoRow: { display: "flex", alignItems: "center", gap: 10 },
+  wrap: { minHeight: "100vh", background: "#F4F6FB", color: "#1E293B", fontFamily: "'Inter', system-ui, sans-serif" },
+  header: { background: "#FFFDF2", padding: "16px 24px", borderBottom: "2px solid #F2E3A0", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 16, boxShadow: "0 2px 10px rgba(0,0,0,0.04)" },
+  brandCol: { display: "flex", flexDirection: "column", gap: 4 },
+  logoRow: { display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" },
   brandText: { fontSize: 28, fontWeight: 900, color: "#0c831f", letterSpacing: "-1px" },
-  storeBadge: { background: "#facc15", color: "#0f172a", fontWeight: 800, fontSize: 11, padding: "3px 8px", borderRadius: 6 },
+  storeBadge: { background: "#FEF3C7", color: "#92400E", fontWeight: 800, fontSize: 11, padding: "3px 8px", borderRadius: 6, border: "1px solid #FDE68A" },
   pauseBadge: { color: "#fff", fontWeight: 800, fontSize: 11, padding: "3px 8px", borderRadius: 6 },
-  subText: { fontSize: 12, color: "#94a3b8", marginTop: 4 },
+  audioBadgeBtn: { background: "#FEF3C7", border: "1px solid #FDE68A", color: "#92400E", borderRadius: 6, padding: "3px 8px", fontSize: 11, fontWeight: 800, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4 },
+  subText: { fontSize: 12, color: "#64748B", marginTop: 2 },
+  quickPortalsRow: { display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 },
+  quickLinkPill: { background: "#FFFFFF", border: "1px solid #CBD5E1", color: "#1E293B", borderRadius: 8, fontSize: 11, fontWeight: 700, padding: "4px 10px", cursor: "pointer", transition: "all 0.2s", display: "inline-flex", alignItems: "center", gap: 4 },
 
-  headerRight: { display: "flex", alignItems: "center", gap: 16 },
-  staffSwitcherBlock: { display: "flex", alignItems: "center", gap: 10, background: "#0f172a", padding: "6px 12px", borderRadius: 12, border: "1px solid #334155" },
-  switcherLabel: { fontSize: 11, color: "#94a3b8" },
+  headerRight: { display: "flex", alignItems: "center", gap: 14 },
+  staffSwitcherBlock: { display: "flex", alignItems: "center", gap: 10, background: "#FFFFFF", padding: "6px 12px", borderRadius: 12, border: "1px solid #E2E8F0", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" },
+  switcherLabel: { fontSize: 11, color: "#64748B", fontWeight: 700 },
   activeStaffPill: { display: "flex", alignItems: "center", gap: 8 },
-  activeStaffName: { fontSize: 13, fontWeight: 800, color: "#f8fafc" },
-  activeStaffRole: { fontSize: 10, color: "#0c831f", fontWeight: 700 },
-  switchSelect: { background: "#1e293b", color: "#f8fafc", border: "1px solid #475569", borderRadius: 8, padding: "4px 8px", fontSize: 12, outline: "none", cursor: "pointer" },
-  logoutBtn: { background: "transparent", border: "1px solid #ef4444", color: "#ef4444", borderRadius: 8, padding: "6px 12px", fontWeight: 700, fontSize: 12, cursor: "pointer" },
+  activeStaffName: { fontSize: 13, fontWeight: 800, color: "#0F172A" },
+  activeStaffRole: { fontSize: 10, color: "#0C831F", fontWeight: 700 },
+  switchSelect: { background: "#F8FAFC", color: "#0F172A", border: "1px solid #CBD5E1", borderRadius: 8, padding: "4px 8px", fontSize: 12, outline: "none", cursor: "pointer" },
+  logoutBtn: { background: "transparent", border: "1px solid #EF4444", color: "#EF4444", borderRadius: 8, padding: "6px 12px", fontWeight: 700, fontSize: 12, cursor: "pointer" },
 
-  actionAlert: { background: "#059669", color: "#fff", padding: "10px 20px", fontWeight: 700, fontSize: 13, textAlign: "center" },
-  pingAlert: { background: "#ca8a04", color: "#fff", padding: "10px 20px", fontWeight: 700, fontSize: 13, textAlign: "center" },
+  actionAlert: { background: "#059669", color: "#fff", padding: "10px 20px", fontWeight: 800, fontSize: 13, textAlign: "center" },
+  pingAlert: { background: "#D97706", color: "#fff", padding: "10px 20px", fontWeight: 800, fontSize: 13, textAlign: "center" },
 
-  tabBar: { background: "#1e293b", padding: "0 24px", display: "flex", gap: 8, borderBottom: "1px solid #334155", overflowX: "auto" },
-  tabBtn: { background: "transparent", border: "none", color: "#94a3b8", padding: "14px 16px", fontSize: 13, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 8, borderBottom: "3px solid transparent" },
-  tabBtnActive: { color: "#0c831f", borderBottomColor: "#0c831f", background: "#0f172a" },
-  tabBadge: { fontSize: 10, fontWeight: 800, padding: "2px 6px", borderRadius: 10 },
+  tabBar: { background: "#FFFFFF", padding: "0 24px", display: "flex", gap: 8, borderBottom: "1px solid #E2E8F0", overflowX: "auto" },
+  tabBtn: { background: "transparent", border: "none", color: "#64748B", padding: "14px 16px", fontSize: 13, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 8, borderBottom: "3px solid transparent", transition: "all 0.2s" },
+  tabBtnActive: { color: "#0C831F", borderBottomColor: "#0C831F", background: "#F0FDF4", fontWeight: 800 },
+  tabBadge: { fontSize: 10, fontWeight: 800, padding: "2px 7px", borderRadius: 10 },
 
   main: { padding: 24, maxWidth: 1400, margin: "0 auto" },
 
   statsGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 16, marginBottom: 24 },
-  statCard: { background: "#1e293b", border: "1px solid #334155", borderRadius: 16, padding: 20 },
-  statHeader: { display: "flex", alignItems: "center", gap: 8, color: "#94a3b8", fontSize: 13, fontWeight: 700 },
+  statCard: { background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: 16, padding: 20, boxShadow: "0 2px 8px rgba(0,0,0,0.04)" },
+  statHeader: { display: "flex", alignItems: "center", gap: 8, color: "#64748B", fontSize: 13, fontWeight: 700 },
   statIcon: { fontSize: 18 },
   statTitle: { flex: 1 },
-  statVal: { fontSize: 26, fontWeight: 900, color: "#f8fafc", marginTop: 8 },
-  statSub: { fontSize: 12, color: "#94a3b8", marginTop: 4 },
-  progressBarTrack: { background: "#334155", height: 6, borderRadius: 3, marginTop: 10, overflow: "hidden" },
+  statVal: { fontSize: 26, fontWeight: 900, color: "#0F172A", marginTop: 8 },
+  statSub: { fontSize: 12, color: "#64748B", marginTop: 4 },
+  progressBarTrack: { background: "#E2E8F0", height: 6, borderRadius: 3, marginTop: 10, overflow: "hidden" },
   progressBarFill: { height: "100%", transition: "width 0.4s ease" },
 
-  quickControlBar: { background: "#1e293b", border: "1px solid #334155", borderRadius: 16, padding: 16, marginBottom: 24, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 },
-  controlTitle: { fontSize: 14, fontWeight: 800, color: "#facc15" },
+  quickControlBar: { background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: 16, padding: 16, marginBottom: 24, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12, boxShadow: "0 2px 8px rgba(0,0,0,0.03)" },
+  controlTitle: { fontSize: 14, fontWeight: 800, color: "#92400E" },
   controlBtns: { display: "flex", gap: 10, flexWrap: "wrap" },
   actionBtn: { color: "#fff", border: "none", padding: "8px 16px", borderRadius: 10, fontWeight: 800, fontSize: 13, cursor: "pointer" },
-  actionBtnOutline: { background: "#0f172a", border: "1px solid #475569", color: "#f8fafc", padding: "8px 14px", borderRadius: 10, fontWeight: 700, fontSize: 12, cursor: "pointer" },
+  actionBtnOutline: { background: "#FFFFFF", border: "1px solid #CBD5E1", color: "#1E293B", padding: "8px 14px", borderRadius: 10, fontWeight: 700, fontSize: 12, cursor: "pointer" },
 
   twoColGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 },
-  panel: { background: "#1e293b", border: "1px solid #334155", borderRadius: 16, padding: 20 },
+  panel: { background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: 16, padding: 20, boxShadow: "0 2px 8px rgba(0,0,0,0.04)" },
   panelHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 },
-  panelTitle: { fontSize: 15, fontWeight: 800, color: "#f8fafc" },
-  smLinkBtn: { background: "none", border: "none", color: "#0c831f", fontWeight: 700, fontSize: 12, cursor: "pointer" },
+  panelTitle: { fontSize: 15, fontWeight: 800, color: "#0F172A" },
+  smLinkBtn: { background: "none", border: "none", color: "#0C831F", fontWeight: 800, fontSize: 12, cursor: "pointer" },
 
   rosterList: { display: "flex", flexDirection: "column", gap: 10 },
-  rosterRow: { display: "flex", justifyContent: "space-between", alignItems: "center", background: "#0f172a", padding: "10px 14px", borderRadius: 12 },
+  rosterRow: { display: "flex", justifyContent: "space-between", alignItems: "center", background: "#F8FAFC", border: "1px solid #E2E8F0", padding: "10px 14px", borderRadius: 12 },
   rosterLeft: { display: "flex", alignItems: "center", gap: 10 },
   rosterAvatar: { fontSize: 20 },
-  rosterName: { fontSize: 14, fontWeight: 800, color: "#f8fafc" },
-  rosterRole: { fontSize: 11, color: "#0c831f", fontWeight: 700 },
+  rosterName: { fontSize: 14, fontWeight: 800, color: "#0F172A" },
+  rosterRole: { fontSize: 11, color: "#0C831F", fontWeight: 700 },
   rosterRight: { display: "flex", alignItems: "center", gap: 10 },
-  batteryTag: { fontSize: 12, fontWeight: 800 },
-  onlineTag: { fontSize: 11, fontWeight: 800, color: "#10b981" },
+  batteryTag: { fontSize: 12, fontWeight: 800, color: "#1E293B" },
+  onlineTag: { fontSize: 11, fontWeight: 800, color: "#10B981" },
 
   complaintMiniList: { display: "flex", flexDirection: "column", gap: 10 },
-  complaintMiniCard: { background: "#0f172a", padding: 12, borderRadius: 12, border: "1px solid #334155" },
+  complaintMiniCard: { background: "#F8FAFC", border: "1px solid #E2E8F0", padding: 12, borderRadius: 12 },
   cTop: { display: "flex", justifyContent: "space-between", marginBottom: 6 },
-  cId: { fontSize: 11, fontWeight: 800, color: "#94a3b8" },
-  cIssue: { fontSize: 13, fontWeight: 700, color: "#f8fafc", marginBottom: 8 },
-  cFooter: { display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 12, color: "#94a3b8" },
-  resolveMiniBtn: { background: "#0c831f", color: "#fff", border: "none", padding: "4px 8px", borderRadius: 6, fontSize: 11, fontWeight: 800, cursor: "pointer" },
-  resolvedBadge: { color: "#10b981", fontWeight: 800, fontSize: 12 },
+  cId: { fontSize: 11, fontWeight: 800, color: "#64748B" },
+  cIssue: { fontSize: 13, fontWeight: 700, color: "#0F172A", marginBottom: 8 },
+  cFooter: { display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 12, color: "#64748B" },
+  resolveMiniBtn: { background: "#0C831F", color: "#fff", border: "none", padding: "4px 10px", borderRadius: 6, fontSize: 11, fontWeight: 800, cursor: "pointer" },
+  resolvedBadge: { color: "#10B981", fontWeight: 800, fontSize: 12 },
 
   sectionWrap: { display: "flex", flexDirection: "column", gap: 20 },
   sectionHeader: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12 },
-  sectionHeading: { fontSize: 22, fontWeight: 900, color: "#f8fafc", margin: 0 },
-  sectionSub: { fontSize: 13, color: "#94a3b8", marginTop: 4 },
+  sectionHeading: { fontSize: 22, fontWeight: 900, color: "#0F172A", margin: 0 },
+  sectionSub: { fontSize: 13, color: "#64748B", marginTop: 4 },
   pauseBtnBig: { color: "#fff", border: "none", padding: "12px 20px", borderRadius: 12, fontWeight: 900, fontSize: 14, cursor: "pointer" },
 
-  capMeterCard: { background: "#1e293b", border: "1px solid #334155", borderRadius: 20, padding: 24 },
+  capMeterCard: { background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: 20, padding: 24, boxShadow: "0 2px 8px rgba(0,0,0,0.04)" },
   capMeterHeader: { display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 16 },
-  capLabel: { fontSize: 13, color: "#94a3b8", fontWeight: 700 },
-  capNumber: { fontSize: 36, fontWeight: 900, color: "#f8fafc" },
-  capUnit: { fontSize: 18, color: "#94a3b8", fontWeight: 700 },
-  capPercentVal: { fontSize: 48, fontWeight: 900, color: "#0c831f" },
-  meterTrack: { background: "#0f172a", height: 16, borderRadius: 8, overflow: "hidden", marginBottom: 14 },
+  capLabel: { fontSize: 13, color: "#64748B", fontWeight: 700 },
+  capNumber: { fontSize: 36, fontWeight: 900, color: "#0F172A" },
+  capUnit: { fontSize: 18, color: "#64748B", fontWeight: 700 },
+  capPercentVal: { fontSize: 48, fontWeight: 900, color: "#0C831F" },
+  meterTrack: { background: "#E2E8F0", height: 16, borderRadius: 8, overflow: "hidden", marginBottom: 14 },
   meterFill: { height: "100%", transition: "width 0.5s ease" },
-  meterStatusRow: { display: "flex", justifyContent: "space-between", fontSize: 13, color: "#cbd5e1" },
+  meterStatusRow: { display: "flex", justifyContent: "space-between", fontSize: 13, color: "#475569" },
 
   capControlsGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 },
-  capControlBox: { background: "#1e293b", border: "1px solid #334155", borderRadius: 16, padding: 20 },
-  boxTitle: { fontSize: 14, fontWeight: 800, color: "#f8fafc", marginBottom: 12 },
+  capControlBox: { background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: 16, padding: 20, boxShadow: "0 2px 8px rgba(0,0,0,0.04)" },
+  boxTitle: { fontSize: 14, fontWeight: 800, color: "#0F172A", marginBottom: 12 },
   capBtnGroup: { display: "flex", gap: 8, flexWrap: "wrap" },
-  capChoiceBtn: { flex: 1, padding: 10, background: "#0f172a", border: "1px solid #334155", color: "#f8fafc", borderRadius: 10, fontWeight: 800, fontSize: 13, cursor: "pointer" },
-  capChoiceActive: { background: "#0c831f", borderColor: "#0c831f" },
+  capChoiceBtn: { flex: 1, padding: 10, background: "#F8FAFC", border: "1px solid #CBD5E1", color: "#1E293B", borderRadius: 10, fontWeight: 800, fontSize: 13, cursor: "pointer" },
+  capChoiceActive: { background: "#0C831F", borderColor: "#0C831F", color: "#FFFFFF" },
 
   toggleRow: { display: "flex", justifyContent: "space-between", alignItems: "center" },
-  toggleLabel: { fontSize: 14, fontWeight: 800, color: "#f8fafc" },
-  toggleSub: { fontSize: 12, color: "#94a3b8", marginTop: 2 },
+  toggleLabel: { fontSize: 14, fontWeight: 800, color: "#0F172A" },
+  toggleSub: { fontSize: 12, color: "#64748B", marginTop: 2 },
   toggleBtn: { border: "none", color: "#fff", padding: "8px 16px", borderRadius: 10, fontWeight: 800, fontSize: 12, cursor: "pointer" },
 
   logList: { display: "flex", flexDirection: "column", gap: 8, marginTop: 12 },
-  logRow: { display: "flex", gap: 12, background: "#0f172a", padding: "10px 14px", borderRadius: 10, fontSize: 13 },
-  logTime: { color: "#38bdf8", fontWeight: 800 },
-  logMsg: { color: "#f8fafc", fontWeight: 600 },
+  logRow: { display: "flex", gap: 12, background: "#F8FAFC", border: "1px solid #E2E8F0", padding: "10px 14px", borderRadius: 10, fontSize: 13 },
+  logTime: { color: "#0284C7", fontWeight: 800 },
+  logMsg: { color: "#1E293B", fontWeight: 600 },
 
-  addComplaintBtn: { background: "#0c831f", color: "#fff", border: "none", padding: "10px 16px", borderRadius: 10, fontWeight: 800, fontSize: 13, cursor: "pointer" },
+  addComplaintBtn: { background: "#0C831F", color: "#fff", border: "none", padding: "10px 16px", borderRadius: 10, fontWeight: 800, fontSize: 13, cursor: "pointer" },
   complaintsGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 16 },
-  complaintCard: { background: "#1e293b", border: "1px solid #334155", borderRadius: 16, padding: 20, display: "flex", flexDirection: "column", gap: 12 },
+  complaintCard: { background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: 16, padding: 20, display: "flex", flexDirection: "column", gap: 12, boxShadow: "0 2px 8px rgba(0,0,0,0.04)" },
   cCardHeader: { display: "flex", justifyContent: "space-between", alignItems: "center" },
-  cTicketId: { fontWeight: 900, fontSize: 14, color: "#f8fafc" },
-  cOrderRef: { fontSize: 12, color: "#94a3b8" },
-  cCardIssue: { fontSize: 14, fontWeight: 700, color: "#f8fafc", lineHeight: 1.4 },
-  photoContainer: { background: "#0f172a", border: "1px solid #334155", borderRadius: 10, padding: 10 },
-  photoTag: { display: "block", fontSize: 11, fontWeight: 800, color: "#f8cb46", marginBottom: 6 },
+  cTicketId: { fontWeight: 900, fontSize: 14, color: "#0F172A" },
+  cOrderRef: { fontSize: 12, color: "#64748B" },
+  cCardIssue: { fontSize: 14, fontWeight: 700, color: "#0F172A", lineHeight: 1.4 },
+  photoContainer: { background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: 10, padding: 10 },
+  photoTag: { display: "block", fontSize: 11, fontWeight: 800, color: "#D97706", marginBottom: 6 },
   cPhotoImg: { width: "100%", maxHeight: 180, borderRadius: 8, objectFit: "cover" },
-  cMetaGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, fontSize: 12, color: "#cbd5e1", background: "#0f172a", padding: 12, borderRadius: 10 },
+  cMetaGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, fontSize: 12, color: "#475569", background: "#F8FAFC", border: "1px solid #E2E8F0", padding: 12, borderRadius: 10 },
   cCardFooter: { marginTop: 4 },
-  resolvedText: { color: "#10b981", fontWeight: 800, fontSize: 13 },
+  resolvedText: { color: "#10B981", fontWeight: 800, fontSize: 13 },
   cBtnRow: { display: "flex", gap: 8, flexWrap: "wrap" },
   refundBtn: { background: "#059669", color: "#fff", border: "none", padding: "8px 12px", borderRadius: 8, fontWeight: 800, fontSize: 12, cursor: "pointer", flex: 1 },
-  replaceBtn: { background: "#0284c7", color: "#fff", border: "none", padding: "8px 12px", borderRadius: 8, fontWeight: 800, fontSize: 12, cursor: "pointer", flex: 1 },
-  resolveBtn: { background: "#334155", color: "#fff", border: "none", padding: "8px 12px", borderRadius: 8, fontWeight: 700, fontSize: 12, cursor: "pointer" },
+  replaceBtn: { background: "#0284C7", color: "#fff", border: "none", padding: "8px 12px", borderRadius: 8, fontWeight: 800, fontSize: 12, cursor: "pointer", flex: 1 },
+  resolveBtn: { background: "#F1F5F9", border: "1px solid #CBD5E1", color: "#1E293B", padding: "8px 12px", borderRadius: 8, fontWeight: 700, fontSize: 12, cursor: "pointer" },
 
-  devicesTableCard: { background: "#1e293b", border: "1px solid #334155", borderRadius: 16, overflowX: "auto" },
+  devicesTableCard: { background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: 16, overflowX: "auto", boxShadow: "0 2px 8px rgba(0,0,0,0.04)" },
   table: { width: "100%", borderCollapse: "collapse", textAlign: "left" },
-  thRow: { background: "#0f172a", borderBottom: "1px solid #334155" },
-  th: { padding: "14px 18px", fontSize: 12, fontWeight: 800, color: "#94a3b8" },
-  tr: { borderBottom: "1px solid #334155" },
-  td: { padding: "14px 18px", fontSize: 13, color: "#f8fafc" },
+  thRow: { background: "#F8FAFC", borderBottom: "1px solid #E2E8F0" },
+  th: { padding: "14px 18px", fontSize: 12, fontWeight: 800, color: "#64748B" },
+  tr: { borderBottom: "1px solid #E2E8F0" },
+  td: { padding: "14px 18px", fontSize: 13, color: "#1E293B" },
   tdPerson: { display: "flex", alignItems: "center", gap: 10 },
-  rolePill: { background: "#0c831f22", color: "#0c831f", border: "1px solid #0c831f44", padding: "3px 8px", borderRadius: 6, fontWeight: 800, fontSize: 11 },
-  devName: { fontWeight: 700 },
-  devId: { fontSize: 11, color: "#64748b" },
-  ipText: { fontSize: 11, color: "#64748b", fontFamily: "monospace" },
-  onlineBadge: { fontSize: 11, fontWeight: 800, color: "#10b981" },
-  pingBtn: { background: "#334155", border: "none", color: "#f8fafc", padding: "6px 10px", borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: "pointer" },
+  rolePill: { background: "#DCFCE7", color: "#15803D", border: "1px solid #BBF7D0", padding: "3px 8px", borderRadius: 6, fontWeight: 800, fontSize: 11 },
+  devName: { fontWeight: 700, color: "#0F172A" },
+  devId: { fontSize: 11, color: "#64748B" },
+  ipText: { fontSize: 11, color: "#64748B", fontFamily: "monospace" },
+  onlineBadge: { fontSize: 11, fontWeight: 800, color: "#10B981" },
+  pingBtn: { background: "#F1F5F9", border: "1px solid #CBD5E1", color: "#1E293B", padding: "6px 12px", borderRadius: 8, fontSize: 11, fontWeight: 800, cursor: "pointer" },
 
-  searchBox: { display: "flex", alignItems: "center", gap: 10, background: "#1e293b", border: "1px solid #334155", borderRadius: 10, padding: "8px 14px", width: 340 },
-  searchInput: { background: "none", border: "none", color: "#f8fafc", fontSize: 13, outline: "none", width: "100%", fontWeight: 600 },
+  searchBox: { display: "flex", alignItems: "center", gap: 10, background: "#FFFFFF", border: "1px solid #CBD5E1", borderRadius: 10, padding: "8px 14px", width: 340 },
+  searchInput: { background: "none", border: "none", color: "#0F172A", fontSize: 13, outline: "none", width: "100%", fontWeight: 600 },
   skuGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 16 },
-  skuCard: { background: "#1e293b", border: "1px solid #334155", borderRadius: 16, padding: 18, display: "flex", flexDirection: "column", gap: 8 },
+  skuCard: { background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: 16, padding: 18, display: "flex", flexDirection: "column", gap: 8, boxShadow: "0 2px 8px rgba(0,0,0,0.04)" },
   skuHeader: { display: "flex", justifyContent: "space-between", alignItems: "center" },
-  skuCode: { fontSize: 11, fontWeight: 900, color: "#facc15" },
-  skuBin: { fontSize: 11, fontWeight: 800, background: "#0f172a", color: "#38bdf8", padding: "2px 6px", borderRadius: 6 },
-  skuName: { fontSize: 14, fontWeight: 800, color: "#f8fafc", margin: 0 },
-  skuMeta: { fontSize: 12, color: "#94a3b8" },
+  skuCode: { fontSize: 11, fontWeight: 900, color: "#D97706" },
+  skuBin: { fontSize: 11, fontWeight: 800, background: "#E0F2FE", color: "#0369A1", padding: "2px 6px", borderRadius: 6 },
+  skuName: { fontSize: 14, fontWeight: 800, color: "#0F172A", margin: 0 },
+  skuMeta: { fontSize: 12, color: "#64748B" },
   skuPriceRow: { display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4 },
-  priceVal: { fontSize: 16, fontWeight: 900, color: "#0c831f" },
-  barcodeBox: { background: "#0f172a", padding: 8, borderRadius: 8, textAlign: "center", marginTop: 6, border: "1px solid #334155" },
-  barcodeLines: { fontSize: 14, letterSpacing: 4, fontFamily: "monospace", color: "#cbd5e1", fontWeight: 900 },
-  barcodeCode: { fontSize: 10, color: "#64748b" },
+  priceVal: { fontSize: 16, fontWeight: 900, color: "#0C831F" },
+  barcodeBox: { background: "#F8FAFC", padding: 8, borderRadius: 8, textAlign: "center", marginTop: 6, border: "1px solid #E2E8F0" },
+  barcodeLines: { fontSize: 14, letterSpacing: 4, fontFamily: "monospace", color: "#1E293B", fontWeight: 900 },
+  barcodeCode: { fontSize: 11, color: "#64748B", fontFamily: "monospace" },
+  testScanBtn: { background: "#0C831F", color: "#FFFFFF", border: "none", borderRadius: 8, padding: "6px 12px", fontSize: 11, fontWeight: 800, cursor: "pointer", marginTop: 6, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 },
 
   ordersList: { display: "flex", flexDirection: "column", gap: 12 },
-  emptyOrders: { background: "#1e293b", border: "1px solid #334155", borderRadius: 16, padding: 40, textAlign: "center", color: "#f8fafc" },
-  orderCardRow: { background: "#1e293b", border: "1px solid #334155", borderRadius: 16, padding: 16, display: "flex", justifyContent: "space-between", alignItems: "center" },
+  emptyOrders: { background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: 16, padding: 40, textAlign: "center", color: "#1E293B", boxShadow: "0 2px 8px rgba(0,0,0,0.04)" },
+  orderCardRow: { background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: 16, padding: 16, display: "flex", justifyContent: "space-between", alignItems: "center", boxShadow: "0 2px 8px rgba(0,0,0,0.04)" },
   orderMainInfo: { display: "flex", flexDirection: "column", gap: 4 },
   orderHeaderLine: { display: "flex", alignItems: "center", gap: 10 },
-  oId: { fontWeight: 900, fontSize: 15, color: "#f8fafc" },
-  oStage: { background: "#0c831f", color: "#fff", fontWeight: 800, fontSize: 11, padding: "2px 8px", borderRadius: 6 },
-  oCustomer: { fontSize: 13, color: "#cbd5e1" },
-  oItemsCount: { fontSize: 12, color: "#94a3b8" },
+  oId: { fontWeight: 900, fontSize: 15, color: "#0F172A" },
+  oStage: { background: "#0C831F", color: "#fff", fontWeight: 800, fontSize: 11, padding: "2px 8px", borderRadius: 6 },
+  oCustomer: { fontSize: 13, color: "#475569" },
+  oItemsCount: { fontSize: 12, color: "#64748B" },
   oAssigned: { textAlign: "right" },
 };

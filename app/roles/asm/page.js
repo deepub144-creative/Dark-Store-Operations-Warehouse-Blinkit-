@@ -160,6 +160,14 @@ export default function AssistantStoreManagerApp() {
           <div style={S.operatorSub}>
             Assistant Store Manager (ASM) Floor & Audit Portal • Namma Tiptur - 572201
           </div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
+            <a href="/dashboard" style={S.quickLinkPill}>📊 Command Tower</a>
+            <a href="/roles/sm" style={S.quickLinkPill}>👔 SM: Bhasker N S</a>
+            <a href="/roles/md" style={S.quickLinkPill}>👑 MD: A B Harshitha</a>
+            <a href="/picker" style={S.quickLinkPill}>📦 Picker: Thrupthi</a>
+            <a href="/rider" style={S.quickLinkPill}>🛵 Rider: Sinchana</a>
+            <a href="/warehouse" style={S.quickLinkPill}>🏬 Staging Racks</a>
+          </div>
         </div>
 
         <div style={S.profileBox}>
@@ -216,8 +224,8 @@ export default function AssistantStoreManagerApp() {
                     key={item.sku}
                     style={{
                       ...S.itemCard,
-                      borderColor: inStock ? "#1e293b" : "#ef4444",
-                      background: inStock ? "#0f172a" : "#1a0b0e",
+                      borderColor: inStock ? "#E2E8F0" : "#FCA5A5",
+                      background: inStock ? "#FFFFFF" : "#FEF2F2",
                     }}
                   >
                     <div style={S.itemCardTop}>
@@ -399,8 +407,8 @@ export default function AssistantStoreManagerApp() {
 const S = {
   container: {
     minHeight: "100vh",
-    background: "#080c14",
-    color: "#f8fafc",
+    background: "#F4F6FB",
+    color: "#1E293B",
     fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
     paddingBottom: 40,
   },
@@ -409,13 +417,13 @@ const S = {
     top: 16,
     left: "50%",
     transform: "translateX(-50%)",
-    background: "#10b981",
+    background: "#0C831F",
     color: "#ffffff",
     padding: "10px 20px",
     borderRadius: 8,
     fontWeight: 600,
     zIndex: 9999,
-    boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
+    boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
     fontSize: 14,
   },
   header: {
@@ -423,10 +431,11 @@ const S = {
     justifyContent: "space-between",
     alignItems: "center",
     padding: "16px 24px",
-    background: "#0f172a",
-    borderBottom: "1px solid #1e293b",
+    background: "#FFFDF2",
+    borderBottom: "2px solid #F2E3A0",
     flexWrap: "wrap",
     gap: 12,
+    boxShadow: "0 2px 8px rgba(0,0,0,0.03)",
   },
   brandCol: {
     display: "flex",
@@ -437,55 +446,71 @@ const S = {
     display: "flex",
     alignItems: "center",
     gap: 10,
+    flexWrap: "wrap",
   },
   brandTitle: {
     fontSize: 20,
     fontWeight: 900,
-    color: "#38bdf8",
+    color: "#0c831f",
     letterSpacing: 1,
   },
   hubBadge: {
-    fontSize: 12,
-    fontWeight: 700,
-    background: "#1e293b",
-    color: "#f59e0b",
+    fontSize: 11,
+    fontWeight: 800,
+    background: "#FEF3C7",
+    color: "#92400E",
     padding: "3px 10px",
     borderRadius: 6,
-    border: "1px solid #f59e0b",
+    border: "1px solid #FDE68A",
   },
   operatorSub: {
     fontSize: 12,
-    color: "#94a3b8",
+    color: "#64748B",
+  },
+  quickLinkPill: {
+    background: "#FFFFFF",
+    border: "1px solid #CBD5E1",
+    color: "#1E293B",
+    borderRadius: 8,
+    fontSize: 11,
+    fontWeight: 700,
+    padding: "4px 10px",
+    textDecoration: "none",
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 4,
+    transition: "all 0.2s ease",
   },
   profileBox: {
     display: "flex",
     alignItems: "center",
     gap: 10,
-    background: "#1e293b",
+    background: "#FFFFFF",
     padding: "8px 16px",
     borderRadius: 10,
-    border: "1px solid #334155",
+    border: "1px solid #E2E8F0",
+    boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
   },
   profileName: {
     fontSize: 14,
     fontWeight: 800,
-    color: "#ffffff",
+    color: "#0F172A",
   },
   profileRole: {
     fontSize: 11,
-    color: "#94a3b8",
+    color: "#64748B",
   },
   tabBar: {
     display: "flex",
     gap: 8,
     padding: "12px 24px",
-    background: "#0f172a",
-    borderBottom: "1px solid #1e293b",
+    background: "#FFFFFF",
+    borderBottom: "1px solid #E2E8F0",
   },
   tabBtn: {
     background: "transparent",
     border: "none",
-    color: "#94a3b8",
+    color: "#64748B",
     padding: "10px 18px",
     borderRadius: 8,
     fontSize: 13,
@@ -493,9 +518,9 @@ const S = {
     cursor: "pointer",
   },
   tabBtnActive: {
-    background: "#1e293b",
-    color: "#38bdf8",
-    border: "1px solid #38bdf8",
+    background: "#F0FDF4",
+    color: "#0C831F",
+    border: "1px solid #86EFAC",
   },
   main: {
     maxWidth: 1200,
@@ -513,19 +538,19 @@ const S = {
   panelTitle: {
     fontSize: 18,
     fontWeight: 800,
-    color: "#ffffff",
+    color: "#0F172A",
     margin: 0,
   },
   panelSub: {
     fontSize: 13,
-    color: "#94a3b8",
+    color: "#64748B",
     margin: "4px 0 0",
     maxWidth: 600,
   },
   searchInput: {
-    background: "#0f172a",
-    border: "1px solid #334155",
-    color: "#fff",
+    background: "#FFFFFF",
+    border: "1px solid #CBD5E1",
+    color: "#0F172A",
     padding: "8px 14px",
     borderRadius: 8,
     fontSize: 13,
@@ -539,10 +564,11 @@ const S = {
   itemCard: {
     borderRadius: 12,
     padding: 16,
-    border: "1px solid",
+    border: "1px solid #E2E8F0",
     display: "flex",
     flexDirection: "column",
     justifyContent: "space-between",
+    boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
   },
   itemCardTop: {
     display: "flex",
@@ -552,11 +578,12 @@ const S = {
   },
   aislePill: {
     fontSize: 11,
-    color: "#f59e0b",
-    background: "rgba(245, 158, 11, 0.1)",
+    color: "#92400E",
+    background: "#FEF3C7",
     padding: "2px 8px",
     borderRadius: 4,
-    border: "1px solid rgba(245, 158, 11, 0.3)",
+    border: "1px solid #FDE68A",
+    fontWeight: 700,
   },
   stockPill: {
     fontSize: 10,
@@ -567,12 +594,12 @@ const S = {
   itemName: {
     fontSize: 15,
     fontWeight: 800,
-    color: "#ffffff",
+    color: "#0F172A",
     marginBottom: 4,
   },
   itemCategory: {
     fontSize: 12,
-    color: "#94a3b8",
+    color: "#64748B",
     marginBottom: 14,
   },
   itemCardBottom: {},
@@ -587,23 +614,25 @@ const S = {
     cursor: "pointer",
   },
   auditorBadge: {
-    background: "rgba(56, 189, 248, 0.1)",
-    border: "1px solid #38bdf8",
-    color: "#38bdf8",
+    background: "#E0F2FE",
+    border: "1px solid #BAE6FD",
+    color: "#0369A1",
     padding: "6px 14px",
     borderRadius: 8,
     fontSize: 13,
+    fontWeight: 700,
   },
   auditFormCard: {
-    background: "#0f172a",
+    background: "#FFFFFF",
     borderRadius: 14,
     padding: 20,
-    border: "1px solid #1e293b",
+    border: "1px solid #E2E8F0",
+    boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
   },
   auditFormHeader: {
     fontSize: 13,
     fontWeight: 700,
-    color: "#38bdf8",
+    color: "#0C831F",
     marginBottom: 10,
   },
   formGrid: {
@@ -615,39 +644,39 @@ const S = {
     display: "block",
     fontSize: 12,
     fontWeight: 600,
-    color: "#cbd5e1",
+    color: "#475569",
     marginBottom: 6,
   },
   select: {
     width: "100%",
-    background: "#1e293b",
-    border: "1px solid #334155",
-    color: "#fff",
+    background: "#F8FAFC",
+    border: "1px solid #CBD5E1",
+    color: "#0F172A",
     padding: "10px",
     borderRadius: 8,
     fontSize: 13,
   },
   inputDisabled: {
     width: "100%",
-    background: "#1e293b",
-    border: "1px solid #334155",
-    color: "#94a3b8",
+    background: "#F1F5F9",
+    border: "1px solid #E2E8F0",
+    color: "#64748B",
     padding: "10px",
     borderRadius: 8,
     fontSize: 13,
   },
   input: {
     width: "100%",
-    background: "#1e293b",
-    border: "1px solid #334155",
-    color: "#fff",
+    background: "#FFFFFF",
+    border: "1px solid #CBD5E1",
+    color: "#0F172A",
     padding: "10px",
     borderRadius: 8,
     fontSize: 13,
   },
   submitAuditBtn: {
     marginTop: 18,
-    background: "#10b981",
+    background: "#0C831F",
     border: "none",
     color: "#ffffff",
     padding: "12px 24px",
@@ -660,7 +689,7 @@ const S = {
   recentAuditsTitle: {
     fontSize: 16,
     fontWeight: 800,
-    color: "#ffffff",
+    color: "#0F172A",
     marginBottom: 12,
   },
   auditsList: {
@@ -669,10 +698,11 @@ const S = {
     gap: 10,
   },
   auditSummaryCard: {
-    background: "#0f172a",
+    background: "#FFFFFF",
     borderRadius: 10,
     padding: 14,
-    border: "1px solid #1e293b",
+    border: "1px solid #E2E8F0",
+    boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
   },
   auditSummaryTop: {
     display: "flex",
@@ -683,11 +713,12 @@ const S = {
   audId: {
     fontSize: 13,
     fontWeight: 800,
-    color: "#38bdf8",
+    color: "#0C831F",
   },
   audSku: {
     fontSize: 13,
-    color: "#ffffff",
+    color: "#0F172A",
+    fontWeight: 700,
   },
   audStatusBadge: {
     fontSize: 10,
@@ -700,14 +731,14 @@ const S = {
     display: "flex",
     gap: 16,
     fontSize: 12,
-    color: "#cbd5e1",
+    color: "#475569",
     marginBottom: 8,
     flexWrap: "wrap",
   },
   auditSummaryFooter: {
     display: "flex",
     justifyContent: "space-between",
-    borderTop: "1px solid #1e293b",
+    borderTop: "1px solid #E2E8F0",
     paddingTop: 8,
   },
 };

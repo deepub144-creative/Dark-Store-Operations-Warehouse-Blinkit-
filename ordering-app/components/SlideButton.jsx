@@ -1,8 +1,13 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import {
+  IconRealisticSliderArrow,
+  IconRealisticCheck,
+  IconRealisticTrackChevrons,
+} from "@/components/RealIcons";
 
-export default function SlideButton({ text, onSlideComplete, color = "#0c831f", icon = "➡️" }) {
+export default function SlideButton({ text, onSlideComplete, color = "#0c831f", icon = null }) {
   const [dragX, setDragX] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
   const [completed, setCompleted] = useState(false);
@@ -22,7 +27,7 @@ export default function SlideButton({ text, onSlideComplete, color = "#0c831f", 
     if (newX > maxDrag) newX = maxDrag;
     setDragX(newX);
 
-    if (newX >= maxDrag * 0.85) {
+    if (newX >= maxDrag * 0.82) {
       setCompleted(true);
       setIsDragging(false);
       setDragX(maxDrag);
@@ -58,6 +63,20 @@ export default function SlideButton({ text, onSlideComplete, color = "#0c831f", 
     };
   }, [isDragging]);
 
+  // Determine handle icon: custom realistic icon, or fallback to realistic slider arrow
+  const renderHandleIcon = () => {
+    if (completed) {
+      return <IconRealisticCheck size={22} color="#ffffff" />;
+    }
+    if (icon) {
+      if (typeof icon === "string") {
+        return <span style={{ fontSize: 18 }}>{icon}</span>;
+      }
+      return icon;
+    }
+    return <IconRealisticSliderArrow size={22} color="#ffffff" />;
+  };
+
   return (
     <div
       ref={trackRef}
@@ -65,7 +84,7 @@ export default function SlideButton({ text, onSlideComplete, color = "#0c831f", 
         position: "relative",
         width: "100%",
         height: 56,
-        background: completed ? "#10b981" : "#1e293b",
+        background: completed ? "#10b981" : "#0f172a",
         borderRadius: 28,
         display: "flex",
         alignItems: "center",
@@ -73,12 +92,13 @@ export default function SlideButton({ text, onSlideComplete, color = "#0c831f", 
         userSelect: "none",
         overflow: "hidden",
         border: `2px solid ${completed ? "#10b981" : color}`,
-        boxShadow: "0 4px 15px rgba(0,0,0,0.2)",
+        boxShadow: "0 4px 15px rgba(0,0,0,0.18)",
         margin: "12px 0",
-        transition: completed ? "background 0.3s ease" : "none",
+        transition: completed ? "background 0.3s ease, border-color 0.3s ease" : "none",
+        cursor: completed ? "default" : "pointer",
       }}
     >
-      {/* Background Fill */}
+      {/* Dynamic Slide Background Fill */}
       <div
         style={{
           position: "absolute",
@@ -87,29 +107,51 @@ export default function SlideButton({ text, onSlideComplete, color = "#0c831f", 
           bottom: 0,
           width: dragX + 56,
           background: color,
-          opacity: 0.35,
+          opacity: completed ? 1 : 0.45,
           borderRadius: 28,
-          transition: isDragging ? "none" : "width 0.2s ease",
+          transition: isDragging ? "none" : "width 0.22s ease",
         }}
       />
+
+      {/* Shimmer Track Directional Chevrons */}
+      {!completed && (
+        <div
+          style={{
+            position: "absolute",
+            right: 20,
+            display: "flex",
+            alignItems: "center",
+            pointerEvents: "none",
+            opacity: Math.max(0.1, 1 - dragX / 100),
+          }}
+        >
+          <IconRealisticTrackChevrons count={3} color="#ffffff" />
+        </div>
+      )}
 
       {/* Slide Text */}
       <span
         style={{
           color: "#ffffff",
           fontWeight: 900,
-          fontSize: 14,
-          letterSpacing: "0.5px",
+          fontSize: 13,
+          letterSpacing: "0.6px",
           pointerEvents: "none",
           zIndex: 1,
           opacity: Math.max(0.2, 1 - dragX / 150),
           textTransform: "uppercase",
+          padding: "0 40px",
+          textAlign: "center",
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          justifyContent: "center",
         }}
       >
-        {completed ? "✓ CONFIRMED!" : text}
+        {completed ? "✓ CONFIRMED & VERIFIED" : text}
       </span>
 
-      {/* Draggable Handle */}
+      {/* Draggable Realistic Handle */}
       <div
         onMouseDown={(e) => handleStart(e.clientX)}
         onTouchStart={(e) => handleStart(e.touches[0].clientX)}
@@ -119,21 +161,23 @@ export default function SlideButton({ text, onSlideComplete, color = "#0c831f", 
           top: 4,
           width: 48,
           height: 48,
-          background: color,
+          background: completed ? "#ffffff" : color,
           borderRadius: "50%",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          fontSize: 20,
-          color: "#fff",
-          cursor: "grab",
-          boxShadow: "0 2px 10px rgba(0,0,0,0.3)",
+          color: completed ? "#10b981" : "#ffffff",
+          cursor: completed ? "default" : "grab",
+          boxShadow: "0 4px 14px rgba(0,0,0,0.35)",
+          border: completed ? "2px solid #10b981" : "2px solid rgba(255,255,255,0.4)",
           zIndex: 2,
-          transition: isDragging ? "none" : "left 0.2s ease",
+          transition: isDragging ? "none" : "left 0.22s ease, transform 0.15s ease",
+          transform: isDragging ? "scale(1.06)" : "scale(1)",
         }}
       >
-        {completed ? "✓" : icon}
+        {completed ? <IconRealisticCheck size={24} color="#10b981" /> : renderHandleIcon()}
       </div>
     </div>
   );
 }
+
