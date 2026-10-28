@@ -612,7 +612,18 @@ export default function TrackOrderPage() {
                 Show this code to your <b>Delivery Partner</b> at doorstep to complete verification:
               </p>
               <div style={S.qrGraphicWrapper}>
-                <div style={S.qrVisualMatrix} />
+                <img
+                  src="/delivery-qr.png"
+                  alt="Delivery Handover QR Code"
+                  style={{
+                    width: 140,
+                    height: 140,
+                    objectFit: "contain",
+                    borderRadius: 8,
+                    background: "#FFFFFF",
+                    display: "block",
+                  }}
+                />
                 <code style={S.qrTextCode}>AUDITX-{activeOrder.orderNumber || orderId}</code>
               </div>
             </div>

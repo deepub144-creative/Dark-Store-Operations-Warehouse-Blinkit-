@@ -3,12 +3,13 @@
 import { useEffect, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { CATALOG } from "@/lib/items";
-import { broadcastEvent, subscribeToEvents, saveLiveOrder } from "@/lib/realtimeSync";
+import { broadcastEvent, subscribeToEvents, saveLiveOrder, getAllLiveOrders } from "@/lib/realtimeSync";
 import { playNotificationChime, playSuccessChime } from "@/lib/soundSystem";
 import { getRandomStagingRack } from "@/lib/roles";
 import AuditxLogo from "@/components/AuditxLogo";
 import {
   IconLightning,
+  IconRealisticScooter,
   IconHome,
   IconBriefcase,
   IconMapPin,
@@ -309,6 +310,7 @@ export default function OrderingAppPage() {
   const [ganeshaLang, setGaneshaLang] = useState("english"); // 'english' | 'kannada' | 'hindi'
   const [bgVideoIdx, setBgVideoIdx] = useState(0);
   const [showComingSoonModal, setShowComingSoonModal] = useState(false);
+  const [activeDeliveryOrder, setActiveDeliveryOrder] = useState(null);
 
   // Profile & Customer Login State
   const [showProfileModal, setShowProfileModal] = useState(false);
@@ -391,6 +393,31 @@ export default function OrderingAppPage() {
       }
     }
 
+    function checkActiveDelivery() {
+      try {
+        const liveOrders = getAllLiveOrders();
+        const lastRaw = localStorage.getItem("auditx_customer_last_order");
+        let active = null;
+        if (lastRaw) {
+          const last = JSON.parse(lastRaw);
+          const live = liveOrders.find((o) => (o.id || o.orderId) === (last.id || last.orderId));
+          active = live || last;
+        } else if (liveOrders && liveOrders.length > 0) {
+          active = liveOrders[0];
+        }
+        if (active && active.status !== "cancelled") {
+          setActiveDeliveryOrder(active);
+        } else {
+          setActiveDeliveryOrder(null);
+        }
+      } catch (err) {
+        console.warn("Check active delivery error:", err);
+      }
+    }
+
+    checkActiveDelivery();
+    window.addEventListener("focus", checkActiveDelivery);
+
     const unsubBus = subscribeToEvents((data) => {
       if (data.type === "ITEM_STOCK_TOGGLED" && data.payload) {
         if (!data.payload.inStock) {
@@ -401,12 +428,22 @@ export default function OrderingAppPage() {
           triggerToast(`In Stock: "${data.payload.name}" is now available at Tiptur HUB!`);
         }
       }
+      if (
+        data.type === "ORDER_CREATED" ||
+        data.type === "ORDER_STATUS_CHANGED" ||
+        data.type === "ORDER_ASSIGNED" ||
+        data.type === "ORDER_PICKED" ||
+        data.type === "ORDER_DELIVERED"
+      ) {
+        checkActiveDelivery();
+      }
     });
 
     const timer = setTimeout(() => setLoading(false), 200);
     return () => {
       clearTimeout(timer);
       unsubBus();
+      window.removeEventListener("focus", checkActiveDelivery);
     };
   }, []);
 
@@ -2118,6 +2155,135 @@ export default function OrderingAppPage() {
             )}
           </div>
         </main>
+      )}
+
+      {/* ── LIVE FLOATING DELIVERY STATUS BAR ("Order arriving soon" -> View) ── */}
+      {activeDeliveryOrder && !isCheckoutView && (
+        <div
+          id="active-order-floating-bar"
+          style={{
+            position: "fixed",
+            bottom: totalItems > 0 ? 128 : 68,
+            left: "50%",
+            transform: "translateX(-50%)",
+            width: "calc(100% - 24px)",
+            maxWidth: 416,
+            background: "linear-gradient(135deg, #0f172a 0%, #1e293b 100%)",
+            borderRadius: 14,
+            padding: "10px 14px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            boxShadow: "0 10px 28px rgba(15, 23, 42, 0.4), 0 0 0 1.5px rgba(12, 131, 31, 0.6)",
+            zIndex: 60,
+            cursor: "pointer",
+            transition: "all 0.25s ease",
+          }}
+          onClick={() => router.push(`/track/${activeDeliveryOrder.orderNumber || activeDeliveryOrder.id || activeDeliveryOrder.orderId}`)}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0, flex: 1 }}>
+            {/* Animated scooter delivery badge */}
+            <div
+              style={{
+                width: 38,
+                height: 38,
+                borderRadius: 10,
+                background: "rgba(12, 131, 31, 0.2)",
+                border: "1px solid rgba(12, 131, 31, 0.5)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
+                position: "relative",
+              }}
+            >
+              <IconRealisticScooter size={22} color="#4ade80" animated={true} />
+              <span
+                style={{
+                  position: "absolute",
+                  top: -2,
+                  right: -2,
+                  width: 8,
+                  height: 8,
+                  borderRadius: "50%",
+                  background: "#22c55e",
+                  boxShadow: "0 0 8px #22c55e",
+                }}
+              />
+            </div>
+
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <span
+                  style={{
+                    fontSize: 13,
+                    fontWeight: 900,
+                    color: "#ffffff",
+                    letterSpacing: "-0.2px",
+                  }}
+                >
+                  Order arriving soon
+                </span>
+                <span
+                  style={{
+                    fontSize: 10,
+                    fontWeight: 800,
+                    color: "#22c55e",
+                    background: "rgba(34, 197, 94, 0.15)",
+                    padding: "2px 6px",
+                    borderRadius: 4,
+                  }}
+                >
+                  ⚡ {activeDeliveryOrder.status === "en_route" ? "3-8 mins" : "8 mins"}
+                </span>
+              </div>
+              <div
+                style={{
+                  fontSize: 11,
+                  color: "#94a3b8",
+                  fontWeight: 600,
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                }}
+              >
+                {activeDeliveryOrder.status === "delivered"
+                  ? "Delivered at KFGSC • Tap to view"
+                  : activeDeliveryOrder.status === "en_route"
+                  ? "Out for delivery with Sinchana B R"
+                  : "Packing at Tiptur Dark Store with Thrupthi K S"}
+              </div>
+            </div>
+          </div>
+
+          {/* VIEW Button */}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0, marginLeft: 10 }}>
+            <button
+              type="button"
+              style={{
+                background: "#0c831f",
+                color: "#ffffff",
+                border: "none",
+                borderRadius: 8,
+                padding: "7px 14px",
+                fontSize: 12,
+                fontWeight: 800,
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: 4,
+                boxShadow: "0 3px 8px rgba(12, 131, 31, 0.4)",
+              }}
+              onClick={(e) => {
+                e.stopPropagation();
+                router.push(`/track/${activeDeliveryOrder.orderNumber || activeDeliveryOrder.id || activeDeliveryOrder.orderId}`);
+              }}
+            >
+              <span>View</span>
+              <IconArrowRight size={14} color="#ffffff" />
+            </button>
+          </div>
+        </div>
       )}
 
       {/* ── AUTHENTIC MOBILE BOTTOM NAVIGATION BAR (Home, Order Again, Categories, Explore Namma Tiptur) ── */}
