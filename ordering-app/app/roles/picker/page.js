@@ -538,12 +538,14 @@ export default function OdPickerApp() {
 
   // Open Phone Camera Scanner for Aisle QR or Item Barcode
   function openPhoneScanner(type, expectedCode, itemIdx) {
-    const item = items[itemIdx] || currentItem;
+    const orderItems = activeOrder?.items || [];
+    const item = orderItems[itemIdx] || orderItems[0];
+    const code = expectedCode || (type === "aisle" ? (item?.aisle || item?.binLocation || "F0 - A01 - 04") : (item?.barcode || item?.skuId || "BARCODE"));
     setPhoneCameraModal({
       type,
-      expectedCode: expectedCode || (type === "aisle" ? (item?.aisle || item?.binLocation || "F0 - A01 - 04") : (item?.barcode || item?.skuId)),
+      expectedCode: code,
       itemIdx: itemIdx !== undefined ? itemIdx : selectedItemIdx,
-      itemName: item?.name || "Item",
+      itemName: item?.name || "Product Item",
     });
   }
 
@@ -1746,6 +1748,14 @@ function PhoneCameraScannerModal({ modalData, onClose, onScanSuccess }) {
     async function initCamera() {
       try {
         setCameraError(null);
+        if (typeof navigator === "undefined" || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          if (isMounted) {
+            setCameraError("Camera unavailable on this browser/environment. Tap Instant Scan below!");
+            setCameraActive(false);
+          }
+          return;
+        }
+
         // Request original phone rear camera (environment) first
         try {
           stream = await navigator.mediaDevices.getUserMedia({
