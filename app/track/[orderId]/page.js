@@ -51,18 +51,35 @@ export default function TrackOrderPage() {
 
   // Real-time live order subscription & local synchronization
   useEffect(() => {
+    function processOrderEta(match) {
+      if (!match) return;
+      setOrder(match);
+      // Once Thrupthi K S picked the item, overall 10-minute timings decrease to 3 minutes!
+      if (
+        match.status === "staged" ||
+        match.status === "picked" ||
+        match.status === "en_route" ||
+        match.status === "dispatched"
+      ) {
+        setArrivingMinutes(match.remainingMins || 3);
+        setRiderProgress((prev) => Math.max(prev, 65));
+      } else if (match.remainingMins) {
+        setArrivingMinutes(match.remainingMins);
+      }
+      setLoading(false);
+    }
+
     const all = getAllLiveOrders();
     const found = all.find((o) => o.id === orderId || o.orderId === orderId || o.orderNumber === orderId);
     if (found) {
-      setOrder(found);
-      setLoading(false);
+      processOrderEta(found);
     } else {
       try {
         const last = localStorage.getItem("auditx_customer_last_order");
         if (last) {
           const parsed = JSON.parse(last);
           if (parsed.id === orderId || parsed.orderId === orderId || parsed.orderNumber === orderId) {
-            setOrder(parsed);
+            processOrderEta(parsed);
           }
         }
       } catch (e) {
@@ -74,11 +91,27 @@ export default function TrackOrderPage() {
     const unsub = subscribeToLiveOrders((orders) => {
       const match = orders.find((o) => o.id === orderId || o.orderId === orderId || o.orderNumber === orderId);
       if (match) {
-        setOrder(match);
+        processOrderEta(match);
       }
     });
 
-    return () => unsub();
+    const unsubEvents = subscribeToEvents((data) => {
+      if (
+        (data.type === "ORDER_STAGED" || data.type === "ORDER_PICKED" || data.type === "FAST_DELIVERY_STARTED") &&
+        (!data.orderId || data.orderId === orderId)
+      ) {
+        // Thrupthi K S completed picking! Overall delivery time drops from 10m to 3m
+        setArrivingMinutes(3);
+        setRiderProgress(65);
+        triggerToast("⚡ Items Picked by Thrupthi K S! Delivery time decreased to 3 mins!");
+        playNotificationChime();
+      }
+    });
+
+    return () => {
+      unsub();
+      unsubEvents();
+    };
   }, [orderId]);
 
   // "Arriving in 10 minutes" auto-reducing without counting background exact seconds timeline
@@ -91,9 +124,9 @@ export default function TrackOrderPage() {
     const interval = setInterval(() => {
       setArrivingMinutes((prev) => (prev > 1 ? prev - 1 : 1));
       setRiderProgress((prev) => (prev < 90 ? prev + 3 : prev));
-    }, 45000); // naturally reduces from 10 to 9 to 8 etc.
+    }, arrivingMinutes <= 3 ? 30000 : 45000);
     return () => clearInterval(interval);
-  }, []);
+  }, [arrivingMinutes]);
 
   // 60-second cancellation window timer
   useEffect(() => {
@@ -246,10 +279,10 @@ export default function TrackOrderPage() {
   const isPicking = activeOrder.status === "picking" || isStaged;
 
   // Dynamic status text for top green header
-  let phaseText = "Packing your order";
+  let phaseText = "Packing your order (10 mins SLA)";
   if (isDelivered) phaseText = "Order Delivered";
   else if (isDispatched) phaseText = "Order Out for Delivery";
-  else if (isStaged) phaseText = "Order Staged & Ready";
+  else if (isStaged || activeOrder.status === "picked") phaseText = "Picked by Thrupthi K S • ETA decreased to 3 mins!";
 
   let arrivalTitle = `Arriving in ${arrivingMinutes} ${arrivingMinutes === 1 ? "minute" : "minutes"}`;
   if (isDelivered) arrivalTitle = "Delivered to your doorstep";
@@ -377,7 +410,7 @@ export default function TrackOrderPage() {
                 <text x="0" y="2.5" textAnchor="middle" fontSize="11">🛵</text>
                 <rect x="-28" y="-22" width="56" height="13" rx="4" fill="#0c831f" />
                 <text x="0" y="-13" textAnchor="middle" fontSize="6.5" fill="#ffffff" fontWeight="800">
-                  ⚡ 8 Mins SLA
+                  ⚡ {arrivingMinutes} Mins SLA
                 </text>
               </g>
             </svg>

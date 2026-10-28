@@ -499,8 +499,23 @@ export default function OdPickerApp() {
     setBarcodeScannedMap(bAll);
     setAisleScannedMap(aAll);
     playScanSuccess();
-    setActionSuccess("⚡ All Items Marked Picked! Proceed to Rack Handover.");
-    setTimeout(() => setActionSuccess(""), 2000);
+    if (activeOrder?.id) {
+      updateLiveOrder(activeOrder.id, {
+        status: "picked",
+        stage: "Picked by Thrupthi K S",
+        pickerId: "thrupthi",
+        pickerName: "Thrupthi K S",
+        remainingMins: 3,
+        estimatedDeliveryMins: 3,
+      });
+      broadcastEvent("ORDER_PICKED", {
+        orderId: activeOrder.id,
+        pickerName: "Thrupthi K S",
+        remainingMins: 3,
+      });
+    }
+    setActionSuccess("⚡ All Items Marked Picked by Thrupthi K S! Overall delivery time reduced to 3 mins!");
+    setTimeout(() => setActionSuccess(""), 2500);
   }
 
   // Captain Scans QR code simulation
@@ -532,6 +547,8 @@ export default function OdPickerApp() {
       pickerName: "Thrupthi K S",
       stagedAt: new Date().toISOString(),
       pickTimeSec: finalSec,
+      remainingMins: 3,
+      estimatedDeliveryMins: 3,
       qrCode: `AUDITX-HANDOVER-${activeOrder.id}-${assignedRack.id}`,
     });
 
@@ -540,6 +557,7 @@ export default function OdPickerApp() {
       assignedRack: assignedRack.id,
       pickerName: "Thrupthi K S",
       captainName: "Sinchana B R",
+      remainingMins: 3,
     });
 
     if (db) {
