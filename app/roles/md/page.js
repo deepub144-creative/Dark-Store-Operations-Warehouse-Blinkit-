@@ -27,10 +27,10 @@ export default function ManagingDirectorApp() {
   const [capexProposals, setCapexProposals] = useState([
     {
       id: "CAP-KA44-01",
-      title: "Solar Backup Power for Nandini Cold Storage Room",
-      vendor: "Tumkur Renewable Energy Systems",
+      title: "Temperature-Controlled Storage for Premium Chocolates",
+      vendor: "Tumkur Cold Logistics Systems",
       cost: 85000,
-      justification: "Prevents milk spoilage during rural power cuts in Tiptur town.",
+      justification: "Prevents chocolate melting during peak heat surges in Tiptur dark store.",
       status: "APPROVED_BY_MD",
       roiMonths: 4,
     },
@@ -223,20 +223,12 @@ export default function ManagingDirectorApp() {
               <h3 style={S.breakdownTitle}>Margin Contribution by Category:</h3>
               <div style={S.categoryList}>
                 <div style={S.categoryRow}>
-                  <span>🥥 Tiptur Copra & Cold-Pressed Coconut Oil</span>
-                  <b>28.5% Margin</b>
+                  <span>🖼️ Custom Art Frames (1 unit single)</span>
+                  <b>42.0% Margin</b>
                 </div>
                 <div style={S.categoryRow}>
-                  <span>🥛 Nandini Milk & Dairy (KMF Price Regulated)</span>
-                  <b>12.2% Margin</b>
-                </div>
-                <div style={S.categoryRow}>
-                  <span>🧼 Mysore Sandal & Personal Care</span>
-                  <b>24.0% Margin</b>
-                </div>
-                <div style={S.categoryRow}>
-                  <span>🍪 Snacks, Instant Noodles & Beverages</span>
-                  <b>21.5% Margin</b>
+                  <span>🍫 Chocolates & Premium Confectionery (5 units fixed)</span>
+                  <b>34.0% Margin</b>
                 </div>
               </div>
             </div>

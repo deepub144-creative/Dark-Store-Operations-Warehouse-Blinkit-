@@ -785,8 +785,11 @@ export default function OrderingAppPage() {
       items: cartItemsList.map((item) => ({
         skuId: item.sku,
         name: item.name,
+        category: item.category,
+        units: item.category === "Frames" ? 1 : 5,
+        unitSpecification: item.category === "Frames" ? "1 unit single" : "5 units fixed",
         qty: item.qty,
-        binLocation: item.aisle || "F0 - A1 - 001",
+        binLocation: item.aisle || "Aisle C1 - S1 - 001",
         price: item.price,
         mrp: item.mrp || item.price,
         image: item.image,

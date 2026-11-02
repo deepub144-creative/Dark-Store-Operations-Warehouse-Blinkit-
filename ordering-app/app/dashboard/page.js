@@ -44,14 +44,14 @@ import {
 // Demo Complaints Data (Cleared - Zero Open Complaints)
 const INITIAL_COMPLAINTS = [];
 
-// Customer Reviews Feed Data for Namma Tiptur
+// Customer Reviews Feed Data for Namma Tiptur (Frames & Chocolates Only)
 const CUSTOMER_REVIEWS_DATA = [
   {
     id: "REV-1",
     customerName: "Ramesh Gowda",
     location: "Kalpataru First Grade Science (KFGSC)",
     rating: 5,
-    comment: "Received delivery in just 6 minutes! Impressed by Sinchana B R's quick arrival on scooter. Everything intact.",
+    comment: "Received delivery in just 6 minutes! Impressed by Sinchana B R's quick arrival. Cadbury Dairy Milk Silk chocolate was perfectly cold and intact.",
     time: "12 mins ago",
     orderId: "ORD-9412",
   },
@@ -60,7 +60,7 @@ const CUSTOMER_REVIEWS_DATA = [
     customerName: "Priya S",
     location: "Sharada Nagar, Tiptur",
     rating: 5,
-    comment: "Fresh Nandini milk cold and perfect. Thrupthi K S packed the produce securely with zero damage.",
+    comment: "Minimalist Black A4 Wall Frame (1 unit) packed securely by Thrupthi K S. Zero scratches on the acrylic glass!",
     time: "28 mins ago",
     orderId: "ORD-9388",
   },
@@ -69,7 +69,7 @@ const CUSTOMER_REVIEWS_DATA = [
     customerName: "Naveen Kumar",
     location: "B.H. Road, APMC Market Hub",
     rating: 5,
-    comment: "The Audit'X demo wallet made payment instant with 1 tap. Smooth dark store operations!",
+    comment: "The Audit'X demo wallet made payment instant with 1 tap. Ferrero Rocher 4-pack chocolate arrived in under 7 minutes!",
     time: "45 mins ago",
     orderId: "ORD-9350",
   },
@@ -77,8 +77,8 @@ const CUSTOMER_REVIEWS_DATA = [
     id: "REV-4",
     customerName: "Kavitha R",
     location: "Madihalli Main Road, Tiptur",
-    rating: 4,
-    comment: "Super fast delivery under 8 mins. Great assortment of local Tiptur coconut oil and chocolates.",
+    rating: 5,
+    comment: "Super fast delivery under 8 mins. Beautiful Classic Wooden Deep Box Frame and 5 units of Amul Dark Chocolate.",
     time: "1 hr ago",
     orderId: "ORD-9280",
   },
@@ -483,10 +483,10 @@ export default function WarehouseDashboardPage() {
       captainName: "Sinchana B R",
       captainPhone: "8088553237",
       paymentMethod: "Audit'X Demo Wallet",
-      totalAmount: c.amount || 150,
+      totalAmount: c.amount || 299,
       items: [
-        { skuId: "NANDINI-MILK-04", name: "Nandini Pasteurized Toned Milk (500ml)", qty: 1, mrp: 24, price: 24, binLocation: "Aisle A1 - C1 - 004", image: "https://images.unsplash.com/photo-1550583724-b2692b85b150?auto=format&fit=crop&w=300&q=80" },
-        { skuId: "TIPTUR-COPRA-01", name: "Tiptur Special Copra (Grade-A)", qty: 1, mrp: 220, price: 185, binLocation: "Aisle F0 - A1 - 001", image: "https://images.unsplash.com/photo-1546548970-71785318a17b?auto=format&fit=crop&w=300&q=80" },
+        { skuId: "CADBURY-SILK-01", name: "Cadbury Dairy Milk Silk Chocolate (150g)", category: "Chocolates", qty: 1, units: 5, unitSpecification: "5 units fixed", price: 175, mrp: 195, binLocation: "Aisle C1 - S1 - 001", image: "https://images.unsplash.com/photo-1548907040-4baa42d10919?auto=format&fit=crop&w=300&q=80" },
+        { skuId: "FRAME-A4-WOOD", name: "Classic Wooden Deep Box Art Frame", category: "Frames", qty: 1, units: 1, unitSpecification: "1 unit single", price: 349, mrp: 599, binLocation: "Aisle F1 - R1 - 002", image: "https://images.unsplash.com/photo-1513519245088-0e12902e5a38?auto=format&fit=crop&w=300&q=80" },
       ],
       createdAt: new Date().toISOString(),
       priorityTag: "EXPRESS_REPLACEMENT",
@@ -571,15 +571,37 @@ export default function WarehouseDashboardPage() {
       captainName: "Sinchana B R",
       captainPhone: "8088553237",
       paymentMethod: "Audit'X Demo Wallet",
-      totalAmount: 230,
+      totalAmount: 474,
       createdAt: new Date().toISOString(),
       items: [
-        { skuId: "TIPTUR-COPRA-01", name: "Tiptur Special Copra (Grade-A)", qty: 1, price: 185, mrp: 220, binLocation: "Aisle F0 - A1 - 001", image: "https://images.unsplash.com/photo-1546548970-71785318a17b?auto=format&fit=crop&w=300&q=80" },
-        { skuId: "TENDER-COCONUT-03", name: "Fresh Tender Coconut", qty: 1, price: 45, mrp: 55, binLocation: "Aisle F0 - A2 - 001", image: "https://images.unsplash.com/photo-1589533610925-1cffc309ebaa?auto=format&fit=crop&w=300&q=80" },
+        {
+          skuId: "CADBURY-SILK-01",
+          name: "Cadbury Dairy Milk Silk Chocolate (150g)",
+          category: "Chocolates",
+          qty: 1,
+          units: 5,
+          unitSpecification: "5 units fixed",
+          price: 175,
+          mrp: 195,
+          binLocation: "Aisle C1 - S1 - 001",
+          image: "https://images.unsplash.com/photo-1548907040-4baa42d10919?auto=format&fit=crop&w=300&q=80",
+        },
+        {
+          skuId: "FRAME-A4-BLK",
+          name: "Minimalist Black A4 Wall Frame",
+          category: "Frames",
+          qty: 1,
+          units: 1,
+          unitSpecification: "1 unit single",
+          price: 299,
+          mrp: 499,
+          binLocation: "Aisle F1 - R2 - 001",
+          image: "https://images.unsplash.com/photo-1579783902614-a3fb3927b675?auto=format&fit=crop&w=300&q=80",
+        },
       ],
     };
     saveLiveOrder(simOrder);
-    setActionSuccess(`⚡ Live Order #${simOrder.id} created! Dispatched to OD Picker Thrupthi K S.`);
+    setActionSuccess(`⚡ Live Order #${simOrder.id} created (Chocolates & Frames)! Dispatched to OD Picker Thrupthi K S.`);
     setTimeout(() => setActionSuccess(""), 3000);
   }
 
@@ -1224,7 +1246,7 @@ export default function WarehouseDashboardPage() {
                             ITEMS ({(ord.items || []).length} SKUs):
                           </span>
                           <div style={{ fontSize: 12, color: "#0f172a", marginTop: 4 }}>
-                            {(ord.items || []).map((it) => `${it.qty || 1}x ${it.name}`).join(", ") || "Fresh Groceries & Coconuts"}
+                            {(ord.items || []).map((it) => `${it.qty || 1}x ${it.name}`).join(", ") || "Chocolates (5 units) & Frames (1 unit)"}
                           </div>
                         </div>
 
@@ -1379,12 +1401,8 @@ export default function WarehouseDashboardPage() {
                     </thead>
                     <tbody>
                       {[
-                        { cat: "Tiptur Coconut Specialties & Oil", sp: 240, cp: 171.60, margin: "28.5%", vol: "142 units", status: "HIGH_PROFIT" },
-                        { cat: "Custom Art Frames", sp: 250, cp: 145.00, margin: "42.0%", vol: "28 units", status: "MAX_MARGIN" },
-                        { cat: "Chocolates & Confectionery (₹1 items)", sp: 65, cp: 42.90, margin: "34.0%", vol: "410 units", status: "HIGH_PROFIT" },
-                        { cat: "Fresh Fruits & Produce (FNV)", sp: 120, cp: 98.40, margin: "18.0%", vol: "188 units", status: "STANDARD" },
-                        { cat: "Nandini Milk & Dairy (4°C)", sp: 60, cp: 52.32, margin: "12.8%", vol: "320 units", status: "TRAFFIC_DRIVER" },
-                        { cat: "Staples & Snack Foods", sp: 95, cp: 77.71, margin: "18.2%", vol: "215 units", status: "STANDARD" },
+                        { cat: "Custom Art Frames (1 unit single)", sp: 299, cp: 173.42, margin: "42.0%", vol: "128 units", status: "MAX_MARGIN" },
+                        { cat: "Chocolates & Confectionery (5 units fixed)", sp: 175, cp: 115.50, margin: "34.0%", vol: "410 units", status: "HIGH_PROFIT" },
                       ].map((row, idx) => (
                         <tr key={idx} style={S.tr}>
                           <td style={S.td}><b>{row.cat}</b></td>
@@ -1565,8 +1583,8 @@ export default function WarehouseDashboardPage() {
                     </thead>
                     <tbody>
                       {[
-                        { cat: "Missing Item in Tote", pct: openComplaintsCount === 0 ? "0.0%" : "45.0%", count: complaints.filter(c => c.category === "Missing Item").length, target: "< 0.05%", action: "1-Click Refund / Priority Replacement" },
-                        { cat: "Damaged Goods / Bruised Produce", pct: openComplaintsCount === 0 ? "0.0%" : "35.0%", count: complaints.filter(c => c.category === "Damaged Goods").length, target: "< 0.05%", action: "Instant Wallet Refund" },
+                        { cat: "Damaged Art Frame Glass / Box", pct: openComplaintsCount === 0 ? "0.0%" : "50.0%", count: complaints.filter(c => c.category === "Damaged Goods").length, target: "< 0.05%", action: "Instant Wallet Refund / Priority Replacement" },
+                        { cat: "Melted Chocolate Bar / Temp Overrun", pct: openComplaintsCount === 0 ? "0.0%" : "30.0%", count: complaints.filter(c => c.category === "Missing Item").length, target: "< 0.05%", action: "1-Click Replacement Dispatch" },
                         { cat: "Delivery SLA Overrun (> 10 mins)", pct: openComplaintsCount === 0 ? "0.0%" : "20.0%", count: complaints.filter(c => c.category === "Delivery SLA").length, target: "< 0.10%", action: "₹50 Apology Wallet Credit" },
                       ].map((row, idx) => (
                         <tr key={idx} style={S.tr}>

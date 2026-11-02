@@ -32,21 +32,17 @@ export const INITIAL_COMPLAINTS = [];
 
 
 export const INITIAL_EXPIRY_INVENTORY = [
-  { id: "EXP-01", skuId: "SKU-TIP-04", name: "Nandini Pasteurized Toned Milk 500ml", batchNo: "BATCH-NAN-992", expiryDate: "2026-10-23", daysLeft: 2, qty: 18, status: "EXPIRING_SOON", aisle: "A1 - B1 - 001", action: "Discount / Priority Move" },
-  { id: "EXP-02", skuId: "SKU-TIP-06", name: "Nandini Thick Natural Curd 500g", batchNo: "BATCH-CURD-410", expiryDate: "2026-10-24", daysLeft: 3, qty: 12, status: "EXPIRING_SOON", aisle: "A1 - B2 - 004", action: "First-Expiry-First-Out" },
-  { id: "EXP-03", skuId: "SKU-TIP-03", name: "Namma Tiptur Fresh Tender Coconut", batchNo: "BATCH-COCO-112", expiryDate: "2026-10-25", daysLeft: 4, qty: 25, status: "NORMAL", aisle: "F0 - A2 - 001", action: "Healthy Rotation" },
-  { id: "EXP-04", skuId: "SKU-TIP-08", name: "Royal Mysore Pak Sweet 250g", batchNo: "BATCH-PAK-330", expiryDate: "2026-11-05", daysLeft: 15, qty: 30, status: "NORMAL", aisle: "D1 - E2 - 008", action: "Good Shelf Life" },
+  { id: "EXP-01", skuId: "CADBURY-SILK-01", name: "Cadbury Dairy Milk Silk (150g)", batchNo: "BATCH-SILK-992", expiryDate: "2026-11-20", daysLeft: 18, qty: 25, status: "NORMAL", aisle: "Aisle C1 - S1 - 001", action: "Temperature Monitored" },
+  { id: "EXP-02", skuId: "FERRERO-ROCHER-02", name: "Ferrero Rocher Hazelnut Box (4 pcs)", batchNo: "BATCH-FERR-410", expiryDate: "2026-12-15", daysLeft: 42, qty: 30, status: "NORMAL", aisle: "Aisle C1 - S1 - 002", action: "Cool Storage" },
 ];
 
 export const INITIAL_PUTAWAY = [
-  { id: "PUT-01", poNo: "PO-TIPTUR-4401", vendor: "Tiptur APMC Copra Union", sku: "Tiptur Special Copra 1kg", qtyReceived: 50, targetAisle: "F0 - A1 - 001", status: "READY_FOR_PUTAWAY", assignedTo: "Deepu B (ASM)" },
-  { id: "PUT-02", poNo: "PO-NANDINI-221", vendor: "Tumkur District Milk Federation", sku: "Nandini Milk 500ml", qtyReceived: 120, targetAisle: "A1 - B1 - 001", status: "PUTAWAY_COMPLETED", assignedTo: "Deepu B (ASM)" },
-  { id: "PUT-03", poNo: "PO-MYSORE-789", vendor: "Karnataka Soaps & Detergents", sku: "Mysore Sandal Soap Trio", qtyReceived: 60, targetAisle: "C2 - D1 - 005", status: "READY_FOR_PUTAWAY", assignedTo: "Deepu B (ASM)" },
+  { id: "PUT-01", poNo: "PO-FRAME-4401", vendor: "Karnataka Framing Works", sku: "Minimalist Black A4 Wall Frame (1 unit single)", qtyReceived: 50, targetAisle: "Aisle F1 - R2 - 001", status: "READY_FOR_PUTAWAY", assignedTo: "Deepu B (ASM)" },
+  { id: "PUT-02", poNo: "PO-CHOC-221", vendor: "Mondelez India Confectionery", sku: "Cadbury Dairy Milk Silk (5 units fixed)", qtyReceived: 100, targetAisle: "Aisle C1 - S1 - 001", status: "PUTAWAY_COMPLETED", assignedTo: "Deepu B (ASM)" },
 ];
 
 export const INITIAL_ITEM_DUMP = [
-  { id: "DUMP-01", date: "Today, 09:30 AM", skuName: "Nandini Milk 500ml", qty: 2, reason: "Pouch leakage during inbound pallet offloading", lossAmount: 54, loggedBy: "Deepu B (ASM)", status: "APPROVED_WRITE_OFF", photo: "leak_milk.png" },
-  { id: "DUMP-02", date: "Yesterday, 06:15 PM", skuName: "Fresh Tomatoes 1kg", qty: 4, reason: "Bruised / over-ripe in sorting crate", lossAmount: 112, loggedBy: "Thrupthi K S (OD Picker)", status: "APPROVED_WRITE_OFF", photo: "tomato_damage.png" },
+  { id: "DUMP-01", date: "Today, 09:30 AM", skuName: "Minimalist Black A4 Wall Frame", qty: 1, reason: "Glass hairline crack during inbound pallet unloading", lossAmount: 145, loggedBy: "Deepu B (ASM)", status: "APPROVED_WRITE_OFF", photo: "frame_crack.png" },
 ];
 
 export async function seedAllDemoData() {
