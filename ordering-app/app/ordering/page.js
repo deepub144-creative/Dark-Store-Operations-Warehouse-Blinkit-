@@ -979,29 +979,6 @@ export default function OrderingAppPage() {
                   </span>
                 )}
               </button>
-
-              {/* Clear Queue Button */}
-              <button
-                type="button"
-                id="ordering-clear-queue-btn"
-                onClick={handleClearAllQueue}
-                title="Clear Today's Dispatch Queue across warehouse, picker & ordering apps"
-                style={{
-                  padding: "5px 8px",
-                  background: "#f1f5f9",
-                  border: "1px solid #cbd5e1",
-                  color: "#475569",
-                  borderRadius: 16,
-                  fontSize: 10.5,
-                  fontWeight: 700,
-                  cursor: "pointer",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 3,
-                }}
-              >
-                <span>🧹 Clear</span>
-              </button>
             </div>
           </div>
 

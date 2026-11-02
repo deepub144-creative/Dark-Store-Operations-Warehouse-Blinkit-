@@ -22,7 +22,7 @@ const KNOWLEDGE_CHUNKS = [
     content: `Yeah Great Question Buddy / Dude / Anything you can call , and Yeah the project authors have implemented with entire teamments , pleasure and struugle due to building a warehouse in foam board is not just a sip of cofeee, so Deepu B As instaructed , then Bhaskar  N S , exceuted plan , SInchana B R , AB Harshitha Have helped and Thrupthi K S , entire Have helped Materials Chocaltes , Frames , Foam Board , Skething Wrehouse , Painiting , Wire Connections etc....
 
 Physical Scale Model Highlights:
-1. 🏠 Exterior Architecture: Foam board structure with sloped gabled green roof, AUDIT'X Blinkit signage, PO dispatch bay, SODA POINT stall, and acrylic inspection windows.
+1. 🏠 Exterior Architecture: Foam board structure with sloped gabled green roof, AUDIT'X Blinkit signage, PO dispatch bay, and acrylic inspection windows.
 2. 🪵 Wooden Staging Racks: Precision handcrafted wooden shelving, aisle racks, and staging benches with polished wood-grain finish.
 3. ⚡ Electrical & Wiring: Real 9V battery with functional wire connections powering LED warehouse lighting.
 4. 🏷️ Printed Barcodes & Catalog: Authentic miniature printed barcode labels (P0-A01-01-00, P2-A01-03-05, P3-A04-03-02, etc.), miniature Wall Frames (Kantara, KGF, Shiva), and miniature Chocolates.`,
@@ -344,8 +344,27 @@ export default function AuditxMiniAssistant({ isStoreOpen = true }) {
       let attachedImage = null;
       const qLower = q.toLowerCase();
 
-      // Check for real warehouse / physical model / image / authors question
-      if (
+      // 1. Natural Conversational Greeting (like ChatGPT / Claude / Gemini)
+      const cleanTokens = qLower.replace(/[^a-z0-9\s]/g, "").trim().split(/\s+/);
+      const greetingWords = ["hi", "hello", "hey", "hii", "heyy", "namaste", "namaskara", "hola", "sup", "yo"];
+      const isGreeting = cleanTokens.length <= 4 && (
+        greetingWords.some(gw => cleanTokens.includes(gw) || qLower.startsWith(gw)) ||
+        cleanTokens.every(w => ["hi", "hello", "hey", "hii", "heyy", "there", "buddy", "dude", "assistant", "bot", "auditx"].includes(w))
+      );
+
+      if (isGreeting) {
+        botResponse = `Hi there! 👋 How can I help you today? 😊
+
+I'm **AUDIT'X Mini**, your intelligent AI assistant for the Dark Store Operations & Ordering Hub in Namma Tiptur KA-44. 
+
+Feel free to ask me anything about:
+• 🟢 **Live Store Status**: Current open/close status & SLA
+• 📦 **Inventory Units**: Wall Frames (1 unit single) & Chocolates (5 units fixed)
+• 🏷️ **Aisle Locations & Staging Racks**: B5, B7, D5, H2, H4, S4, T1, T4, T6
+• 🤝 **Handover Workflow**: OD Picker (Thrupthi K S) to Express Rider (Sinchana B R)
+• 📸 **Real Warehouse Model**: Handcrafted physical scale model & team story
+• 💻 **Project Tech Stack**: Next.js App Router, Firebase sync & sound synthesis!`;
+      } else if (
         qLower.includes("real") ||
         qLower.includes("image") ||
         qLower.includes("photo") ||
@@ -366,6 +385,38 @@ export default function AuditxMiniAssistant({ isStoreOpen = true }) {
 
 Here is the actual real handcrafted physical scale model photograph built for this project:`;
         attachedImage = "/physical_warehouse_model.jpeg";
+      } else if (
+        qLower.includes("aisle") ||
+        (qLower.includes("rack") && !qLower.includes("handover")) ||
+        qLower.includes("bay") ||
+        qLower.includes("bin") ||
+        qLower.includes("location")
+      ) {
+        botResponse = `🏷️ **Warehouse Aisle Locations & Staging Racks (Tiptur Hub KA-44)**:
+
+Our dark store warehouse layout strictly follows the project repository specifications:
+
+1. **Fixed Staging Bays (9 Dedicated Customer Staging Racks)**:
+   • **B5**: Bakery & Staples Bay 5 (\`AUDITX-RACK-B5-TIPTUR-KA44\`)
+   • **B7**: Bakery & Staples Bay 7 (\`AUDITX-RACK-B7-TIPTUR-KA44\`)
+   • **D5**: Ambient Dispatch Bay 5 (\`AUDITX-RACK-D5-TIPTUR-KA44\`)
+   • **H2**: Heavy & Bulky Bay 2 (\`AUDITX-RACK-H2-TIPTUR-KA44\`)
+   • **H4**: Heavy & Bulky Bay 4 (\`AUDITX-RACK-H4-TIPTUR-KA44\`)
+   • **S4**: Snacks & Sweets Bay 4 (\`AUDITX-RACK-S4-TIPTUR-KA44\`)
+   • **T1**: Cold Chill Staging Bay 1 (\`AUDITX-RACK-T1-TIPTUR-KA44\`)
+   • **T4**: Cold Chill Staging Bay 4 (\`AUDITX-RACK-T4-TIPTUR-KA44\`)
+   • **T6**: Cold Chill Staging Bay 6 (\`AUDITX-RACK-T6-TIPTUR-KA44\`)
+
+2. **Active Storage Aisle Bins**:
+   • **Wall Frames (35 SKUs - Strictly 1 Unit Single)**: Stored in **Aisle A1 Wall Art Bins** (\`A01-01-01\` through \`A01-03-05\`) with protective packaging.
+   • **Chocolates (24 SKUs - Strictly 5 Units Fixed)**: Stored in **Aisle S4 Confectionery Bins** (\`A04-01-01\` through \`A04-03-05\`).
+
+3. **Handover Logistics**:
+   • In-store picking lead **Thrupthi K S** picks totes under a 2-minute SLA.
+   • Scans product barcodes and transfers bags to the assigned staging bay via the Handover Slider and QR Code.
+   • If delivery captain **Sinchana B R** is away, Thrupthi scans the assigned Aisle Rack QR Code directly to stage the order safely!
+
+*(Note: The physical foam board model serves as a handcrafted 3D project reference, while all live scanning, rack IDs, and aisle binnings follow this exact repo architecture).*`;
       } else if (
         qLower.includes("code") ||
         qLower.includes("repo") ||
