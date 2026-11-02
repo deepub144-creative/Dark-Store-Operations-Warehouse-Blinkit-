@@ -4,12 +4,11 @@ import { useEffect, useState } from "react";
 import { collection, onSnapshot, query, where, doc, updateDoc } from "firebase/firestore";
 import { db } from "@/lib/firebaseClient";
 import { playNotificationChime } from "@/lib/soundSystem";
-import { subscribeToEvents } from "@/lib/realtimeSync";
-import { INITIAL_COMPLAINTS } from "@/lib/seedData";
+import { subscribeToEvents, getAllLiveComplaints } from "@/lib/realtimeSync";
 import AuditxLogo from "@/components/AuditxLogo";
 
 export default function ManagingDirectorApp() {
-  const [complaints, setComplaints] = useState(INITIAL_COMPLAINTS);
+  const [complaints, setComplaints] = useState([]);
   const [activeTab, setActiveTab] = useState("scaleMargin"); // scaleMargin | hubSla | capexGrowth
   const [actionSuccess, setActionSuccess] = useState("");
 
@@ -56,8 +55,12 @@ export default function ManagingDirectorApp() {
   ]);
 
   useEffect(() => {
+    setComplaints(getAllLiveComplaints());
+
     const unsubBus = subscribeToEvents((data) => {
-      if (data.type === "COMPLAINT_RAISED" && data.payload) {
+      if (data.type === "QUEUE_CLEARED") {
+        setComplaints([]);
+      } else if (data.type === "COMPLAINT_RAISED" && data.payload) {
         setComplaints((prev) => [data.payload, ...prev]);
         playNotificationChime();
       } else if (data.type === "ORDER_DELIVERED") {
@@ -108,7 +111,18 @@ export default function ManagingDirectorApp() {
         </div>
 
         <div style={S.profileBox}>
-          <span style={{ fontSize: 26 }}>🛡️</span>
+          <img
+            src="/md-logo.png"
+            alt="A B Harshitha - H Logo"
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: "50%",
+              objectFit: "cover",
+              border: "2px solid #38bdf8",
+              boxShadow: "0 2px 8px rgba(56, 189, 248, 0.35)",
+            }}
+          />
           <div>
             <div style={S.profileName}>A B Harshitha</div>
             <div style={S.profileRole}>Managing Director (MD)</div>

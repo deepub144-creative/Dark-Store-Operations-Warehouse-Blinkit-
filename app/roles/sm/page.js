@@ -4,9 +4,17 @@ import { useEffect, useState } from "react";
 import { collection, onSnapshot, query, orderBy, doc, updateDoc, addDoc, setDoc } from "firebase/firestore";
 import { db } from "@/lib/firebaseClient";
 import { playNotificationChime, playSuccessChime } from "@/lib/soundSystem";
-import { subscribeToEvents, broadcastEvent, subscribeToLiveOrders, getAllLiveOrders, clearAllLiveOrders } from "@/lib/realtimeSync";
 import {
-  INITIAL_COMPLAINTS,
+  subscribeToEvents,
+  broadcastEvent,
+  subscribeToLiveOrders,
+  getAllLiveOrders,
+  clearAllLiveOrders,
+  getAllLiveComplaints,
+  sanitizeComplaints,
+  sanitizeOrders,
+} from "@/lib/realtimeSync";
+import {
   INITIAL_EXPIRY_INVENTORY,
   INITIAL_PUTAWAY,
   INITIAL_ITEM_DUMP,
@@ -16,7 +24,7 @@ import AuditxLogo from "@/components/AuditxLogo";
 export default function StoreManagerApp() {
   const [activeTab, setActiveTab] = useState("complaints"); // complaints | queues | expiry | auditing | putaway | itemDump
   const [orders, setOrders] = useState([]);
-  const [complaints, setComplaints] = useState(INITIAL_COMPLAINTS);
+  const [complaints, setComplaints] = useState([]);
   const [expiryItems, setExpiryItems] = useState(INITIAL_EXPIRY_INVENTORY);
   const [putawayItems, setPutawayItems] = useState(INITIAL_PUTAWAY);
   const [dumpItems, setDumpItems] = useState(INITIAL_ITEM_DUMP);
@@ -58,6 +66,9 @@ export default function StoreManagerApp() {
     // 1. Initial live orders from sync
     setOrders(getAllLiveOrders());
 
+    // 1b. Initial complaints from sync (cleansed of demo tickets)
+    setComplaints(getAllLiveComplaints());
+
     const unsubOrdersLive = subscribeToLiveOrders((liveOrders) => {
       setOrders(liveOrders || []);
     });
@@ -65,9 +76,14 @@ export default function StoreManagerApp() {
     const unsubBus = subscribeToEvents((data) => {
       if (data.type === "QUEUE_CLEARED") {
         setOrders([]);
+        setComplaints([]);
+      } else if (data.type === "CUSTOMER_COMPLAINT_FILED" || data.type === "COMPLAINT_RAISED") {
+        if (data.payload) {
+          setComplaints((prev) => sanitizeComplaints([data.payload, ...prev.filter((c) => c.id !== data.payload.id)]));
+        }
       } else if (data.type === "ORDER_CREATED" && data.payload) {
         playNotificationChime();
-        setOrders((prev) => [data.payload, ...prev.filter((o) => o.id !== data.payload.id)]);
+        setOrders((prev) => sanitizeOrders([data.payload, ...prev.filter((o) => o.id !== data.payload.id)]));
       } else if (data.type === "ORDER_STAGED" && data.payload) {
         setOrders((prev) =>
           prev.map((o) => (o.id === data.payload.id ? { ...o, status: "staged", stage: data.payload.stage } : o))
@@ -95,13 +111,15 @@ export default function StoreManagerApp() {
         unsubOrders = onSnapshot(qOrders, (snap) => {
           const rawOrders = localStorage.getItem("auditx_live_orders");
           if (rawOrders === "[]") return;
-          const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+          const docs = sanitizeOrders(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
           if (docs.length > 0) setOrders(docs);
         });
 
         const qCmp = query(collection(db, "complaints"), orderBy("createdAt", "desc"));
         unsubComplaints = onSnapshot(qCmp, (snap) => {
-          const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+          const rawCmp = localStorage.getItem("auditx_complaints");
+          if (rawCmp === "[]") return;
+          const docs = sanitizeComplaints(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
           if (docs.length > 0) setComplaints(docs);
         });
       } catch (err) {
@@ -121,7 +139,11 @@ export default function StoreManagerApp() {
     playNotificationChime();
     clearAllLiveOrders();
     setOrders([]);
-    setActionSuccess("🧹 Today's Queue successfully cleared across Warehouse, Picker, Captain, and Ordering Apps!");
+    setComplaints([]);
+    try {
+      localStorage.setItem("auditx_complaints", JSON.stringify([]));
+    } catch (e) {}
+    setActionSuccess("🧹 Today's Queue & Quality Desk successfully cleared across all apps!");
     setTimeout(() => setActionSuccess(""), 3500);
   }
 
@@ -422,59 +444,69 @@ export default function StoreManagerApp() {
             </div>
 
             <div style={S.complaintsList}>
-              {complaints.map((c) => {
-                const isResolved = c.status === "RESOLVED" || c.status === "REPLACEMENT_DISPATCHED";
-                return (
-                  <div
-                    key={c.id}
-                    style={{
-                      ...S.complaintCard,
-                      borderColor: isResolved ? "#334155" : c.severity === "CRITICAL" ? "#ef4444" : "#f59e0b",
-                    }}
-                  >
-                    <div style={S.complaintTop}>
-                      <div>
-                        <span style={S.complaintId}>{c.id}</span>
-                        <span style={S.orderRef}>• Order Ref: <b>{c.orderId}</b></span>
-                        <span style={{ ...S.severityBadge, background: c.severity === "CRITICAL" ? "#ef4444" : "#f59e0b" }}>
-                          {c.severity}
+              {complaints.length === 0 ? (
+                <div style={{ textAlign: "center", padding: "48px 16px", color: "#94a3b8", background: "#1e293b", borderRadius: 14, border: "1px dashed #334155" }}>
+                  <div style={{ fontSize: "2.2rem", marginBottom: 8 }}>🛡️</div>
+                  <div style={{ fontWeight: 800, fontSize: "1.05rem", color: "#f1f5f9" }}>Zero Complaints Lodged</div>
+                  <div style={{ fontSize: "0.85rem", color: "#94a3b8", marginTop: 4 }}>
+                    All orders across Namma Tiptur delivered safely with zero defect tickets.
+                  </div>
+                </div>
+              ) : (
+                complaints.map((c) => {
+                  const isResolved = c.status === "RESOLVED" || c.status === "REPLACEMENT_DISPATCHED";
+                  return (
+                    <div
+                      key={c.id}
+                      style={{
+                        ...S.complaintCard,
+                        borderColor: isResolved ? "#334155" : c.severity === "CRITICAL" ? "#ef4444" : "#f59e0b",
+                      }}
+                    >
+                      <div style={S.complaintTop}>
+                        <div>
+                          <span style={S.complaintId}>{c.id}</span>
+                          <span style={S.orderRef}>• Order Ref: <b>{c.orderId}</b></span>
+                          <span style={{ ...S.severityBadge, background: c.severity === "CRITICAL" ? "#ef4444" : "#f59e0b" }}>
+                            {c.severity}
+                          </span>
+                        </div>
+                        <span
+                          style={{
+                            ...S.statusPill,
+                            background: isResolved ? "#10b981" : "#eab308",
+                            color: "#fff",
+                          }}
+                        >
+                          {c.status}
                         </span>
                       </div>
-                      <span
-                        style={{
-                          ...S.statusPill,
-                          background: isResolved ? "#10b981" : "#eab308",
-                          color: "#fff",
-                        }}
-                      >
-                        {c.status}
-                      </span>
-                    </div>
 
-                    <div style={S.issueDesc}>{c.issue}</div>
+                      <div style={S.issueDesc}>{c.issue}</div>
 
-                    <div style={S.complaintMeta}>
-                      <span>👤 Customer: <b>{c.customerName}</b> ({c.phone})</span>
-                      <span>⏱️ Raised: {c.time}</span>
-                      <span>💰 Impact: ₹{c.amount}</span>
-                    </div>
-
-                    {!isResolved && (
-                      <div style={S.complaintActions}>
-                        <button style={S.resolveBtn} onClick={() => handleResolveComplaint(c.id, false)}>
-                          ✅ Mark Resolved
-                        </button>
-                        <button style={S.refundBtn} onClick={() => handleResolveComplaint(c.id, true)}>
-                          💳 Issue ₹{c.amount} Refund
-                        </button>
-                        <button style={S.replaceBtn} onClick={() => handleDispatchReplacementOrder(c)}>
-                          🚀 Dispatch Priority Replacement Order
-                        </button>
+                      <div style={S.complaintMeta}>
+                        <span>👤 Customer: <b>{c.customerName}</b> ({c.phone})</span>
+                        <span>⏱️ Raised: {c.time}</span>
+                        <span>💰 Impact: ₹{c.amount}</span>
                       </div>
-                    )}
-                  </div>
-                );
-              })}
+
+                      {!isResolved && (
+                        <div style={S.complaintActions}>
+                          <button style={S.resolveBtn} onClick={() => handleResolveComplaint(c.id, false)}>
+                            ✅ Mark Resolved
+                          </button>
+                          <button style={S.refundBtn} onClick={() => handleResolveComplaint(c.id, true)}>
+                            💳 Issue ₹{c.amount} Refund
+                          </button>
+                          <button style={S.replaceBtn} onClick={() => handleDispatchReplacementOrder(c)}>
+                            🚀 Dispatch Priority Replacement Order
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              )}
             </div>
           </div>
         )}

@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { CATALOG } from "@/lib/items";
-import { broadcastEvent, subscribeToEvents, saveLiveOrder, getAllLiveOrders, clearAllLiveOrders } from "@/lib/realtimeSync";
+import { broadcastEvent, subscribeToEvents, saveLiveOrder, getAllLiveOrders, clearAllLiveOrders, getAllLiveComplaints, sanitizeComplaints } from "@/lib/realtimeSync";
 import { playNotificationChime, playSuccessChime } from "@/lib/soundSystem";
 import { getRandomStagingRack } from "@/lib/roles";
 import AuditxLogo from "@/components/AuditxLogo";
@@ -448,28 +448,10 @@ export default function OrderingAppPage() {
 
     function loadComplaints() {
       try {
-        const raw = localStorage.getItem("auditx_complaints");
-        if (raw) {
-          setCustomerComplaints(JSON.parse(raw));
-        } else {
-          setCustomerComplaints([
-            {
-              id: "CMP-9041",
-              orderId: "ORD-8921",
-              customerName: "Rahul Sharma",
-              issue: "Missing 1x Nandini Pasteurized Toned Milk (500ml)",
-              category: "Missing Item",
-              status: "RESOLVED",
-              resolvedBy: "Bhaskar N S (SM)",
-              resolvedAt: "Today 10:45 AM",
-              response: "Full refund of ₹27 credited back to your Audit'X Demo Wallet.",
-              amount: 27,
-              time: "10 mins ago",
-            },
-          ]);
-        }
+        const cleaned = getAllLiveComplaints();
+        setCustomerComplaints(cleaned);
       } catch (e) {
-        console.warn(e);
+        setCustomerComplaints([]);
       }
     }
     loadComplaints();
@@ -506,6 +488,7 @@ export default function OrderingAppPage() {
       }
       if (data.type === "QUEUE_CLEARED") {
         setActiveDeliveryOrder(null);
+        setCustomerComplaints([]);
         triggerToast("🧹 Today's dispatch queue cleared across all apps!");
       }
       if (data.type === "COMPLAINT_RESOLVED") {

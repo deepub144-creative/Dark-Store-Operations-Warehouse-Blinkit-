@@ -8,6 +8,9 @@ import {
   subscribeToEvents,
   subscribeToLiveOrders,
   getAllLiveOrders,
+  getAllLiveComplaints,
+  sanitizeComplaints,
+  sanitizeOrders,
   saveLiveOrder,
   updateLiveOrder,
   broadcastEvent,
@@ -38,51 +41,8 @@ import {
   IconCheck,
 } from "@/components/RealIcons";
 
-// Demo Complaints Data
-const INITIAL_COMPLAINTS = [
-  {
-    id: "CMP-9041",
-    orderId: "ORD-8921",
-    customerName: "Rahul Sharma",
-    phone: "9876543210",
-    issue: "Missing 1x Nandini Pasteurized Toned Milk (500ml)",
-    category: "Missing Item",
-    severity: "HIGH",
-    slaMins: 4,
-    status: "OPEN",
-    time: "10 mins ago",
-    assignedTo: "Bhasker N S (SM)",
-    amount: 27,
-  },
-  {
-    id: "CMP-9042",
-    orderId: "ORD-8874",
-    customerName: "Ananya Roy",
-    phone: "9812345678",
-    issue: "Damaged packaging - Kwality Wall's Ice Cream tub melted",
-    category: "Damaged Goods",
-    severity: "CRITICAL",
-    slaMins: 1,
-    status: "IN_PROGRESS",
-    time: "18 mins ago",
-    assignedTo: "Deepu B (ASM)",
-    amount: 250,
-  },
-  {
-    id: "CMP-9043",
-    orderId: "ORD-8812",
-    customerName: "Vikram Patel",
-    phone: "9900112233",
-    issue: "Delivery SLA exceeded by 14 minutes during peak surge",
-    category: "Delivery SLA",
-    severity: "MEDIUM",
-    slaMins: 0,
-    status: "EXPIRED",
-    time: "32 mins ago",
-    assignedTo: "A B Harshitha (MD)",
-    amount: 50,
-  },
-];
+// Demo Complaints Data (Cleared - Zero Open Complaints)
+const INITIAL_COMPLAINTS = [];
 
 // Customer Reviews Feed Data for Namma Tiptur
 const CUSTOMER_REVIEWS_DATA = [
@@ -306,6 +266,10 @@ export default function WarehouseDashboardPage() {
     const initialOrders = getAllLiveOrders();
     setOrders(initialOrders);
 
+    // 1b. Initial complaints from localStorage (sanitized, zero demo tickets)
+    const initialComplaints = getAllLiveComplaints();
+    setComplaints(initialComplaints);
+
     // 2. Subscribe to real-time live orders broadcast
     const unsubOrders = subscribeToLiveOrders((newOrders) => {
       setOrders(newOrders);
@@ -315,9 +279,10 @@ export default function WarehouseDashboardPage() {
     const unsubBus = subscribeToEvents((data) => {
       if (data.type === "QUEUE_CLEARED") {
         setOrders([]);
+        setComplaints([]);
       } else if ((data.type === "COMPLAINT_RAISED" || data.type === "CUSTOMER_COMPLAINT_FILED") && data.payload) {
         setComplaints((prev) => {
-          const updated = [data.payload, ...prev.filter((c) => c.id !== data.payload.id)];
+          const updated = sanitizeComplaints([data.payload, ...prev.filter((c) => c.id !== data.payload.id)]);
           try { localStorage.setItem("auditx_complaints", JSON.stringify(updated)); } catch (e) {}
           return updated;
         });
@@ -326,12 +291,12 @@ export default function WarehouseDashboardPage() {
         setTimeout(() => setActionSuccess(""), 4000);
       } else if (data.type === "COMPLAINT_RESOLVED" && data.payload) {
         setComplaints((prev) => {
-          const updated = prev.map((c) => c.id === data.payload.id ? { ...c, ...data.payload } : c);
+          const updated = sanitizeComplaints(prev.map((c) => c.id === data.payload.id ? { ...c, ...data.payload } : c));
           try { localStorage.setItem("auditx_complaints", JSON.stringify(updated)); } catch (e) {}
           return updated;
         });
       } else if (data.type === "ORDER_CREATED" && data.payload) {
-        setOrders((prev) => [data.payload, ...prev.filter((o) => o.id !== data.payload.id)]);
+        setOrders((prev) => sanitizeOrders([data.payload, ...prev.filter((o) => o.id !== data.payload.id)]));
       } else if (data.type === "ORDER_STAGED" || data.type === "ORDER_DISPATCHED" || data.type === "ORDER_DELIVERED") {
         setOrders(getAllLiveOrders());
       }
@@ -348,7 +313,7 @@ export default function WarehouseDashboardPage() {
         unsub1 = onSnapshot(q1, (snap) => {
           const rawOrders = localStorage.getItem("auditx_live_orders");
           if (rawOrders === "[]") return;
-          const remoteOrders = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+          const remoteOrders = sanitizeOrders(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
           if (remoteOrders.length > 0) {
             setOrders(remoteOrders);
           }
@@ -362,7 +327,9 @@ export default function WarehouseDashboardPage() {
         unsub3 = onSnapshot(
           q3,
           (snap) => {
-            const liveComplaints = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+            const rawCmp = localStorage.getItem("auditx_complaints");
+            if (rawCmp === "[]") return;
+            const liveComplaints = sanitizeComplaints(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
             if (liveComplaints.length > 0) {
               setComplaints((prev) => {
                 const combined = [...liveComplaints];
@@ -371,7 +338,7 @@ export default function WarehouseDashboardPage() {
                     combined.push(oldC);
                   }
                 });
-                return combined;
+                return sanitizeComplaints(combined);
               });
             }
           },
@@ -447,9 +414,13 @@ export default function WarehouseDashboardPage() {
     playNotificationChime();
     clearAllLiveOrders();
     setOrders([]);
-    const logMsg = `🧹 TODAY'S QUEUE CLEARED by ${staff?.name || "Bhaskar N S"} (${staff?.designation || "Store Manager"})`;
+    setComplaints([]);
+    try {
+      localStorage.setItem("auditx_complaints", JSON.stringify([]));
+    } catch (e) {}
+    const logMsg = `🧹 TODAY'S QUEUE & QUALITY DESK CLEARED (0 orders, 0 open tickets) by ${staff?.name || "Bhaskar N S"} (${staff?.designation || "Store Manager"})`;
     setCapLogs((prev) => [{ id: Date.now(), time: new Date().toLocaleTimeString(), msg: logMsg }, ...prev]);
-    setActionSuccess(`🧹 Today's Queue successfully cleared across Warehouse, Picker, Rider, and Ordering Apps!`);
+    setActionSuccess(`🧹 Today's Queue & Quality Desk cleared (Zero Orders, Zero Open Complaints)!`);
     setTimeout(() => setActionSuccess(""), 4000);
   }
 
@@ -655,7 +626,7 @@ export default function WarehouseDashboardPage() {
   if (!staff) return null;
 
   // KPI Calculations
-  const currentOrdersCount = Math.max(orders.length, 348);
+  const currentOrdersCount = orders.length;
   const capacityPercent = Math.min(100, Math.round((currentOrdersCount / orderCapLimit) * 100));
   const openComplaintsCount = complaints.filter((c) => c.status !== "RESOLVED").length;
   const criticalComplaintsCount = complaints.filter((c) => c.severity === "CRITICAL" && c.status !== "RESOLVED").length;
@@ -1108,29 +1079,41 @@ export default function WarehouseDashboardPage() {
                 {/* Live Complaints Box */}
                 <div style={S.panel}>
                   <div style={S.panelHeader}>
-                    <div style={S.panelTitle}>⚠️ Quality Desk ({openComplaintsCount} Open Tickets)</div>
+                    <div style={S.panelTitle}>
+                      {openComplaintsCount === 0 ? "🛡️ Quality Desk (0 Open Tickets)" : `⚠️ Quality Desk (${openComplaintsCount} Open Tickets)`}
+                    </div>
                     <button style={S.smLinkBtn} onClick={() => setActiveTab("complaints")}>View All →</button>
                   </div>
                   <div style={S.complaintMiniList}>
-                    {complaints.slice(0, 3).map((c) => (
-                      <div key={c.id} style={S.complaintMiniCard}>
-                        <div style={S.cTop}>
-                          <span style={S.cId}>{c.id} • Order #{c.orderId}</span>
-                          <span style={severityStyle(c.severity)}>{c.severity}</span>
-                        </div>
-                        <div style={S.cIssue}>{c.issue}</div>
-                        <div style={S.cFooter}>
-                          <span>Customer: <b>{c.customerName}</b></span>
-                          {c.status !== "RESOLVED" ? (
-                            <button style={S.resolveMiniBtn} onClick={() => resolveComplaint(c.id, c.amount)}>
-                              Refund ₹{c.amount}
-                            </button>
-                          ) : (
-                            <span style={S.resolvedBadge}>✓ RESOLVED</span>
-                          )}
+                    {complaints.length === 0 ? (
+                      <div style={{ textAlign: "center", padding: "28px 12px", color: "#94a3b8" }}>
+                        <div style={{ fontSize: "1.6rem", marginBottom: 6 }}>🛡️</div>
+                        <div style={{ fontWeight: 800, color: "#cbd5e1", fontSize: "0.9rem" }}>Zero Open Complaints</div>
+                        <div style={{ fontSize: "0.78rem", color: "#64748b", marginTop: 4 }}>
+                          All customer orders delivered with 100% quality compliance.
                         </div>
                       </div>
-                    ))}
+                    ) : (
+                      complaints.slice(0, 3).map((c) => (
+                        <div key={c.id} style={S.complaintMiniCard}>
+                          <div style={S.cTop}>
+                            <span style={S.cId}>{c.id} • Order #{c.orderId}</span>
+                            <span style={severityStyle(c.severity)}>{c.severity}</span>
+                          </div>
+                          <div style={S.cIssue}>{c.issue}</div>
+                          <div style={S.cFooter}>
+                            <span>Customer: <b>{c.customerName}</b></span>
+                            {c.status !== "RESOLVED" ? (
+                              <button style={S.resolveMiniBtn} onClick={() => resolveComplaint(c.id, c.amount)}>
+                                Refund ₹{c.amount}
+                              </button>
+                            ) : (
+                              <span style={S.resolvedBadge}>✓ RESOLVED</span>
+                            )}
+                          </div>
+                        </div>
+                      ))
+                    )}
                   </div>
                 </div>
               </div>
@@ -1533,8 +1516,12 @@ export default function WarehouseDashboardPage() {
                     <span style={S.statIcon}>🛡️</span>
                     <span style={S.statTitle}>Defect-Free Rate</span>
                   </div>
-                  <div style={{ ...S.statVal, color: "#0c831f" }}>99.92%</div>
-                  <div style={S.statSub}>3,637 safe deliveries / 3 complaints</div>
+                  <div style={{ ...S.statVal, color: "#0c831f" }}>
+                    {openComplaintsCount === 0 ? "100.0%" : "99.92%"}
+                  </div>
+                  <div style={S.statSub}>
+                    {openComplaintsCount === 0 ? "Zero open complaints on record" : `${complaints.length} total tickets logged`}
+                  </div>
                 </div>
 
                 <div style={S.statCard}>
@@ -1542,7 +1529,7 @@ export default function WarehouseDashboardPage() {
                     <span style={S.statIcon}>⏱️</span>
                     <span style={S.statTitle}>Avg Resolution SLA</span>
                   </div>
-                  <div style={S.statVal}>3.8 Mins</div>
+                  <div style={S.statVal}>{openComplaintsCount === 0 ? "0.0 Mins" : "3.8 Mins"}</div>
                   <div style={S.statSub}>Direct refund to Audit'X Demo Wallet</div>
                 </div>
 
@@ -1578,14 +1565,14 @@ export default function WarehouseDashboardPage() {
                     </thead>
                     <tbody>
                       {[
-                        { cat: "Missing Item in Tote", pct: "45.0%", count: 1, target: "< 0.05%", action: "1-Click Refund / Priority Replacement" },
-                        { cat: "Damaged Goods / Bruised Produce", pct: "35.0%", count: 1, target: "< 0.05%", action: "Instant Wallet Refund" },
-                        { cat: "Delivery SLA Overrun (> 10 mins)", pct: "20.0%", count: 1, target: "< 0.10%", action: "₹50 Apology Wallet Credit" },
+                        { cat: "Missing Item in Tote", pct: openComplaintsCount === 0 ? "0.0%" : "45.0%", count: complaints.filter(c => c.category === "Missing Item").length, target: "< 0.05%", action: "1-Click Refund / Priority Replacement" },
+                        { cat: "Damaged Goods / Bruised Produce", pct: openComplaintsCount === 0 ? "0.0%" : "35.0%", count: complaints.filter(c => c.category === "Damaged Goods").length, target: "< 0.05%", action: "Instant Wallet Refund" },
+                        { cat: "Delivery SLA Overrun (> 10 mins)", pct: openComplaintsCount === 0 ? "0.0%" : "20.0%", count: complaints.filter(c => c.category === "Delivery SLA").length, target: "< 0.10%", action: "₹50 Apology Wallet Credit" },
                       ].map((row, idx) => (
                         <tr key={idx} style={S.tr}>
                           <td style={S.td}><b>{row.cat}</b></td>
-                          <td style={{ ...S.td, color: "#b91c1c", fontWeight: 800 }}>{row.pct}</td>
-                          <td style={S.td}>{row.count} ticket</td>
+                          <td style={{ ...S.td, color: row.count > 0 ? "#b91c1c" : "#10b981", fontWeight: 800 }}>{row.pct}</td>
+                          <td style={S.td}>{row.count} tickets</td>
                           <td style={S.td}>{row.target}</td>
                           <td style={S.td}>
                             <span style={S.tagGreen}>{row.action}</span>
@@ -1599,41 +1586,53 @@ export default function WarehouseDashboardPage() {
 
               {/* Live Complaints Cards */}
               <div style={S.complaintsGrid}>
-                {complaints.map((c) => (
-                  <div key={c.id} style={S.complaintCard}>
-                    <div style={S.cCardHeader}>
-                      <div>
-                        <span style={S.cTicketId}>{c.id}</span>
-                        <span style={S.cOrderRef}> • Order #{c.orderId}</span>
-                      </div>
-                      <span style={severityStyle(c.severity)}>{c.severity}</span>
+                {complaints.length === 0 ? (
+                  <div style={{ ...S.emptyBox, gridColumn: "1 / -1", padding: "48px 24px" }}>
+                    <div style={{ fontSize: 44 }}>🛡️</div>
+                    <div style={{ fontWeight: 800, fontSize: 16, marginTop: 10, color: "#cbd5e1" }}>
+                      Zero Open Complaints on Record
                     </div>
-
-                    <div style={S.cCardIssue}>{c.issue}</div>
-
-                    <div style={S.cMetaGrid}>
-                      <div>Customer: <b>{c.customerName}</b></div>
-                      <div>Phone: <b>{c.phone}</b></div>
-                      <div>Category: <b>{c.category}</b></div>
-                      <div>Assigned: <b>{c.assignedTo}</b></div>
-                    </div>
-
-                    <div style={S.cCardFooter}>
-                      {c.status === "RESOLVED" ? (
-                        <div style={S.resolvedText}>✓ RESOLVED BY {c.resolvedBy || "BHASKAR N S"}</div>
-                      ) : (
-                        <div style={S.cBtnRow}>
-                          <button style={S.refundBtn} onClick={() => resolveComplaint(c.id, c.amount)}>
-                            Refund ₹{c.amount}
-                          </button>
-                          <button style={S.replaceBtn} onClick={() => dispatchReplacementOrder(c)}>
-                            Dispatch Replacement
-                          </button>
-                        </div>
-                      )}
+                    <div style={{ fontSize: 13, color: "#64748b", marginTop: 4, maxWidth: 420 }}>
+                      Quality Desk has 0 active tickets. 100% of customer orders delivered within defect-free quality standards.
                     </div>
                   </div>
-                ))}
+                ) : (
+                  complaints.map((c) => (
+                    <div key={c.id} style={S.complaintCard}>
+                      <div style={S.cCardHeader}>
+                        <div>
+                          <span style={S.cTicketId}>{c.id}</span>
+                          <span style={S.cOrderRef}> • Order #{c.orderId}</span>
+                        </div>
+                        <span style={severityStyle(c.severity)}>{c.severity}</span>
+                      </div>
+
+                      <div style={S.cCardIssue}>{c.issue}</div>
+
+                      <div style={S.cMetaGrid}>
+                        <div>Customer: <b>{c.customerName}</b></div>
+                        <div>Phone: <b>{c.phone}</b></div>
+                        <div>Category: <b>{c.category}</b></div>
+                        <div>Assigned: <b>{c.assignedTo}</b></div>
+                      </div>
+
+                      <div style={S.cCardFooter}>
+                        {c.status === "RESOLVED" ? (
+                          <div style={S.resolvedText}>✓ RESOLVED BY {c.resolvedBy || "BHASKAR N S"}</div>
+                        ) : (
+                          <div style={S.cBtnRow}>
+                            <button style={S.refundBtn} onClick={() => resolveComplaint(c.id, c.amount)}>
+                              Refund ₹{c.amount}
+                            </button>
+                            <button style={S.replaceBtn} onClick={() => dispatchReplacementOrder(c)}>
+                              Dispatch Replacement
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           )}
