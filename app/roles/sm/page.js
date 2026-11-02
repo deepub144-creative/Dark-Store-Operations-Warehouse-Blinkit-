@@ -4,9 +4,8 @@ import { useEffect, useState } from "react";
 import { collection, onSnapshot, query, orderBy, doc, updateDoc, addDoc, setDoc } from "firebase/firestore";
 import { db } from "@/lib/firebaseClient";
 import { playNotificationChime, playSuccessChime } from "@/lib/soundSystem";
-import { subscribeToEvents, broadcastEvent, subscribeToLiveOrders } from "@/lib/realtimeSync";
+import { subscribeToEvents, broadcastEvent, subscribeToLiveOrders, getAllLiveOrders, clearAllLiveOrders } from "@/lib/realtimeSync";
 import {
-  INITIAL_ORDERS,
   INITIAL_COMPLAINTS,
   INITIAL_EXPIRY_INVENTORY,
   INITIAL_PUTAWAY,
@@ -16,7 +15,7 @@ import AuditxLogo from "@/components/AuditxLogo";
 
 export default function StoreManagerApp() {
   const [activeTab, setActiveTab] = useState("complaints"); // complaints | queues | expiry | auditing | putaway | itemDump
-  const [orders, setOrders] = useState(INITIAL_ORDERS);
+  const [orders, setOrders] = useState([]);
   const [complaints, setComplaints] = useState(INITIAL_COMPLAINTS);
   const [expiryItems, setExpiryItems] = useState(INITIAL_EXPIRY_INVENTORY);
   const [putawayItems, setPutawayItems] = useState(INITIAL_PUTAWAY);
@@ -56,17 +55,19 @@ export default function StoreManagerApp() {
 
   // Real-time events & Live Orders Sync
   useEffect(() => {
+    // 1. Initial live orders from sync
+    setOrders(getAllLiveOrders());
+
     const unsubOrdersLive = subscribeToLiveOrders((liveOrders) => {
-      if (liveOrders && liveOrders.length > 0) {
-        setOrders(liveOrders);
-      }
+      setOrders(liveOrders || []);
     });
 
     const unsubBus = subscribeToEvents((data) => {
-      if (data.type === "ORDER_CREATED" && data.payload) {
+      if (data.type === "QUEUE_CLEARED") {
+        setOrders([]);
+      } else if (data.type === "ORDER_CREATED" && data.payload) {
         playNotificationChime();
         setOrders((prev) => [data.payload, ...prev.filter((o) => o.id !== data.payload.id)]);
-        playNotificationChime();
       } else if (data.type === "ORDER_STAGED" && data.payload) {
         setOrders((prev) =>
           prev.map((o) => (o.id === data.payload.id ? { ...o, status: "staged", stage: data.payload.stage } : o))
@@ -92,6 +93,8 @@ export default function StoreManagerApp() {
       try {
         const qOrders = query(collection(db, "orders"), orderBy("createdAt", "desc"));
         unsubOrders = onSnapshot(qOrders, (snap) => {
+          const rawOrders = localStorage.getItem("auditx_live_orders");
+          if (rawOrders === "[]") return;
           const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
           if (docs.length > 0) setOrders(docs);
         });
@@ -114,7 +117,16 @@ export default function StoreManagerApp() {
     };
   }, []);
 
+  function handleClearQueue() {
+    playNotificationChime();
+    clearAllLiveOrders();
+    setOrders([]);
+    setActionSuccess("🧹 Today's Queue successfully cleared across Warehouse, Picker, Captain, and Ordering Apps!");
+    setTimeout(() => setActionSuccess(""), 3500);
+  }
+
   function triggerDailyQueueRefresh() {
+    setOrders(getAllLiveOrders());
     setLastRefreshed(new Date().toLocaleTimeString());
     setActionSuccess("🔄 Tiptur HUB KA44 Order Queues Refreshed (Real-Time Live Sync)!");
     setTimeout(() => setActionSuccess(""), 2500);
@@ -478,6 +490,26 @@ export default function StoreManagerApp() {
 
               <div style={S.queueRefreshRow}>
                 <span style={S.lastRefreshText}>Refreshed: {lastRefreshed}</span>
+                <button
+                  type="button"
+                  onClick={handleClearQueue}
+                  title="Clear all orders in today's fulfillment queue"
+                  style={{
+                    padding: "7px 12px",
+                    background: "#fee2e2",
+                    border: "1px solid #fca5a5",
+                    color: "#b91c1c",
+                    borderRadius: 8,
+                    fontWeight: 800,
+                    fontSize: "0.78rem",
+                    cursor: "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 4,
+                  }}
+                >
+                  🗑️ Clear Today's Queue ({orders.length})
+                </button>
                 <button style={S.refreshBtn} onClick={triggerDailyQueueRefresh}>
                   🔄 Refresh Queue Daily / Live
                 </button>
@@ -498,45 +530,57 @@ export default function StoreManagerApp() {
                   </tr>
                 </thead>
                 <tbody>
-                  {orders.map((o) => (
-                    <tr key={o.id} style={S.tr}>
-                      <td style={S.tdBold}>{o.orderNumber || o.id}</td>
-                      <td style={S.td}>
-                        <div>{o.customerName || "Customer"}</div>
-                        <small style={{ color: "#94a3b8" }}>{o.customerAddress?.slice(0, 24)}...</small>
-                      </td>
-                      <td style={S.td}>{(o.items || []).length} items</td>
-                      <td style={S.td}>
-                        <span style={S.rackCellBadge}>
-                          {o.assignedRack || "Rack D5"}
-                        </span>
-                      </td>
-                      <td style={S.td}>
-                        <div style={{ fontSize: 11 }}>
-                          <div>Picker: <b>{o.pickerName || "Thrupthi K S"}</b></div>
-                          <div>Captain: <b>{o.captainName || "Sinchana B R"}</b></div>
+                  {orders.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} style={{ textAlign: "center", padding: "40px 16px", color: "#94a3b8" }}>
+                        <div style={{ fontSize: "1.8rem", marginBottom: 8 }}>🧹</div>
+                        <div style={{ fontWeight: 800, fontSize: "0.95rem", color: "#cbd5e1" }}>No Active Orders in Queue</div>
+                        <div style={{ fontSize: "0.8rem", color: "#64748b", marginTop: 4 }}>
+                          Fulfillment queue is completely clear. New customer orders placed will stream live here.
                         </div>
                       </td>
-                      <td style={S.td}>
-                        <span
-                          style={{
-                            ...S.stagePill,
-                            background:
-                              o.status === "delivered"
-                                ? "#065f46"
-                                : o.status === "dispatched"
-                                ? "#1e40af"
-                                : o.status === "staged"
-                                ? "#854d0e"
-                                : "#334155",
-                          }}
-                        >
-                          {o.stage || o.status}
-                        </span>
-                      </td>
-                      <td style={S.tdPrice}>₹{o.totalAmount || 180}</td>
                     </tr>
-                  ))}
+                  ) : (
+                    orders.map((o) => (
+                      <tr key={o.id} style={S.tr}>
+                        <td style={S.tdBold}>{o.orderNumber || o.id}</td>
+                        <td style={S.td}>
+                          <div>{o.customerName || "Customer"}</div>
+                          <small style={{ color: "#94a3b8" }}>{o.customerAddress?.slice(0, 24)}...</small>
+                        </td>
+                        <td style={S.td}>{(o.items || []).length} items</td>
+                        <td style={S.td}>
+                          <span style={S.rackCellBadge}>
+                            {o.assignedRack || "Rack D5"}
+                          </span>
+                        </td>
+                        <td style={S.td}>
+                          <div style={{ fontSize: 11 }}>
+                            <div>Picker: <b>{o.pickerName || "Thrupthi K S"}</b></div>
+                            <div>Captain: <b>{o.captainName || "Sinchana B R"}</b></div>
+                          </div>
+                        </td>
+                        <td style={S.td}>
+                          <span
+                            style={{
+                              ...S.stagePill,
+                              background:
+                                o.status === "delivered"
+                                  ? "#065f46"
+                                  : o.status === "dispatched"
+                                  ? "#1e40af"
+                                  : o.status === "staged"
+                                  ? "#854d0e"
+                                  : "#334155",
+                            }}
+                          >
+                            {o.stage || o.status}
+                          </span>
+                        </td>
+                        <td style={S.tdPrice}>₹{o.totalAmount || 180}</td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>

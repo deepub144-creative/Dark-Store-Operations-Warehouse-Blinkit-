@@ -172,10 +172,15 @@ export default function OdPickerApp() {
 
     const unsub = subscribeToLiveOrders((liveOrders) => {
       if (!isOnline) return;
-      const pendingDocs = liveOrders.filter((d) => d.status === "pending" || d.status === "ASSIGNED");
+      const pendingDocs = (liveOrders || []).filter((d) => d.status === "pending" || d.status === "ASSIGNED");
       setUnassignedOrders(pendingDocs);
 
-      if (pendingDocs.length > 0 && !activeOrder) {
+      if (!liveOrders || liveOrders.length === 0) {
+        setUnassignedOrders([]);
+        setActiveOrder(null);
+        setActiveStep("accept");
+        stopOrderAlarm();
+      } else if (pendingDocs.length > 0 && !activeOrder) {
         playOrderAlarm();
       }
     });

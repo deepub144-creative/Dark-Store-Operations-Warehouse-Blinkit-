@@ -420,12 +420,16 @@ export default function OrderingAppPage() {
     function checkActiveDelivery() {
       try {
         const liveOrders = getAllLiveOrders();
+        if (!liveOrders || liveOrders.length === 0) {
+          setActiveDeliveryOrder(null);
+          return;
+        }
         const lastRaw = localStorage.getItem("auditx_customer_last_order");
         let active = null;
         if (lastRaw) {
           const last = JSON.parse(lastRaw);
           const live = liveOrders.find((o) => (o.id || o.orderId) === (last.id || last.orderId));
-          active = live || last;
+          active = live || null;
         } else if (liveOrders && liveOrders.length > 0) {
           active = liveOrders[0];
         }

@@ -4,9 +4,8 @@ import { useEffect, useState } from "react";
 import { collection, onSnapshot, query, orderBy, doc, updateDoc, addDoc, setDoc } from "firebase/firestore";
 import { db } from "@/lib/firebaseClient";
 import { playNotificationChime, playSuccessChime } from "@/lib/soundSystem";
-import { subscribeToEvents, broadcastEvent, subscribeToLiveOrders } from "@/lib/realtimeSync";
+import { subscribeToEvents, broadcastEvent, subscribeToLiveOrders, getAllLiveOrders, clearAllLiveOrders } from "@/lib/realtimeSync";
 import {
-  INITIAL_ORDERS,
   INITIAL_COMPLAINTS,
   INITIAL_EXPIRY_INVENTORY,
   INITIAL_PUTAWAY,
@@ -16,7 +15,7 @@ import AuditxLogo from "@/components/AuditxLogo";
 
 export default function StoreManagerApp() {
   const [activeTab, setActiveTab] = useState("complaints"); // complaints | queues | expiry | auditing | putaway | itemDump
-  const [orders, setOrders] = useState(INITIAL_ORDERS);
+  const [orders, setOrders] = useState([]);
   const [complaints, setComplaints] = useState(INITIAL_COMPLAINTS);
   const [expiryItems, setExpiryItems] = useState(INITIAL_EXPIRY_INVENTORY);
   const [putawayItems, setPutawayItems] = useState(INITIAL_PUTAWAY);
@@ -56,17 +55,19 @@ export default function StoreManagerApp() {
 
   // Real-time events & Live Orders Sync
   useEffect(() => {
+    // 1. Initial live orders from sync
+    setOrders(getAllLiveOrders());
+
     const unsubOrdersLive = subscribeToLiveOrders((liveOrders) => {
-      if (liveOrders && liveOrders.length > 0) {
-        setOrders(liveOrders);
-      }
+      setOrders(liveOrders || []);
     });
 
     const unsubBus = subscribeToEvents((data) => {
-      if (data.type === "ORDER_CREATED" && data.payload) {
+      if (data.type === "QUEUE_CLEARED") {
+        setOrders([]);
+      } else if (data.type === "ORDER_CREATED" && data.payload) {
         playNotificationChime();
         setOrders((prev) => [data.payload, ...prev.filter((o) => o.id !== data.payload.id)]);
-        playNotificationChime();
       } else if (data.type === "ORDER_STAGED" && data.payload) {
         setOrders((prev) =>
           prev.map((o) => (o.id === data.payload.id ? { ...o, status: "staged", stage: data.payload.stage } : o))
@@ -92,6 +93,8 @@ export default function StoreManagerApp() {
       try {
         const qOrders = query(collection(db, "orders"), orderBy("createdAt", "desc"));
         unsubOrders = onSnapshot(qOrders, (snap) => {
+          const rawOrders = localStorage.getItem("auditx_live_orders");
+          if (rawOrders === "[]") return;
           const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
           if (docs.length > 0) setOrders(docs);
         });
@@ -114,7 +117,16 @@ export default function StoreManagerApp() {
     };
   }, []);
 
+  function handleClearQueue() {
+    playNotificationChime();
+    clearAllLiveOrders();
+    setOrders([]);
+    setActionSuccess("🧹 Today's Queue successfully cleared across Warehouse, Picker, Captain, and Ordering Apps!");
+    setTimeout(() => setActionSuccess(""), 3500);
+  }
+
   function triggerDailyQueueRefresh() {
+    setOrders(getAllLiveOrders());
     setLastRefreshed(new Date().toLocaleTimeString());
     setActionSuccess("🔄 Tiptur HUB KA44 Order Queues Refreshed (Real-Time Live Sync)!");
     setTimeout(() => setActionSuccess(""), 2500);
@@ -221,13 +233,125 @@ export default function StoreManagerApp() {
         </div>
 
         <div style={S.managerProfile}>
-          <span style={{ fontSize: 26 }}>👑</span>
+          <img
+            src="/sm-logo.png"
+            alt="Bhaskar N S - B Logo"
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: "50%",
+              objectFit: "cover",
+              border: "2px solid #f59e0b",
+              boxShadow: "0 2px 8px rgba(245, 158, 11, 0.35)",
+            }}
+          />
           <div>
             <div style={S.mgrName}>Bhaskar N S</div>
             <div style={S.mgrTitle}>Store Manager (SM) • Tiptur HUB Lead</div>
           </div>
         </div>
       </header>
+
+      {/* FIXED DUTY QR CODE STATION BANNER (FOR PICKER & RIDER TO SCAN) */}
+      <div
+        style={{
+          background: "linear-gradient(135deg, #1e293b 0%, #0f172a 100%)",
+          border: "1.5px solid #f59e0b",
+          borderRadius: 14,
+          padding: "16px 20px",
+          marginBottom: 16,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          flexWrap: "wrap",
+          gap: 16,
+          boxShadow: "0 4px 20px rgba(0, 0, 0, 0.25)",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+          <div
+            style={{
+              background: "#ffffff",
+              padding: 6,
+              borderRadius: 10,
+              display: "inline-flex",
+              boxShadow: "0 2px 10px rgba(0,0,0,0.3)",
+            }}
+          >
+            <img
+              src="/duty-qr.png"
+              alt="Fixed Duty QR Code - Tiptur Hub KA44"
+              style={{ width: 88, height: 88, objectFit: "contain", borderRadius: 6 }}
+            />
+          </div>
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span
+                style={{
+                  background: "#f59e0b",
+                  color: "#0f172a",
+                  fontSize: 10,
+                  fontWeight: 900,
+                  padding: "2px 8px",
+                  borderRadius: 4,
+                  letterSpacing: "0.5px",
+                }}
+              >
+                SM DUTY SCANNER STATION
+              </span>
+              <span style={{ color: "#10b981", fontSize: 12, fontWeight: 700 }}>
+                ● Active for Shift Check-In
+              </span>
+            </div>
+            <h3 style={{ margin: "4px 0", color: "#ffffff", fontSize: 15, fontWeight: 800 }}>
+              Fixed Shift Duty QR Code • Tiptur HUB KA44
+            </h3>
+            <p style={{ margin: 0, color: "#94a3b8", fontSize: 12 }}>
+              Both OD Picker <b>Thrupthi K S</b> and Rider <b>Sinchana B R</b> scan this QR code to turn Duty ON.
+            </p>
+            <div style={{ marginTop: 4, color: "#cbd5e1", fontSize: 11, fontFamily: "monospace" }}>
+              Payload: <b style={{ color: "#38bdf8" }}>AUDITX-DUTY-TIPTUR-KA44-STATION</b>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          <a
+            href="/picker"
+            style={{
+              background: "#0c831f",
+              color: "#ffffff",
+              padding: "8px 14px",
+              borderRadius: 8,
+              fontSize: 12,
+              fontWeight: 800,
+              textDecoration: "none",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+            }}
+          >
+            📦 Picker: Thrupthi
+          </a>
+          <a
+            href="/rider"
+            style={{
+              background: "#2563eb",
+              color: "#ffffff",
+              padding: "8px 14px",
+              borderRadius: 8,
+              fontSize: 12,
+              fontWeight: 800,
+              textDecoration: "none",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+            }}
+          >
+            🛵 Rider: Sinchana
+          </a>
+        </div>
+      </div>
 
       {/* KPI Stats Bar */}
       <div style={S.statsBar}>
@@ -366,6 +490,26 @@ export default function StoreManagerApp() {
 
               <div style={S.queueRefreshRow}>
                 <span style={S.lastRefreshText}>Refreshed: {lastRefreshed}</span>
+                <button
+                  type="button"
+                  onClick={handleClearQueue}
+                  title="Clear all orders in today's fulfillment queue"
+                  style={{
+                    padding: "7px 12px",
+                    background: "#fee2e2",
+                    border: "1px solid #fca5a5",
+                    color: "#b91c1c",
+                    borderRadius: 8,
+                    fontWeight: 800,
+                    fontSize: "0.78rem",
+                    cursor: "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 4,
+                  }}
+                >
+                  🗑️ Clear Today's Queue ({orders.length})
+                </button>
                 <button style={S.refreshBtn} onClick={triggerDailyQueueRefresh}>
                   🔄 Refresh Queue Daily / Live
                 </button>
@@ -386,45 +530,57 @@ export default function StoreManagerApp() {
                   </tr>
                 </thead>
                 <tbody>
-                  {orders.map((o) => (
-                    <tr key={o.id} style={S.tr}>
-                      <td style={S.tdBold}>{o.orderNumber || o.id}</td>
-                      <td style={S.td}>
-                        <div>{o.customerName || "Customer"}</div>
-                        <small style={{ color: "#94a3b8" }}>{o.customerAddress?.slice(0, 24)}...</small>
-                      </td>
-                      <td style={S.td}>{(o.items || []).length} items</td>
-                      <td style={S.td}>
-                        <span style={S.rackCellBadge}>
-                          {o.assignedRack || "Rack D5"}
-                        </span>
-                      </td>
-                      <td style={S.td}>
-                        <div style={{ fontSize: 11 }}>
-                          <div>Picker: <b>{o.pickerName || "Thrupthi K S"}</b></div>
-                          <div>Captain: <b>{o.captainName || "Sinchana B R"}</b></div>
+                  {orders.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} style={{ textAlign: "center", padding: "40px 16px", color: "#94a3b8" }}>
+                        <div style={{ fontSize: "1.8rem", marginBottom: 8 }}>🧹</div>
+                        <div style={{ fontWeight: 800, fontSize: "0.95rem", color: "#cbd5e1" }}>No Active Orders in Queue</div>
+                        <div style={{ fontSize: "0.8rem", color: "#64748b", marginTop: 4 }}>
+                          Fulfillment queue is completely clear. New customer orders placed will stream live here.
                         </div>
                       </td>
-                      <td style={S.td}>
-                        <span
-                          style={{
-                            ...S.stagePill,
-                            background:
-                              o.status === "delivered"
-                                ? "#065f46"
-                                : o.status === "dispatched"
-                                ? "#1e40af"
-                                : o.status === "staged"
-                                ? "#854d0e"
-                                : "#334155",
-                          }}
-                        >
-                          {o.stage || o.status}
-                        </span>
-                      </td>
-                      <td style={S.tdPrice}>₹{o.totalAmount || 180}</td>
                     </tr>
-                  ))}
+                  ) : (
+                    orders.map((o) => (
+                      <tr key={o.id} style={S.tr}>
+                        <td style={S.tdBold}>{o.orderNumber || o.id}</td>
+                        <td style={S.td}>
+                          <div>{o.customerName || "Customer"}</div>
+                          <small style={{ color: "#94a3b8" }}>{o.customerAddress?.slice(0, 24)}...</small>
+                        </td>
+                        <td style={S.td}>{(o.items || []).length} items</td>
+                        <td style={S.td}>
+                          <span style={S.rackCellBadge}>
+                            {o.assignedRack || "Rack D5"}
+                          </span>
+                        </td>
+                        <td style={S.td}>
+                          <div style={{ fontSize: 11 }}>
+                            <div>Picker: <b>{o.pickerName || "Thrupthi K S"}</b></div>
+                            <div>Captain: <b>{o.captainName || "Sinchana B R"}</b></div>
+                          </div>
+                        </td>
+                        <td style={S.td}>
+                          <span
+                            style={{
+                              ...S.stagePill,
+                              background:
+                                o.status === "delivered"
+                                  ? "#065f46"
+                                  : o.status === "dispatched"
+                                  ? "#1e40af"
+                                  : o.status === "staged"
+                                  ? "#854d0e"
+                                  : "#334155",
+                            }}
+                          >
+                            {o.stage || o.status}
+                          </span>
+                        </td>
+                        <td style={S.tdPrice}>₹{o.totalAmount || 180}</td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>

@@ -346,6 +346,8 @@ export default function WarehouseDashboardPage() {
       if (db) {
         const q1 = query(collection(db, "orders"), orderBy("createdAt", "desc"));
         unsub1 = onSnapshot(q1, (snap) => {
+          const rawOrders = localStorage.getItem("auditx_live_orders");
+          if (rawOrders === "[]") return;
           const remoteOrders = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
           if (remoteOrders.length > 0) {
             setOrders(remoteOrders);
