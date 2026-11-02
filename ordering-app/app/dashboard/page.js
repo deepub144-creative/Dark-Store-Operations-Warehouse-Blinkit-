@@ -165,22 +165,13 @@ export default function WarehouseDashboardPage() {
     }
   }, []);
 
-  // Load and initialize inventory units from localStorage: Frames (1 unit single), Chocolates (5 units fixed)
+  // Load and initialize inventory units: strictly 5 units for Chocolates and 1 unit for Frames
   useEffect(() => {
     try {
-      const stored = localStorage.getItem("auditx_inventory_units");
-      let currentMap = {};
-      if (stored) {
-        currentMap = JSON.parse(stored);
-      }
-
-      // Ensure all Frames and Chocolates have exact requested units
-      const defaultMap = { ...currentMap };
+      const defaultMap = {};
       STORE_MANAGER_CATALOG.forEach((item) => {
-        if (defaultMap[item.sku] === undefined) {
-          // Frames: 1 unit single; Chocolates: 5 units fixed
-          defaultMap[item.sku] = item.category === "Frames" ? 1 : 5;
-        }
+        // Enforce exact user specification: Frames = 1 unit single, Chocolates = 5 units fixed
+        defaultMap[item.sku] = item.category === "Frames" ? 1 : 5;
       });
       localStorage.setItem("auditx_inventory_units", JSON.stringify(defaultMap));
       setInventoryStockMap(defaultMap);
@@ -193,7 +184,7 @@ export default function WarehouseDashboardPage() {
         image: item.image,
         price: item.price,
         mrp: item.mrp,
-        units: defaultMap[item.sku] !== undefined ? defaultMap[item.sku] : (item.category === "Frames" ? 1 : 5),
+        units: item.category === "Frames" ? 1 : 5,
         unitSpecification: item.category === "Frames" ? "1 unit single" : "5 units fixed",
         weight: item.category === "Frames" ? "1 unit" : "5 units",
         aisle: item.aisle,
@@ -209,6 +200,19 @@ export default function WarehouseDashboardPage() {
       console.warn("Stock map load error:", e);
     }
   }, []);
+
+  // Reset all units to exact defaults: 5 units for Chocolates, 1 unit for Frames
+  function handleResetDefaultUnits() {
+    playSuccessChime();
+    const defaultMap = {};
+    STORE_MANAGER_CATALOG.forEach((item) => {
+      defaultMap[item.sku] = item.category === "Frames" ? 1 : 5;
+    });
+    localStorage.setItem("auditx_inventory_units", JSON.stringify(defaultMap));
+    setInventoryStockMap(defaultMap);
+    setActionSuccess("🔄 All units restored to fixed defaults: Chocolates (5 units) & Frames (1 unit)!");
+    setTimeout(() => setActionSuccess(""), 3500);
+  }
 
   // Save all warehouse inventory items (Frames & Chocolates)
   function handleSaveAllInventory() {
@@ -1459,6 +1463,15 @@ export default function WarehouseDashboardPage() {
 
                 <button
                   type="button"
+                  style={S.resetDefaultsBtn}
+                  onClick={handleResetDefaultUnits}
+                  title="Reset all items to 1 unit single for Frames and 5 units fixed for Chocolates"
+                >
+                  ↺ Reset Fixed Units (1 &amp; 5)
+                </button>
+
+                <button
+                  type="button"
                   style={S.saveInventoryBtn}
                   onClick={handleSaveAllInventory}
                   title="Persist inventory changes to Store Manager dashboard"
@@ -1830,7 +1843,8 @@ const S = {
   skuCategoryTabsRow: { display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginBottom: 16 },
   skuCatPill: { background: "#F1F5F9", border: "1px solid #CBD5E1", borderRadius: 20, padding: "7px 14px", fontSize: 12, fontWeight: 700, color: "#475569", cursor: "pointer", transition: "all 0.15s ease" },
   skuCatPillActive: { background: "#0F172A", color: "#FFFFFF", borderColor: "#0F172A", boxShadow: "0 2px 6px rgba(0,0,0,0.15)" },
-  saveInventoryBtn: { marginLeft: "auto", background: "#0c831f", color: "#ffffff", border: "none", borderRadius: 10, padding: "8px 16px", fontSize: 12, fontWeight: 800, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, boxShadow: "0 2px 8px rgba(12,131,31,0.3)" },
+  resetDefaultsBtn: { marginLeft: "auto", background: "#f8fafc", border: "1px solid #cbd5e1", borderRadius: 10, padding: "8px 14px", fontSize: 12, fontWeight: 800, color: "#334155", cursor: "pointer", display: "flex", alignItems: "center", gap: 6 },
+  saveInventoryBtn: { background: "#0c831f", color: "#ffffff", border: "none", borderRadius: 10, padding: "8px 16px", fontSize: 12, fontWeight: 800, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, boxShadow: "0 2px 8px rgba(12,131,31,0.3)" },
   badgeFrames: { background: "#eff6ff", color: "#1d4ed8", padding: "2px 8px", borderRadius: 4, fontWeight: 800, fontSize: 10.5, border: "1px solid #bfdbfe", display: "inline-block" },
   badgeChoc: { background: "#fef3c7", color: "#92400e", padding: "2px 8px", borderRadius: 4, fontWeight: 800, fontSize: 10.5, border: "1px solid #fde68a", display: "inline-block" },
   searchBox: { display: "flex", alignItems: "center", gap: 10, background: "#FFFFFF", border: "1px solid #CBD5E1", borderRadius: 10, padding: "8px 14px", width: 320 },
