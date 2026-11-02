@@ -41,13 +41,19 @@ const styles = {
     position: "relative",
     boxShadow: "0 0 40px rgba(0, 0, 0, 0.5)",
     overflowX: "hidden",
+    overflowY: "auto",
+    WebkitOverflowScrolling: "touch",
+    touchAction: "pan-y",
   },
   screenBody: {
     flex: 1,
+    width: "100%",
     display: "flex",
     flexDirection: "column",
     position: "relative",
     background: "#F4F6FB",
+    WebkitOverflowScrolling: "touch",
+    touchAction: "pan-y",
   },
 };
 

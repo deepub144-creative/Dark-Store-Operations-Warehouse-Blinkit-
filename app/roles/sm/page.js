@@ -221,13 +221,125 @@ export default function StoreManagerApp() {
         </div>
 
         <div style={S.managerProfile}>
-          <span style={{ fontSize: 26 }}>👑</span>
+          <img
+            src="/sm-logo.png"
+            alt="Bhaskar N S - B Logo"
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: "50%",
+              objectFit: "cover",
+              border: "2px solid #f59e0b",
+              boxShadow: "0 2px 8px rgba(245, 158, 11, 0.35)",
+            }}
+          />
           <div>
             <div style={S.mgrName}>Bhaskar N S</div>
             <div style={S.mgrTitle}>Store Manager (SM) • Tiptur HUB Lead</div>
           </div>
         </div>
       </header>
+
+      {/* FIXED DUTY QR CODE STATION BANNER (FOR PICKER & RIDER TO SCAN) */}
+      <div
+        style={{
+          background: "linear-gradient(135deg, #1e293b 0%, #0f172a 100%)",
+          border: "1.5px solid #f59e0b",
+          borderRadius: 14,
+          padding: "16px 20px",
+          marginBottom: 16,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          flexWrap: "wrap",
+          gap: 16,
+          boxShadow: "0 4px 20px rgba(0, 0, 0, 0.25)",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+          <div
+            style={{
+              background: "#ffffff",
+              padding: 6,
+              borderRadius: 10,
+              display: "inline-flex",
+              boxShadow: "0 2px 10px rgba(0,0,0,0.3)",
+            }}
+          >
+            <img
+              src="/duty-qr.png"
+              alt="Fixed Duty QR Code - Tiptur Hub KA44"
+              style={{ width: 88, height: 88, objectFit: "contain", borderRadius: 6 }}
+            />
+          </div>
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span
+                style={{
+                  background: "#f59e0b",
+                  color: "#0f172a",
+                  fontSize: 10,
+                  fontWeight: 900,
+                  padding: "2px 8px",
+                  borderRadius: 4,
+                  letterSpacing: "0.5px",
+                }}
+              >
+                SM DUTY SCANNER STATION
+              </span>
+              <span style={{ color: "#10b981", fontSize: 12, fontWeight: 700 }}>
+                ● Active for Shift Check-In
+              </span>
+            </div>
+            <h3 style={{ margin: "4px 0", color: "#ffffff", fontSize: 15, fontWeight: 800 }}>
+              Fixed Shift Duty QR Code • Tiptur HUB KA44
+            </h3>
+            <p style={{ margin: 0, color: "#94a3b8", fontSize: 12 }}>
+              Both OD Picker <b>Thrupthi K S</b> and Rider <b>Sinchana B R</b> scan this QR code to turn Duty ON.
+            </p>
+            <div style={{ marginTop: 4, color: "#cbd5e1", fontSize: 11, fontFamily: "monospace" }}>
+              Payload: <b style={{ color: "#38bdf8" }}>AUDITX-DUTY-TIPTUR-KA44-STATION</b>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          <a
+            href="/picker"
+            style={{
+              background: "#0c831f",
+              color: "#ffffff",
+              padding: "8px 14px",
+              borderRadius: 8,
+              fontSize: 12,
+              fontWeight: 800,
+              textDecoration: "none",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+            }}
+          >
+            📦 Picker: Thrupthi
+          </a>
+          <a
+            href="/rider"
+            style={{
+              background: "#2563eb",
+              color: "#ffffff",
+              padding: "8px 14px",
+              borderRadius: 8,
+              fontSize: 12,
+              fontWeight: 800,
+              textDecoration: "none",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+            }}
+          >
+            🛵 Rider: Sinchana
+          </a>
+        </div>
+      </div>
 
       {/* KPI Stats Bar */}
       <div style={S.statsBar}>

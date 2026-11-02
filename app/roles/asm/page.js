@@ -171,7 +171,18 @@ export default function AssistantStoreManagerApp() {
         </div>
 
         <div style={S.profileBox}>
-          <span style={{ fontSize: 24 }}>⚡</span>
+          <img
+            src="/asm-logo.png"
+            alt="Deepu B - D Logo"
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: "50%",
+              objectFit: "cover",
+              border: "2px solid #10b981",
+              boxShadow: "0 2px 8px rgba(16, 185, 129, 0.35)",
+            }}
+          />
           <div>
             <div style={S.profileName}>Deepu B</div>
             <div style={S.profileRole}>Assistant Store Manager (ASM)</div>

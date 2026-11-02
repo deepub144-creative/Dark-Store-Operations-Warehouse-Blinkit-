@@ -838,6 +838,128 @@ export default function OdPickerApp() {
                   {/* ANIMATION STYLES INJECTION */}
                   <AuditxAnimatedStyles />
 
+                  {/* ── TASK SEARCHING VIDEO & PICKER ASSIGNMENT CARD ── */}
+                  <div
+                    style={{
+                      background: "#ffffff",
+                      borderRadius: 16,
+                      padding: 14,
+                      border: "1.5px solid #e2e8f0",
+                      marginBottom: 16,
+                      boxShadow: "0 4px 18px rgba(0,0,0,0.06)",
+                    }}
+                  >
+                    <div style={{ position: "relative", borderRadius: 12, overflow: "hidden", marginBottom: 12 }}>
+                      <video
+                        src="/tasksearching.mp4"
+                        autoPlay
+                        loop
+                        muted
+                        playsInline
+                        style={{
+                          width: "100%",
+                          height: 220,
+                          objectFit: "cover",
+                          borderRadius: 12,
+                          display: "block",
+                          background: "#080c14",
+                        }}
+                      />
+                      <div
+                        style={{
+                          position: "absolute",
+                          bottom: 10,
+                          left: "50%",
+                          transform: "translateX(-50%)",
+                          background: "rgba(15, 23, 42, 0.88)",
+                          backdropFilter: "blur(6px)",
+                          color: "#ffffff",
+                          padding: "6px 14px",
+                          borderRadius: 20,
+                          fontSize: 11,
+                          fontWeight: 700,
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 8,
+                          whiteSpace: "nowrap",
+                          boxShadow: "0 2px 8px rgba(0,0,0,0.4)",
+                        }}
+                      >
+                        <span
+                          style={{
+                            width: 8,
+                            height: 8,
+                            borderRadius: "50%",
+                            background: "#10b981",
+                            boxShadow: "0 0 8px #10b981",
+                            display: "inline-block",
+                          }}
+                        />
+                        <span>Awaiting Order Dispatch • Searching Live Tasks...</span>
+                      </div>
+                    </div>
+
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        marginBottom: 6,
+                        padding: "0 2px",
+                      }}
+                    >
+                      <div>
+                        <span
+                          style={{
+                            fontSize: 10,
+                            fontWeight: 800,
+                            color: "#0c831f",
+                            background: "#f0fdf4",
+                            padding: "2px 8px",
+                            borderRadius: 4,
+                            border: "1px solid #bbf7d0",
+                          }}
+                        >
+                          ASSIGNED OPERATOR: OD PICKER LEAD
+                        </span>
+                        <h4 style={{ margin: "4px 0 0", fontSize: 14, fontWeight: 800, color: "#0f172a" }}>
+                          Thrupthi K S (Zebra Scanner #04)
+                        </h4>
+                      </div>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: "#64748b" }}>
+                        SLA: <b style={{ color: "#0c831f" }}>2:00 Mins</b>
+                      </span>
+                    </div>
+
+                    <p style={{ fontSize: 12, color: "#64748b", margin: "4px 0 12px", lineHeight: 1.4 }}>
+                      Dark store picker terminal is live and connected. When an order arrives in Tiptur Hub KA44, it will automatically alert and assign to your screen.
+                    </p>
+
+                    <button
+                      type="button"
+                      onClick={handleGenerateTestOrder}
+                      style={{
+                        width: "100%",
+                        padding: "12px",
+                        background: "linear-gradient(135deg, #0c831f 0%, #059669 100%)",
+                        color: "#ffffff",
+                        border: "none",
+                        borderRadius: 10,
+                        fontWeight: 800,
+                        fontSize: 13,
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: 8,
+                        boxShadow: "0 4px 12px rgba(12, 131, 31, 0.3)",
+                      }}
+                    >
+                      <span>⚡</span>
+                      <span>Assign Live Task to Picker (Simulate Order)</span>
+                    </button>
+                  </div>
+
                   {/* Top Operational Status Banner */}
                   <div style={S.opStatusBanner}>
                     <div style={S.opStatusLeft}>
