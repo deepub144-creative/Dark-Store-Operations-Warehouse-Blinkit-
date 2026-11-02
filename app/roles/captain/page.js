@@ -500,16 +500,19 @@ export default function DeliveryCaptainApp() {
                       playsInline
                       style={{
                         width: "100%",
-                        maxWidth: 240,
+                        maxWidth: 320,
+                        height: 200,
+                        objectFit: "cover",
                         borderRadius: 14,
-                        boxShadow: "0 8px 24px rgba(0,0,0,0.08)",
+                        boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
                         display: "inline-block",
-                        border: "1px solid #e2e8f0",
-                        background: "#ffffff",
+                        border: "1.5px solid #e2e8f0",
+                        background: "#080c14",
                       }}
                     >
-                      <source src="/videos/task-searching.mp4" type="video/mp4" />
+                      <source src="/tasksearching.mp4" type="video/mp4" />
                       <source src="/task-searching.mp4" type="video/mp4" />
+                      <source src="/videos/task-searching.mp4" type="video/mp4" />
                     </video>
                   </div>
                   <div style={S.idleIcon}>

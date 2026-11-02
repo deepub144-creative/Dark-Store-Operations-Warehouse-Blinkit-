@@ -32,7 +32,6 @@ import {
 } from "@/lib/soundSystem";
 import ErdDfdViewer from "@/components/ErdDfdViewer";
 import AuditxLogo from "@/components/AuditxLogo";
-import AuditxMiniAssistant from "@/components/AuditxMiniAssistant";
 import {
   IconRealisticScooter,
   IconRealisticPickerTrolley,
@@ -1992,9 +1991,6 @@ export default function WarehouseDashboardPage() {
           {activeTab === "erdDfd" && <ErdDfdViewer />}
         </main>
       </div>
-
-      {/* RAG Assistant AUDIT'X Mini */}
-      <AuditxMiniAssistant isStoreOpen={!isStorePaused} />
     </div>
   );
 }

@@ -473,3 +473,16 @@ header, nav {
   align-items: center;
   justify-content: center;
 }
+
+/* ── Mobile Buttery Smooth Momentum Scrolling ── */
+@media (max-width: 768px) {
+  html, body {
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    -webkit-overflow-scrolling: touch !important;
+    scroll-behavior: smooth !important;
+    touch-action: pan-y !important;
+    height: auto !important;
+    min-height: 100% !important;
+  }
+}

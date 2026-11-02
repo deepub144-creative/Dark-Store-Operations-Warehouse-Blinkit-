@@ -906,7 +906,6 @@ export default function OdPickerApp() {
                   >
                     <div style={{ position: "relative", borderRadius: 12, overflow: "hidden", marginBottom: 12 }}>
                       <video
-                        src="/tasksearching.mp4"
                         autoPlay
                         loop
                         muted
@@ -919,7 +918,11 @@ export default function OdPickerApp() {
                           display: "block",
                           background: "#080c14",
                         }}
-                      />
+                      >
+                        <source src="/tasksearching.mp4" type="video/mp4" />
+                        <source src="/task-searching.mp4" type="video/mp4" />
+                        <source src="/videos/task-searching.mp4" type="video/mp4" />
+                      </video>
                       <div
                         style={{
                           position: "absolute",

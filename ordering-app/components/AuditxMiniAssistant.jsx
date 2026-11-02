@@ -7,9 +7,27 @@ import { CATALOG } from "@/lib/items";
 import { getAllLiveOrders } from "@/lib/realtimeSync";
 
 // ══════════════════════════════════════════════════════════════════
-// RAG KNOWLEDGE CORPUS (PROJECT ARCHITECTURE, WORKFLOWS, ROLES & FAQS)
+// RAG KNOWLEDGE CORPUS (PROJECT ARCHITECTURE, PHYSICAL MODEL, ROLES & CODE)
 // ══════════════════════════════════════════════════════════════════
 const KNOWLEDGE_CHUNKS = [
+  {
+    id: "physical_warehouse_model",
+    category: "Physical Warehouse & Team Craftsmanship",
+    title: "Handcrafted Foam Board Warehouse Model & Authors",
+    keywords: [
+      "real", "image", "foam board", "physical", "warehouse model", "how was it made",
+      "model", "photo", "seen in real", "authors", "who built", "sketching", "painting",
+      "wire", "battery", "wood", "materials", "struugle", "team", "dude", "buddy"
+    ],
+    content: `Yeah Great Question Buddy / Dude / Anything you can call , and Yeah the project authors have implemented with entire teamments , pleasure and struugle due to building a warehouse in foam board is not just a sip of cofeee, so Deepu B As instaructed , then Bhaskar  N S , exceuted plan , SInchana B R , AB Harshitha Have helped and Thrupthi K S , entire Have helped Materials Chocaltes , Frames , Foam Board , Skething Wrehouse , Painiting , Wire Connections etc....
+
+Physical Scale Model Highlights:
+1. 🏠 Exterior Architecture: Foam board structure with sloped gabled green roof, AUDIT'X Blinkit signage, PO dispatch bay, SODA POINT stall, and acrylic inspection windows.
+2. 🪵 Wooden Staging Racks: Precision handcrafted wooden shelving, aisle racks, and staging benches with polished wood-grain finish.
+3. ⚡ Electrical & Wiring: Real 9V battery with functional wire connections powering LED warehouse lighting.
+4. 🏷️ Printed Barcodes & Catalog: Authentic miniature printed barcode labels (P0-A01-01-00, P2-A01-03-05, P3-A04-03-02, etc.), miniature Wall Frames (Kantara, KGF, Shiva), and miniature Chocolates.`,
+    image: "/physical_warehouse_model.jpeg",
+  },
   {
     id: "project_overview",
     category: "Project & Hub",
@@ -21,12 +39,27 @@ const KNOWLEDGE_CHUNKS = [
 Procurement is directly synced with Tiptur APMC Market Yard for fresh coconuts, copra, and local produce.`,
   },
   {
+    id: "technical_architecture_code",
+    category: "Technical Architecture & Code",
+    title: "Next.js Code Architecture, APIs & Data Flow",
+    keywords: ["code", "repo", "repository", "technical", "stack", "nextjs", "react", "firebase", "api", "routes", "database", "turbopack", "backend"],
+    content: `AUDIT'X is built with a high-performance Next.js App Router architecture:
+- Framework: Next.js 16.3+ with Turbopack & React 19.
+- Real-Time Synchronization: Dual-tier architecture in lib/realtimeSync.js combining Firebase Firestore onSnapshot listeners with BroadcastChannel ('auditx_realtime_bus') fallback for sub-10ms multi-screen sync.
+- Audio Synthesis: Procedural Web Audio API sound generator in lib/soundSystem.js synthesizing order alarms, barcode scan bleeps, and success chimes without external mp3 dependencies.
+- Next.js API Routes:
+  • /api/place-order: Processes live customer orders, verifies demo wallet balance, and writes to today's queue.
+  • /api/export-margin: Generates financial audit exports and gross margin reports.
+  • /api/auth/send-otp & /api/auth/verify-otp: SMS OTP simulation for personnel authentication.
+- Architecture Viewers: Interactive ERD & DFD Level 0/1 data flow diagram viewer available at /erd-dfd and dashboard tab 9.`,
+  },
+  {
     id: "inventory_units",
     category: "Inventory & Catalog",
     title: "Warehouse Inventory Units: Frames (1 unit) & Chocolates (5 units)",
     keywords: ["units", "frames", "chocolates", "stock", "unit", "5 units", "1 unit", "inventory", "single", "fixed"],
     content: `Store Manager warehouse active catalog is strictly categorized into 2 product groups:
-1. Wall Frames (35 items): All frames are strictly 1 unit single (e.g., Kantara A4 Frame, Yash KGF Frame, Mahadev Shiva Frame, D Boss Frame).
+1. Wall Frames (35 items): All frames are strictly 1 unit single (e.g., Kantara A4 Frame, Yash KGF Frame, Mahadev Shiva Frame, D Boss Frame). Fragile art pieces stored in protective sleeves.
 2. Chocolates (24 items): All chocolates are strictly 5 units fixed (e.g., Beatss Milk Chocolate, Melody Chocolaty Toffee, Kopiko Coffee Candy, Boomer Bubble Gum, Candyman Choco Double, Eclairs Rich Toffee).
 All items share identical names, images, barcodes, and pricing across both the Store Manager warehouse dashboard and customer ordering app.`,
   },
@@ -149,9 +182,9 @@ function retrieveRelevantKnowledge(query, isStoreOpen, liveOrderCount) {
   const scoredChunks = KNOWLEDGE_CHUNKS.map((chunk) => {
     let score = 0;
 
-    // Keyword match
+    // Direct keyword match
     chunk.keywords.forEach((kw) => {
-      if (cleanQ.includes(kw)) score += 5;
+      if (cleanQ.includes(kw)) score += 6;
     });
 
     // Token match against title and content
@@ -172,7 +205,6 @@ function retrieveRelevantKnowledge(query, isStoreOpen, liveOrderCount) {
   // Fallback to top overview chunk if no direct match
   const selectedChunks = topMatches.length > 0 ? topMatches : [KNOWLEDGE_CHUNKS[0], KNOWLEDGE_CHUNKS[1]];
 
-  // Context Header injected with live system state
   const liveSystemContext = {
     isStoreOpen,
     liveOrderCount,
@@ -195,7 +227,7 @@ export default function AuditxMiniAssistant({ isStoreOpen = true }) {
     {
       id: "welcome",
       sender: "bot",
-      text: "👋 Namaskara! I am **AUDIT'X Mini**, your intelligent AI Assistant for Dark Store Operations & Ordering in Namma Tiptur KA-44. How can I help you today?",
+      text: "👋 Namaskara! I am **AUDIT'X Mini**, your intelligent AI Assistant for Dark Store Operations & Ordering in Namma Tiptur KA-44. Ask me anything about our live store, 10-min SLA, inventory units, codes, or our real handcrafted warehouse model!",
       time: "Just now",
       sources: ["AUDIT'X System Overview"],
     },
@@ -204,15 +236,81 @@ export default function AuditxMiniAssistant({ isStoreOpen = true }) {
   const [isTyping, setIsTyping] = useState(false);
   const messagesEndRef = useRef(null);
 
-  // Suggested quick prompts
+  // Cursor following / Dragging Position
+  const [pos, setPos] = useState({ x: null, y: null });
+  const [isDragging, setIsDragging] = useState(false);
+  const dragOffsetRef = useRef({ x: 0, y: 0 });
+
+  // Quick prompt recommendations
   const QUICK_PROMPTS = [
-    "Is the store open right now?",
+    "How can we see the real warehouse model in image?",
+    "Tell me about the physical warehouse craft & authors",
     "What are the inventory units for frames & chocolates?",
-    "How does rack handover work if Sinchana B R is away?",
-    "Who is Store Manager Bhaskar N S?",
-    "How do I raise a complaint for my order?",
-    "What are the 9 staging racks?",
+    "Explain the technical code architecture & APIs",
+    "How does rack handover work if Sinchana is away?",
+    "Is the store open right now?",
   ];
+
+  // Mouse cursor tracking on desktop when closed
+  useEffect(() => {
+    const handleMouseMove = (e) => {
+      if (isOpen || isDragging) return;
+      if (typeof window === "undefined") return;
+
+      const botSize = 80;
+      const padding = 16;
+      const maxX = window.innerWidth - botSize - padding;
+      const maxY = window.innerHeight - botSize - padding;
+
+      // Position slightly to the right/bottom of cursor so it feels like a companion
+      let targetX = e.clientX + 20;
+      let targetY = e.clientY + 20;
+
+      if (targetX > maxX) targetX = e.clientX - botSize - 12;
+      if (targetY > maxY) targetY = e.clientY - botSize - 12;
+
+      targetX = Math.max(padding, Math.min(maxX, targetX));
+      targetY = Math.max(padding, Math.min(maxY, targetY));
+
+      setPos({ x: targetX, y: targetY });
+    };
+
+    window.addEventListener("mousemove", handleMouseMove, { passive: true });
+    return () => window.removeEventListener("mousemove", handleMouseMove);
+  }, [isOpen, isDragging]);
+
+  // Touch drag handlers for mobile
+  const handleTouchStart = (e) => {
+    if (e.touches.length === 1) {
+      const touch = e.touches[0];
+      const currentX = pos.x ?? (window.innerWidth - 96);
+      const currentY = pos.y ?? (window.innerHeight - 150);
+      dragOffsetRef.current = {
+        x: touch.clientX - currentX,
+        y: touch.clientY - currentY,
+      };
+      setIsDragging(true);
+    }
+  };
+
+  const handleTouchMove = (e) => {
+    if (isDragging && e.touches.length === 1) {
+      const touch = e.touches[0];
+      const botSize = 80;
+      const padding = 12;
+      let targetX = touch.clientX - dragOffsetRef.current.x;
+      let targetY = touch.clientY - dragOffsetRef.current.y;
+
+      targetX = Math.max(padding, Math.min(window.innerWidth - botSize - padding, targetX));
+      targetY = Math.max(padding, Math.min(window.innerHeight - botSize - padding, targetY));
+
+      setPos({ x: targetX, y: targetY });
+    }
+  };
+
+  const handleTouchEnd = () => {
+    setIsDragging(false);
+  };
 
   useEffect(() => {
     if (isOpen) {
@@ -242,36 +340,96 @@ export default function AuditxMiniAssistant({ isStoreOpen = true }) {
       const liveOrders = getAllLiveOrders();
       const { selectedChunks, liveSystemContext } = retrieveRelevantKnowledge(q, isStoreOpen, liveOrders.length);
 
-      // Synthesize answer based on query & retrieved context
       let botResponse = "";
+      let attachedImage = null;
       const qLower = q.toLowerCase();
 
-      if (qLower.includes("open") || qLower.includes("close") || qLower.includes("status") || qLower.includes("paused")) {
+      // Check for real warehouse / physical model / image / authors question
+      if (
+        qLower.includes("real") ||
+        qLower.includes("image") ||
+        qLower.includes("photo") ||
+        qLower.includes("foam board") ||
+        qLower.includes("physical") ||
+        qLower.includes("seen in real") ||
+        qLower.includes("whether is image") ||
+        qLower.includes("model") ||
+        qLower.includes("authors") ||
+        qLower.includes("who built") ||
+        qLower.includes("sketching") ||
+        qLower.includes("painting") ||
+        qLower.includes("wire") ||
+        qLower.includes("struugle") ||
+        qLower.includes("battery")
+      ) {
+        botResponse = `Yeah Great Question Buddy / Dude / Anything you can call , and Yeah the project authors have implemented with entire teamments , pleasure and struugle due to building a warehouse in foam board is not just a sip of cofeee, so Deepu B As instaructed , then Bhaskar  N S , exceuted plan , SInchana B R , AB Harshitha Have helped and Thrupthi K S , entire Have helped Materials Chocaltes , Frames , Foam Board , Skething Wrehouse , Painiting , Wire Connections etc....
+
+Here is the actual real handcrafted physical scale model photograph built for this project:`;
+        attachedImage = "/physical_warehouse_model.jpeg";
+      } else if (
+        qLower.includes("code") ||
+        qLower.includes("repo") ||
+        qLower.includes("repository") ||
+        qLower.includes("technical") ||
+        qLower.includes("architecture") ||
+        qLower.includes("stack") ||
+        qLower.includes("api") ||
+        qLower.includes("next")
+      ) {
+        botResponse = `💻 **AUDIT'X Technical Architecture & Code Highlights**:
+- **Framework**: Next.js 16.3+ (App Router & Turbopack) with React 19.
+- **Dual-Tier Realtime Sync**: Firebase Firestore snapshot listeners combined with browser BroadcastChannel ('auditx_realtime_bus') in \`lib/realtimeSync.js\` for <10ms multi-tab event propagation.
+- **Synthesized Audio Engine**: Zero-dependency procedural sound system in \`lib/soundSystem.js\` using the Web Audio API for sirens, scans, and chimes.
+- **Core APIs**:
+  • \`/api/place-order\`: Validates cart, processes demo wallet deductions, and writes order queue.
+  • \`/api/export-margin\`: Automated JSON/CSV margin and financial audit exporter.
+- **Visual Models**: Integrated ERD & DFD Level 0/1 viewers at \`/erd-dfd\`.`;
+      } else if (qLower.includes("open") || qLower.includes("close") || qLower.includes("status") || qLower.includes("paused") || qLower.includes("oops")) {
         botResponse = isStoreOpen
           ? `🟢 **Store Status: OPEN**\nStore Manager **Bhaskar N S** has opened Tiptur Hub KA-44. You can browse **Frames** (1 unit single) and **Chocolates** (5 units fixed) and place orders with our 8-minute express delivery!`
           : `🛑 **Store Status: CLOSED**\nStore Manager **Bhaskar N S** has temporarily closed the store. The ordering app currently displays:\n\n> *"Oops! Your Store is now closed , opening soon"*\n\nYour saved cart items are safe and will be ready for 1-click checkout the moment Bhaskar N S re-opens the store.`;
       } else if (qLower.includes("unit") || qLower.includes("frame") || qLower.includes("chocolate") || qLower.includes("fixed")) {
-        botResponse = `📦 **Active Warehouse Inventory Units**:\n- **Wall Frames** (35 items): Strictly **1 unit single** (e.g. Kantara Frame, Yash KGF Frame, Shiva Frame).\n- **Chocolates** (24 items): Strictly **5 units fixed** (e.g. Beatss Milk Chocolate, Melody Toffee, Kopiko, Boomer Gum).\n\nBoth categories have identical names, images, aisles, and barcodes matching between the warehouse dashboard and the ordering app.`;
+        botResponse = `📦 **Active Warehouse Inventory Units**:
+- **Wall Frames** (35 items): Strictly **1 unit single** (e.g. Kantara Frame, Yash KGF Frame, Shiva Frame).
+- **Chocolates** (24 items): Strictly **5 units fixed** (e.g. Beatss Milk Chocolate, Melody Toffee, Kopiko, Boomer Gum).
+
+Both categories have identical names, images, aisles, and barcodes matching between the warehouse dashboard and the ordering app.`;
       } else if (qLower.includes("rack") || qLower.includes("handover") || qLower.includes("away") || qLower.includes("thrupthi") || qLower.includes("sinchana")) {
-        botResponse = `🏷️ **Dark Store Rack Staging & Handover Workflow**:\n1. Orders are picked by **Thrupthi K S** inside warehouse aisles under a 2-minute SLA.\n2. Once items are picked, the screen prominently displays the **Handover QR Code** and the **Handover Slider**.\n3. **If Delivery Captain Sinchana B R is away**: Thrupthi K S scans the Aisle Rack QR Code for the randomly assigned bay among:\n   **B5, B7, D5, H2, H4, S4, T1, T4, T6**.\n4. Sliding the green Handover Slider confirms bag staging in the bay!`;
+        botResponse = `🏷️ **Dark Store Rack Staging & Handover Workflow**:
+1. Orders are picked by **Thrupthi K S** inside warehouse aisles under a 2-minute SLA.
+2. Once items are picked, the screen prominently displays the **Handover QR Code** and the **Handover Slider**.
+3. **If Delivery Captain Sinchana B R is away**: Thrupthi K S scans the Aisle Rack QR Code for the randomly assigned bay among:
+   **B5, B7, D5, H2, H4, S4, T1, T4, T6**.
+4. Sliding the green Handover Slider confirms bag staging in the bay!`;
       } else if (qLower.includes("clear") && qLower.includes("queue")) {
-        botResponse = `🧹 **Clear Today's Queue**:\nStore personnel (Bhaskar N S or Thrupthi K S) can click **'Clear Today's Queue'** in the Warehouse Dashboard or Picker Screen. This immediately clears all orders across the dashboard, picker queue, delivery app, and ordering tracker simultaneously using real-time sync.`;
+        botResponse = `🧹 **Clear Today's Queue**:
+Store personnel (Bhaskar N S or Thrupthi K S) can click **'Clear Today's Queue'** in the Warehouse Dashboard or Picker Screen. This immediately clears all orders across the dashboard, picker queue, delivery app, and ordering tracker simultaneously using real-time sync.`;
       } else if (qLower.includes("complaint") || qLower.includes("refund") || qLower.includes("issue") || qLower.includes("replace")) {
-        botResponse = `⚠️ **Customer Complaints & Resolution**:\nCustomers can file a complaint right from the Ordering App (missing items, damaged goods, SLA overrun). It is instantly dispatched to Store Manager **Bhaskar N S** and ASM **Deepu B** on their Quality Desk. They can approve an instant wallet refund or dispatch a priority replacement with live updates back to your screen!`;
+        botResponse = `⚠️ **Customer Complaints & Resolution**:
+Customers can file a complaint right from the Ordering App (missing items, damaged goods, SLA overrun). It is instantly dispatched to Store Manager **Bhaskar N S** and ASM **Deepu B** on their Quality Desk. They can approve an instant wallet refund or dispatch a priority replacement with live updates back to your screen!`;
       } else if (qLower.includes("bhaskar")) {
-        botResponse = `👨‍💼 **Bhaskar N S (Store Manager)**:\nBhaskar is the Store Manager leading Tiptur Hub KA-44 operations. He governs order caps, store open/close toggles, SLA monitoring, and quality desk complaint resolutions.`;
+        botResponse = `👨‍💼 **Bhaskar N S (Store Manager)**:
+Bhaskar is the Store Manager leading Tiptur Hub KA-44 operations. He governs order caps, store open/close toggles, SLA monitoring, and quality desk complaint resolutions.`;
+      } else if (qLower.includes("deepu")) {
+        botResponse = `👨‍💼 **Deepu B (Assistant Store Manager - ASM & Project Lead)**:
+Deepu instructed the project architecture, warehouse scale model design, shelf reconciliation, inventory audits, and Quality Desk dispute resolutions alongside Bhaskar N S.`;
       } else if (qLower.includes("tiptur") || qLower.includes("ganesha") || qLower.includes("copra")) {
-        botResponse = `🌴 **Namma Tiptur KA-44 Heritage**:\nTiptur is Karnataka's famous 'Kalpataru Naadu' known for world-class APMC Copra, Akshayakalpa Organic Farm, and the 96+ year historic **Tiptur Ganesha Utsava Sri Sathya Ganapathi Jatre** celebrated since 1929!`;
+        botResponse = `🌴 **Namma Tiptur KA-44 Heritage**:
+Tiptur is Karnataka's famous 'Kalpataru Naadu' known for world-class APMC Copra, Akshayakalpa Organic Farm, and the 96+ year historic **Tiptur Ganesha Utsava Sri Sathya Ganapathi Jatre** celebrated since 1929!`;
       } else {
-        // Fallback composed from top retrieved RAG chunk
         const topChunk = selectedChunks[0];
-        botResponse = `ℹ️ **${topChunk.title}** (${topChunk.category}):\n${topChunk.content}\n\n*Current Store Status:* **${isStoreOpen ? "🟢 OPEN" : "🛑 CLOSED"}** • *Active Orders:* **${liveOrders.length}**`;
+        botResponse = `ℹ️ **${topChunk.title}** (${topChunk.category}):
+${topChunk.content}
+
+*Current Store Status:* **${isStoreOpen ? "🟢 OPEN" : "🛑 CLOSED"}** • *Active Orders:* **${liveOrders.length}**`;
+        if (topChunk.image) attachedImage = topChunk.image;
       }
 
       const botMsg = {
         id: `bot_${Date.now()}`,
         sender: "bot",
         text: botResponse,
+        image: attachedImage,
         time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
         sources: selectedChunks.map((c) => c.title),
       };
@@ -282,81 +440,130 @@ export default function AuditxMiniAssistant({ isStoreOpen = true }) {
     }, 450);
   }
 
+  // Positioning coordinates
+  const hasMoved = pos.x !== null && pos.y !== null;
+
   return (
     <>
-      {/* ── 1. FLOATING AI ASSISTANT BUTTON (BOTTOM RIGHT) ── */}
-      <button
-        type="button"
+      <style jsx global>{`
+        @keyframes auditxGlowPulse {
+          0%, 100% {
+            box-shadow: 0 0 20px rgba(16, 185, 129, 0.6), 0 8px 30px rgba(0, 0, 0, 0.45);
+            transform: scale(1);
+          }
+          50% {
+            box-shadow: 0 0 35px rgba(16, 185, 129, 0.9), 0 12px 36px rgba(16, 185, 129, 0.4);
+            transform: scale(1.04);
+          }
+        }
+        @keyframes auditxFloatBob {
+          0%, 100% { transform: translateY(0px); }
+          50% { transform: translateY(-8px); }
+        }
+      `}</style>
+
+      {/* ── 1. FLOATING CURSOR-FOLLOWING BOT LAUNCHER ── */}
+      <div
         id="auditx-mini-assistant-btn"
         onClick={() => {
           setIsOpen(!isOpen);
           playNotificationChime();
         }}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
         style={{
           position: "fixed",
-          bottom: 24,
-          right: 20,
+          left: hasMoved ? pos.x : "auto",
+          top: hasMoved ? pos.y : "auto",
+          right: hasMoved ? "auto" : 20,
+          bottom: hasMoved ? "auto" : 80,
           zIndex: 9999,
-          background: "linear-gradient(135deg, #0f172a 0%, #1e293b 100%)",
-          color: "#ffffff",
-          border: "2px solid #10b981",
-          borderRadius: 30,
-          padding: "10px 16px",
-          display: "flex",
-          alignItems: "center",
-          gap: 10,
           cursor: "pointer",
-          boxShadow: "0 8px 24px rgba(16, 185, 129, 0.4), 0 4px 12px rgba(0, 0, 0, 0.3)",
-          transition: "transform 0.2s ease, box-shadow 0.2s ease",
+          touchAction: "none",
+          userSelect: "none",
+          transition: hasMoved && !isDragging
+            ? "left 0.2s cubic-bezier(0.18, 0.89, 0.32, 1.25), top 0.2s cubic-bezier(0.18, 0.89, 0.32, 1.25)"
+            : "transform 0.2s ease",
+          animation: !hasMoved ? "auditxFloatBob 3s ease-in-out infinite" : "none",
         }}
-        title="Chat with AUDIT'X Mini — RAG AI Assistant"
+        title="AUDIT'X Mini — RAG AI Companion (Moves with your cursor / Draggable)"
       >
-        <div style={{ position: "relative", width: 36, height: 36, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div
+          style={{
+            position: "relative",
+            width: 76,
+            height: 76,
+            borderRadius: "50%",
+            background: "radial-gradient(circle, rgba(16, 185, 129, 0.25) 0%, #0f172a 100%)",
+            border: "2.5px solid #10b981",
+            boxShadow: "0 0 24px rgba(16, 185, 129, 0.65), 0 8px 24px rgba(0, 0, 0, 0.4)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            animation: "auditxGlowPulse 2.8s infinite ease-in-out",
+          }}
+        >
           <video
             src="/robot_transparent.webm"
             autoPlay
             loop
             muted
             playsInline
-            style={{ width: 42, height: 42, objectFit: "contain", pointerEvents: "none" }}
+            style={{ width: 72, height: 72, objectFit: "contain", pointerEvents: "none" }}
           />
+
+          {/* Active Status Beacon */}
           <span
             style={{
               position: "absolute",
-              top: -1,
-              right: -1,
-              width: 10,
-              height: 10,
+              top: 2,
+              right: 2,
+              width: 14,
+              height: 14,
               borderRadius: "50%",
               background: "#10b981",
-              boxShadow: "0 0 8px #10b981",
+              border: "2px solid #0f172a",
+              boxShadow: "0 0 10px #10b981",
             }}
           />
-        </div>
-        <div style={{ textAlign: "left" }}>
-          <div style={{ fontSize: 13, fontWeight: 900, letterSpacing: "0.4px", color: "#ffffff" }}>
+
+          {/* Assistant Name Label Badge */}
+          <div
+            style={{
+              position: "absolute",
+              bottom: -16,
+              background: "#0f172a",
+              color: "#a7f3d0",
+              border: "1px solid #10b981",
+              borderRadius: 12,
+              padding: "2px 8px",
+              fontSize: 10,
+              fontWeight: 900,
+              letterSpacing: "0.3px",
+              whiteSpace: "nowrap",
+              boxShadow: "0 2px 8px rgba(0,0,0,0.4)",
+            }}
+          >
             AUDIT'X Mini
           </div>
-          <div style={{ fontSize: 10, color: "#a7f3d0", fontWeight: 700 }}>
-            AI Assistant • RAG Active
-          </div>
         </div>
-      </button>
+      </div>
 
       {/* ── 2. EXPANDABLE RAG CHAT MODAL ── */}
       {isOpen && (
         <div
           style={{
             position: "fixed",
-            bottom: 86,
+            bottom: 20,
             right: 20,
             width: "calc(100vw - 40px)",
-            maxWidth: 420,
-            height: "560px",
-            maxHeight: "82vh",
+            maxWidth: 440,
+            height: "590px",
+            maxHeight: "84vh",
             background: "#ffffff",
-            borderRadius: 20,
-            boxShadow: "0 20px 48px rgba(0, 0, 0, 0.35), 0 0 0 1.5px rgba(16, 185, 129, 0.5)",
+            borderRadius: 22,
+            boxShadow: "0 24px 56px rgba(0, 0, 0, 0.4), 0 0 0 2px rgba(16, 185, 129, 0.5)",
             zIndex: 10000,
             display: "flex",
             flexDirection: "column",
@@ -380,8 +587,8 @@ export default function AuditxMiniAssistant({ isStoreOpen = true }) {
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <div
                 style={{
-                  width: 42,
-                  height: 42,
+                  width: 44,
+                  height: 44,
                   borderRadius: "50%",
                   background: "rgba(16, 185, 129, 0.2)",
                   border: "1.5px solid #10b981",
@@ -389,7 +596,7 @@ export default function AuditxMiniAssistant({ isStoreOpen = true }) {
                   alignItems: "center",
                   justifyContent: "center",
                   overflow: "hidden",
-                  boxShadow: "0 0 10px rgba(16, 185, 129, 0.4)",
+                  boxShadow: "0 0 12px rgba(16, 185, 129, 0.4)",
                   flexShrink: 0,
                 }}
               >
@@ -510,7 +717,7 @@ export default function AuditxMiniAssistant({ isStoreOpen = true }) {
                   </span>
                 </div>
                 <div style={{ fontSize: 11, color: "#475569", lineHeight: 1.35, marginTop: 2 }}>
-                  Autonomous RAG engine for Dark Store Tiptur KA-44 operations, SLA rules, queue governance & order tracking.
+                  Autonomous RAG engine for Dark Store Tiptur KA-44 operations, physical foam board model, SLA rules & order tracking.
                 </div>
               </div>
             </div>
@@ -520,7 +727,7 @@ export default function AuditxMiniAssistant({ isStoreOpen = true }) {
                 key={m.id}
                 style={{
                   alignSelf: m.sender === "user" ? "flex-end" : "flex-start",
-                  maxWidth: "90%",
+                  maxWidth: "92%",
                   display: "flex",
                   gap: 8,
                   alignItems: "flex-start",
@@ -576,6 +783,45 @@ export default function AuditxMiniAssistant({ isStoreOpen = true }) {
                     }}
                   >
                     {m.text}
+
+                    {/* Physical Warehouse Scale Model Photograph */}
+                    {m.image && (
+                      <div
+                        style={{
+                          marginTop: 10,
+                          borderRadius: 12,
+                          overflow: "hidden",
+                          border: "2px solid #10b981",
+                          boxShadow: "0 6px 18px rgba(0,0,0,0.15)",
+                        }}
+                      >
+                        <img
+                          src={m.image}
+                          alt="Real Handcrafted Foam Board Warehouse Model"
+                          style={{
+                            width: "100%",
+                            maxHeight: 280,
+                            objectFit: "cover",
+                            display: "block",
+                          }}
+                        />
+                        <div
+                          style={{
+                            background: "#0f172a",
+                            color: "#a7f3d0",
+                            padding: "6px 10px",
+                            fontSize: 10.5,
+                            fontWeight: 800,
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                          }}
+                        >
+                          <span>📸 Real Handcrafted Foam Board Model</span>
+                          <span style={{ color: "#34d399" }}>Deepu B, Bhaskar & Team</span>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4, padding: "0 4px" }}>
@@ -694,7 +940,7 @@ export default function AuditxMiniAssistant({ isStoreOpen = true }) {
           >
             <input
               type="text"
-              placeholder="Ask AUDIT'X Mini anything..."
+              placeholder="Ask AUDIT'X Mini anything about the project..."
               value={inputQuery}
               onChange={(e) => setInputQuery(e.target.value)}
               style={{

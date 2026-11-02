@@ -3962,22 +3962,26 @@ export default function OrderingAppPage() {
 const S = {
   pageWrapper: {
     minHeight: "100vh",
+    width: "100%",
     background: "#080C14",
     display: "flex",
     justifyContent: "center",
     fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Inter', sans-serif",
     color: "#0F172A",
+    WebkitOverflowScrolling: "touch",
+    touchAction: "pan-y",
   },
   mobileShell: {
     width: "100%",
     maxWidth: 440,
-    minHeight: "100vh",
+    minHeight: "100dvh",
     background: "#F4F6FB",
     position: "relative",
     boxShadow: "0 0 40px rgba(0, 0, 0, 0.5)",
-    overflowX: "hidden",
     display: "flex",
     flexDirection: "column",
+    WebkitOverflowScrolling: "touch",
+    touchAction: "pan-y",
   },
 
   // ── STORE CLOSED SCREEN STYLES (BHASKAR N S STORE MANAGER TOGGLE) ──
