@@ -32,6 +32,7 @@ import {
 } from "@/lib/soundSystem";
 import ErdDfdViewer from "@/components/ErdDfdViewer";
 import AuditxLogo from "@/components/AuditxLogo";
+import GoogleAuthButton from "@/components/GoogleAuthButton";
 import {
   IconRealisticScooter,
   IconRealisticPickerTrolley,
@@ -805,6 +806,21 @@ export default function WarehouseDashboardPage() {
               ))}
             </select>
           </div>
+
+          <GoogleAuthButton
+            context="staff"
+            theme="dark"
+            size="small"
+            label="Google Workspace"
+            fullWidth={false}
+            onSuccess={(authData) => {
+              if (authData.staff) {
+                setStaff(authData.staff);
+                setActionSuccess(`Google Account Connected: ${authData.name}`);
+                setTimeout(() => setActionSuccess(""), 3000);
+              }
+            }}
+          />
 
           <button style={S.logoutBtn} onClick={logout}>
             Exit Portal

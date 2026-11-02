@@ -6,6 +6,7 @@ import { db } from "@/lib/firebaseClient";
 import { isSoundMuted, setSoundMuted, unlockAudio } from "@/lib/soundSystem";
 import { seedAllDemoData } from "@/lib/seedData";
 import AuditxLogo from "@/components/AuditxLogo";
+import GoogleAuthButton from "@/components/GoogleAuthButton";
 
 export const ROLE_CONFIGS = [
   { id: "sm", label: "👑 Store Manager (SM)", name: "Bhaskar N S", avatar: "👑", route: "/roles/sm", badgeBg: "#ec4899" },
@@ -71,6 +72,16 @@ export default function RoleHeader({ activeRole = "sm", onRoleSelect, currentSto
           <button style={S.iconBtn} onClick={toggleMute} title="Toggle Audio Alarms">
             {muted ? "🔇 Muted" : "🔊 Audio Live"}
           </button>
+
+          {/* Google OAuth Login / Status */}
+          <GoogleAuthButton
+            context="staff"
+            roleCode={activeRole.toUpperCase()}
+            theme="dark"
+            size="small"
+            label="Google Workspace"
+            fullWidth={false}
+          />
 
           {/* Seed Demo Data Button */}
           <button style={S.seedBtn} onClick={handleSeedData} disabled={seeding}>

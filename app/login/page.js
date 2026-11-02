@@ -6,6 +6,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { STAFF, staffByPhone } from "@/lib/roles";
 import AuditxLogo from "@/components/AuditxLogo";
+import GoogleAuthButton from "@/components/GoogleAuthButton";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -135,6 +136,21 @@ export default function LoginPage() {
         {/* STEP 1: PHONE & NAME INPUT */}
         {step === "phone" && (
           <div>
+            {/* GOOGLE OAUTH 2.0 LOGIN BUTTON */}
+            <div style={{ marginBottom: 18 }}>
+              <GoogleAuthButton
+                context={loginMode === "customer" ? "ordering" : "staff"}
+                label={
+                  loginMode === "customer"
+                    ? "Continue with Google (Instant Login)"
+                    : "Sign in with Google Workspace (Dark Store Portals)"
+                }
+              />
+              <div style={S.quickDivider}>
+                <span>OR {loginMode === "customer" ? "LOGIN VIA MOBILE OTP" : "LOGIN VIA MOBILE NUMBER"}</span>
+              </div>
+            </div>
+
             {loginMode === "customer" && (
               <div style={S.formGroup}>
                 <label style={S.label}>Enter Your Name (visible to warehouse team & Order Captain):</label>

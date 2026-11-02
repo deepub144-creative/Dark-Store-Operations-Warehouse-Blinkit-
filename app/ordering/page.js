@@ -8,6 +8,7 @@ import { playNotificationChime, playSuccessChime } from "@/lib/soundSystem";
 import { getRandomStagingRack } from "@/lib/roles";
 import AuditxLogo from "@/components/AuditxLogo";
 import AuditxMiniAssistant from "@/components/AuditxMiniAssistant";
+import GoogleAuthButton from "@/components/GoogleAuthButton";
 import {
   IconLightning,
   IconRealisticScooter,
@@ -3084,6 +3085,35 @@ export default function OrderingAppPage() {
             {/* STEP 1: PHONE NUMBER */}
             {loginStep === "phone" && (
               <div>
+                <div style={{ marginBottom: 16 }}>
+                  <GoogleAuthButton
+                    context="ordering"
+                    label="Continue with Google"
+                    theme="light"
+                    onSuccess={(authData) => {
+                      if (authData.customer) {
+                        setCustomer(authData.customer);
+                        setShowLoginModal(false);
+                        triggerToast(`Signed in with Google as ${authData.name}!`);
+                      }
+                    }}
+                  />
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      margin: "14px 0 10px 0",
+                      gap: 8,
+                    }}
+                  >
+                    <div style={{ flex: 1, height: 1, background: "#e2e8f0" }} />
+                    <span style={{ fontSize: 10, fontWeight: 800, color: "#64748b", letterSpacing: "0.06em" }}>
+                      OR MOBILE NUMBER
+                    </span>
+                    <div style={{ flex: 1, height: 1, background: "#e2e8f0" }} />
+                  </div>
+                </div>
+
                 <p style={S.loginPromptText}>
                   Enter your 10-digit mobile number to login or register
                 </p>

@@ -10,6 +10,7 @@ import { subscribeToEvents, broadcastEvent, subscribeToLiveOrders, updateLiveOrd
 import { STAGING_RACKS } from "@/lib/roles";
 import AuditxLogo from "@/components/AuditxLogo";
 import AndroidPhoneShell from "@/components/AndroidPhoneShell";
+import GoogleAuthButton from "@/components/GoogleAuthButton";
 import {
   IconRealisticScooter,
   IconRealisticSliderArrow,
@@ -277,6 +278,14 @@ export default function DeliveryCaptainApp() {
               </div>
 
               <div style={S.headerActions}>
+                <GoogleAuthButton
+                  context="rider"
+                  roleCode="DELIVERY"
+                  theme="light"
+                  size="small"
+                  label="Google"
+                  fullWidth={false}
+                />
                 {/* Captain Profile Pill */}
                 <div style={S.profileBtn} title="Order Captain Lead - Sinchana B R">
                   <div style={S.profileAvatar}>

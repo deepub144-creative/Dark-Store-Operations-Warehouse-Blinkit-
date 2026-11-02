@@ -12,6 +12,7 @@ import {
   IconArrowLeft,
   IconShieldCheck,
 } from "@/components/RealIcons";
+import GoogleAuthButton from "@/components/GoogleAuthButton";
 
 export default function CustomerInteractiveLoginPage() {
   const router = useRouter();
@@ -163,6 +164,29 @@ export default function CustomerInteractiveLoginPage() {
         {/* ── STEP 1: PHONE NUMBER WITH FIXED INDIAN FLAG +91 ── */}
         {step === "phone" && (
           <form onSubmit={handleSendOtp} style={styles.formCol}>
+            {/* GOOGLE OAUTH 2.0 LOGIN OPTION */}
+            <div style={{ marginBottom: 16 }}>
+              <GoogleAuthButton
+                context="ordering"
+                label="Continue with Google"
+                theme="light"
+              />
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  margin: "16px 0 12px 0",
+                  gap: 10,
+                }}
+              >
+                <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,0.12)" }} />
+                <span style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.05em" }}>
+                  OR CONTINUE WITH MOBILE OTP
+                </span>
+                <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,0.12)" }} />
+              </div>
+            </div>
+
             <div style={styles.stepTitle}>Enter Your Mobile Number</div>
             <div style={styles.stepSubtitle}>
               We will send a 6-digit verification code to your phone

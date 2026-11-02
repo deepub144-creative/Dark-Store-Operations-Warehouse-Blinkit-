@@ -25,6 +25,7 @@ import { STAGING_RACKS, getRandomStagingRack } from "@/lib/roles";
 import { CATALOG } from "@/lib/items";
 import AuditxLogo from "@/components/AuditxLogo";
 import AndroidPhoneShell from "@/components/AndroidPhoneShell";
+import GoogleAuthButton from "@/components/GoogleAuthButton";
 import {
   IconAnimPicker,
   IconAnimPutaway,
@@ -736,6 +737,14 @@ export default function OdPickerApp() {
               </div>
 
               <div style={S.headerActions}>
+                <GoogleAuthButton
+                  context="picker"
+                  roleCode="PICKER"
+                  theme="light"
+                  size="small"
+                  label="Google"
+                  fullWidth={false}
+                />
                 {/* Profile Pill */}
                 <div style={S.profileBtn} title="OD Picker Lead - Thrupthi K S">
                   <img

@@ -12,6 +12,7 @@ import {
 import { STAGING_RACKS, getRandomStagingRack } from "@/lib/roles";
 import { playNotificationChime, playSuccessChime } from "@/lib/soundSystem";
 import AuditxLogo from "@/components/AuditxLogo";
+import GoogleAuthButton from "@/components/GoogleAuthButton";
 import {
   IconLightning,
   IconMapPin,
@@ -174,6 +175,17 @@ export default function DedicatedWarehouseRoute() {
                 <span style={styles.liveDot} />
                 <span>LIVE OPERATIONS</span>
               </div>
+              <GoogleAuthButton
+                context="warehouse"
+                roleCode="SM"
+                theme="light"
+                size="small"
+                label="Google Workspace"
+                fullWidth={false}
+                onSuccess={(authData) => {
+                  triggerToast(`Google Workspace Authenticated: ${authData.name}`);
+                }}
+              />
               <button
                 type="button"
                 style={styles.customerCatalogBtn}
