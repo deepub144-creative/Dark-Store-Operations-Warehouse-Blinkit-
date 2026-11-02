@@ -19,6 +19,7 @@ import {
   subscribeToLiveOrders,
   updateLiveOrder,
   saveLiveOrder,
+  clearAllLiveOrders,
 } from "@/lib/realtimeSync";
 import { STAGING_RACKS, getRandomStagingRack } from "@/lib/roles";
 import { CATALOG } from "@/lib/items";
@@ -197,12 +198,30 @@ export default function OdPickerApp() {
         setActionSuccess(`✅ Captain Sinchana B R scanned Rack ${assignedRack.id}! Slide to handover.`);
         setTimeout(() => setActionSuccess(""), 4000);
       }
+      if (event.type === "QUEUE_CLEARED") {
+        setUnassignedOrders([]);
+        setActiveOrder(null);
+        setActiveStep("accept");
+        setActionSuccess("🧹 Today's Queue cleared across all systems!");
+        setTimeout(() => setActionSuccess(""), 3000);
+      }
     });
 
     return () => {
       unsub();
     };
   }, [activeOrder, assignedRack]);
+
+  // Clear entire queue across all apps
+  function handleClearQueue() {
+    playNotificationChime();
+    clearAllLiveOrders();
+    setUnassignedOrders([]);
+    setActiveOrder(null);
+    setActiveStep("accept");
+    setActionSuccess("🧹 Cleared Today's Queue across Warehouse, Picker, and Ordering Apps!");
+    setTimeout(() => setActionSuccess(""), 3500);
+  }
 
   // 2-Minute Stopwatch & Countdown Timer
   useEffect(() => {
@@ -219,12 +238,30 @@ export default function OdPickerApp() {
     };
   }, [activeOrder, activeStep]);
 
+  // Scan Aisle Rack QR Code when Captain Sinchana B R is away
+  function handleScanAisleRack(targetCode) {
+    playScanSuccess();
+    setCaptainScannedRack(true);
+    const code = targetCode || assignedRack.id;
+    broadcastEvent("AISLE_RACK_SCANNED_BY_PICKER", {
+      orderId: activeOrder?.id,
+      rackId: code,
+      pickerName: "Thrupthi K S",
+      note: "Sinchana B R away; Aisle Rack QR verified by Thrupthi K S",
+    });
+    setActionSuccess(`✅ Aisle Rack ${code} QR Code Scanned & Verified by Thrupthi K S! Ready for Handover.`);
+    setTimeout(() => setActionSuccess(""), 3500);
+  }
+
   function handleAcceptOrder(order) {
     stopOrderAlarm();
-    // Designated Staging Rack (Default: D5 Ambient Dispatch 5)
-    const rack = order?.assignedRack
-      ? (STAGING_RACKS.find((r) => r.id === order.assignedRack) || STAGING_RACKS.find((r) => r.id === "D5") || STAGING_RACKS[2])
-      : (STAGING_RACKS.find((r) => r.id === "D5") || STAGING_RACKS[2]);
+    // Random assign from 9 fixed dark store racks: B5, B7, D5, H2, H4, S4, T1, T4, T6
+    const RACK_OPTIONS = ["B5", "B7", "D5", "H2", "H4", "S4", "T1", "T4", "T6"];
+    const targetRackId = order?.assignedRack && RACK_OPTIONS.includes(order.assignedRack)
+      ? order.assignedRack
+      : RACK_OPTIONS[Math.floor(Math.random() * RACK_OPTIONS.length)];
+
+    const rack = STAGING_RACKS.find((r) => r.id === targetRackId) || STAGING_RACKS[0];
     setAssignedRack(rack);
     setActiveOrder(order);
     setRemainingSec(PICKER_SLA_SECONDS);
@@ -771,7 +808,26 @@ export default function OdPickerApp() {
                       <span style={S.pulseDot} />
                       <span style={S.alertTitle}>⚡ LIVE TASK FOR THRUPTHI K S (OD PICKER LEAD)</span>
                     </div>
-                    <span style={S.liveBadge}>&lt; 0.1s DISPATCH</span>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <button
+                        type="button"
+                        style={{
+                          background: "#fee2e2",
+                          color: "#b91c1c",
+                          border: "1px solid #fca5a5",
+                          borderRadius: 6,
+                          padding: "3px 8px",
+                          fontSize: 10,
+                          fontWeight: 800,
+                          cursor: "pointer",
+                        }}
+                        onClick={handleClearQueue}
+                        title="Clear all pending orders in queue"
+                      >
+                        🗑️ Clear Queue
+                      </button>
+                      <span style={S.liveBadge}>&lt; 0.1s DISPATCH</span>
+                    </div>
                   </div>
 
                   {unassignedOrders.map((ord) => {
@@ -1699,57 +1755,121 @@ export default function OdPickerApp() {
                 </p>
               </div>
 
-              {/* DESIGNATED RANDOM RACK (B7, H2, D5, H4, T1, T6, B5, S4, T4) */}
+              {/* DESIGNATED RANDOM RACK (B5, B7, D5, H2, H4, S4, T1, T4, T6) */}
               <div style={{ ...S.designatedRackBox, borderColor: assignedRack.color }}>
-                <div style={S.designatedRackLabel}>ORDER CAPTAIN STAGING BAY</div>
+                <div style={S.designatedRackLabel}>ORDER CAPTAIN STAGING BAY (RANDOM ASSIGN)</div>
                 <div style={{ ...S.designatedRackCode, color: assignedRack.color }}>
                   RACK {assignedRack.id}
                 </div>
                 <div style={S.designatedRackZone}>{assignedRack.zone} • Tiptur HUB KA44</div>
                 
-                {/* PROMINENT QR CODE DISPLAY FOR SINCHANA B R TO SCAN */}
+                {/* PROMINENT HANDOVER QR CODE DISPLAY */}
                 <div style={S.qrContainerBox}>
                   <div style={S.qrInstruction}>
-                    📷 Order Captain <b>Sinchana B R</b> scans this QR code at Rack {assignedRack.id}:
+                    📷 <b>HANDOVER QR CODE</b> (Rack {assignedRack.id} • Order #{activeOrder.orderNumber || activeOrder.id}):
                   </div>
 
                   <div style={S.qrImageWrapper}>
                     <img
                       src={rackQrUrl}
-                      alt={`Rack ${assignedRack.id} QR Code`}
+                      alt={`Rack ${assignedRack.id} Handover QR Code`}
                       style={S.qrImage}
                     />
                   </div>
 
                   <div style={S.qrCodeSnippetText}>
-                    Payload: <code>{assignedRack.qr}</code>
+                    Handover Payload: <code>AUDITX-HANDOVER-{activeOrder.id}-{assignedRack.id}</code>
                   </div>
                 </div>
 
-                {/* SCAN STATUS OF CAPTAIN SINCHANA */}
+                {/* IF DELIVERY CAPTAIN SINCHANA B R IS NOT THERE: SCAN AISLE RACK QR CODE */}
+                <div style={{
+                  background: "#fffbeb",
+                  border: "1.5px dashed #f59e0b",
+                  borderRadius: 14,
+                  padding: "14px 12px",
+                  margin: "14px 0",
+                  textAlign: "center",
+                }}>
+                  <div style={{ fontSize: 13, fontWeight: 900, color: "#b45309", marginBottom: 6 }}>
+                    ⚠️ DELIVERY CAPTAIN SINCHANA B R NOT AVAILABLE?
+                  </div>
+                  <div style={{ fontSize: 12, color: "#78350f", marginBottom: 10, lineHeight: 1.4 }}>
+                    Thrupthi K S: Scan the Aisle Rack QR Code for assigned <b>Rack {assignedRack.id}</b> to authorize and complete bag staging!
+                  </div>
+
+                  {/* Primary Scan Button */}
+                  <button
+                    type="button"
+                    style={{
+                      background: captainScannedRack ? "#10b981" : "#d97706",
+                      color: "#ffffff",
+                      border: "none",
+                      borderRadius: 10,
+                      padding: "10px 18px",
+                      fontSize: 13,
+                      fontWeight: 800,
+                      cursor: "pointer",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 8,
+                      boxShadow: "0 4px 12px rgba(217, 119, 6, 0.3)",
+                      marginBottom: 10,
+                    }}
+                    onClick={() => handleScanAisleRack(assignedRack.id)}
+                  >
+                    <span>{captainScannedRack ? `✅ Aisle Rack ${assignedRack.id} QR Verified!` : `📷 Scan Aisle Rack ${assignedRack.id} QR Code`}</span>
+                  </button>
+
+                  {/* 9 Racks Scan Quick Chips: B5, B7, D5, H2, H4, S4, T1, T4, T6 */}
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: "#92400e", marginBottom: 6 }}>
+                      Tap to Scan Aisle Rack QR (B5, B7, D5, H2, H4, S4, T1, T4, T6):
+                    </div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6, justifyContent: "center" }}>
+                      {["B5", "B7", "D5", "H2", "H4", "S4", "T1", "T4", "T6"].map((code) => {
+                        const isTarget = code === assignedRack.id;
+                        return (
+                          <button
+                            key={code}
+                            type="button"
+                            style={{
+                              background: isTarget ? "#10b981" : "#ffffff",
+                              color: isTarget ? "#ffffff" : "#78350f",
+                              border: isTarget ? "1.5px solid #059669" : "1px solid #fde68a",
+                              borderRadius: 8,
+                              padding: "4px 8px",
+                              fontSize: 11,
+                              fontWeight: 800,
+                              cursor: "pointer",
+                            }}
+                            onClick={() => handleScanAisleRack(code)}
+                          >
+                            📍 Rack {code} {isTarget ? "★" : ""}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+
+                {/* SCAN STATUS BADGE */}
                 <div style={captainScannedRack ? S.captainScannedBadge : S.captainPendingBadge}>
                   {captainScannedRack ? (
                     <div>
-                      <span style={{ fontSize: 16 }}>✅</span> <b>Sinchana B R Scanned QR Code!</b> Handover Authorized.
+                      <span style={{ fontSize: 16 }}>✅</span> <b>Rack {assignedRack.id} Verified!</b> Handover authorized for Captain Sinchana B R.
                     </div>
                   ) : (
                     <div>
-                      <span style={{ fontSize: 16 }}>⏳</span> Awaiting Order Captain <b>Sinchana B R</b> to scan Rack QR Code...
+                      <span style={{ fontSize: 16 }}>⏳</span> Awaiting Rack Scan or Order Captain <b>Sinchana B R</b>.
                     </div>
                   )}
                 </div>
-
-                {/* TEST SIMULATION BUTTON FOR CAPTAIN SCAN */}
-                {!captainScannedRack && (
-                  <button style={S.simulateCaptainScanBtn} onClick={handleSimulateCaptainScan}>
-                    ⚡ Simulate Sinchana B R Scans Rack QR Code
-                  </button>
-                )}
               </div>
 
-              {/* 9 RACKS DIRECTORY (B7, H2, D5, H4, T1, T6, B5, S4, T4) */}
+              {/* 9 RACKS DIRECTORY (B5, B7, D5, H2, H4, S4, T1, T4, T6) */}
               <div style={S.allRacksGrid}>
-                <div style={S.allRacksTitle}>Dark Store Staging Racks (9 Bays):</div>
+                <div style={S.allRacksTitle}>Dark Store Staging Bays (9 Racks):</div>
                 <div style={S.racksList}>
                   {STAGING_RACKS.map((r) => {
                     const isAssigned = r.id === assignedRack.id;
@@ -1761,43 +1881,37 @@ export default function OdPickerApp() {
                           borderColor: isAssigned ? r.color : "#e2e8f0",
                           background: isAssigned ? "#f0fdf4" : "#ffffff",
                           boxShadow: isAssigned ? "0 0 0 2px " + r.color : "none",
+                          cursor: "pointer",
                         }}
+                        onClick={() => handleScanAisleRack(r.id)}
+                        title={`Click to assign/scan Rack ${r.id}`}
                       >
                         <span style={{ ...S.rackMiniCode, color: r.color }}>{r.id}</span>
                         <span style={S.rackMiniLabel}>{r.label}</span>
-                        {isAssigned && <span style={S.targetTag}>SELECTED</span>}
+                        {isAssigned && <span style={S.targetTag}>ASSIGNED</span>}
                       </div>
                     );
                   })}
                 </div>
               </div>
 
-              {/* ─── SLIDE BAR OPTION DOWN TO HANDOVER BAG ───
-                  "then once the sinchana br scans the qr code slide bar option down to handover the bag okay do it" */}
+              {/* ─── HANDOVER SLIDER (DIRECTLY VISIBLE & USABLE) ─── */}
               <div style={S.slideDownContainer}>
-                {captainScannedRack ? (
-                  <div>
-                    <div style={S.slideNotice}>
-                      👉 Slide the green bar below to complete bag handover to Captain Sinchana B R:
-                    </div>
-                    <SlideButton
-                      text={`SLIDE TO HANDOVER BAG TO CAPTAIN (RACK ${assignedRack.id})`}
-                      color="#0c831f"
-                      icon={<IconRealisticDeliveryBag size={24} color="#ffffff" />}
-                      onSlideComplete={handleConfirmRackStaging}
-                    />
-                    <button style={S.quickStagingBtn} onClick={handleConfirmRackStaging}>
-                      ⚡ Quick Tap Handover to Rack {assignedRack.id}
-                    </button>
-                  </div>
-                ) : (
-                  <div style={S.awaitingCaptainNotice}>
-                    🔒 Handover slide bar unlocks immediately once Order Captain Sinchana B R scans the QR code above.
-                    <button style={S.unlockSlideBtn} onClick={handleSimulateCaptainScan}>
-                      Unlock Slide Bar Now
-                    </button>
-                  </div>
-                )}
+                <div style={S.slideNotice}>
+                  👉 <b>HANDOVER SLIDER:</b> Slide the green bar below to complete bag handover to Captain Sinchana B R:
+                </div>
+                <SlideButton
+                  text={`SLIDE TO HANDOVER BAG (RACK ${assignedRack.id})`}
+                  color="#0c831f"
+                  icon={<IconRealisticDeliveryBag size={24} color="#ffffff" />}
+                  onSlideComplete={handleConfirmRackStaging}
+                />
+                <button
+                  style={{ ...S.quickStagingBtn, marginTop: 10, cursor: "pointer" }}
+                  onClick={handleConfirmRackStaging}
+                >
+                  ⚡ Quick 1-Tap Handover to Rack {assignedRack.id}
+                </button>
               </div>
             </div>
           )}

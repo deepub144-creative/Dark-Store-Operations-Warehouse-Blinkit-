@@ -6,7 +6,7 @@ import { db } from "@/lib/firebaseClient";
 import { playOrderAlarm, stopOrderAlarm, playScanSuccess, playSuccessChime } from "@/lib/soundSystem";
 import SharedScanner from "@/components/SharedScanner";
 import SlideButton from "@/components/SlideButton";
-import { subscribeToEvents, broadcastEvent, subscribeToLiveOrders, updateLiveOrder } from "@/lib/realtimeSync";
+import { subscribeToEvents, broadcastEvent, subscribeToLiveOrders, updateLiveOrder, clearAllLiveOrders } from "@/lib/realtimeSync";
 import { STAGING_RACKS } from "@/lib/roles";
 import AuditxLogo from "@/components/AuditxLogo";
 import AndroidPhoneShell from "@/components/AndroidPhoneShell";
@@ -50,6 +50,18 @@ export default function DeliveryCaptainApp() {
   const timerRef = useRef(null);
   const transitRef = useRef(null);
 
+  // Clear entire queue across all apps
+  function handleClearQueue() {
+    clearAllLiveOrders();
+    setIncomingAssignedOrders([]);
+    setStagedOrders([]);
+    setActiveOrder(null);
+    setActiveStep("awaiting_orders");
+    stopOrderAlarm();
+    setActionSuccess("🧹 Today's Queue cleared across all apps!");
+    setTimeout(() => setActionSuccess(""), 3500);
+  }
+
   // Subscribe to Instant Zero-Lag Live Orders Store (< 10ms Cross-Tab Sync)
   useEffect(() => {
     const unsub = subscribeToLiveOrders((liveOrders) => {
@@ -63,13 +75,30 @@ export default function DeliveryCaptainApp() {
       const readyDocs = liveOrders.filter((d) => d.status === "staged" || d.status === "Staged");
       setStagedOrders(readyDocs);
 
-      if ((readyDocs.length > 0 || inPrep.length > 0) && !activeOrder) {
+      if (liveOrders.length === 0) {
+        setActiveOrder(null);
+        setActiveStep("awaiting_orders");
+        stopOrderAlarm();
+      } else if ((readyDocs.length > 0 || inPrep.length > 0) && !activeOrder) {
         playOrderAlarm();
+      }
+    });
+
+    const unsubBus = subscribeToEvents((data) => {
+      if (data.type === "QUEUE_CLEARED") {
+        setIncomingAssignedOrders([]);
+        setStagedOrders([]);
+        setActiveOrder(null);
+        setActiveStep("awaiting_orders");
+        stopOrderAlarm();
+        setActionSuccess("🧹 Today's Queue cleared by warehouse dispatch!");
+        setTimeout(() => setActionSuccess(""), 3000);
       }
     });
 
     return () => {
       unsub();
+      unsubBus();
       stopOrderAlarm();
     };
   }, [activeOrder]);
@@ -270,6 +299,26 @@ export default function DeliveryCaptainApp() {
                   onClick={() => setIsCheckedIn(!isCheckedIn)}
                 >
                   {isCheckedIn ? "🟢 ON DUTY" : "🔴 OFFLINE"}
+                </button>
+
+                <button
+                  onClick={handleClearQueue}
+                  title="Clear entire dispatch queue across warehouse, picker, and ordering apps"
+                  style={{
+                    padding: "6px 10px",
+                    background: "#fef2f2",
+                    border: "1px solid #fecaca",
+                    color: "#dc2626",
+                    borderRadius: 8,
+                    fontWeight: 700,
+                    fontSize: "0.74rem",
+                    cursor: "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 4,
+                  }}
+                >
+                  🗑️ Clear Queue
                 </button>
               </div>
             </div>

@@ -28,15 +28,46 @@ export function getAllLiveOrders() {
   if (typeof window === "undefined") return INITIAL_ORDERS;
   try {
     const raw = localStorage.getItem(STORAGE_ORDERS_KEY);
-    if (!raw) {
+    if (raw === null) {
       localStorage.setItem(STORAGE_ORDERS_KEY, JSON.stringify(INITIAL_ORDERS));
       return INITIAL_ORDERS;
     }
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) && parsed.length > 0 ? parsed : INITIAL_ORDERS;
+    return Array.isArray(parsed) ? parsed : INITIAL_ORDERS;
   } catch (e) {
     console.warn("Error reading live orders:", e);
     return INITIAL_ORDERS;
+  }
+}
+
+/**
+ * Clear all current live orders across all apps (Queue Clear)
+ */
+export function clearAllLiveOrders() {
+  if (typeof window === "undefined") return [];
+  try {
+    localStorage.setItem(STORAGE_ORDERS_KEY, JSON.stringify([]));
+    localStorage.removeItem("auditx_customer_last_order");
+    localStorage.setItem("auditx_queue_cleared_at", new Date().toISOString());
+
+    const eventPayload = {
+      type: "QUEUE_CLEARED",
+      allOrders: [],
+      timestamp: Date.now(),
+      nonce: Math.random(),
+    };
+
+    const ch = getSyncChannel();
+    if (ch) {
+      try { ch.postMessage(eventPayload); } catch (e) { console.warn(e); }
+    }
+    localStorage.setItem(STORAGE_EVENT_KEY, JSON.stringify(eventPayload));
+    window.dispatchEvent(new CustomEvent("auditx_live_sync", { detail: eventPayload }));
+
+    return [];
+  } catch (e) {
+    console.error("Error clearing live orders:", e);
+    return [];
   }
 }
 

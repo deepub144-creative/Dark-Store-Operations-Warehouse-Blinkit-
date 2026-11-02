@@ -3,10 +3,11 @@
 import { useEffect, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { CATALOG } from "@/lib/items";
-import { broadcastEvent, subscribeToEvents, saveLiveOrder, getAllLiveOrders } from "@/lib/realtimeSync";
+import { broadcastEvent, subscribeToEvents, saveLiveOrder, getAllLiveOrders, clearAllLiveOrders } from "@/lib/realtimeSync";
 import { playNotificationChime, playSuccessChime } from "@/lib/soundSystem";
 import { getRandomStagingRack } from "@/lib/roles";
 import AuditxLogo from "@/components/AuditxLogo";
+import AuditxMiniAssistant from "@/components/AuditxMiniAssistant";
 import {
   IconLightning,
   IconRealisticScooter,
@@ -313,6 +314,16 @@ export default function OrderingAppPage() {
   const [showComingSoonModal, setShowComingSoonModal] = useState(false);
   const [activeDeliveryOrder, setActiveDeliveryOrder] = useState(null);
 
+  // Customer Complaint System (Synced with SM Bhaskar N S & ASM Deepu B Dashboard)
+  const [showComplaintModal, setShowComplaintModal] = useState(false);
+  const [complaintsTab, setComplaintsTab] = useState("tickets"); // "raise" | "tickets"
+  const [complaintOrderId, setComplaintOrderId] = useState("");
+  const [complaintCategory, setComplaintCategory] = useState("Missing Item");
+  const [complaintText, setComplaintText] = useState("");
+  const [complaintRefundAmount, setComplaintRefundAmount] = useState("");
+  const [complaintSubmitting, setComplaintSubmitting] = useState(false);
+  const [customerComplaints, setCustomerComplaints] = useState([]);
+
   // Profile & Customer Login State
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
@@ -431,6 +442,34 @@ export default function OrderingAppPage() {
     checkActiveDelivery();
     window.addEventListener("focus", checkActiveDelivery);
 
+    function loadComplaints() {
+      try {
+        const raw = localStorage.getItem("auditx_complaints");
+        if (raw) {
+          setCustomerComplaints(JSON.parse(raw));
+        } else {
+          setCustomerComplaints([
+            {
+              id: "CMP-9041",
+              orderId: "ORD-8921",
+              customerName: "Rahul Sharma",
+              issue: "Missing 1x Nandini Pasteurized Toned Milk (500ml)",
+              category: "Missing Item",
+              status: "RESOLVED",
+              resolvedBy: "Bhaskar N S (SM)",
+              resolvedAt: "Today 10:45 AM",
+              response: "Full refund of ₹27 credited back to your Audit'X Demo Wallet.",
+              amount: 27,
+              time: "10 mins ago",
+            },
+          ]);
+        }
+      } catch (e) {
+        console.warn(e);
+      }
+    }
+    loadComplaints();
+
     const unsubBus = subscribeToEvents((data) => {
       if (data.type === "STORE_STATUS_CHANGED" && data.payload) {
         const nextOpen = data.payload.isOpen !== false;
@@ -461,11 +500,26 @@ export default function OrderingAppPage() {
       ) {
         checkActiveDelivery();
       }
+      if (data.type === "QUEUE_CLEARED") {
+        setActiveDeliveryOrder(null);
+        triggerToast("🧹 Today's dispatch queue cleared across all apps!");
+      }
+      if (data.type === "COMPLAINT_RESOLVED") {
+        loadComplaints();
+        playSuccessChime();
+        triggerToast(`🔔 Complaint #${data.payload?.id || ""} resolved by ${data.payload?.resolvedBy || "Store Manager"}!`);
+      }
+      if (data.type === "CUSTOMER_COMPLAINT_FILED" || data.type === "COMPLAINT_RAISED") {
+        loadComplaints();
+      }
     });
 
     const handleStorageEvent = (e) => {
       if (e.key === "auditx_store_open") {
         setIsStoreOpen(e.newValue !== "false");
+      }
+      if (e.key === "auditx_complaints") {
+        loadComplaints();
       }
     };
     window.addEventListener("storage", handleStorageEvent);
@@ -478,6 +532,62 @@ export default function OrderingAppPage() {
       window.removeEventListener("storage", handleStorageEvent);
     };
   }, []);
+
+  function handleClearAllQueue() {
+    playNotificationChime();
+    clearAllLiveOrders();
+    setActiveDeliveryOrder(null);
+    triggerToast("🧹 Cleared Today's Queue across Warehouse, Picker, and Ordering Apps!");
+  }
+
+  function handleFileComplaint(e) {
+    if (e) e.preventDefault();
+    if (!complaintText.trim()) {
+      triggerToast("Please provide details about the issue with your order.");
+      return;
+    }
+    setComplaintSubmitting(true);
+    playNotificationChime();
+
+    const ticketId = `CMP-${Math.floor(1000 + Math.random() * 9000)}`;
+    const effectiveOrderId = complaintOrderId.trim() || activeDeliveryOrder?.id || activeDeliveryOrder?.orderNumber || "ORD-KA44-9042";
+
+    const newComplaint = {
+      id: ticketId,
+      orderId: effectiveOrderId,
+      customerName: customer?.name || "Customer (KFGSC Tiptur)",
+      phone: customer?.phone || "9876543210",
+      issue: complaintText.trim(),
+      category: complaintCategory,
+      severity: "HIGH",
+      slaMins: 5,
+      status: "OPEN",
+      time: "Just now",
+      createdAt: new Date().toISOString(),
+      assignedTo: "Bhaskar N S (SM) / Deepu B (ASM)",
+      amount: Number(complaintRefundAmount) || 0,
+      customerAddress: selectedAddress?.address || "KFGSC , Tiptur 572201",
+    };
+
+    try {
+      const existingRaw = localStorage.getItem("auditx_complaints");
+      const existing = existingRaw ? JSON.parse(existingRaw) : [];
+      const updated = [newComplaint, ...existing.filter((c) => c.id !== ticketId)];
+      localStorage.setItem("auditx_complaints", JSON.stringify(updated));
+      setCustomerComplaints(updated);
+    } catch (err) {
+      console.warn("Save complaint error:", err);
+    }
+
+    broadcastEvent("CUSTOMER_COMPLAINT_FILED", newComplaint);
+    broadcastEvent("COMPLAINT_RAISED", newComplaint);
+
+    setComplaintText("");
+    setComplaintRefundAmount("");
+    setComplaintSubmitting(false);
+    setComplaintsTab("tickets");
+    triggerToast(`⚠️ Complaint ticket ${ticketId} lodged! Store Manager Bhaskar N S & ASM Deepu B notified.`);
+  }
 
   function handleCheckStoreStatus() {
     playNotificationChime();
@@ -837,6 +947,71 @@ export default function OrderingAppPage() {
                 {isCheckoutView ? "Browse Catalog" : `Cart (${totalItems})`}
               </button>
 
+              {/* Support & Complaints Button */}
+              <button
+                type="button"
+                id="customer-support-complaint-btn"
+                onClick={() => {
+                  if (activeDeliveryOrder) {
+                    setComplaintOrderId(activeDeliveryOrder.orderNumber || activeDeliveryOrder.id || activeDeliveryOrder.orderId);
+                  }
+                  setShowComplaintModal(true);
+                }}
+                title="Customer Helpdesk & Complaints - SM & ASM Live Resolution"
+                style={{
+                  padding: "5px 9px",
+                  background: "#fff1f2",
+                  border: "1px solid #fecdd3",
+                  color: "#e11d48",
+                  borderRadius: 16,
+                  fontSize: 11,
+                  fontWeight: 800,
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 4,
+                  boxShadow: "0 2px 5px rgba(225, 29, 72, 0.12)",
+                }}
+              >
+                <span>⚠️ Support</span>
+                {customerComplaints.length > 0 && (
+                  <span
+                    style={{
+                      background: "#e11d48",
+                      color: "#fff",
+                      borderRadius: 10,
+                      padding: "1px 5px",
+                      fontSize: 10,
+                      fontWeight: 900,
+                    }}
+                  >
+                    {customerComplaints.length}
+                  </span>
+                )}
+              </button>
+
+              {/* Clear Queue Button */}
+              <button
+                type="button"
+                id="ordering-clear-queue-btn"
+                onClick={handleClearAllQueue}
+                title="Clear Today's Dispatch Queue across warehouse, picker & ordering apps"
+                style={{
+                  padding: "5px 8px",
+                  background: "#f1f5f9",
+                  border: "1px solid #cbd5e1",
+                  color: "#475569",
+                  borderRadius: 16,
+                  fontSize: 10.5,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 3,
+                }}
+              >
+                <span>🧹 Clear</span>
+              </button>
             </div>
           </div>
 
@@ -2431,8 +2606,30 @@ export default function OrderingAppPage() {
             </div>
           </div>
 
-          {/* VIEW Button */}
+          {/* VIEW & COMPLAINT Buttons */}
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0, marginLeft: 10 }}>
+            <button
+              type="button"
+              style={{
+                background: "rgba(225, 29, 72, 0.2)",
+                color: "#fda4af",
+                border: "1px solid rgba(225, 29, 72, 0.45)",
+                borderRadius: 8,
+                padding: "6px 10px",
+                fontSize: 11,
+                fontWeight: 800,
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+              }}
+              onClick={(e) => {
+                e.stopPropagation();
+                setComplaintOrderId(activeDeliveryOrder.orderNumber || activeDeliveryOrder.id || activeDeliveryOrder.orderId);
+                setShowComplaintModal(true);
+              }}
+              title="Need help or have an issue with this order?"
+            >
+              ⚠️ Issue?
+            </button>
             <button
               type="button"
               style={{
@@ -3280,6 +3477,493 @@ export default function OrderingAppPage() {
           </div>
         </div>
       )}
+
+      {/* ── CUSTOMER SUPPORT & COMPLAINTS DESK MODAL (BHASKAR N S & DEEPU B RESOLUTION) ── */}
+      {showComplaintModal && (
+        <div
+          id="customer-complaint-modal"
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15, 23, 42, 0.75)",
+            backdropFilter: "blur(6px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+            zIndex: 9998,
+          }}
+          onClick={() => setShowComplaintModal(false)}
+        >
+          <div
+            style={{
+              width: "100%",
+              maxWidth: 440,
+              maxHeight: "90vh",
+              background: "#ffffff",
+              borderRadius: 22,
+              overflow: "hidden",
+              display: "flex",
+              flexDirection: "column",
+              boxShadow: "0 20px 48px rgba(0, 0, 0, 0.28)",
+              border: "1px solid #e2e8f0",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Top Header */}
+            <div
+              style={{
+                padding: "16px 20px",
+                background: "linear-gradient(135deg, #0f172a 0%, #1e293b 100%)",
+                color: "#ffffff",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div
+                  style={{
+                    width: 38,
+                    height: 38,
+                    borderRadius: 10,
+                    background: "#e11d48",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: 18,
+                  }}
+                >
+                  ⚠️
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 900 }}>Customer Helpdesk &amp; Complaints</h3>
+                  <p style={{ margin: 0, fontSize: 11, color: "#94a3b8" }}>
+                    Live Hub Resolution with SM Bhaskar N S &amp; ASM Deepu B
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowComplaintModal(false)}
+                style={{
+                  background: "rgba(255,255,255,0.12)",
+                  border: "none",
+                  color: "#ffffff",
+                  width: 32,
+                  height: 32,
+                  borderRadius: 16,
+                  cursor: "pointer",
+                  fontSize: 16,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Tab Navigation */}
+            <div
+              style={{
+                display: "flex",
+                borderBottom: "1px solid #e2e8f0",
+                background: "#f8fafc",
+                padding: "4px 8px 0",
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setComplaintsTab("tickets")}
+                style={{
+                  flex: 1,
+                  padding: "10px 12px",
+                  border: "none",
+                  background: complaintsTab === "tickets" ? "#ffffff" : "transparent",
+                  borderBottom: complaintsTab === "tickets" ? "3px solid #0c831f" : "3px solid transparent",
+                  fontWeight: complaintsTab === "tickets" ? 800 : 600,
+                  fontSize: 12.5,
+                  color: complaintsTab === "tickets" ? "#0c831f" : "#64748b",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 6,
+                }}
+              >
+                <span>📋 My Tickets &amp; Resolutions</span>
+                {customerComplaints.length > 0 && (
+                  <span
+                    style={{
+                      background: complaintsTab === "tickets" ? "#0c831f" : "#cbd5e1",
+                      color: "#ffffff",
+                      borderRadius: 10,
+                      padding: "1px 6px",
+                      fontSize: 10,
+                      fontWeight: 800,
+                    }}
+                  >
+                    {customerComplaints.length}
+                  </span>
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => setComplaintsTab("raise")}
+                style={{
+                  flex: 1,
+                  padding: "10px 12px",
+                  border: "none",
+                  background: complaintsTab === "raise" ? "#ffffff" : "transparent",
+                  borderBottom: complaintsTab === "raise" ? "3px solid #e11d48" : "3px solid transparent",
+                  fontWeight: complaintsTab === "raise" ? 800 : 600,
+                  fontSize: 12.5,
+                  color: complaintsTab === "raise" ? "#e11d48" : "#64748b",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 6,
+                }}
+              >
+                <span>➕ Raise New Complaint</span>
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div style={{ padding: 18, overflowY: "auto", flex: 1 }}>
+              {complaintsTab === "raise" ? (
+                /* TAB 1: RAISE COMPLAINT FORM */
+                <form onSubmit={handleFileComplaint} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                  <div
+                    style={{
+                      background: "#fff1f2",
+                      border: "1px solid #fecdd3",
+                      borderRadius: 12,
+                      padding: "10px 12px",
+                      fontSize: 11.5,
+                      color: "#9f1239",
+                      lineHeight: 1.45,
+                    }}
+                  >
+                    🛡️ <b>Audit'X Quick Commerce Guarantee:</b> Issues filed here are transmitted instantly to Store Manager <b>Bhaskar N S</b> and Assistant Store Manager <b>Deepu B</b>. Resolution SLA: <b>&lt; 5 minutes</b> with instant wallet refunds or priority replacement!
+                  </div>
+
+                  {/* Order Reference */}
+                  <div>
+                    <label style={{ display: "block", fontSize: 11.5, fontWeight: 700, color: "#334155", marginBottom: 5 }}>
+                      Order ID Reference:
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. ORD-KA44-8921"
+                      value={complaintOrderId}
+                      onChange={(e) => setComplaintOrderId(e.target.value)}
+                      style={{
+                        width: "100%",
+                        padding: "9px 12px",
+                        borderRadius: 10,
+                        border: "1px solid #cbd5e1",
+                        fontSize: 13,
+                        fontWeight: 600,
+                        outline: "none",
+                        boxSizing: "border-box",
+                      }}
+                    />
+                    {activeDeliveryOrder && (
+                      <button
+                        type="button"
+                        onClick={() => setComplaintOrderId(activeDeliveryOrder.orderNumber || activeDeliveryOrder.id || activeDeliveryOrder.orderId)}
+                        style={{
+                          background: "none",
+                          border: "none",
+                          color: "#0c831f",
+                          fontSize: 11,
+                          fontWeight: 700,
+                          cursor: "pointer",
+                          padding: "4px 0 0",
+                          textDecoration: "underline",
+                        }}
+                      >
+                        ⚡ Use Active Order ({activeDeliveryOrder.orderNumber || activeDeliveryOrder.id || activeDeliveryOrder.orderId})
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Issue Category */}
+                  <div>
+                    <label style={{ display: "block", fontSize: 11.5, fontWeight: 700, color: "#334155", marginBottom: 5 }}>
+                      Complaint Category:
+                    </label>
+                    <select
+                      value={complaintCategory}
+                      onChange={(e) => setComplaintCategory(e.target.value)}
+                      style={{
+                        width: "100%",
+                        padding: "9px 12px",
+                        borderRadius: 10,
+                        border: "1px solid #cbd5e1",
+                        fontSize: 13,
+                        fontWeight: 600,
+                        background: "#ffffff",
+                        outline: "none",
+                        boxSizing: "border-box",
+                      }}
+                    >
+                      <option value="Missing Item">Missing Item in Delivery Bag</option>
+                      <option value="Damaged Goods">Damaged / Melted Packaging</option>
+                      <option value="Delivery Delay / SLA Exceeded">Delivery Delay / 8-Min SLA Exceeded</option>
+                      <option value="Wrong Item Received">Wrong Item Received</option>
+                      <option value="Billing / Wallet Issue">Billing / Wallet Issue</option>
+                      <option value="Quality Issue">Quality / Freshness Issue</option>
+                      <option value="Other Operations Issue">Other Operations Issue</option>
+                    </select>
+                  </div>
+
+                  {/* Detailed Description */}
+                  <div>
+                    <label style={{ display: "block", fontSize: 11.5, fontWeight: 700, color: "#334155", marginBottom: 5 }}>
+                      Explain What Went Wrong:
+                    </label>
+                    <textarea
+                      rows={3}
+                      placeholder="e.g. Received the delivery from Sinchana B R, but 1x Beatss Milk Chocolate was missing from the bag. Please refund or replace."
+                      value={complaintText}
+                      onChange={(e) => setComplaintText(e.target.value)}
+                      style={{
+                        width: "100%",
+                        padding: "10px 12px",
+                        borderRadius: 10,
+                        border: "1px solid #cbd5e1",
+                        fontSize: 12.5,
+                        outline: "none",
+                        fontFamily: "inherit",
+                        resize: "vertical",
+                        boxSizing: "border-box",
+                      }}
+                    />
+                  </div>
+
+                  {/* Refund Amount Requested */}
+                  <div>
+                    <label style={{ display: "block", fontSize: 11.5, fontWeight: 700, color: "#334155", marginBottom: 5 }}>
+                      Compensation / Refund Amount Requested (₹):
+                    </label>
+                    <input
+                      type="number"
+                      min={0}
+                      placeholder="e.g. 50"
+                      value={complaintRefundAmount}
+                      onChange={(e) => setComplaintRefundAmount(e.target.value)}
+                      style={{
+                        width: "100%",
+                        padding: "9px 12px",
+                        borderRadius: 10,
+                        border: "1px solid #cbd5e1",
+                        fontSize: 13,
+                        fontWeight: 600,
+                        outline: "none",
+                        boxSizing: "border-box",
+                      }}
+                    />
+                    <span style={{ fontSize: 10.5, color: "#64748b", marginTop: 3, display: "block" }}>
+                      Approved refunds are credited directly to your Audit'X Demo Wallet.
+                    </span>
+                  </div>
+
+                  {/* Submit Button */}
+                  <button
+                    type="submit"
+                    disabled={complaintSubmitting || !complaintText.trim()}
+                    style={{
+                      background: complaintText.trim() ? "linear-gradient(135deg, #e11d48 0%, #be123c 100%)" : "#cbd5e1",
+                      color: "#ffffff",
+                      border: "none",
+                      borderRadius: 12,
+                      padding: "12px 18px",
+                      fontSize: 13.5,
+                      fontWeight: 800,
+                      cursor: complaintText.trim() ? "pointer" : "not-allowed",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 8,
+                      boxShadow: complaintText.trim() ? "0 4px 14px rgba(225, 29, 72, 0.35)" : "none",
+                      marginTop: 4,
+                    }}
+                  >
+                    <span>⚠️ Submit Complaint to Store Manager</span>
+                  </button>
+                </form>
+              ) : (
+                /* TAB 2: MY TICKETS & SM / ASM LIVE RESOLUTIONS */
+                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                  {customerComplaints.length === 0 ? (
+                    <div style={{ textAlign: "center", padding: "30px 10px", color: "#64748b" }}>
+                      <span style={{ fontSize: 36, display: "block", marginBottom: 8 }}>🎉</span>
+                      <div style={{ fontWeight: 800, fontSize: 14, color: "#0f172a" }}>No Complaints on Record</div>
+                      <div style={{ fontSize: 12, marginTop: 4 }}>
+                        All orders delivered seamlessly under 8-minute SLA!
+                      </div>
+                    </div>
+                  ) : (
+                    customerComplaints.map((c) => {
+                      const isResolved = c.status === "RESOLVED" || c.status === "REPLACEMENT_DISPATCHED";
+                      return (
+                        <div
+                          key={c.id}
+                          style={{
+                            background: isResolved ? "#f0fdf4" : "#fffbeb",
+                            border: isResolved ? "1.5px solid #86efac" : "1.5px solid #fde68a",
+                            borderRadius: 14,
+                            padding: 14,
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: 8,
+                          }}
+                        >
+                          {/* Ticket Header Row */}
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 6 }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                              <span style={{ fontWeight: 900, fontSize: 13, color: "#0f172a" }}>
+                                #{c.id}
+                              </span>
+                              <span style={{ fontSize: 11, color: "#64748b", fontWeight: 600 }}>
+                                • Ref: {c.orderId || "ORD-STORE"}
+                              </span>
+                            </div>
+                            <span
+                              style={{
+                                fontSize: 10.5,
+                                fontWeight: 800,
+                                padding: "2px 8px",
+                                borderRadius: 10,
+                                background: isResolved ? "#22c55e" : "#f59e0b",
+                                color: "#ffffff",
+                              }}
+                            >
+                              {c.status === "RESOLVED" ? "✅ RESOLVED" : c.status === "REPLACEMENT_DISPATCHED" ? "🚀 REPLACEMENT SENT" : "⏳ UNDER SM REVIEW"}
+                            </span>
+                          </div>
+
+                          {/* Customer Issue */}
+                          <div style={{ fontSize: 12.5, color: "#334155", fontWeight: 600 }}>
+                            <span style={{ color: "#64748b", fontWeight: 700 }}>Issue: </span>
+                            {c.issue}
+                          </div>
+
+                          <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 11, color: "#64748b", flexWrap: "wrap" }}>
+                            <span>📁 {c.category || "Order Issue"}</span>
+                            {c.amount > 0 && <span>💰 Requested: ₹{c.amount}</span>}
+                            <span>⏱️ {c.time || "Recently"}</span>
+                          </div>
+
+                          {/* LIVE STORE MANAGER / ASM RESOLUTION RESPONSE */}
+                          {isResolved ? (
+                            <div
+                              style={{
+                                marginTop: 6,
+                                background: "#ffffff",
+                                border: "1px solid #bbf7d0",
+                                borderRadius: 10,
+                                padding: "10px 12px",
+                              }}
+                            >
+                              <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, fontWeight: 800, color: "#15803d", marginBottom: 3 }}>
+                                <span>🟢 Store Management Response:</span>
+                                <span style={{ color: "#047857" }}>by {c.resolvedBy || "Bhaskar N S (SM)"}</span>
+                              </div>
+                              <div style={{ fontSize: 12.5, fontWeight: 700, color: "#0f172a" }}>
+                                {c.response || `Complaint verified and resolved with full compensation by Store Manager.`}
+                              </div>
+                              {c.resolvedAt && (
+                                <div style={{ fontSize: 10, color: "#64748b", marginTop: 4 }}>
+                                  Resolved At: {c.resolvedAt}
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <div
+                              style={{
+                                marginTop: 4,
+                                background: "#fef3c7",
+                                borderRadius: 8,
+                                padding: "6px 10px",
+                                fontSize: 11,
+                                color: "#92400e",
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 6,
+                              }}
+                            >
+                              <span style={{ animation: "pulse 1.5s infinite" }}>⏳</span>
+                              <span>Assigned to Store Manager <b>Bhaskar N S</b> &amp; ASM <b>Deepu B</b>. Under 5-min review.</span>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => setComplaintsTab("raise")}
+                    style={{
+                      background: "#f1f5f9",
+                      border: "1px dashed #94a3b8",
+                      borderRadius: 12,
+                      padding: "10px",
+                      fontSize: 12,
+                      fontWeight: 700,
+                      color: "#475569",
+                      cursor: "pointer",
+                      marginTop: 4,
+                    }}
+                  >
+                    ➕ Need to report another issue? Click here
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Bottom Footer */}
+            <div
+              style={{
+                padding: "12px 18px",
+                background: "#f8fafc",
+                borderTop: "1px solid #e2e8f0",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+              }}
+            >
+              <span style={{ fontSize: 11, color: "#64748b" }}>
+                Tiptur Hub KA - 44 Operations Desk
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowComplaintModal(false)}
+                style={{
+                  background: "#0f172a",
+                  color: "#ffffff",
+                  border: "none",
+                  borderRadius: 8,
+                  padding: "6px 14px",
+                  fontSize: 12,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── RAG-BASED EMBEDDED AI ASSISTANT: AUDIT'X Mini ── */}
+      <AuditxMiniAssistant isStoreOpen={isStoreOpen} />
     </div>
   );
 }

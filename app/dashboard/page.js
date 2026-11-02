@@ -11,6 +11,7 @@ import {
   saveLiveOrder,
   updateLiveOrder,
   broadcastEvent,
+  clearAllLiveOrders,
 } from "@/lib/realtimeSync";
 import { STAFF, STAGE_SEQUENCE, getRandomStagingRack } from "@/lib/roles";
 import { CATALOG } from "@/lib/items";
@@ -312,8 +313,23 @@ export default function WarehouseDashboardPage() {
 
     // 3. Subscribe to general event bus
     const unsubBus = subscribeToEvents((data) => {
-      if (data.type === "COMPLAINT_RAISED" && data.payload) {
-        setComplaints((prev) => [data.payload, ...prev.filter((c) => c.id !== data.payload.id)]);
+      if (data.type === "QUEUE_CLEARED") {
+        setOrders([]);
+      } else if ((data.type === "COMPLAINT_RAISED" || data.type === "CUSTOMER_COMPLAINT_FILED") && data.payload) {
+        setComplaints((prev) => {
+          const updated = [data.payload, ...prev.filter((c) => c.id !== data.payload.id)];
+          try { localStorage.setItem("auditx_complaints", JSON.stringify(updated)); } catch (e) {}
+          return updated;
+        });
+        playOrderAlarm();
+        setActionSuccess(`⚠️ New Complaint ticket ${data.payload.id} received from ${data.payload.customerName}!`);
+        setTimeout(() => setActionSuccess(""), 4000);
+      } else if (data.type === "COMPLAINT_RESOLVED" && data.payload) {
+        setComplaints((prev) => {
+          const updated = prev.map((c) => c.id === data.payload.id ? { ...c, ...data.payload } : c);
+          try { localStorage.setItem("auditx_complaints", JSON.stringify(updated)); } catch (e) {}
+          return updated;
+        });
       } else if (data.type === "ORDER_CREATED" && data.payload) {
         setOrders((prev) => [data.payload, ...prev.filter((o) => o.id !== data.payload.id)]);
       } else if (data.type === "ORDER_STAGED" || data.type === "ORDER_DISPATCHED" || data.type === "ORDER_DELIVERED") {
@@ -425,20 +441,54 @@ export default function WarehouseDashboardPage() {
     setCapLogs((prev) => [{ id: Date.now(), time: new Date().toLocaleTimeString(), msg: logMsg }, ...prev]);
   }
 
+  function handleClearTodayQueue() {
+    playNotificationChime();
+    clearAllLiveOrders();
+    setOrders([]);
+    const logMsg = `🧹 TODAY'S QUEUE CLEARED by ${staff?.name || "Bhaskar N S"} (${staff?.designation || "Store Manager"})`;
+    setCapLogs((prev) => [{ id: Date.now(), time: new Date().toLocaleTimeString(), msg: logMsg }, ...prev]);
+    setActionSuccess(`🧹 Today's Queue successfully cleared across Warehouse, Picker, Rider, and Ordering Apps!`);
+    setTimeout(() => setActionSuccess(""), 4000);
+  }
+
   function resolveComplaint(id, refund = false) {
     playSuccessChime();
-    setComplaints((prev) =>
-      prev.map((c) => {
-        if (c.id === id) {
-          return { ...c, status: "RESOLVED", resolvedBy: staff?.name };
-        }
-        return c;
-      })
-    );
+    const resolutionText = refund
+      ? `Refund of ₹${refund} approved & credited to Audit'X Wallet by ${staff?.name || "Bhaskar N S"}`
+      : `Complaint reviewed & resolved by ${staff?.name || "Bhaskar N S"}`;
+
+    const updatedComplaints = complaints.map((c) => {
+      if (c.id === id) {
+        return {
+          ...c,
+          status: "RESOLVED",
+          resolvedBy: staff?.name || "Bhaskar N S",
+          resolvedAt: new Date().toLocaleTimeString(),
+          response: resolutionText,
+        };
+      }
+      return c;
+    });
+
+    setComplaints(updatedComplaints);
+    try {
+      localStorage.setItem("auditx_complaints", JSON.stringify(updatedComplaints));
+    } catch (e) {
+      console.warn(e);
+    }
+
+    broadcastEvent("COMPLAINT_RESOLVED", {
+      id,
+      status: "RESOLVED",
+      resolvedBy: staff?.name || "Bhaskar N S",
+      resolvedAt: new Date().toLocaleTimeString(),
+      response: resolutionText,
+    });
+
     setActionSuccess(
       refund
         ? `✅ Refund of ₹${refund} to Audit'X Demo Wallet issued & Complaint ${id} resolved!`
-        : `✅ Complaint ${id} marked resolved by ${staff?.name}.`
+        : `✅ Complaint ${id} marked resolved by ${staff?.name || "Bhaskar N S"}.`
     );
     setTimeout(() => setActionSuccess(""), 3500);
   }
@@ -470,6 +520,36 @@ export default function WarehouseDashboardPage() {
     };
 
     saveLiveOrder(newOrderData);
+    broadcastEvent("ORDER_CREATED", newOrderData);
+
+    const resolutionText = `Priority replacement order #${replacementId} dispatched via Thrupthi K S & Sinchana B R by ${staff?.name || "Bhaskar N S"}`;
+
+    const updatedComplaints = complaints.map((item) =>
+      item.id === c.id
+        ? {
+            ...item,
+            status: "RESOLVED",
+            resolvedBy: staff?.name || "Bhaskar N S",
+            resolvedAt: new Date().toLocaleTimeString(),
+            response: resolutionText,
+          }
+        : item
+    );
+
+    setComplaints(updatedComplaints);
+    try {
+      localStorage.setItem("auditx_complaints", JSON.stringify(updatedComplaints));
+    } catch (e) {
+      console.warn(e);
+    }
+
+    broadcastEvent("COMPLAINT_RESOLVED", {
+      id: c.id,
+      status: "RESOLVED",
+      resolvedBy: staff?.name || "Bhaskar N S",
+      resolvedAt: new Date().toLocaleTimeString(),
+      response: resolutionText,
+    });
 
     try {
       if (db) {
@@ -970,6 +1050,19 @@ export default function WarehouseDashboardPage() {
                   <button style={S.actionBtnOutline} onClick={handleCreateSimulatedOrder}>
                     ⚡ Simulate Test Order
                   </button>
+                  <button
+                    style={{
+                      ...S.actionBtnOutline,
+                      background: "#fee2e2",
+                      color: "#b91c1c",
+                      borderColor: "#fca5a5",
+                      fontWeight: 800,
+                    }}
+                    onClick={handleClearTodayQueue}
+                    title="Clear today's live orders queue across warehouse, picker, and ordering apps"
+                  >
+                    🗑️ Clear Today's Queue ({orders.length})
+                  </button>
                   <button style={S.actionBtnOutline} onClick={() => setActiveTab("queue")}>
                     Today's Queue
                   </button>
@@ -1052,7 +1145,27 @@ export default function WarehouseDashboardPage() {
                     Live visual pipeline: Customer Order Placement → In-Store Picking (Thrupthi K S) → Rack Staging → Last-Mile Express (Sinchana B R) → Doorstep Delivery.
                   </p>
                 </div>
-                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                  <button
+                    type="button"
+                    style={{
+                      background: "#fee2e2",
+                      color: "#b91c1c",
+                      border: "1px solid #fca5a5",
+                      borderRadius: 10,
+                      padding: "8px 14px",
+                      fontSize: 13,
+                      fontWeight: 800,
+                      cursor: "pointer",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
+                    }}
+                    onClick={handleClearTodayQueue}
+                    title="Clear all orders in today's queue"
+                  >
+                    🗑️ Clear Today's Queue ({orders.length})
+                  </button>
                   <button style={S.simOrderCTA} onClick={handleCreateSimulatedOrder}>
                     + Simulate Live Customer Order
                   </button>
