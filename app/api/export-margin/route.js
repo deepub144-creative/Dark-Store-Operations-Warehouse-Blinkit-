@@ -140,14 +140,6 @@ export async function POST(req) {
     const xlsxFilePath = path.join(projectRoot, xlsxFilename);
     fs.writeFileSync(xlsxFilePath, xlsxBuffer);
 
-    // Also copy to ordering-app if separate
-    try {
-      const orderingRoot = path.join(projectRoot, "ordering-app");
-      if (fs.existsSync(orderingRoot)) {
-        fs.writeFileSync(path.join(orderingRoot, xlsxFilename), xlsxBuffer);
-      }
-    } catch {}
-
     // ──────────────────────────────────────────────────────────
     // 2. GENERATE PDF REPORT (dailymarginwarehouse-auditx.pdf)
     // ──────────────────────────────────────────────────────────
@@ -327,14 +319,6 @@ export async function POST(req) {
     const pdfFilename = "dailymarginwarehouse-auditx.pdf";
     const pdfFilePath = path.join(projectRoot, pdfFilename);
     fs.writeFileSync(pdfFilePath, pdfBuffer);
-
-    // Also copy to ordering-app if present
-    try {
-      const orderingRoot = path.join(projectRoot, "ordering-app");
-      if (fs.existsSync(orderingRoot)) {
-        fs.writeFileSync(path.join(orderingRoot, pdfFilename), pdfBuffer);
-      }
-    } catch {}
 
     return NextResponse.json({
       success: true,
