@@ -1085,7 +1085,7 @@ export default function WarehouseDashboardPage() {
                     <button style={S.smLinkBtn} onClick={() => setActiveTab("complaints")}>View All →</button>
                   </div>
                   <div style={S.complaintMiniList}>
-                    {complaints.length === 0 ? (
+                    {openComplaintsCount === 0 ? (
                       <div style={{ textAlign: "center", padding: "28px 12px", color: "#94a3b8" }}>
                         <div style={{ fontSize: "1.6rem", marginBottom: 6 }}>🛡️</div>
                         <div style={{ fontWeight: 800, color: "#cbd5e1", fontSize: "0.9rem" }}>Zero Open Complaints</div>
@@ -1094,7 +1094,7 @@ export default function WarehouseDashboardPage() {
                         </div>
                       </div>
                     ) : (
-                      complaints.slice(0, 3).map((c) => (
+                      complaints.filter((c) => c.status !== "RESOLVED").slice(0, 3).map((c) => (
                         <div key={c.id} style={S.complaintMiniCard}>
                           <div style={S.cTop}>
                             <span style={S.cId}>{c.id} • Order #{c.orderId}</span>

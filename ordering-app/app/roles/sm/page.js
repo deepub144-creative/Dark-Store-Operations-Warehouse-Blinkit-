@@ -444,7 +444,7 @@ export default function StoreManagerApp() {
             </div>
 
             <div style={S.complaintsList}>
-              {complaints.length === 0 ? (
+              {openComplaintsCount === 0 ? (
                 <div style={{ textAlign: "center", padding: "48px 16px", color: "#94a3b8", background: "#1e293b", borderRadius: 14, border: "1px dashed #334155" }}>
                   <div style={{ fontSize: "2.2rem", marginBottom: 8 }}>🛡️</div>
                   <div style={{ fontWeight: 800, fontSize: "1.05rem", color: "#f1f5f9" }}>Zero Complaints Lodged</div>
