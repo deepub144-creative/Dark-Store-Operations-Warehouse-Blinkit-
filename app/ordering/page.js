@@ -294,6 +294,7 @@ export default function OrderingAppPage() {
   const [placingOrder, setPlacingOrder] = useState(false);
   const [toastMessage, setToastMessage] = useState("");
   const [oosList, setOosList] = useState([]);
+  const [isStoreOpen, setIsStoreOpen] = useState(true); // Store Manager Bhaskar N S toggle state
 
   // Blinkit Cart & Checkout Flow State
   const [isCheckoutView, setIsCheckoutView] = useState(false); // Can view either Catalog or pure Checkout
@@ -393,6 +394,18 @@ export default function OrderingAppPage() {
       }
     }
 
+    // Load persisted store open status (Store Manager Bhaskar N S)
+    try {
+      const rawStoreOpen = localStorage.getItem("auditx_store_open");
+      if (rawStoreOpen === "false") {
+        setIsStoreOpen(false);
+      } else {
+        setIsStoreOpen(true);
+      }
+    } catch (e) {
+      console.warn("Store open check error:", e);
+    }
+
     function checkActiveDelivery() {
       try {
         const liveOrders = getAllLiveOrders();
@@ -419,6 +432,17 @@ export default function OrderingAppPage() {
     window.addEventListener("focus", checkActiveDelivery);
 
     const unsubBus = subscribeToEvents((data) => {
+      if (data.type === "STORE_STATUS_CHANGED" && data.payload) {
+        const nextOpen = data.payload.isOpen !== false;
+        setIsStoreOpen(nextOpen);
+        if (!nextOpen) {
+          playNotificationChime();
+          triggerToast("🛑 Oops! Your Store is now closed , opening soon");
+        } else {
+          playSuccessChime();
+          triggerToast("🟢 Store is now OPEN! Bhaskar N S has opened the store for ordering.");
+        }
+      }
       if (data.type === "ITEM_STOCK_TOGGLED" && data.payload) {
         if (!data.payload.inStock) {
           setOosList((prev) => [...new Set([...prev, data.payload.sku])]);
@@ -439,13 +463,37 @@ export default function OrderingAppPage() {
       }
     });
 
+    const handleStorageEvent = (e) => {
+      if (e.key === "auditx_store_open") {
+        setIsStoreOpen(e.newValue !== "false");
+      }
+    };
+    window.addEventListener("storage", handleStorageEvent);
+
     const timer = setTimeout(() => setLoading(false), 200);
     return () => {
       clearTimeout(timer);
       unsubBus();
       window.removeEventListener("focus", checkActiveDelivery);
+      window.removeEventListener("storage", handleStorageEvent);
     };
   }, []);
+
+  function handleCheckStoreStatus() {
+    playNotificationChime();
+    try {
+      const raw = localStorage.getItem("auditx_store_open");
+      const open = raw !== "false";
+      setIsStoreOpen(open);
+      if (open) {
+        triggerToast("🎉 Store is now OPEN! You can browse and place orders.");
+      } else {
+        triggerToast("⏳ Oops! Your Store is now closed , opening soon");
+      }
+    } catch (e) {
+      console.warn(e);
+    }
+  }
 
   function triggerToast(msg) {
     setToastMessage(msg);
@@ -453,6 +501,10 @@ export default function OrderingAppPage() {
   }
 
   function updateQty(sku, delta) {
+    if (!isStoreOpen && delta > 0) {
+      triggerToast("🛑 Oops! Your Store is now closed , opening soon");
+      return;
+    }
     const item = CATALOG.find((c) => c.sku === sku);
     if ((item?.soldOut || item?.inStock === false || (item?.name && item.name.toLowerCase().includes("pup"))) && delta > 0) {
       triggerToast(`⛔ "${item.name}" is Sold Out!`);
@@ -576,6 +628,11 @@ export default function OrderingAppPage() {
 
   // Final Order Placement
   async function handleFinalOrderPlacement() {
+    if (!isStoreOpen) {
+      triggerToast("🛑 Oops! Your Store is now closed , opening soon");
+      setPlacingOrder(false);
+      return;
+    }
     if (cartEntries.length === 0) {
       triggerToast("Your cart is empty. Add items from the catalog.");
       return;
@@ -712,7 +769,34 @@ export default function OrderingAppPage() {
               <div style={S.logoArea}>
                 <AuditxLogo height={32} href="/" />
                 <div style={S.brandTag}>
-                  <span style={S.storeBadge}>Tiptur Hub KA - 44</span>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                    <span style={S.storeBadge}>Tiptur Hub KA - 44</span>
+                    <span
+                      style={{
+                        fontSize: 10,
+                        fontWeight: 900,
+                        padding: "2px 7px",
+                        borderRadius: 12,
+                        background: isStoreOpen ? "#dcfce7" : "#fee2e2",
+                        color: isStoreOpen ? "#15803d" : "#b91c1c",
+                        border: isStoreOpen ? "1px solid #86efac" : "1px solid #fca5a5",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 4,
+                      }}
+                      title={isStoreOpen ? "Store is currently open for orders" : "Store is closed by Store Manager Bhaskar N S"}
+                    >
+                      <span
+                        style={{
+                          width: 6,
+                          height: 6,
+                          borderRadius: "50%",
+                          background: isStoreOpen ? "#16a34a" : "#dc2626",
+                        }}
+                      />
+                      {isStoreOpen ? "OPEN" : "CLOSED"}
+                    </span>
+                  </div>
                 </div>
               </div>
 
@@ -790,9 +874,102 @@ export default function OrderingAppPage() {
       </header>
 
       {/* ═══════════════════════════════════════════════════════════
-          MAIN VIEW: EITHER DIRECT BLINKIT CHECKOUT SCREEN OR CATALOG
+          MAIN VIEW: STORE CLOSED SCREEN OR CHECKOUT OR CATALOG
           ═══════════════════════════════════════════════════════════ */}
-      {isCheckoutView ? (
+      {!isStoreOpen ? (
+        /* ── DEDICATED STORE CLOSED SCREEN (BHASKAR N S TOGGLED OFF) ── */
+        <main style={S.storeClosedMain}>
+          <div style={S.storeClosedCard}>
+            {/* Friendly Shutter / Store Closed Illustration */}
+            <div style={S.closedIllustrationWrap}>
+              <div style={S.closedIconCircle}>
+                <span style={{ fontSize: 48 }}>🏪</span>
+                <span style={S.closedLockBadge}>🔒</span>
+              </div>
+            </div>
+
+            {/* Exact User Requested Copy */}
+            <h1 style={S.closedHeading}>
+              Oops! Your Store is now closed , opening soon
+            </h1>
+
+            <p style={S.closedSubHeading}>
+              Store Manager <b>Bhaskar N S</b> has temporarily closed <b>Tiptur HUB KA-44</b> for inventory restocking &amp; order reconciliation. We will be back online shortly!
+            </p>
+
+            {/* Real-time Status Banner */}
+            <div style={S.closedStatusBanner}>
+              <span style={S.closedStatusDot} />
+              <span>
+                <b>CURRENT STATUS:</b> CLOSED by Bhaskar N S (Store Manager)
+              </span>
+            </div>
+
+            {/* Saved Cart Notification */}
+            {totalItems > 0 && (
+              <div style={S.closedCartNotice}>
+                <span style={{ fontSize: 24, flexShrink: 0 }}>🛒</span>
+                <div>
+                  <div style={{ fontWeight: 800, color: "#0f172a", fontSize: 13.5 }}>
+                    Your cart with {totalItems} {totalItems === 1 ? "item" : "items"} (₹{grandTotal}) is safely saved!
+                  </div>
+                  <div style={{ fontSize: 11.5, color: "#64748b", marginTop: 2 }}>
+                    Your selected Chocolates &amp; Frames are kept ready for instant checkout once Bhaskar N S re-opens the store.
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Action Buttons */}
+            <div style={S.closedActionsRow}>
+              <button
+                type="button"
+                id="check-store-status-btn"
+                style={S.checkStatusBtn}
+                onClick={handleCheckStoreStatus}
+              >
+                <span>🔄 Check Store Status</span>
+              </button>
+              {activeDeliveryOrder && (
+                <button
+                  type="button"
+                  style={S.viewDeliveryBtn}
+                  onClick={() => router.push(`/delivery?orderId=${activeDeliveryOrder.id || activeDeliveryOrder.orderId}`)}
+                >
+                  <span>🛵 Track Ongoing Delivery</span>
+                </button>
+              )}
+            </div>
+
+            {/* Store Information Cards */}
+            <div style={S.closedInfoGrid}>
+              <div style={S.closedInfoCard}>
+                <div style={S.closedInfoIcon}>⚡</div>
+                <div>
+                  <div style={S.closedInfoTitle}>8-Min Express Delivery SLA</div>
+                  <div style={S.closedInfoDesc}>Ultra-fast delivery to KFGSC &amp; Namma Tiptur when store is open.</div>
+                </div>
+              </div>
+
+              <div style={S.closedInfoCard}>
+                <div style={S.closedInfoIcon}>📍</div>
+                <div>
+                  <div style={S.closedInfoTitle}>Tiptur Hub KA-44 Dark Store</div>
+                  <div style={S.closedInfoDesc}>Near APMC Market Yard • Tumkur District - 572201</div>
+                </div>
+              </div>
+
+              <div style={S.closedInfoCard}>
+                <div style={S.closedInfoIcon}>🍫</div>
+                <div>
+                  <div style={S.closedInfoTitle}>Fresh Warehouse Inventory</div>
+                  <div style={S.closedInfoDesc}>Frames (1 unit single) &amp; Chocolates (5 units fixed) ready.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </main>
+      ) : isCheckoutView ? (
         /* ── DEDICATED BLINKIT CART & CHECKOUT PAGE (EXACT ASCII WIREFRAME) ── */
         <main style={S.checkoutMain}>
           <div style={S.checkoutContainer}>
@@ -2124,8 +2301,8 @@ export default function OrderingAppPage() {
           </div>
         )}
 
-            {/* Floating Quick Cart Bar (Visible only when user clicks and adds items) */}
-            {totalItems > 0 && activeBottomTab !== "explore_tiptur" && (
+            {/* Floating Quick Cart Bar (Visible only when user clicks and adds items and store is open) */}
+            {isStoreOpen && totalItems > 0 && activeBottomTab !== "explore_tiptur" && (
               <div style={S.catalogFloatingCartBar}>
                 <div style={S.floatingCartInner}>
                   <div style={S.floatingCartLeft}>
@@ -3127,6 +3304,170 @@ const S = {
     overflowX: "hidden",
     display: "flex",
     flexDirection: "column",
+  },
+
+  // ── STORE CLOSED SCREEN STYLES (BHASKAR N S STORE MANAGER TOGGLE) ──
+  storeClosedMain: {
+    padding: "24px 16px 48px",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: "calc(100vh - 160px)",
+  },
+  storeClosedCard: {
+    width: "100%",
+    maxWidth: 400,
+    background: "#ffffff",
+    borderRadius: 22,
+    padding: "30px 22px",
+    boxShadow: "0 12px 36px rgba(0, 0, 0, 0.08)",
+    border: "1px solid #fee2e2",
+    textAlign: "center",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+  },
+  closedIllustrationWrap: {
+    position: "relative",
+    marginBottom: 16,
+  },
+  closedIconCircle: {
+    width: 92,
+    height: 92,
+    borderRadius: "50%",
+    background: "linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%)",
+    border: "3px solid #fca5a5",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    position: "relative",
+    boxShadow: "0 8px 24px rgba(239, 68, 68, 0.25)",
+  },
+  closedLockBadge: {
+    position: "absolute",
+    bottom: -2,
+    right: -2,
+    fontSize: 22,
+    background: "#ef4444",
+    borderRadius: "50%",
+    width: 34,
+    height: 34,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    border: "2px solid #ffffff",
+    boxShadow: "0 3px 8px rgba(0, 0, 0, 0.25)",
+  },
+  closedHeading: {
+    fontSize: 22,
+    fontWeight: 900,
+    color: "#b91c1c",
+    lineHeight: 1.3,
+    margin: "0 0 12px",
+    letterSpacing: "-0.5px",
+  },
+  closedSubHeading: {
+    fontSize: 13.5,
+    color: "#475569",
+    lineHeight: 1.55,
+    margin: "0 0 16px",
+  },
+  closedStatusBanner: {
+    width: "100%",
+    background: "#fef2f2",
+    border: "1px solid #fecaca",
+    borderRadius: 12,
+    padding: "10px 14px",
+    fontSize: 12,
+    color: "#991b1b",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    marginBottom: 16,
+  },
+  closedStatusDot: {
+    width: 9,
+    height: 9,
+    borderRadius: "50%",
+    background: "#ef4444",
+    boxShadow: "0 0 8px #ef4444",
+    flexShrink: 0,
+  },
+  closedCartNotice: {
+    width: "100%",
+    background: "#f0fdf4",
+    border: "1px solid #bbf7d0",
+    borderRadius: 12,
+    padding: "12px 14px",
+    display: "flex",
+    alignItems: "center",
+    gap: 12,
+    textAlign: "left",
+    marginBottom: 16,
+  },
+  closedActionsRow: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 10,
+    width: "100%",
+    marginBottom: 20,
+  },
+  checkStatusBtn: {
+    width: "100%",
+    background: "linear-gradient(135deg, #0c831f 0%, #15803d 100%)",
+    color: "#ffffff",
+    border: "none",
+    borderRadius: 12,
+    padding: "13px 20px",
+    fontSize: 14,
+    fontWeight: 800,
+    cursor: "pointer",
+    boxShadow: "0 4px 14px rgba(12, 131, 31, 0.35)",
+    transition: "transform 0.15s ease",
+  },
+  viewDeliveryBtn: {
+    width: "100%",
+    background: "#0f172a",
+    color: "#ffffff",
+    border: "none",
+    borderRadius: 12,
+    padding: "12px 20px",
+    fontSize: 13.5,
+    fontWeight: 700,
+    cursor: "pointer",
+  },
+  closedInfoGrid: {
+    display: "grid",
+    gridTemplateColumns: "1fr",
+    gap: 10,
+    width: "100%",
+    borderTop: "1px solid #f1f5f9",
+    paddingTop: 16,
+  },
+  closedInfoCard: {
+    background: "#f8fafc",
+    borderRadius: 10,
+    padding: "10px 14px",
+    textAlign: "left",
+    display: "flex",
+    alignItems: "center",
+    gap: 12,
+    border: "1px solid #e2e8f0",
+  },
+  closedInfoIcon: {
+    fontSize: 22,
+    flexShrink: 0,
+  },
+  closedInfoTitle: {
+    fontSize: 12.5,
+    fontWeight: 800,
+    color: "#1e293b",
+  },
+  closedInfoDesc: {
+    fontSize: 11,
+    color: "#64748b",
   },
 
   toast: {

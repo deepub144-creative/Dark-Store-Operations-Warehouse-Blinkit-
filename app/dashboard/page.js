@@ -165,6 +165,38 @@ export default function WarehouseDashboardPage() {
     }
   }, []);
 
+  // Load and sync store status (Store Manager toggle for Ordering App)
+  useEffect(() => {
+    try {
+      const rawStoreOpen = localStorage.getItem("auditx_store_open");
+      if (rawStoreOpen === "false") {
+        setIsStorePaused(true);
+      } else {
+        setIsStorePaused(false);
+      }
+    } catch (e) {
+      console.warn("Store status load error:", e);
+    }
+
+    const unsub = subscribeToEvents((data) => {
+      if (data?.type === "STORE_STATUS_CHANGED" && data.payload) {
+        setIsStorePaused(data.payload.isOpen === false);
+      }
+    });
+
+    const handleStorage = (e) => {
+      if (e.key === "auditx_store_open") {
+        setIsStorePaused(e.newValue === "false");
+      }
+    };
+    window.addEventListener("storage", handleStorage);
+
+    return () => {
+      unsub();
+      window.removeEventListener("storage", handleStorage);
+    };
+  }, []);
+
   // Load and initialize inventory units: strictly 5 units for Chocolates and 1 unit for Frames
   useEffect(() => {
     try {
@@ -355,17 +387,35 @@ export default function WarehouseDashboardPage() {
   }
 
   function toggleStorePause() {
-    const nextState = !isStorePaused;
-    setIsStorePaused(nextState);
-    if (nextState) {
+    const nextPaused = !isStorePaused;
+    const nextOpen = !nextPaused;
+    setIsStorePaused(nextPaused);
+
+    try {
+      localStorage.setItem("auditx_store_open", nextOpen ? "true" : "false");
+      broadcastEvent("STORE_STATUS_CHANGED", {
+        isOpen: nextOpen,
+        updatedBy: staff?.name || "Bhaskar N S (Store Manager)",
+        role: staff?.designation || "Store Manager",
+        timestamp: new Date().toISOString(),
+      });
+    } catch (e) {
+      console.warn("Store toggle persist error:", e);
+    }
+
+    if (nextPaused) {
       playOrderAlarm();
+      setActionSuccess(`🛑 STORE CLOSED by ${staff?.name || "Bhaskar N S"}! Ordering app now displays: "Oops! Your Store is now closed , opening soon"`);
     } else {
       playSuccessChime();
+      setActionSuccess(`🟢 STORE OPENED by ${staff?.name || "Bhaskar N S"}! Ordering app is now open for customer orders.`);
     }
-    const logMsg = nextState
-      ? `🛑 STORE ORDERS PAUSED by ${staff?.name} (${staff?.designation})`
-      : `🟢 STORE ORDERS RESUMED by ${staff?.name} (${staff?.designation})`;
+
+    const logMsg = nextPaused
+      ? `🛑 STORE CLOSED by ${staff?.name || "Bhaskar N S"} (${staff?.designation || "Store Manager"})`
+      : `🟢 STORE OPENED by ${staff?.name || "Bhaskar N S"} (${staff?.designation || "Store Manager"})`;
     setCapLogs((prev) => [{ id: Date.now(), time: new Date().toLocaleTimeString(), msg: logMsg }, ...prev]);
+    setTimeout(() => setActionSuccess(""), 4500);
   }
 
   function handleCapChange(newLimit) {
@@ -586,9 +636,52 @@ export default function WarehouseDashboardPage() {
 
             <AuditxLogo height={32} href="/" />
             <span style={S.storeBadge}>TIPTUR-HUB-KA44</span>
-            <span style={{ ...S.pauseBadge, background: isStorePaused ? "#ef4444" : "#10b981" }}>
-              {isStorePaused ? "🛑 STORE PAUSED" : "🟢 STORE OPEN"}
-            </span>
+            <button
+              type="button"
+              id="dashboard-store-toggle-btn"
+              onClick={toggleStorePause}
+              style={{
+                ...S.pauseBadge,
+                background: isStorePaused ? "#dc2626" : "#059669",
+                cursor: "pointer",
+                border: "1px solid rgba(255,255,255,0.3)",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "6px 14px",
+                borderRadius: 20,
+                color: "#ffffff",
+                fontWeight: 800,
+                fontSize: 12,
+                boxShadow: isStorePaused ? "0 0 14px rgba(220,38,38,0.55)" : "0 0 14px rgba(5,150,105,0.45)",
+                transition: "all 0.2s ease",
+              }}
+              title={isStorePaused ? "Click to OPEN store (Allows customer orders)" : "Click to CLOSE store (Shows 'Oops! Your Store is now closed , opening soon')"}
+            >
+              <span
+                style={{
+                  width: 10,
+                  height: 10,
+                  borderRadius: "50%",
+                  background: "#ffffff",
+                  display: "inline-block",
+                  boxShadow: "0 0 6px #ffffff",
+                }}
+              />
+              <span>{isStorePaused ? "🛑 STORE CLOSED (Click to Open)" : "🟢 STORE OPEN (Click to Close)"}</span>
+              <span
+                style={{
+                  fontSize: 10,
+                  padding: "2px 7px",
+                  borderRadius: 10,
+                  background: "rgba(0,0,0,0.25)",
+                  color: "#fff",
+                  fontWeight: 900,
+                }}
+              >
+                TOGGLE
+              </span>
+            </button>
             <button
               onClick={() => {
                 playNotificationChime();
@@ -849,15 +942,30 @@ export default function WarehouseDashboardPage() {
                 <div>
                   <div style={S.controlTitle}>⚡ STORE EMERGENCY &amp; SURGE GOVERNANCE</div>
                   <div style={S.controlSub}>
-                    Authorized Operator: <b>{staff.name}</b> ({staff.designation})
+                    Authorized Operator: <b>{staff.name}</b> ({staff.designation}) • Customer Ordering App:{" "}
+                    <b style={{ color: isStorePaused ? "#ef4444" : "#10b981", fontSize: 13 }}>
+                      {isStorePaused
+                        ? "🛑 STORE CLOSED (Shows 'Oops! Your Store is now closed , opening soon')"
+                        : "🟢 STORE OPEN (Customers can order Chocolates & Frames)"}
+                    </b>
                   </div>
                 </div>
                 <div style={S.controlBtns}>
                   <button
                     onClick={toggleStorePause}
-                    style={{ ...S.actionBtn, background: isStorePaused ? "#10b981" : "#ef4444" }}
+                    style={{
+                      ...S.actionBtn,
+                      background: isStorePaused ? "#059669" : "#dc2626",
+                      color: "#ffffff",
+                      fontWeight: 800,
+                      cursor: "pointer",
+                      boxShadow: isStorePaused ? "0 4px 14px rgba(5,150,105,0.4)" : "0 4px 14px rgba(220,38,38,0.4)",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 8,
+                    }}
                   >
-                    {isStorePaused ? "🟢 Resume Store Orders" : "🛑 Emergency Pause Store"}
+                    <span>{isStorePaused ? "🟢 OPEN STORE (Allow Customer Orders)" : "🛑 CLOSE STORE (Show 'Oops! Store Closed')"}</span>
                   </button>
                   <button style={S.actionBtnOutline} onClick={handleCreateSimulatedOrder}>
                     ⚡ Simulate Test Order
@@ -1478,6 +1586,23 @@ export default function WarehouseDashboardPage() {
                 >
                   💾 Save &amp; Persist Inventory
                 </button>
+
+                <button
+                  type="button"
+                  style={{
+                    ...S.saveInventoryBtn,
+                    background: isStorePaused ? "#dc2626" : "#059669",
+                    borderColor: isStorePaused ? "#b91c1c" : "#047857",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                    fontWeight: 900,
+                  }}
+                  onClick={toggleStorePause}
+                  title="Toggle Store Open or Closed for Ordering App"
+                >
+                  <span>{isStorePaused ? "🛑 Store Closed (Click to Open)" : "🟢 Store Open (Click to Close)"}</span>
+                </button>
               </div>
 
               {/* Inventory Grid with All Ordering Images & Unit Editor */}
@@ -1692,6 +1817,37 @@ export default function WarehouseDashboardPage() {
                       onClick={() => setAutoThrottling(!autoThrottling)}
                     >
                       {autoThrottling ? "ACTIVE" : "DISABLED"}
+                    </button>
+                  </div>
+                </div>
+
+                <div style={S.capControlBox}>
+                  <div style={S.boxTitle}>Store Manager Gate (Bhaskar N S):</div>
+                  <div style={S.toggleRow}>
+                    <div>
+                      <div style={S.toggleLabel}>
+                        Customer Ordering App:{" "}
+                        <span style={{ color: isStorePaused ? "#ef4444" : "#10b981", fontWeight: 900 }}>
+                          {isStorePaused ? "🛑 STORE CLOSED" : "🟢 STORE OPEN"}
+                        </span>
+                      </div>
+                      <div style={S.toggleSub}>
+                        {isStorePaused
+                          ? "Ordering app displays: 'Oops! Your Store is now closed , opening soon' and blocks orders."
+                          : "Ordering app allows customers to browse frames & chocolates and place live express orders."}
+                      </div>
+                    </div>
+                    <button
+                      style={{
+                        ...S.toggleBtn,
+                        background: isStorePaused ? "#dc2626" : "#059669",
+                        minWidth: 150,
+                        cursor: "pointer",
+                        fontWeight: 900,
+                      }}
+                      onClick={toggleStorePause}
+                    >
+                      {isStorePaused ? "🟢 CLICK TO OPEN" : "🛑 CLICK TO CLOSE"}
                     </button>
                   </div>
                 </div>
