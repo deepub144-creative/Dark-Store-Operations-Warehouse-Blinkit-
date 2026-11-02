@@ -14,6 +14,11 @@ import {
 } from "@/lib/realtimeSync";
 import { STAFF, STAGE_SEQUENCE, getRandomStagingRack } from "@/lib/roles";
 import { CATALOG } from "@/lib/items";
+
+// Store Manager Active Inventory: ONLY Frames (1 unit single) and Chocolates (5 units fixed)
+const STORE_MANAGER_CATALOG = CATALOG.filter(
+  (item) => item.category === "Frames" || item.category === "Chocolates"
+);
 import { seedAllDemoData } from "@/lib/seedData";
 import {
   playNotificationChime,
@@ -140,6 +145,7 @@ export default function WarehouseDashboardPage() {
   const [actionSuccess, setActionSuccess] = useState("");
   const [pingedDevice, setPingedDevice] = useState("");
   const [skuSearch, setSkuSearch] = useState("");
+  const [skuCategoryFilter, setSkuCategoryFilter] = useState("all"); // 'all' | 'Chocolates' | 'Frames'
   const [queueFilter, setQueueFilter] = useState("all"); // 'all' | 'picking' | 'staged' | 'dispatched' | 'delivered'
 
   // Inventory Units State (persisted to localStorage)
@@ -159,30 +165,89 @@ export default function WarehouseDashboardPage() {
     }
   }, []);
 
-  // Load inventory units from localStorage
+  // Load and initialize inventory units from localStorage: Frames (1 unit single), Chocolates (5 units fixed)
   useEffect(() => {
     try {
       const stored = localStorage.getItem("auditx_inventory_units");
+      let currentMap = {};
       if (stored) {
-        setInventoryStockMap(JSON.parse(stored));
-      } else {
-        const defaultMap = {};
-        CATALOG.forEach((item, idx) => {
-          defaultMap[item.sku] = 35 + ((idx * 7) % 55);
-        });
-        localStorage.setItem("auditx_inventory_units", JSON.stringify(defaultMap));
-        setInventoryStockMap(defaultMap);
+        currentMap = JSON.parse(stored);
       }
+
+      // Ensure all Frames and Chocolates have exact requested units
+      const defaultMap = { ...currentMap };
+      STORE_MANAGER_CATALOG.forEach((item) => {
+        if (defaultMap[item.sku] === undefined) {
+          // Frames: 1 unit single; Chocolates: 5 units fixed
+          defaultMap[item.sku] = item.category === "Frames" ? 1 : 5;
+        }
+      });
+      localStorage.setItem("auditx_inventory_units", JSON.stringify(defaultMap));
+      setInventoryStockMap(defaultMap);
+
+      // Persist Store Manager active inventory items list matching ordering app
+      const itemsList = STORE_MANAGER_CATALOG.map((item) => ({
+        sku: item.sku,
+        name: item.name,
+        category: item.category,
+        image: item.image,
+        price: item.price,
+        mrp: item.mrp,
+        units: defaultMap[item.sku] !== undefined ? defaultMap[item.sku] : (item.category === "Frames" ? 1 : 5),
+        unitSpecification: item.category === "Frames" ? "1 unit single" : "5 units fixed",
+        weight: item.category === "Frames" ? "1 unit" : "5 units",
+        aisle: item.aisle,
+        barcode: item.barcode,
+        qrCode: item.qrCode,
+        zone: item.zone,
+        delivery: item.delivery,
+        inStock: true,
+        updatedAt: new Date().toISOString(),
+      }));
+      localStorage.setItem("auditx_store_manager_inventory", JSON.stringify(itemsList));
     } catch (e) {
       console.warn("Stock map load error:", e);
     }
   }, []);
 
+  // Save all warehouse inventory items (Frames & Chocolates)
+  function handleSaveAllInventory() {
+    playSuccessChime();
+    const itemsList = STORE_MANAGER_CATALOG.map((item) => ({
+      sku: item.sku,
+      name: item.name,
+      category: item.category,
+      image: item.image,
+      price: item.price,
+      mrp: item.mrp,
+      units: inventoryStockMap[item.sku] !== undefined ? inventoryStockMap[item.sku] : (item.category === "Frames" ? 1 : 5),
+      unitSpecification: item.category === "Frames" ? "1 unit single" : "5 units fixed",
+      weight: item.category === "Frames" ? "1 unit" : "5 units",
+      aisle: item.aisle,
+      barcode: item.barcode,
+      qrCode: item.qrCode,
+      zone: item.zone,
+      delivery: item.delivery,
+      inStock: true,
+      updatedAt: new Date().toISOString(),
+    }));
+    try {
+      localStorage.setItem("auditx_inventory_units", JSON.stringify(inventoryStockMap));
+      localStorage.setItem("auditx_store_manager_inventory", JSON.stringify(itemsList));
+    } catch (e) {
+      console.warn(e);
+    }
+    setActionSuccess("✅ Saved 59 warehouse items: Frames (1 unit single) & Chocolates (5 units fixed)!");
+    setTimeout(() => setActionSuccess(""), 3500);
+  }
+
   // Update Stock Unit helper
   function handleUpdateStockUnit(skuId, delta) {
     playNotificationChime();
     setInventoryStockMap((prev) => {
-      const current = prev[skuId] !== undefined ? prev[skuId] : 45;
+      const targetItem = STORE_MANAGER_CATALOG.find((c) => c.sku === skuId);
+      const defaultUnit = targetItem?.category === "Frames" ? 1 : 5;
+      const current = prev[skuId] !== undefined ? prev[skuId] : defaultUnit;
       const updated = Math.max(0, current + delta);
       const nextMap = { ...prev, [skuId]: updated };
       try {
@@ -487,15 +552,18 @@ export default function WarehouseDashboardPage() {
     };
   });
 
-  // Filtered SKUs
-  const filteredSKUs = CATALOG.filter(
-    (s) =>
+  // Filtered SKUs for Store Manager: ONLY Frames and Chocolates
+  const filteredSKUs = STORE_MANAGER_CATALOG.filter((s) => {
+    const matchesCategory =
+      skuCategoryFilter === "all" || s.category === skuCategoryFilter;
+    const matchesSearch =
       s.name.toLowerCase().includes(skuSearch.toLowerCase()) ||
       s.category.toLowerCase().includes(skuSearch.toLowerCase()) ||
       (s.aisle && s.aisle.toLowerCase().includes(skuSearch.toLowerCase())) ||
       (s.barcode && s.barcode.includes(skuSearch)) ||
-      (s.sku && s.sku.toLowerCase().includes(skuSearch.toLowerCase()))
-  );
+      (s.sku && s.sku.toLowerCase().includes(skuSearch.toLowerCase()));
+    return matchesCategory && matchesSearch;
+  });
 
   return (
     <div style={S.wrap}>
@@ -622,7 +690,7 @@ export default function WarehouseDashboardPage() {
             >
               <span style={S.navItemIcon}>📦</span>
               <span style={S.navItemText}>SKU Stock &amp; Units</span>
-              <span style={S.navBadgeCount}>{CATALOG.length}</span>
+              <span style={S.navBadgeCount}>{STORE_MANAGER_CATALOG.length}</span>
             </button>
 
             <div style={S.navGroupLabel}>COMMERCIAL &amp; QUALITY</div>
@@ -1343,14 +1411,14 @@ export default function WarehouseDashboardPage() {
             </div>
           )}
 
-          {/* TAB 6: SKU INVENTORY & STOCK UNITS (WITH ORDERING APP IMAGES) */}
+          {/* TAB 6: SKU INVENTORY & STOCK UNITS (ONLY FRAMES & CHOCOLATES) */}
           {activeTab === "inventory" && (
             <div style={S.sectionWrap}>
               <div style={S.sectionHeader}>
                 <div>
                   <h2 style={S.sectionHeading}>📦 SKU Inventory &amp; Stock Units</h2>
                   <p style={S.sectionSub}>
-                    Live catalog showing all product images as per the customer ordering app, inside-warehouse aisle bins, and real-time units in stock.
+                    Active dark store warehouse catalog: <b>Frames</b> (all 1 unit single) and <b>Chocolates</b> (all 5 units fixed) with exact matching images and names as the customer ordering app.
                   </p>
                 </div>
                 <div style={S.searchBox}>
@@ -1365,34 +1433,71 @@ export default function WarehouseDashboardPage() {
                 </div>
               </div>
 
+              {/* Category Filter Pills & Save Inventory Button */}
+              <div style={S.skuCategoryTabsRow}>
+                <button
+                  type="button"
+                  style={{ ...S.skuCatPill, ...(skuCategoryFilter === "all" ? S.skuCatPillActive : {}) }}
+                  onClick={() => setSkuCategoryFilter("all")}
+                >
+                  All Items ({STORE_MANAGER_CATALOG.length})
+                </button>
+                <button
+                  type="button"
+                  style={{ ...S.skuCatPill, ...(skuCategoryFilter === "Chocolates" ? S.skuCatPillActive : {}) }}
+                  onClick={() => setSkuCategoryFilter("Chocolates")}
+                >
+                  🍫 Chocolates ({STORE_MANAGER_CATALOG.filter((c) => c.category === "Chocolates").length}) • 5 Units Fixed
+                </button>
+                <button
+                  type="button"
+                  style={{ ...S.skuCatPill, ...(skuCategoryFilter === "Frames" ? S.skuCatPillActive : {}) }}
+                  onClick={() => setSkuCategoryFilter("Frames")}
+                >
+                  🖼️ Frames ({STORE_MANAGER_CATALOG.filter((c) => c.category === "Frames").length}) • 1 Unit Single
+                </button>
+
+                <button
+                  type="button"
+                  style={S.saveInventoryBtn}
+                  onClick={handleSaveAllInventory}
+                  title="Persist inventory changes to Store Manager dashboard"
+                >
+                  💾 Save &amp; Persist Inventory
+                </button>
+              </div>
+
               {/* Inventory Grid with All Ordering Images & Unit Editor */}
               <div style={S.skuGrid}>
                 {filteredSKUs.map((sku) => {
-                  const units = inventoryStockMap[sku.sku] !== undefined ? inventoryStockMap[sku.sku] : (sku.stock || 45);
-                  const isLow = units < 10;
+                  const defaultUnit = sku.category === "Frames" ? 1 : 5;
+                  const units = inventoryStockMap[sku.sku] !== undefined ? inventoryStockMap[sku.sku] : defaultUnit;
+                  const isLow = units < (sku.category === "Frames" ? 1 : 2);
                   const isOut = units === 0;
 
                   return (
                     <div key={sku.sku || sku.id} style={S.skuCard}>
                       <div style={S.skuHeader}>
                         <span style={S.skuCode}>{sku.sku}</span>
-                        <span style={S.skuBin}>{sku.aisle || sku.zone || "F0 - A1 - 001"}</span>
+                        <span style={S.skuBin}>{sku.aisle || sku.zone || "Zone C2"}</span>
                       </div>
 
                       {/* Product Image as per ordering app */}
                       <div style={{ display: "flex", gap: 12, alignItems: "center", margin: "6px 0" }}>
                         <img
-                          src={sku.image || "https://images.unsplash.com/photo-1546548970-71785318a17b?auto=format&fit=crop&w=300&q=80"}
+                          src={sku.image}
                           alt={sku.name}
                           style={S.skuCatalogImg}
                           onError={(e) => {
-                            e.target.src = "https://images.unsplash.com/photo-1546548970-71785318a17b?auto=format&fit=crop&w=300&q=80";
+                            e.target.src = sku.category === "Frames" ? "/frames/programming-stickers.jpg" : "/choclates/beatss.jpg";
                           }}
                         />
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <h4 style={S.skuName}>{sku.name}</h4>
                           <div style={S.skuMeta}>
-                            <b>{sku.category}</b> • {sku.weight || "1 unit"}
+                            <span style={sku.category === "Frames" ? S.badgeFrames : S.badgeChoc}>
+                              {sku.category === "Frames" ? "🖼️ Frames • 1 unit single" : "🍫 Chocolates • 5 units fixed"}
+                            </span>
                           </div>
                           <div style={S.skuPriceTag}>
                             ₹{sku.price} <s style={{ fontSize: 11, color: "#64748b" }}>₹{sku.mrp}</s>
@@ -1405,7 +1510,7 @@ export default function WarehouseDashboardPage() {
                         <div style={S.unitsCountCol}>
                           <span style={S.unitsLabel}>UNITS IN STOCK</span>
                           <span style={{ ...S.unitsNumber, color: isOut ? "#ef4444" : isLow ? "#f59e0b" : "#0c831f" }}>
-                            {units} Units
+                            {units} {sku.category === "Frames" ? "Unit (Single)" : "Units (Fixed)"}
                           </span>
                         </div>
 
@@ -1433,9 +1538,9 @@ export default function WarehouseDashboardPage() {
 
                       {/* Barcode & Status Footer */}
                       <div style={S.skuCardFooter}>
-                        <code style={S.barcodeCodeSmall}>🏷️ {sku.barcode || "89044001001"}</code>
+                        <code style={S.barcodeCodeSmall}>🏷️ {sku.barcode || "89044002001"}</code>
                         <span style={isOut ? S.tagRed : isLow ? S.tagYellow : S.tagGreen}>
-                          {isOut ? "OUT OF STOCK" : isLow ? "LOW STOCK" : "HEALTHY"}
+                          {isOut ? "OUT OF STOCK" : isLow ? "LOW STOCK" : "IN STOCK"}
                         </span>
                       </div>
                     </div>
@@ -1722,6 +1827,12 @@ const S = {
   emptyCTA: { marginTop: 12, background: "#0c831f", color: "#ffffff", border: "none", borderRadius: 8, padding: "8px 16px", fontWeight: 800, fontSize: 12, cursor: "pointer" },
 
   // Inventory Table & Cards
+  skuCategoryTabsRow: { display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginBottom: 16 },
+  skuCatPill: { background: "#F1F5F9", border: "1px solid #CBD5E1", borderRadius: 20, padding: "7px 14px", fontSize: 12, fontWeight: 700, color: "#475569", cursor: "pointer", transition: "all 0.15s ease" },
+  skuCatPillActive: { background: "#0F172A", color: "#FFFFFF", borderColor: "#0F172A", boxShadow: "0 2px 6px rgba(0,0,0,0.15)" },
+  saveInventoryBtn: { marginLeft: "auto", background: "#0c831f", color: "#ffffff", border: "none", borderRadius: 10, padding: "8px 16px", fontSize: 12, fontWeight: 800, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, boxShadow: "0 2px 8px rgba(12,131,31,0.3)" },
+  badgeFrames: { background: "#eff6ff", color: "#1d4ed8", padding: "2px 8px", borderRadius: 4, fontWeight: 800, fontSize: 10.5, border: "1px solid #bfdbfe", display: "inline-block" },
+  badgeChoc: { background: "#fef3c7", color: "#92400e", padding: "2px 8px", borderRadius: 4, fontWeight: 800, fontSize: 10.5, border: "1px solid #fde68a", display: "inline-block" },
   searchBox: { display: "flex", alignItems: "center", gap: 10, background: "#FFFFFF", border: "1px solid #CBD5E1", borderRadius: 10, padding: "8px 14px", width: 320 },
   searchInput: { background: "none", border: "none", color: "#0F172A", fontSize: 13, outline: "none", width: "100%", fontWeight: 600 },
   skuGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 16 },
