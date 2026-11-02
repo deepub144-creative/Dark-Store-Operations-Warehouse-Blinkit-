@@ -311,15 +311,22 @@ export default function AuditxMiniAssistant({ isStoreOpen = true }) {
         }}
         title="Chat with AUDIT'X Mini — RAG AI Assistant"
       >
-        <div style={{ position: "relative", width: 28, height: 28 }}>
-          <span style={{ fontSize: 24 }}>🤖</span>
+        <div style={{ position: "relative", width: 36, height: 36, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <video
+            src="/robot_transparent.webm"
+            autoPlay
+            loop
+            muted
+            playsInline
+            style={{ width: 42, height: 42, objectFit: "contain", pointerEvents: "none" }}
+          />
           <span
             style={{
               position: "absolute",
-              top: -2,
-              right: -2,
-              width: 9,
-              height: 9,
+              top: -1,
+              right: -1,
+              width: 10,
+              height: 10,
               borderRadius: "50%",
               background: "#10b981",
               boxShadow: "0 0 8px #10b981",
@@ -363,7 +370,7 @@ export default function AuditxMiniAssistant({ isStoreOpen = true }) {
             style={{
               background: "linear-gradient(135deg, #0f172a 0%, #1e293b 100%)",
               color: "#ffffff",
-              padding: "14px 16px",
+              padding: "12px 16px",
               display: "flex",
               alignItems: "center",
               justifyContent: "space-between",
@@ -373,18 +380,27 @@ export default function AuditxMiniAssistant({ isStoreOpen = true }) {
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <div
                 style={{
-                  width: 36,
-                  height: 36,
+                  width: 42,
+                  height: 42,
                   borderRadius: "50%",
                   background: "rgba(16, 185, 129, 0.2)",
                   border: "1.5px solid #10b981",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  fontSize: 20,
+                  overflow: "hidden",
+                  boxShadow: "0 0 10px rgba(16, 185, 129, 0.4)",
+                  flexShrink: 0,
                 }}
               >
-                🤖
+                <video
+                  src="/robot_transparent.webm"
+                  autoPlay
+                  loop
+                  muted
+                  playsInline
+                  style={{ width: 44, height: 44, objectFit: "contain", pointerEvents: "none" }}
+                />
               </div>
               <div>
                 <div style={{ fontSize: 14, fontWeight: 900, color: "#ffffff", display: "flex", alignItems: "center", gap: 6 }}>
@@ -463,40 +479,113 @@ export default function AuditxMiniAssistant({ isStoreOpen = true }) {
               background: "#f8fafc",
             }}
           >
+            {/* Robot Welcome Hero Card */}
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
+                background: "linear-gradient(135deg, rgba(16, 185, 129, 0.14) 0%, rgba(15, 23, 42, 0.05) 100%)",
+                border: "1px solid rgba(16, 185, 129, 0.35)",
+                borderRadius: 14,
+                padding: "10px 12px",
+                boxShadow: "0 2px 6px rgba(0,0,0,0.03)",
+              }}
+            >
+              <div style={{ width: 48, height: 48, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <video
+                  src="/robot_transparent.webm"
+                  autoPlay
+                  loop
+                  muted
+                  playsInline
+                  style={{ width: 50, height: 50, objectFit: "contain", pointerEvents: "none" }}
+                />
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 12.5, fontWeight: 900, color: "#065f46", display: "flex", alignItems: "center", gap: 6 }}>
+                  <span>AUDIT'X Mini Live Agent</span>
+                  <span style={{ fontSize: 9.5, background: "#10b981", color: "#ffffff", padding: "1px 6px", borderRadius: 8, fontWeight: 900 }}>
+                    ACTIVE
+                  </span>
+                </div>
+                <div style={{ fontSize: 11, color: "#475569", lineHeight: 1.35, marginTop: 2 }}>
+                  Autonomous RAG engine for Dark Store Tiptur KA-44 operations, SLA rules, queue governance & order tracking.
+                </div>
+              </div>
+            </div>
+
             {messages.map((m) => (
               <div
                 key={m.id}
                 style={{
                   alignSelf: m.sender === "user" ? "flex-end" : "flex-start",
-                  maxWidth: "88%",
+                  maxWidth: "90%",
                   display: "flex",
-                  flexDirection: "column",
-                  alignItems: m.sender === "user" ? "flex-end" : "flex-start",
+                  gap: 8,
+                  alignItems: "flex-start",
+                  flexDirection: m.sender === "user" ? "row-reverse" : "row",
                 }}
               >
+                {m.sender === "bot" && (
+                  <div
+                    style={{
+                      width: 28,
+                      height: 28,
+                      borderRadius: "50%",
+                      background: "rgba(16, 185, 129, 0.15)",
+                      border: "1px solid rgba(16, 185, 129, 0.3)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      flexShrink: 0,
+                      overflow: "hidden",
+                      marginTop: 2,
+                    }}
+                  >
+                    <video
+                      src="/robot_transparent.webm"
+                      autoPlay
+                      loop
+                      muted
+                      playsInline
+                      style={{ width: 30, height: 30, objectFit: "contain", pointerEvents: "none" }}
+                    />
+                  </div>
+                )}
+
                 <div
                   style={{
-                    background: m.sender === "user" ? "#0c831f" : "#ffffff",
-                    color: m.sender === "user" ? "#ffffff" : "#0f172a",
-                    padding: "10px 14px",
-                    borderRadius: m.sender === "user" ? "16px 16px 4px 16px" : "16px 16px 16px 4px",
-                    fontSize: 13,
-                    lineHeight: 1.45,
-                    boxShadow: "0 2px 8px rgba(0, 0, 0, 0.06)",
-                    border: m.sender === "user" ? "none" : "1px solid #e2e8f0",
-                    whiteSpace: "pre-line",
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: m.sender === "user" ? "flex-end" : "flex-start",
+                    maxWidth: "100%",
                   }}
                 >
-                  {m.text}
-                </div>
+                  <div
+                    style={{
+                      background: m.sender === "user" ? "#0c831f" : "#ffffff",
+                      color: m.sender === "user" ? "#ffffff" : "#0f172a",
+                      padding: "10px 14px",
+                      borderRadius: m.sender === "user" ? "16px 16px 4px 16px" : "16px 16px 16px 4px",
+                      fontSize: 13,
+                      lineHeight: 1.45,
+                      boxShadow: "0 2px 8px rgba(0, 0, 0, 0.06)",
+                      border: m.sender === "user" ? "none" : "1px solid #e2e8f0",
+                      whiteSpace: "pre-line",
+                    }}
+                  >
+                    {m.text}
+                  </div>
 
-                <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4, padding: "0 4px" }}>
-                  <span style={{ fontSize: 10, color: "#94a3b8" }}>{m.time}</span>
-                  {m.sources && m.sources.length > 0 && (
-                    <span style={{ fontSize: 9.5, color: "#059669", background: "#d1fae5", padding: "1px 6px", borderRadius: 6, fontWeight: 700 }}>
-                      📚 {m.sources[0]}
-                    </span>
-                  )}
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4, padding: "0 4px" }}>
+                    <span style={{ fontSize: 10, color: "#94a3b8" }}>{m.time}</span>
+                    {m.sources && m.sources.length > 0 && (
+                      <span style={{ fontSize: 9.5, color: "#059669", background: "#d1fae5", padding: "1px 6px", borderRadius: 6, fontWeight: 700 }}>
+                        📚 {m.sources[0]}
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
             ))}
@@ -505,18 +594,50 @@ export default function AuditxMiniAssistant({ isStoreOpen = true }) {
               <div
                 style={{
                   alignSelf: "flex-start",
-                  background: "#ffffff",
-                  padding: "8px 14px",
-                  borderRadius: "14px 14px 14px 4px",
-                  fontSize: 12,
-                  color: "#64748b",
-                  border: "1px solid #e2e8f0",
                   display: "flex",
                   alignItems: "center",
-                  gap: 6,
+                  gap: 8,
                 }}
               >
-                <span>🤖 AUDIT'X Mini is searching knowledge base...</span>
+                <div
+                  style={{
+                    width: 28,
+                    height: 28,
+                    borderRadius: "50%",
+                    background: "rgba(16, 185, 129, 0.15)",
+                    border: "1px solid rgba(16, 185, 129, 0.3)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    flexShrink: 0,
+                    overflow: "hidden",
+                  }}
+                >
+                  <video
+                    src="/robot_transparent.webm"
+                    autoPlay
+                    loop
+                    muted
+                    playsInline
+                    style={{ width: 30, height: 30, objectFit: "contain", pointerEvents: "none" }}
+                  />
+                </div>
+                <div
+                  style={{
+                    background: "#ffffff",
+                    padding: "8px 14px",
+                    borderRadius: "14px 14px 14px 4px",
+                    fontSize: 12,
+                    color: "#059669",
+                    fontWeight: 700,
+                    border: "1px solid #a7f3d0",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                  }}
+                >
+                  <span>AUDIT'X Mini is querying RAG index...</span>
+                </div>
               </div>
             )}
             <div ref={messagesEndRef} />
