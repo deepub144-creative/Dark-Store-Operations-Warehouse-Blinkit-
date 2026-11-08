@@ -32,9 +32,13 @@ export default function DeliveryCaptainApp() {
   const [activeStep, setActiveStep] = useState("awaiting_orders"); // awaiting_orders | rack_verification | en_route | customer_handover | delivered
   const [elapsedSec, setElapsedSec] = useState(0);
   
-  // 8-Minute Delivery Countdown (8:00 mins = 480 seconds)
-  const CAPTAIN_SLA_SECONDS = 480;
+  // 6-Minute Rider Countdown (6:00 mins = 360 seconds) + Auto-reducing ETA like Ordering Tracking Page
+  const CAPTAIN_SLA_SECONDS = 360;
   const [remainingSec, setRemainingSec] = useState(CAPTAIN_SLA_SECONDS);
+  const [arrivingMinutes, setArrivingMinutes] = useState(6);
+  const [distanceLeftKm, setDistanceLeftKm] = useState(1.5);
+  const [doorstepSeconds, setDoorstepSeconds] = useState(null); // 15 -> 0 when almost at doorstep
+  const [riderArrivedBar, setRiderArrivedBar] = useState(false);
   
   // Simulated Tiptur Road Landmarks
   const TIPTUR_WAYPOINTS = [
@@ -104,7 +108,7 @@ export default function DeliveryCaptainApp() {
     };
   }, [activeOrder]);
 
-  // 8-Minute SLA Countdown & Transit Simulation
+  // 6-Minute Normal Countdown & Auto-Reducing Bar (like Ordering App Tracking Page)
   useEffect(() => {
     if (activeOrder && activeStep === "en_route") {
       timerRef.current = setInterval(() => {
@@ -112,7 +116,7 @@ export default function DeliveryCaptainApp() {
         setRemainingSec((prev) => (prev > 0 ? prev - 1 : 0));
       }, 1000);
 
-      // Simulate moving across Tiptur landmarks
+      // Simulate moving across Tiptur landmarks & reducing 1.5 km distance
       transitRef.current = setInterval(() => {
         setTransitProgress((prev) => {
           const next = Math.min(100, prev + 2.5);
@@ -121,6 +125,8 @@ export default function DeliveryCaptainApp() {
             Math.floor((next / 100) * TIPTUR_WAYPOINTS.length)
           );
           setCurrentWaypointIdx(nextIdx);
+          const nextDist = Math.max(0.1, Number((1.5 * (1 - next / 100)).toFixed(1)));
+          setDistanceLeftKm(next >= 100 ? 0 : nextDist);
           return next;
         });
       }, 2000);
@@ -134,6 +140,38 @@ export default function DeliveryCaptainApp() {
       if (transitRef.current) clearInterval(transitRef.current);
     };
   }, [activeOrder, activeStep]);
+
+  // Auto-reduce arrivingMinutes naturally (6 -> 5 -> 4 -> 3 -> 2 -> 1 -> 15s -> Arrived) like Ordering App Tracking Page
+  useEffect(() => {
+    if (!activeOrder || activeStep !== "en_route") return;
+    if (riderArrivedBar || doorstepSeconds !== null) return;
+
+    const autoReduceTimer = setInterval(() => {
+      setArrivingMinutes((prev) => {
+        if (prev > 1) return prev - 1;
+        setDoorstepSeconds(15);
+        return 1;
+      });
+    }, arrivingMinutes <= 2 ? 12000 : 18000);
+
+    return () => clearInterval(autoReduceTimer);
+  }, [activeOrder, activeStep, arrivingMinutes, doorstepSeconds, riderArrivedBar]);
+
+  // 15-second doorstep final countdown -> Rider arrived to location
+  useEffect(() => {
+    if (doorstepSeconds === null || riderArrivedBar) return;
+    if (doorstepSeconds <= 0) {
+      setRiderArrivedBar(true);
+      setDistanceLeftKm(0);
+      setTransitProgress(100);
+      setCurrentWaypointIdx(TIPTUR_WAYPOINTS.length - 1);
+      return;
+    }
+    const t = setTimeout(() => {
+      setDoorstepSeconds((s) => (s !== null && s > 0 ? s - 1 : 0));
+    }, 1000);
+    return () => clearTimeout(t);
+  }, [doorstepSeconds, riderArrivedBar]);
 
   function handleSelectStagedOrder(order) {
     stopOrderAlarm();
@@ -168,6 +206,10 @@ export default function DeliveryCaptainApp() {
       captainName: "Sinchana B R",
       captainPhone: "8088553237",
       captainMessage: "Hi I am Sinchana B R, your order captain on the way coming soon!",
+      remainingMins: 1,
+      estimatedDeliveryMins: 1,
+      riderEtaMins: 6,
+      distanceKm: 1.5,
       dispatchedAt: new Date().toISOString(),
     };
 
@@ -178,7 +220,20 @@ export default function DeliveryCaptainApp() {
       captainName: "Sinchana B R",
       captainPhone: "8088553237",
       captainMessage: "Hi I am Sinchana B R, your order captain on the way coming soon!",
+      remainingMins: 1,
+      estimatedDeliveryMins: 1,
+      riderEtaMins: 6,
+      distanceKm: 1.5,
       dispatchedAt: new Date().toISOString(),
+    });
+
+    broadcastEvent("FAST_DELIVERY_STARTED", {
+      orderId: activeOrder.id,
+      orderNumber: activeOrder.orderNumber || activeOrder.id,
+      captainName: "Sinchana B R",
+      remainingMins: 1,
+      riderEtaMins: 6,
+      distanceKm: 1.5,
     });
 
     if (db) {
@@ -190,6 +245,10 @@ export default function DeliveryCaptainApp() {
           captainName: "Sinchana B R",
           captainPhone: "8088553237",
           captainMessage: "Hi I am Sinchana B R, your order captain on the way coming soon!",
+          remainingMins: 1,
+          estimatedDeliveryMins: 1,
+          riderEtaMins: 6,
+          distanceKm: 1.5,
           dispatchedAt: new Date().toISOString(),
         });
       } catch (e) {
@@ -198,11 +257,15 @@ export default function DeliveryCaptainApp() {
     }
 
     setRemainingSec(CAPTAIN_SLA_SECONDS);
+    setArrivingMinutes(6);
+    setDistanceLeftKm(1.5);
+    setDoorstepSeconds(null);
+    setRiderArrivedBar(false);
     setElapsedSec(0);
     setTransitProgress(0);
     setCurrentWaypointIdx(0);
     setActiveStep("en_route");
-    setActionSuccess("🚀 Pickup confirmed from Rack! 8-Minute last-mile timer started.");
+    setActionSuccess("🚀 Pickup confirmed from Rack! 1.5 kms left • 6-Minute auto-reducing countdown started.");
     setTimeout(() => setActionSuccess(""), 3500);
   }
 
@@ -217,6 +280,7 @@ export default function DeliveryCaptainApp() {
       deliveredAt: new Date().toISOString(),
       deliveryDurationSec: elapsedSec,
       totalSlaSec: (activeOrder.pickTimeSec || 110) + elapsedSec,
+      needsCustomerRating: true,
     };
 
     updateLiveOrder(activeOrder.id, {
@@ -225,7 +289,25 @@ export default function DeliveryCaptainApp() {
       deliveredAt: new Date().toISOString(),
       deliveryDurationSec: elapsedSec,
       totalSlaSec: (activeOrder.pickTimeSec || 110) + elapsedSec,
+      needsCustomerRating: true,
     });
+
+    broadcastEvent("ORDER_DELIVERED", deliveredOrder);
+
+    try {
+      const lastRaw = localStorage.getItem("auditx_customer_last_order");
+      if (lastRaw) {
+        const parsed = JSON.parse(lastRaw);
+        if ((parsed.id || parsed.orderId) === (activeOrder.id || activeOrder.orderId)) {
+          localStorage.setItem(
+            "auditx_customer_last_order",
+            JSON.stringify({ ...parsed, ...deliveredOrder })
+          );
+        }
+      }
+    } catch (e) {
+      console.warn(e);
+    }
 
     if (db) {
       try {
@@ -235,6 +317,7 @@ export default function DeliveryCaptainApp() {
           deliveredAt: new Date().toISOString(),
           deliveryDurationSec: elapsedSec,
           totalSlaSec: (activeOrder.pickTimeSec || 110) + elapsedSec,
+          needsCustomerRating: true,
         });
       } catch (e) {
         console.warn(e);
@@ -242,12 +325,16 @@ export default function DeliveryCaptainApp() {
     }
 
     setActiveStep("delivered");
-    setActionSuccess(`🎉 ORDER #${activeOrder.orderNumber || activeOrder.id} DELIVERED! Handover verified with Customer.`);
+    setActionSuccess(`🎉 ORDER #${activeOrder.orderNumber || activeOrder.id} DELIVERED! Customer Rating prompt sent to Ordering App.`);
   }
 
   function handleResetForNextDelivery() {
     setActiveOrder(null);
     setActiveStep("awaiting_orders");
+    setArrivingMinutes(6);
+    setDistanceLeftKm(1.5);
+    setDoorstepSeconds(null);
+    setRiderArrivedBar(false);
     setActionSuccess("");
   }
 
@@ -340,14 +427,88 @@ export default function DeliveryCaptainApp() {
                     ⚡
                   </div>
                   <div style={S.etaTitle}>
-                    Delivery in <span style={S.etaMinutes}>8 MINS</span>
+                    {riderArrivedBar ? (
+                      <>Rider <span style={S.etaMinutes}>ARRIVED AT LOCATION</span></>
+                    ) : doorstepSeconds !== null ? (
+                      <>Almost to doorstep • <span style={S.etaMinutes}>{doorstepSeconds}s</span></>
+                    ) : (
+                      <>Delivery in <span style={S.etaMinutes}>{arrivingMinutes} {arrivingMinutes === 1 ? "MIN" : "MINS"}</span></>
+                    )}
                   </div>
                 </div>
                 <div style={S.addressSnippetRow}>
-                  <span>📍 GPS Live • Tiptur Town Fleet KA44</span>
+                  <span>
+                    🛵 {riderArrivedBar ? "Arrived at Customer Location • Verify Handover QR" : `${distanceLeftKm} kms left to the location • Tiptur Fleet KA44`}
+                  </span>
                 </div>
               </div>
               <span style={S.roleBadgeTag}>ORDER CAPTAIN</span>
+            </div>
+
+            {/* Live Ordering-App-Style Rider Progress Bar Message */}
+            <div
+              style={{
+                marginTop: 8,
+                background: "linear-gradient(135deg, #0f172a 0%, #1e293b 100%)",
+                borderRadius: 12,
+                padding: "9px 12px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 8,
+                border: "1.5px solid rgba(12, 131, 31, 0.65)",
+                boxShadow: "0 4px 14px rgba(15, 23, 42, 0.25)",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, flex: 1 }}>
+                <div
+                  style={{
+                    width: 30,
+                    height: 30,
+                    borderRadius: 8,
+                    background: "rgba(12, 131, 31, 0.25)",
+                    border: "1px solid rgba(34, 197, 94, 0.5)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    flexShrink: 0,
+                  }}
+                >
+                  <IconRealisticScooter size={18} color="#4ade80" animated={true} />
+                </div>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{ fontSize: 12, fontWeight: 900, color: "#ffffff", letterSpacing: "-0.1px" }}>
+                    {riderArrivedBar
+                      ? "Rider arrived to customer location • Scan Handover QR"
+                      : doorstepSeconds !== null
+                      ? `Almost to customer doorstep • ${doorstepSeconds} seconds`
+                      : `${distanceLeftKm} kms left to the location • Taking ${arrivingMinutes} ${arrivingMinutes === 1 ? "minute" : "minutes"}`}
+                  </div>
+                  <div style={{ fontSize: 10.5, color: "#94a3b8", fontWeight: 600 }}>
+                    {activeOrder
+                      ? `Order #${activeOrder.orderNumber || activeOrder.id} • Auto-reducing countdown (${minStr}:${secStr})`
+                      : "1.5 kms left to the location • Normal 6-min auto-reduce SLA ready"}
+                  </div>
+                </div>
+              </div>
+              <span
+                style={{
+                  background: riderArrivedBar ? "#22c55e" : "rgba(34, 197, 94, 0.18)",
+                  color: riderArrivedBar ? "#ffffff" : "#4ade80",
+                  fontSize: 10.5,
+                  fontWeight: 900,
+                  padding: "4px 8px",
+                  borderRadius: 6,
+                  whiteSpace: "nowrap",
+                  border: "1px solid rgba(34, 197, 94, 0.4)",
+                }}
+              >
+                {riderArrivedBar
+                  ? "📍 ARRIVED"
+                  : doorstepSeconds !== null
+                  ? `⚡ ${doorstepSeconds}s`
+                  : `⚡ ${arrivingMinutes} MIN`}
+              </span>
             </div>
           </div>
         </header>
@@ -632,7 +793,7 @@ export default function DeliveryCaptainApp() {
               {/* Slide to confirm pickup */}
               <div style={{ marginTop: 16 }}>
                 <SlideButton
-                  text="SLIDE TO CONFIRM PICKUP & START 8-MIN DELIVERY"
+                  text="SLIDE TO CONFIRM PICKUP & START 6-MIN DELIVERY"
                   color="#0c831f"
                   icon={<IconRealisticDeliveryBag size={24} color="#ffffff" />}
                   onSlideComplete={handleConfirmPickupAndStartDelivery}
@@ -640,25 +801,33 @@ export default function DeliveryCaptainApp() {
               </div>
 
               <button style={S.quickPickupBtn} onClick={handleConfirmPickupAndStartDelivery}>
-                Confirm Pickup &amp; Start 8-Min Delivery →
+                Confirm Pickup &amp; Start 6-Min Delivery (1.5 kms left) →
               </button>
             </div>
           )}
 
-          {/* STEP 3: EN ROUTE - 8-MINUTE LIVE TRACKER ACROSS NAMMA TIPTUR */}
+          {/* STEP 3: EN ROUTE - 6-MINUTE AUTO-REDUCING LIVE TRACKER ACROSS NAMMA TIPTUR */}
           {activeStep === "en_route" && activeOrder && (
             <div>
-              {/* 8-Minute Countdown SLA Card */}
+              {/* 6-Minute Auto-Reducing Countdown SLA Card */}
               <div style={S.slaCountdownCard}>
                 <div style={S.slaClockRow}>
                   <div>
                     <div style={S.slaTitle}>
                       <IconRealisticScooter size={24} color="#0c831f" animated={true} style={{ marginRight: 8 }} />
-                      8-MINUTE EXPRESS DELIVERY SLA
+                      {riderArrivedBar
+                        ? "RIDER ARRIVED TO CUSTOMER LOCATION"
+                        : doorstepSeconds !== null
+                        ? `ALMOST TO DOORSTEP • ${doorstepSeconds} SECONDS`
+                        : `${distanceLeftKm} KMS LEFT • TAKING ${arrivingMinutes} ${arrivingMinutes === 1 ? "MINUTE" : "MINUTES"}`}
                     </div>
-                    <div style={S.slaSubtitle}>Total 10m Model (2m Pick + 8m Last-Mile)</div>
+                    <div style={S.slaSubtitle}>
+                      Auto-reducing 6-Min Rider Countdown (Like Ordering App Tracking Page)
+                    </div>
                   </div>
-                  <div style={S.slaDigits}>{minStr}:{secStr}</div>
+                  <div style={S.slaDigits}>
+                    {doorstepSeconds !== null && !riderArrivedBar ? `00:${String(doorstepSeconds).padStart(2, "0")}` : `${minStr}:${secStr}`}
+                  </div>
                 </div>
 
                 {/* Progress bar */}
@@ -820,13 +989,41 @@ export default function DeliveryCaptainApp() {
             </div>
           )}
 
-          {/* STEP 4: DELIVERED CELEBRATION */}
+          {/* STEP 4: DELIVERED CELEBRATION + TASKSEARCHING.MP4 */}
           {activeStep === "delivered" && (
             <div style={S.deliveredCard}>
+              {/* Play tasksearching.mp4 when all tasks are completed in Rider app */}
+              <div style={{ textAlign: "center", marginBottom: 14 }}>
+                <video
+                  autoPlay
+                  loop
+                  muted
+                  playsInline
+                  style={{
+                    width: "100%",
+                    maxWidth: 320,
+                    height: 185,
+                    objectFit: "cover",
+                    borderRadius: 14,
+                    boxShadow: "0 8px 24px rgba(0,0,0,0.14)",
+                    display: "inline-block",
+                    border: "1.5px solid #86efac",
+                    background: "#080c14",
+                  }}
+                >
+                  <source src="/tasksearching.mp4" type="video/mp4" />
+                  <source src="/task-searching.mp4" type="video/mp4" />
+                  <source src="/videos/task-searching.mp4" type="video/mp4" />
+                </video>
+                <div style={{ fontSize: 11.5, fontWeight: 800, color: "#0c831f", marginTop: 6 }}>
+                  ⚡ All Tasks Completed • Searching Next Live Rider Dispatch Task...
+                </div>
+              </div>
+
               <div style={S.celebrateIcon}>🎉</div>
               <h2 style={S.deliveredTitle}>Order Successfully Delivered!</h2>
               <p style={S.deliveredSub}>
-                Great job Sinchana B R! Order #{activeOrder?.orderNumber || activeOrder?.id} was safely delivered to the customer in Namma Tiptur under SLA!
+                Great job Sinchana B R! Order #{activeOrder?.orderNumber || activeOrder?.id} was safely delivered to the customer in Namma Tiptur under SLA! Customer can now rate the rider &amp; items in the Ordering App.
               </p>
 
               <div style={S.slaResultBox}>
@@ -835,12 +1032,12 @@ export default function DeliveryCaptainApp() {
                   <b style={S.slaItemVal}>{activeOrder?.pickTimeSec || 104}s (&lt; 2:00 mins)</b>
                 </div>
                 <div style={S.slaResultItem}>
-                  <span style={S.slaItemLabel}>Last-Mile Delivery Time</span>
-                  <b style={S.slaItemVal}>{elapsedSec}s (&lt; 8:00 mins)</b>
+                  <span style={S.slaItemLabel}>Last-Mile Delivery Time (1.5 kms)</span>
+                  <b style={S.slaItemVal}>{elapsedSec}s (&lt; 6:00 mins)</b>
                 </div>
                 <div style={S.slaResultItem}>
                   <span style={S.slaItemLabel}>Total Delivery Turnaround</span>
-                  <b style={{ color: "#0c831f", fontSize: 16 }}>{(activeOrder?.pickTimeSec || 104) + elapsedSec}s / 600s SLA</b>
+                  <b style={{ color: "#0c831f", fontSize: 16 }}>{(activeOrder?.pickTimeSec || 104) + elapsedSec}s / 480s SLA</b>
                 </div>
               </div>
 

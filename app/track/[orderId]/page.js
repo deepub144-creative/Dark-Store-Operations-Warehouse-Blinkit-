@@ -4,7 +4,7 @@ import { useEffect, useState, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { doc, onSnapshot, addDoc, collection } from "firebase/firestore";
 import { db } from "@/lib/firebaseClient";
-import { subscribeToEvents, broadcastEvent, subscribeToLiveOrders, getAllLiveOrders } from "@/lib/realtimeSync";
+import { subscribeToEvents, broadcastEvent, subscribeToLiveOrders, getAllLiveOrders, updateLiveOrder } from "@/lib/realtimeSync";
 import { playSuccessChime, playNotificationChime } from "@/lib/soundSystem";
 import AuditxLogo from "@/components/AuditxLogo";
 import {
@@ -49,20 +49,49 @@ export default function TrackOrderPage() {
     setOrderPlacedTime(now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }));
   }, []);
 
+  // Tracking stages:
+  // "packing" (initial 2-min OD Picker phase)
+  // -> "one_minute" (after OD Picker handover to rider, reduce to 1 minute)
+  // -> "almost_doorstep" (2-min / 1-min countdown over -> "Almost to your doorstep • 15 seconds")
+  // -> "rider_arrived" ("Rider arrived to your location" in bar until user shows Handover QR Code to rider)
+  // -> "delivered" ("Rate the Rider & Item")
+  const [trackingStage, setTrackingStage] = useState("packing");
+  const [oneMinCountdownSec, setOneMinCountdownSec] = useState(60);
+  const [doorstepCountdownSec, setDoorstepCountdownSec] = useState(15);
+  const [pickerWindowSec, setPickerWindowSec] = useState(120);
+
+  // Rider & Item Rating State (shown after doorstep delivery)
+  const [riderRating, setRiderRating] = useState(5);
+  const [itemRatings, setItemRatings] = useState({});
+  const [selectedCompliments, setSelectedCompliments] = useState(["Superfast Delivery", "Polite Rider"]);
+  const [ratingComment, setRatingComment] = useState("");
+  const [ratingSubmitted, setRatingSubmitted] = useState(false);
+
   // Real-time live order subscription & local synchronization
   useEffect(() => {
     function processOrderEta(match) {
       if (!match) return;
       setOrder(match);
-      // Once Thrupthi K S picked the item, overall 10-minute timings decrease to 3 minutes!
-      if (
+      if (match.status === "delivered") {
+        setTrackingStage("delivered");
+        setArrivingMinutes(0);
+        setRiderProgress(100);
+        if (match.customerRatingSubmitted) {
+          setRatingSubmitted(true);
+        }
+      } else if (
         match.status === "staged" ||
         match.status === "picked" ||
         match.status === "en_route" ||
-        match.status === "dispatched"
+        match.status === "dispatched" ||
+        match.handoverToRiderCompleted
       ) {
-        setArrivingMinutes(match.remainingMins || 3);
-        setRiderProgress((prev) => Math.max(prev, 65));
+        // After OD Picker task handover to rider -> reduce time to 1 minute!
+        setArrivingMinutes(1);
+        setRiderProgress((prev) => Math.max(prev, 75));
+        setTrackingStage((prev) =>
+          prev === "packing" ? "one_minute" : prev
+        );
       } else if (match.remainingMins) {
         setArrivingMinutes(match.remainingMins);
       }
@@ -96,15 +125,28 @@ export default function TrackOrderPage() {
     });
 
     const unsubEvents = subscribeToEvents((data) => {
+      const payloadOrderId = data.orderId || data.payload?.orderId || data.payload?.id;
       if (
-        (data.type === "ORDER_STAGED" || data.type === "ORDER_PICKED" || data.type === "FAST_DELIVERY_STARTED") &&
-        (!data.orderId || data.orderId === orderId)
+        (data.type === "ORDER_STAGED" ||
+          data.type === "PICKER_HANDOVER_COMPLETED" ||
+          data.type === "ORDER_PICKED" ||
+          data.type === "FAST_DELIVERY_STARTED") &&
+        (!payloadOrderId || payloadOrderId === orderId)
       ) {
-        // Thrupthi K S completed picking! Overall delivery time drops from 10m to 3m
-        setArrivingMinutes(3);
-        setRiderProgress(65);
-        triggerToast("⚡ Items Picked by Thrupthi K S! Delivery time decreased to 3 mins!");
+        // OD Picker completed task & handed over to rider -> reduce time to 1 minute!
+        setArrivingMinutes(1);
+        setOneMinCountdownSec(60);
+        setTrackingStage((prev) => (prev === "delivered" ? "delivered" : "one_minute"));
+        setRiderProgress(78);
+        triggerToast("⚡ OD Picker Handover Complete! Delivery time reduced to 1 minute!");
         playNotificationChime();
+      }
+      if (data.type === "ORDER_DELIVERED" && (!payloadOrderId || payloadOrderId === orderId)) {
+        setOrder((prev) => ({ ...(prev || {}), ...(data.payload || {}), status: "delivered", stage: "Delivered" }));
+        setTrackingStage("delivered");
+        setRiderProgress(100);
+        playSuccessChime();
+        triggerToast("🎉 Order Delivered at Doorstep! Please rate Rider Sinchana B R & your items.");
       }
     });
 
@@ -115,18 +157,72 @@ export default function TrackOrderPage() {
   }, [orderId]);
 
   // "Arriving in 10 minutes" auto-reducing without counting background exact seconds timeline
-  const [arrivingMinutes, setArrivingMinutes] = useState(10);
+  const [arrivingMinutes, setArrivingMinutes] = useState(6);
   const [cancelSecondsLeft, setCancelSecondsLeft] = useState(60);
   const [isCancelled, setIsCancelled] = useState(false);
 
-  // Auto reduce arrival minutes naturally
+  // 2-minute OD Picker fixed window: once 2-min picker window finishes (or OD Picker hands over), transition to 1-min -> 15s doorstep -> rider arrived
   useEffect(() => {
+    if (trackingStage !== "packing") return;
+    const timer = setInterval(() => {
+      setPickerWindowSec((prev) => {
+        if (prev <= 1) {
+          setArrivingMinutes(1);
+          setOneMinCountdownSec(60);
+          setTrackingStage("one_minute");
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [trackingStage]);
+
+  // 1-Minute post-handover countdown -> transitions to "Almost to your doorstep • 15 seconds"
+  useEffect(() => {
+    if (trackingStage !== "one_minute") return;
+    const timer = setInterval(() => {
+      setOneMinCountdownSec((prev) => {
+        if (prev <= 1) {
+          setDoorstepCountdownSec(15);
+          setTrackingStage("almost_doorstep");
+          setRiderProgress(92);
+          playNotificationChime();
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [trackingStage]);
+
+  // 15-Second "Almost to your doorstep" countdown -> transitions to "Rider arrived to your location"
+  useEffect(() => {
+    if (trackingStage !== "almost_doorstep") return;
+    const timer = setInterval(() => {
+      setDoorstepCountdownSec((prev) => {
+        if (prev <= 1) {
+          setTrackingStage("rider_arrived");
+          setRiderProgress(100);
+          playSuccessChime();
+          triggerToast("🛵 Rider arrived to your location! Show Handover QR Code to complete delivery.");
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [trackingStage]);
+
+  // Auto reduce arrival minutes naturally while in initial packing state
+  useEffect(() => {
+    if (trackingStage !== "packing") return;
     const interval = setInterval(() => {
       setArrivingMinutes((prev) => (prev > 1 ? prev - 1 : 1));
-      setRiderProgress((prev) => (prev < 90 ? prev + 3 : prev));
-    }, arrivingMinutes <= 3 ? 30000 : 45000);
+      setRiderProgress((prev) => (prev < 70 ? prev + 5 : prev));
+    }, 20000);
     return () => clearInterval(interval);
-  }, [arrivingMinutes]);
+  }, [trackingStage]);
 
   // 60-second cancellation window timer
   useEffect(() => {
@@ -273,18 +369,78 @@ export default function TrackOrderPage() {
   const grandTotalAmount =
     activeOrder.totalAmount || itemsSubtotal + deliveryFee + handlingFee;
 
-  const isDelivered = activeOrder.status === "delivered";
-  const isDispatched = activeOrder.status === "dispatched" || isDelivered;
+  const isDelivered = activeOrder.status === "delivered" || trackingStage === "delivered";
+  const isDispatched = activeOrder.status === "dispatched" || isDelivered || trackingStage === "one_minute" || trackingStage === "almost_doorstep" || trackingStage === "rider_arrived";
   const isStaged = activeOrder.status === "staged" || isDispatched;
   const isPicking = activeOrder.status === "picking" || isStaged;
 
+  function handleSubmitCustomerRating(e) {
+    if (e) e.preventDefault();
+    playSuccessChime();
+    const ratingPayload = {
+      orderId: activeOrder.id || orderId,
+      orderNumber: activeOrder.orderNumber || orderId,
+      riderName: "Sinchana B R",
+      riderRating,
+      itemRatings,
+      compliments: selectedCompliments,
+      comment: ratingComment.trim(),
+      ratedAt: new Date().toISOString(),
+    };
+    try {
+      const prevRaw = localStorage.getItem("auditx_customer_ratings");
+      const prev = prevRaw ? JSON.parse(prevRaw) : [];
+      localStorage.setItem("auditx_customer_ratings", JSON.stringify([ratingPayload, ...prev]));
+    } catch (err) {
+      console.warn(err);
+    }
+    updateLiveOrder(activeOrder.id || orderId, {
+      customerRatingSubmitted: true,
+      riderRating,
+      itemRatings,
+    });
+    broadcastEvent("ORDER_RATED", ratingPayload);
+    setRatingSubmitted(true);
+    triggerToast("⭐ Thank you! Your rating for Rider Sinchana B R & items has been saved!");
+  }
+
+  function handleConfirmHandoverFromCustomerQr() {
+    playSuccessChime();
+    const updated = {
+      ...activeOrder,
+      status: "delivered",
+      stage: "Delivered",
+      deliveredAt: new Date().toISOString(),
+      needsCustomerRating: true,
+    };
+    setOrder(updated);
+    setTrackingStage("delivered");
+    updateLiveOrder(activeOrder.id || orderId, {
+      status: "delivered",
+      stage: "Delivered",
+      deliveredAt: new Date().toISOString(),
+      needsCustomerRating: true,
+    });
+    broadcastEvent("ORDER_DELIVERED", updated);
+    triggerToast("🎉 Handover QR Verified! Please rate Rider Sinchana B R & your items below.");
+  }
+
   // Dynamic status text for top green header
-  let phaseText = "Packing your order (10 mins SLA)";
-  if (isDelivered) phaseText = "Order Delivered";
-  else if (isDispatched) phaseText = "Order Out for Delivery";
-  else if (isStaged || activeOrder.status === "picked") phaseText = "Picked by Thrupthi K S • ETA decreased to 3 mins!";
+  let phaseText = `OD Picker Thrupthi K S packing (${Math.floor(pickerWindowSec / 60)}:${String(pickerWindowSec % 60).padStart(2, "0")} fixed task)`;
+  if (isDelivered) phaseText = "Doorstep Handover Verified • Rate Rider & Items";
+  else if (trackingStage === "rider_arrived") phaseText = "Show Handover QR Code to Rider Sinchana B R";
+  else if (trackingStage === "almost_doorstep") phaseText = "2-Min Countdown Over • Final Doorstep Approach";
+  else if (trackingStage === "one_minute" || isStaged || activeOrder.status === "picked")
+    phaseText = "OD Picker Handover Complete • Reduced to 1 Minute!";
 
   let arrivalTitle = `Arriving in ${arrivingMinutes} ${arrivingMinutes === 1 ? "minute" : "minutes"}`;
+  if (trackingStage === "one_minute") {
+    arrivalTitle = `Arriving in 1 minute (${oneMinCountdownSec}s)`;
+  } else if (trackingStage === "almost_doorstep") {
+    arrivalTitle = `Almost to your doorstep • ${doorstepCountdownSec} seconds`;
+  } else if (trackingStage === "rider_arrived") {
+    arrivalTitle = "Rider arrived to your location";
+  }
   if (isDelivered) arrivalTitle = "Delivered to your doorstep";
   if (isCancelled) arrivalTitle = "Order Cancelled";
 
@@ -655,13 +811,31 @@ export default function TrackOrderPage() {
             </div>
 
             {/* Handover QR Code for Sinchana */}
-            <div style={S.handoverQrBox}>
+            <div
+              id="handover-qr-section"
+              style={{
+                ...S.handoverQrBox,
+                ...(trackingStage === "rider_arrived" && !isDelivered
+                  ? {
+                      border: "2.5px solid #0c831f",
+                      background: "#f0fdf4",
+                      boxShadow: "0 8px 24px rgba(12, 131, 31, 0.18)",
+                    }
+                  : {}),
+              }}
+            >
               <div style={S.qrTitleRow}>
-                <span style={S.qrTitle}>Delivery Handover QR</span>
-                <span style={S.qrScanPill}>Scan upon arrival</span>
+                <span style={S.qrTitle}>
+                  {trackingStage === "rider_arrived" && !isDelivered
+                    ? "🛵 Rider Arrived! Show Handover QR Now"
+                    : "Delivery Handover QR"}
+                </span>
+                <span style={S.qrScanPill}>
+                  {isDelivered ? "Verified ✓" : trackingStage === "rider_arrived" ? "Rider Waiting at Doorstep" : "Scan upon arrival"}
+                </span>
               </div>
               <p style={S.qrSub}>
-                Show this code to your <b>Delivery Partner</b> at doorstep to complete verification:
+                Show this code to your <b>Delivery Partner (Sinchana B R)</b> at doorstep to complete verification:
               </p>
               <div style={S.qrGraphicWrapper}>
                 <img
@@ -678,9 +852,290 @@ export default function TrackOrderPage() {
                 />
                 <code style={S.qrTextCode}>AUDITX-{activeOrder.orderNumber || orderId}</code>
               </div>
+
+              {!isDelivered && (
+                <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center" }}>
+                  {trackingStage !== "rider_arrived" && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (trackingStage === "packing") {
+                          setArrivingMinutes(1);
+                          setOneMinCountdownSec(60);
+                          setTrackingStage("one_minute");
+                          playNotificationChime();
+                        } else if (trackingStage === "one_minute") {
+                          setDoorstepCountdownSec(15);
+                          setTrackingStage("almost_doorstep");
+                          playNotificationChime();
+                        } else {
+                          setTrackingStage("rider_arrived");
+                          playSuccessChime();
+                        }
+                      }}
+                      style={{
+                        background: "#eff6ff",
+                        color: "#1d4ed8",
+                        border: "1px solid #bfdbfe",
+                        borderRadius: 8,
+                        padding: "7px 12px",
+                        fontSize: 11.5,
+                        fontWeight: 800,
+                        cursor: "pointer",
+                      }}
+                    >
+                      ⚡ Next Stage ({trackingStage === "packing" ? "1 Min Handover" : trackingStage === "one_minute" ? "15s Doorstep" : "Rider Arrived"})
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={handleConfirmHandoverFromCustomerQr}
+                    style={{
+                      background: "#0c831f",
+                      color: "#ffffff",
+                      border: "none",
+                      borderRadius: 8,
+                      padding: "8px 14px",
+                      fontSize: 12,
+                      fontWeight: 800,
+                      cursor: "pointer",
+                      boxShadow: "0 3px 10px rgba(12, 131, 31, 0.28)",
+                    }}
+                  >
+                    ✅ Rider Scanned Handover QR (Complete Delivery)
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </section>
+
+        {/* ── 6. RATE THE RIDER & ORDERED ITEMS CARD (APPEARS AFTER DOORSTEP DELIVERY) ── */}
+        {isDelivered && (
+          <section id="rate-rider-items-section" style={S.cardContainer}>
+            <div
+              style={{
+                background: "#ffffff",
+                borderRadius: 16,
+                padding: 18,
+                border: "2px solid #86efac",
+                boxShadow: "0 10px 28px rgba(12, 131, 31, 0.14)",
+              }}
+            >
+              {ratingSubmitted ? (
+                <div style={{ textAlign: "center", padding: "12px 6px" }}>
+                  <div style={{ fontSize: 34, marginBottom: 6 }}>🌟</div>
+                  <h3 style={{ margin: 0, fontSize: 17, fontWeight: 900, color: "#0f172a" }}>
+                    Thank You for Rating Your Order!
+                  </h3>
+                  <p style={{ margin: "6px 0 0", fontSize: 12.5, color: "#475569" }}>
+                    You rated Delivery Partner <b>Sinchana B R</b> {riderRating}/5 ★ and reviewed {(activeOrder.items || []).length} item(s).
+                  </p>
+                </div>
+              ) : (
+                <form onSubmit={handleSubmitCustomerRating}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+                    <div>
+                      <span
+                        style={{
+                          fontSize: 10,
+                          fontWeight: 900,
+                          background: "#dcfce7",
+                          color: "#15803d",
+                          padding: "3px 8px",
+                          borderRadius: 6,
+                          textTransform: "uppercase",
+                        }}
+                      >
+                        Doorstep Delivery Completed
+                      </span>
+                      <h3 style={{ margin: "6px 0 2px", fontSize: 17, fontWeight: 900, color: "#0f172a" }}>
+                        Rate the Rider &amp; Ordered Items
+                      </h3>
+                      <p style={{ margin: 0, fontSize: 12, color: "#64748b" }}>
+                        How was your delivery with <b>Sinchana B R</b> and product quality?
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Rate Rider Sinchana B R */}
+                  <div
+                    style={{
+                      background: "#f8fafc",
+                      border: "1px solid #e2e8f0",
+                      borderRadius: 12,
+                      padding: 12,
+                      marginBottom: 12,
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <img
+                          src="/sinchana-logo.png"
+                          alt="Sinchana B R"
+                          style={{
+                            width: 40,
+                            height: 40,
+                            borderRadius: "50%",
+                            objectFit: "cover",
+                            border: "2px solid #ca8a04",
+                          }}
+                        />
+                        <div>
+                          <div style={{ fontSize: 13.5, fontWeight: 800, color: "#0f172a" }}>
+                            Rate Rider: Sinchana B R
+                          </div>
+                          <div style={{ fontSize: 11, color: "#64748b" }}>
+                            Order Captain • Tiptur Hub KA-44
+                          </div>
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", gap: 4 }}>
+                        {[1, 2, 3, 4, 5].map((star) => (
+                          <button
+                            key={star}
+                            type="button"
+                            onClick={() => setRiderRating(star)}
+                            style={{
+                              background: "none",
+                              border: "none",
+                              fontSize: 22,
+                              cursor: "pointer",
+                              padding: 2,
+                              color: star <= riderRating ? "#f59e0b" : "#cbd5e1",
+                            }}
+                          >
+                            ★
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Compliment Chips */}
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
+                      {["Superfast Delivery", "Polite Rider", "Safe Frame Handling", "Exact Doorstep Drop"].map((tag) => {
+                        const active = selectedCompliments.includes(tag);
+                        return (
+                          <button
+                            key={tag}
+                            type="button"
+                            onClick={() =>
+                              setSelectedCompliments((prev) =>
+                                prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]
+                              )
+                            }
+                            style={{
+                              padding: "4px 9px",
+                              borderRadius: 14,
+                              fontSize: 11,
+                              fontWeight: 700,
+                              cursor: "pointer",
+                              border: active ? "1px solid #0c831f" : "1px solid #cbd5e1",
+                              background: active ? "#dcfce7" : "#ffffff",
+                              color: active ? "#15803d" : "#475569",
+                            }}
+                          >
+                            {active ? "✓ " : "+ "}
+                            {tag}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Rate Each Ordered Item */}
+                  <div
+                    style={{
+                      background: "#f8fafc",
+                      border: "1px solid #e2e8f0",
+                      borderRadius: 12,
+                      padding: 12,
+                      marginBottom: 12,
+                    }}
+                  >
+                    <div style={{ fontSize: 12, fontWeight: 800, color: "#334155", marginBottom: 8 }}>
+                      📦 Rate Ordered Items:
+                    </div>
+                    {(activeOrder.items || []).map((it, idx) => {
+                      const key = it.skuId || it.sku || it.name || idx;
+                      const currentItemStar = itemRatings[key] ?? 5;
+                      return (
+                        <div
+                          key={key}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            padding: "6px 0",
+                            borderBottom: idx < (activeOrder.items || []).length - 1 ? "1px solid #e2e8f0" : "none",
+                          }}
+                        >
+                          <div style={{ fontSize: 12.5, fontWeight: 700, color: "#0f172a" }}>
+                            {it.name} <span style={{ color: "#64748b", fontWeight: 600 }}>x{it.qty || 1}</span>
+                          </div>
+                          <div style={{ display: "flex", gap: 3 }}>
+                            {[1, 2, 3, 4, 5].map((star) => (
+                              <button
+                                key={star}
+                                type="button"
+                                onClick={() => setItemRatings((prev) => ({ ...prev, [key]: star }))}
+                                style={{
+                                  background: "none",
+                                  border: "none",
+                                  fontSize: 18,
+                                  cursor: "pointer",
+                                  padding: 1,
+                                  color: star <= currentItemStar ? "#f59e0b" : "#cbd5e1",
+                                }}
+                              >
+                                ★
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <input
+                    type="text"
+                    placeholder="Write optional feedback about rider or items..."
+                    value={ratingComment}
+                    onChange={(e) => setRatingComment(e.target.value)}
+                    style={{
+                      width: "100%",
+                      padding: "10px 12px",
+                      borderRadius: 10,
+                      border: "1px solid #cbd5e1",
+                      fontSize: 12.5,
+                      marginBottom: 12,
+                      boxSizing: "border-box",
+                      outline: "none",
+                    }}
+                  />
+
+                  <button
+                    type="submit"
+                    style={{
+                      width: "100%",
+                      background: "linear-gradient(135deg, #0c831f 0%, #15803d 100%)",
+                      color: "#ffffff",
+                      border: "none",
+                      borderRadius: 12,
+                      padding: "12px 16px",
+                      fontSize: 14,
+                      fontWeight: 900,
+                      cursor: "pointer",
+                      boxShadow: "0 4px 14px rgba(12, 131, 31, 0.3)",
+                    }}
+                  >
+                    ⭐ Submit Rider &amp; Item Rating
+                  </button>
+                </form>
+              )}
+            </div>
+          </section>
+        )}
 
         {/* Quick return button to Dark Store Catalog */}
         <div style={{ padding: "14px 16px 0", textAlign: "center" }}>
@@ -708,7 +1163,80 @@ export default function TrackOrderPage() {
           </button>
         </div>
 
-        <div style={{ height: 40 }} />
+        <div style={{ height: 96 }} />
+
+        {/* ── LIVE STICKY BOTTOM STATUS BAR ON TRACKING PAGE ── */}
+        {!isCancelled && (
+          <div
+            style={{
+              position: "fixed",
+              bottom: 12,
+              left: "50%",
+              transform: "translateX(-50%)",
+              width: "calc(100% - 24px)",
+              maxWidth: 416,
+              background: isDelivered
+                ? "linear-gradient(135deg, #065f46 0%, #047857 100%)"
+                : trackingStage === "rider_arrived"
+                ? "linear-gradient(135deg, #0c831f 0%, #15803d 100%)"
+                : "linear-gradient(135deg, #0f172a 0%, #1e293b 100%)",
+              borderRadius: 14,
+              padding: "11px 14px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 10,
+              boxShadow: "0 10px 28px rgba(0,0,0,0.38)",
+              border: "1.5px solid rgba(74, 222, 128, 0.65)",
+              zIndex: 60,
+            }}
+          >
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div style={{ fontSize: 13, fontWeight: 900, color: "#ffffff" }}>
+                {isDelivered
+                  ? "⭐ Rate Rider Sinchana B R & Ordered Items"
+                  : trackingStage === "rider_arrived"
+                  ? "🛵 Rider arrived to your location"
+                  : trackingStage === "almost_doorstep"
+                  ? `⚡ Almost to your doorstep • ${doorstepCountdownSec} seconds`
+                  : trackingStage === "one_minute"
+                  ? `⚡ Arriving in 1 minute (${oneMinCountdownSec}s)`
+                  : `📦 OD Picker Packing • Arriving in ${arrivingMinutes} mins`}
+              </div>
+              <div style={{ fontSize: 11, color: "#bbf7d0", fontWeight: 600 }}>
+                {isDelivered
+                  ? ratingSubmitted
+                    ? "Thank you for rating your Tiptur Hub KA-44 delivery!"
+                    : "Order delivered! Tap Rate Now to review rider & items"
+                  : trackingStage === "rider_arrived"
+                  ? "Show Handover QR Code above to Rider Sinchana B R"
+                  : "Live sync with OD Picker Thrupthi K S & Rider Sinchana B R"}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                const targetId = isDelivered ? "rate-rider-items-section" : "handover-qr-section";
+                const el = document.getElementById(targetId);
+                if (el) el.scrollIntoView({ behavior: "smooth" });
+              }}
+              style={{
+                background: "#ffffff",
+                color: "#0c831f",
+                border: "none",
+                borderRadius: 8,
+                padding: "7px 12px",
+                fontSize: 11.5,
+                fontWeight: 900,
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+                flexShrink: 0,
+              }}
+            >
+              {isDelivered ? (ratingSubmitted ? "Rated ✓" : "Rate Now") : "Show QR"}
+            </button>
+          </div>
+        )}
       </div>
 
       {/* ── PAY ONLINE MODAL ── */}

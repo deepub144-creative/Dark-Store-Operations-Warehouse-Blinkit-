@@ -656,8 +656,10 @@ export default function OdPickerApp() {
       pickerName: "Thrupthi K S",
       stagedAt: new Date().toISOString(),
       pickTimeSec: finalSec,
-      remainingMins: 3,
-      estimatedDeliveryMins: 3,
+      remainingMins: 1,
+      estimatedDeliveryMins: 1,
+      riderEtaMins: 6,
+      handoverToRiderCompleted: true,
       qrCode: `AUDITX-HANDOVER-${activeOrder.id}-${assignedRack.id}`,
     });
 
@@ -666,7 +668,17 @@ export default function OdPickerApp() {
       assignedRack: assignedRack.id,
       pickerName: "Thrupthi K S",
       captainName: "Sinchana B R",
-      remainingMins: 3,
+      remainingMins: 1,
+      riderEtaMins: 6,
+    });
+
+    broadcastEvent("PICKER_HANDOVER_COMPLETED", {
+      orderId: activeOrder.id,
+      assignedRack: assignedRack.id,
+      pickerName: "Thrupthi K S",
+      captainName: "Sinchana B R",
+      remainingMins: 1,
+      riderEtaMins: 6,
     });
 
     if (db) {
@@ -1928,15 +1940,67 @@ export default function OdPickerApp() {
           )}
 
           {/* ════════════════════════════════════════════════════════
-              STEP 4: COMPLETED SUMMARY — WHITE THEME
+              STEP 4: COMPLETED SUMMARY + TASK SEARCHING VIDEO
           ════════════════════════════════════════════════════════ */}
           {activeStep === "complete" && (
             <div style={S.completeCard}>
+              {/* TASK SEARCHING MP4 WHEN ALL TASKS COMPLETED */}
+              <div style={{ position: "relative", borderRadius: 14, overflow: "hidden", marginBottom: 16, border: "1.5px solid #10b981", background: "#080c14" }}>
+                <video
+                  autoPlay
+                  loop
+                  muted
+                  playsInline
+                  style={{
+                    width: "100%",
+                    height: 220,
+                    objectFit: "cover",
+                    display: "block",
+                    background: "#080c14",
+                  }}
+                >
+                  <source src="/tasksearching.mp4" type="video/mp4" />
+                  <source src="/task-searching.mp4" type="video/mp4" />
+                  <source src="/videos/task-searching.mp4" type="video/mp4" />
+                </video>
+                <div
+                  style={{
+                    position: "absolute",
+                    bottom: 10,
+                    left: "50%",
+                    transform: "translateX(-50%)",
+                    background: "rgba(15, 23, 42, 0.9)",
+                    backdropFilter: "blur(6px)",
+                    color: "#ffffff",
+                    padding: "6px 14px",
+                    borderRadius: 20,
+                    fontSize: 11,
+                    fontWeight: 700,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    whiteSpace: "nowrap",
+                    boxShadow: "0 2px 8px rgba(0,0,0,0.4)",
+                  }}
+                >
+                  <span
+                    style={{
+                      width: 8,
+                      height: 8,
+                      borderRadius: "50%",
+                      background: "#10b981",
+                      boxShadow: "0 0 8px #10b981",
+                      display: "inline-block",
+                    }}
+                  />
+                  <span>All Tasks Completed • Searching Next Live Picker Task...</span>
+                </div>
+              </div>
+
               <div style={S.successIcon}>🎉</div>
-              <h2 style={S.completeTitle}>Order Staged in Rack {assignedRack.id}!</h2>
+              <h2 style={S.completeTitle}>Rack {assignedRack.id} Handover to Rider Complete!</h2>
               <p style={S.completeSub}>
-                Order #{activeOrder?.orderNumber || activeOrder?.id} has been placed in <b>Rack {assignedRack.id}</b>.
-                Order Captain <b>Sinchana B R</b> has received the live bag handover notification to deliver across Tiptur town under 8-minute SLA!
+                Order #{activeOrder?.orderNumber || activeOrder?.id} barcode for <b>Rack {assignedRack.id}</b> has been handed over to Rider Captain <b>Sinchana B R</b>. Ordering app ETA reduced to 1 min!
               </p>
 
               <div style={S.summaryPills}>
@@ -1950,7 +2014,7 @@ export default function OdPickerApp() {
                 </div>
                 <div style={S.summaryPill}>
                   <span style={S.summaryPillLabel}>Order Captain</span>
-                  <b style={S.summaryPillVal}>Sinchana B R</b>
+                  <b style={S.summaryPillVal}>Sinchana B R (6m Transit)</b>
                 </div>
               </div>
 

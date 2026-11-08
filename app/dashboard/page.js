@@ -284,7 +284,7 @@ export default function WarehouseDashboardPage() {
       } else if ((data.type === "COMPLAINT_RAISED" || data.type === "CUSTOMER_COMPLAINT_FILED") && data.payload) {
         setComplaints((prev) => {
           const updated = sanitizeComplaints([data.payload, ...prev.filter((c) => c.id !== data.payload.id)]);
-          try { localStorage.setItem("auditx_complaints", JSON.stringify(updated)); } catch (e) {}
+          try { localStorage.setItem("auditx_complaints", JSON.stringify(updated)); } catch (e) { }
           return updated;
         });
         playOrderAlarm();
@@ -293,7 +293,7 @@ export default function WarehouseDashboardPage() {
       } else if (data.type === "COMPLAINT_RESOLVED" && data.payload) {
         setComplaints((prev) => {
           const updated = sanitizeComplaints(prev.map((c) => c.id === data.payload.id ? { ...c, ...data.payload } : c));
-          try { localStorage.setItem("auditx_complaints", JSON.stringify(updated)); } catch (e) {}
+          try { localStorage.setItem("auditx_complaints", JSON.stringify(updated)); } catch (e) { }
           return updated;
         });
       } else if (data.type === "ORDER_CREATED" && data.payload) {
@@ -304,9 +304,9 @@ export default function WarehouseDashboardPage() {
     });
 
     // 4. Firestore snapshot if online
-    let unsub1 = () => {};
-    let unsub2 = () => {};
-    let unsub3 = () => {};
+    let unsub1 = () => { };
+    let unsub2 = () => { };
+    let unsub3 = () => { };
 
     try {
       if (db) {
@@ -418,7 +418,7 @@ export default function WarehouseDashboardPage() {
     setComplaints([]);
     try {
       localStorage.setItem("auditx_complaints", JSON.stringify([]));
-    } catch (e) {}
+    } catch (e) { }
     const logMsg = `🧹 TODAY'S QUEUE & QUALITY DESK CLEARED (0 orders, 0 open tickets) by ${staff?.name || "Bhaskar N S"} (${staff?.designation || "Store Manager"})`;
     setCapLogs((prev) => [{ id: Date.now(), time: new Date().toLocaleTimeString(), msg: logMsg }, ...prev]);
     setActionSuccess(`🧹 Today's Queue & Quality Desk cleared (Zero Orders, Zero Open Complaints)!`);
@@ -501,12 +501,12 @@ export default function WarehouseDashboardPage() {
     const updatedComplaints = complaints.map((item) =>
       item.id === c.id
         ? {
-            ...item,
-            status: "RESOLVED",
-            resolvedBy: staff?.name || "Bhaskar N S",
-            resolvedAt: new Date().toLocaleTimeString(),
-            response: resolutionText,
-          }
+          ...item,
+          status: "RESOLVED",
+          resolvedBy: staff?.name || "Bhaskar N S",
+          resolvedAt: new Date().toLocaleTimeString(),
+          response: resolutionText,
+        }
         : item
     );
 
@@ -664,12 +664,12 @@ export default function WarehouseDashboardPage() {
   const queueOrders = queueFilter === "all"
     ? orders
     : queueFilter === "picking"
-    ? pickingOrders
-    : queueFilter === "staged"
-    ? stagedOrders
-    : queueFilter === "dispatched"
-    ? inTransitOrders
-    : deliveredOrders;
+      ? pickingOrders
+      : queueFilter === "staged"
+        ? stagedOrders
+        : queueFilter === "dispatched"
+          ? inTransitOrders
+          : deliveredOrders;
 
   // Roster with real logos
   const fullRoster = STAFF.map((s) => {
@@ -757,17 +757,6 @@ export default function WarehouseDashboardPage() {
               >
                 TOGGLE
               </span>
-            </button>
-            <button
-              onClick={() => {
-                playNotificationChime();
-                setActionSuccess("🔊 Live audio synthesizer active & tested!");
-                setTimeout(() => setActionSuccess(""), 2500);
-              }}
-              style={S.audioBadgeBtn}
-              title="Click to test live Web Audio Synthesizer"
-            >
-              🔊 Audio: Live Synthesizer
             </button>
           </div>
           <div style={S.subText}>

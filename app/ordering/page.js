@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { CATALOG } from "@/lib/items";
-import { broadcastEvent, subscribeToEvents, saveLiveOrder, getAllLiveOrders, clearAllLiveOrders, getAllLiveComplaints, sanitizeComplaints } from "@/lib/realtimeSync";
+import { broadcastEvent, subscribeToEvents, saveLiveOrder, getAllLiveOrders, updateLiveOrder, clearAllLiveOrders, getAllLiveComplaints, sanitizeComplaints } from "@/lib/realtimeSync";
 import { playNotificationChime, playSuccessChime } from "@/lib/soundSystem";
 import { getRandomStagingRack } from "@/lib/roles";
 import AuditxLogo from "@/components/AuditxLogo";
@@ -314,6 +314,14 @@ export default function OrderingAppPage() {
   const [bgVideoIdx, setBgVideoIdx] = useState(0);
   const [showComingSoonModal, setShowComingSoonModal] = useState(false);
   const [activeDeliveryOrder, setActiveDeliveryOrder] = useState(null);
+  const [orderingStage, setOrderingStage] = useState("idle"); // 'idle' | 'packing' | 'one_minute' | 'almost_doorstep' | 'rider_arrived' | 'delivered'
+  const [orderingOneMinSec, setOrderingOneMinSec] = useState(60);
+  const [orderingDoorstepSec, setOrderingDoorstepSec] = useState(15);
+  const [showRateOrderModal, setShowRateOrderModal] = useState(false);
+  const [riderStars, setRiderStars] = useState(5);
+  const [itemStarsMap, setItemStarsMap] = useState({});
+  const [rateFeedbackText, setRateFeedbackText] = useState("");
+  const [rateCompleted, setRateCompleted] = useState(false);
 
   // Customer Complaint System (Synced with SM Bhaskar N S & ASM Deepu B Dashboard)
   const [showComplaintModal, setShowComplaintModal] = useState(false);
@@ -436,8 +444,28 @@ export default function OrderingAppPage() {
         }
         if (active && active.status !== "cancelled") {
           setActiveDeliveryOrder(active);
+          if (active.status === "delivered") {
+            setOrderingStage("delivered");
+            setRateCompleted(Boolean(active.customerRatingSubmitted));
+            if (!active.customerRatingSubmitted) {
+              setShowRateOrderModal(true);
+            }
+          } else if (
+            active.status === "staged" ||
+            active.status === "picked" ||
+            active.status === "dispatched" ||
+            active.status === "en_route" ||
+            active.handoverToRiderCompleted
+          ) {
+            setOrderingStage((prev) =>
+              prev === "idle" || prev === "packing" ? "one_minute" : prev
+            );
+          } else {
+            setOrderingStage((prev) => (prev === "idle" ? "packing" : prev));
+          }
         } else {
           setActiveDeliveryOrder(null);
+          setOrderingStage("idle");
         }
       } catch (err) {
         console.warn("Check active delivery error:", err);
@@ -483,9 +511,29 @@ export default function OrderingAppPage() {
         data.type === "ORDER_STATUS_CHANGED" ||
         data.type === "ORDER_ASSIGNED" ||
         data.type === "ORDER_PICKED" ||
+        data.type === "ORDER_STAGED" ||
+        data.type === "PICKER_HANDOVER_COMPLETED" ||
+        data.type === "FAST_DELIVERY_STARTED" ||
         data.type === "ORDER_DELIVERED"
       ) {
         checkActiveDelivery();
+        if (
+          data.type === "ORDER_STAGED" ||
+          data.type === "PICKER_HANDOVER_COMPLETED" ||
+          data.type === "FAST_DELIVERY_STARTED"
+        ) {
+          setOrderingOneMinSec(60);
+          setOrderingStage("one_minute");
+          playNotificationChime();
+          triggerToast("⚡ OD Picker Handover Complete! Delivery timing reduced to 1 minute!");
+        }
+        if (data.type === "ORDER_DELIVERED") {
+          setOrderingStage("delivered");
+          setRateCompleted(false);
+          setShowRateOrderModal(true);
+          playSuccessChime();
+          triggerToast("🎉 Order Delivered! Please rate Rider Sinchana B R & your items.");
+        }
       }
       if (data.type === "QUEUE_CLEARED") {
         setActiveDeliveryOrder(null);
@@ -520,6 +568,70 @@ export default function OrderingAppPage() {
       window.removeEventListener("storage", handleStorageEvent);
     };
   }, []);
+
+  // Ordering App Post-Handover Countdown Progression: 1 min -> Almost to your doorstep 15s -> Rider arrived to your location
+  useEffect(() => {
+    if (orderingStage === "one_minute") {
+      const t = setInterval(() => {
+        setOrderingOneMinSec((prev) => {
+          if (prev <= 1) {
+            setOrderingDoorstepSec(15);
+            setOrderingStage("almost_doorstep");
+            playNotificationChime();
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+      return () => clearInterval(t);
+    }
+    if (orderingStage === "almost_doorstep") {
+      const t = setInterval(() => {
+        setOrderingDoorstepSec((prev) => {
+          if (prev <= 1) {
+            setOrderingStage("rider_arrived");
+            playSuccessChime();
+            triggerToast("🛵 Rider arrived to your location! Show Handover QR Code to Rider.");
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+      return () => clearInterval(t);
+    }
+  }, [orderingStage]);
+
+  function handleSubmitOrderingRating(e) {
+    if (e) e.preventDefault();
+    if (!activeDeliveryOrder) return;
+    playSuccessChime();
+    const ordId = activeDeliveryOrder.id || activeDeliveryOrder.orderId || activeDeliveryOrder.orderNumber;
+    const ratingPayload = {
+      orderId: ordId,
+      riderName: "Sinchana B R",
+      riderRating: riderStars,
+      itemRatings: itemStarsMap,
+      comment: rateFeedbackText.trim(),
+      ratedAt: new Date().toISOString(),
+    };
+    try {
+      const prevRaw = localStorage.getItem("auditx_customer_ratings");
+      const prev = prevRaw ? JSON.parse(prevRaw) : [];
+      localStorage.setItem("auditx_customer_ratings", JSON.stringify([ratingPayload, ...prev]));
+    } catch (err) {
+      console.warn(err);
+    }
+    updateLiveOrder(ordId, {
+      customerRatingSubmitted: true,
+      riderRating: riderStars,
+      itemRatings: itemStarsMap,
+    });
+    broadcastEvent("ORDER_RATED", ratingPayload);
+    setRateCompleted(true);
+    setShowRateOrderModal(false);
+    setActiveDeliveryOrder((prev) => (prev ? { ...prev, customerRatingSubmitted: true } : prev));
+    triggerToast("⭐ Thank you for rating Rider Sinchana B R and your ordered items!");
+  }
 
   function handleClearAllQueue() {
     playNotificationChime();
@@ -991,7 +1103,17 @@ export default function OrderingAppPage() {
                   <IconLightning size={14} color="#000000" />
                 </div>
                 <div style={S.etaTitle}>
-                  Delivery in <span style={S.etaMinutes}>8 MINS</span>
+                  {orderingStage === "rider_arrived" ? (
+                    <>Rider <span style={S.etaMinutes}>ARRIVED AT LOCATION</span></>
+                  ) : orderingStage === "almost_doorstep" ? (
+                    <>Almost to your doorstep • <span style={S.etaMinutes}>{orderingDoorstepSec}s</span></>
+                  ) : orderingStage === "one_minute" ? (
+                    <>Arriving in <span style={S.etaMinutes}>1 MIN ({orderingOneMinSec}s)</span></>
+                  ) : orderingStage === "delivered" ? (
+                    <>Delivered • <span style={S.etaMinutes}>{rateCompleted ? "RATED ★" : "RATE RIDER & ITEMS"}</span></>
+                  ) : (
+                    <>Delivery in <span style={S.etaMinutes}>6 MINS</span></>
+                  )}
                 </div>
               </div>
               <div style={S.addressSnippetRow}>
@@ -2477,7 +2599,7 @@ export default function OrderingAppPage() {
         </main>
       )}
 
-      {/* ── LIVE FLOATING DELIVERY STATUS BAR ("Order arriving soon" -> View) ── */}
+      {/* ── LIVE FLOATING DELIVERY / HANDOVER / RATING STATUS BAR ── */}
       {activeDeliveryOrder && !isCheckoutView && (
         <div
           id="active-order-floating-bar"
@@ -2488,18 +2610,32 @@ export default function OrderingAppPage() {
             transform: "translateX(-50%)",
             width: "calc(100% - 24px)",
             maxWidth: 416,
-            background: "linear-gradient(135deg, #0f172a 0%, #1e293b 100%)",
+            background:
+              activeDeliveryOrder.status === "delivered" || orderingStage === "delivered"
+                ? "linear-gradient(135deg, #065f46 0%, #047857 100%)"
+                : orderingStage === "rider_arrived"
+                ? "linear-gradient(135deg, #0c831f 0%, #15803d 100%)"
+                : "linear-gradient(135deg, #0f172a 0%, #1e293b 100%)",
             borderRadius: 14,
             padding: "10px 14px",
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
-            boxShadow: "0 10px 28px rgba(15, 23, 42, 0.4), 0 0 0 1.5px rgba(12, 131, 31, 0.6)",
+            boxShadow: "0 10px 28px rgba(15, 23, 42, 0.4), 0 0 0 1.5px rgba(34, 197, 94, 0.75)",
             zIndex: 60,
             cursor: "pointer",
             transition: "all 0.25s ease",
           }}
-          onClick={() => router.push(`/track/${activeDeliveryOrder.orderNumber || activeDeliveryOrder.id || activeDeliveryOrder.orderId}`)}
+          onClick={() => {
+            if (
+              (activeDeliveryOrder.status === "delivered" || orderingStage === "delivered") &&
+              !rateCompleted
+            ) {
+              setShowRateOrderModal(true);
+            } else {
+              router.push(`/track/${activeDeliveryOrder.orderNumber || activeDeliveryOrder.id || activeDeliveryOrder.orderId}`);
+            }
+          }}
         >
           <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0, flex: 1 }}>
             {/* Animated scooter delivery badge */}
@@ -2533,7 +2669,7 @@ export default function OrderingAppPage() {
             </div>
 
             <div style={{ minWidth: 0, flex: 1 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                 <span
                   style={{
                     fontSize: 13,
@@ -2542,86 +2678,346 @@ export default function OrderingAppPage() {
                     letterSpacing: "-0.2px",
                   }}
                 >
-                  Order arriving soon
+                  {activeDeliveryOrder.status === "delivered" || orderingStage === "delivered"
+                    ? rateCompleted
+                      ? "Order Delivered & Rated ★"
+                      : "Rate Rider & Ordered Items"
+                    : orderingStage === "rider_arrived"
+                    ? "Rider arrived to your location"
+                    : orderingStage === "almost_doorstep"
+                    ? `Almost to your doorstep • ${orderingDoorstepSec}s`
+                    : orderingStage === "one_minute"
+                    ? "Arriving in 1 minute"
+                    : "Order arriving soon"}
                 </span>
                 <span
                   style={{
                     fontSize: 10,
                     fontWeight: 800,
                     color: "#22c55e",
-                    background: "rgba(34, 197, 94, 0.15)",
+                    background: "rgba(34, 197, 94, 0.18)",
                     padding: "2px 6px",
                     borderRadius: 4,
                   }}
                 >
-                  ⚡ {activeDeliveryOrder.status === "en_route" ? "3-8 mins" : "8 mins"}
+                  {activeDeliveryOrder.status === "delivered" || orderingStage === "delivered"
+                    ? "⭐ Doorstep Complete"
+                    : orderingStage === "rider_arrived"
+                    ? "📲 Show QR"
+                    : orderingStage === "almost_doorstep"
+                    ? `⚡ ${orderingDoorstepSec}s`
+                    : orderingStage === "one_minute"
+                    ? `⚡ ${orderingOneMinSec}s`
+                    : "⚡ 6 mins"}
                 </span>
               </div>
               <div
                 style={{
                   fontSize: 11,
-                  color: "#94a3b8",
+                  color: "#cbd5e1",
                   fontWeight: 600,
                   whiteSpace: "nowrap",
                   overflow: "hidden",
                   textOverflow: "ellipsis",
                 }}
               >
-                {activeDeliveryOrder.status === "delivered"
-                  ? "Delivered at KFGSC • Tap to view"
-                  : "Out for delivery with Sinchana B R"}
+                {activeDeliveryOrder.status === "delivered" || orderingStage === "delivered"
+                  ? "Delivered by Sinchana B R • Tap to rate rider & items"
+                  : orderingStage === "rider_arrived"
+                  ? "Show Handover QR Code to Rider Sinchana B R"
+                  : "OD Picker handover synced • Sinchana B R on the way"}
               </div>
             </div>
           </div>
 
-          {/* VIEW & COMPLAINT Buttons */}
+          {/* RATE / VIEW & COMPLAINT Buttons */}
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0, marginLeft: 10 }}>
-            <button
-              type="button"
-              style={{
-                background: "rgba(225, 29, 72, 0.2)",
-                color: "#fda4af",
-                border: "1px solid rgba(225, 29, 72, 0.45)",
-                borderRadius: 8,
-                padding: "6px 10px",
-                fontSize: 11,
-                fontWeight: 800,
-                cursor: "pointer",
-                whiteSpace: "nowrap",
-              }}
-              onClick={(e) => {
-                e.stopPropagation();
-                setComplaintOrderId(activeDeliveryOrder.orderNumber || activeDeliveryOrder.id || activeDeliveryOrder.orderId);
-                setShowComplaintModal(true);
-              }}
-              title="Need help or have an issue with this order?"
-            >
-              ⚠️ Issue?
-            </button>
-            <button
-              type="button"
-              style={{
-                background: "#0c831f",
-                color: "#ffffff",
-                border: "none",
-                borderRadius: 8,
-                padding: "7px 14px",
-                fontSize: 12,
-                fontWeight: 800,
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                gap: 4,
-                boxShadow: "0 3px 8px rgba(12, 131, 31, 0.4)",
-              }}
-              onClick={(e) => {
-                e.stopPropagation();
-                router.push(`/track/${activeDeliveryOrder.orderNumber || activeDeliveryOrder.id || activeDeliveryOrder.orderId}`);
-              }}
-            >
-              <span>View</span>
-              <IconArrowRight size={14} color="#ffffff" />
-            </button>
+            {(activeDeliveryOrder.status === "delivered" || orderingStage === "delivered") && !rateCompleted ? (
+              <button
+                type="button"
+                style={{
+                  background: "#f59e0b",
+                  color: "#0f172a",
+                  border: "none",
+                  borderRadius: 8,
+                  padding: "7px 13px",
+                  fontSize: 12,
+                  fontWeight: 900,
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                  boxShadow: "0 3px 10px rgba(245, 158, 11, 0.45)",
+                }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowRateOrderModal(true);
+                }}
+              >
+                ⭐ Rate Now
+              </button>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  style={{
+                    background: "rgba(225, 29, 72, 0.2)",
+                    color: "#fda4af",
+                    border: "1px solid rgba(225, 29, 72, 0.45)",
+                    borderRadius: 8,
+                    padding: "6px 10px",
+                    fontSize: 11,
+                    fontWeight: 800,
+                    cursor: "pointer",
+                    whiteSpace: "nowrap",
+                  }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setComplaintOrderId(activeDeliveryOrder.orderNumber || activeDeliveryOrder.id || activeDeliveryOrder.orderId);
+                    setShowComplaintModal(true);
+                  }}
+                  title="Need help or have an issue with this order?"
+                >
+                  ⚠️ Issue?
+                </button>
+                <button
+                  type="button"
+                  style={{
+                    background: "#0c831f",
+                    color: "#ffffff",
+                    border: "none",
+                    borderRadius: 8,
+                    padding: "7px 14px",
+                    fontSize: 12,
+                    fontWeight: 800,
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 4,
+                    boxShadow: "0 3px 8px rgba(12, 131, 31, 0.4)",
+                  }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    router.push(`/track/${activeDeliveryOrder.orderNumber || activeDeliveryOrder.id || activeDeliveryOrder.orderId}`);
+                  }}
+                >
+                  <span>{orderingStage === "rider_arrived" ? "Show QR" : "View"}</span>
+                  <IconArrowRight size={14} color="#ffffff" />
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── RATE THE RIDER & ORDERED ITEMS MODAL IN ORDERING APP ── */}
+      {showRateOrderModal && activeDeliveryOrder && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15, 23, 42, 0.78)",
+            backdropFilter: "blur(6px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+            zIndex: 9999,
+          }}
+          onClick={() => setShowRateOrderModal(false)}
+        >
+          <div
+            style={{
+              width: "100%",
+              maxWidth: 420,
+              background: "#ffffff",
+              borderRadius: 20,
+              padding: 20,
+              boxShadow: "0 20px 48px rgba(0,0,0,0.35)",
+              border: "2px solid #86efac",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
+              <div>
+                <span
+                  style={{
+                    fontSize: 10,
+                    fontWeight: 900,
+                    background: "#dcfce7",
+                    color: "#15803d",
+                    padding: "3px 8px",
+                    borderRadius: 6,
+                    textTransform: "uppercase",
+                  }}
+                >
+                  Doorstep Handover Verified
+                </span>
+                <h3 style={{ margin: "6px 0 2px", fontSize: 17, fontWeight: 900, color: "#0f172a" }}>
+                  Rate Rider &amp; Ordered Items
+                </h3>
+                <p style={{ margin: 0, fontSize: 12, color: "#64748b" }}>
+                  Order #{activeDeliveryOrder.orderNumber || activeDeliveryOrder.id} delivered by Sinchana B R
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowRateOrderModal(false)}
+                style={{
+                  background: "#f1f5f9",
+                  border: "none",
+                  borderRadius: "50%",
+                  width: 30,
+                  height: 30,
+                  cursor: "pointer",
+                  fontWeight: 800,
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmitOrderingRating}>
+              {/* Rider Rating */}
+              <div
+                style={{
+                  background: "#f8fafc",
+                  border: "1px solid #e2e8f0",
+                  borderRadius: 12,
+                  padding: 12,
+                  marginBottom: 12,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <img
+                    src="/sinchana-logo.png"
+                    alt="Sinchana B R"
+                    style={{
+                      width: 38,
+                      height: 38,
+                      borderRadius: "50%",
+                      objectFit: "cover",
+                      border: "2px solid #ca8a04",
+                    }}
+                  />
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 800, color: "#0f172a" }}>Rider: Sinchana B R</div>
+                    <div style={{ fontSize: 11, color: "#64748b" }}>Order Captain • Tiptur KA-44</div>
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 3 }}>
+                  {[1, 2, 3, 4, 5].map((st) => (
+                    <button
+                      key={st}
+                      type="button"
+                      onClick={() => setRiderStars(st)}
+                      style={{
+                        background: "none",
+                        border: "none",
+                        fontSize: 22,
+                        cursor: "pointer",
+                        padding: 1,
+                        color: st <= riderStars ? "#f59e0b" : "#cbd5e1",
+                      }}
+                    >
+                      ★
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Item Ratings */}
+              <div
+                style={{
+                  background: "#f8fafc",
+                  border: "1px solid #e2e8f0",
+                  borderRadius: 12,
+                  padding: 12,
+                  marginBottom: 12,
+                  maxHeight: 160,
+                  overflowY: "auto",
+                }}
+              >
+                <div style={{ fontSize: 12, fontWeight: 800, color: "#334155", marginBottom: 6 }}>
+                  📦 Rate Ordered Items:
+                </div>
+                {(activeDeliveryOrder.items || []).map((it, idx) => {
+                  const key = it.skuId || it.sku || it.name || idx;
+                  const val = itemStarsMap[key] ?? 5;
+                  return (
+                    <div
+                      key={key}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        padding: "5px 0",
+                        borderBottom: idx < (activeDeliveryOrder.items || []).length - 1 ? "1px solid #e2e8f0" : "none",
+                      }}
+                    >
+                      <span style={{ fontSize: 12, fontWeight: 700, color: "#0f172a" }}>
+                        {it.name} (x{it.qty || 1})
+                      </span>
+                      <div style={{ display: "flex", gap: 2 }}>
+                        {[1, 2, 3, 4, 5].map((st) => (
+                          <button
+                            key={st}
+                            type="button"
+                            onClick={() => setItemStarsMap((prev) => ({ ...prev, [key]: st }))}
+                            style={{
+                              background: "none",
+                              border: "none",
+                              fontSize: 18,
+                              cursor: "pointer",
+                              padding: 1,
+                              color: st <= val ? "#f59e0b" : "#cbd5e1",
+                            }}
+                          >
+                            ★
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <input
+                type="text"
+                placeholder="Write a quick note for Rider Sinchana B R or item quality..."
+                value={rateFeedbackText}
+                onChange={(e) => setRateFeedbackText(e.target.value)}
+                style={{
+                  width: "100%",
+                  padding: "10px 12px",
+                  borderRadius: 10,
+                  border: "1px solid #cbd5e1",
+                  fontSize: 12.5,
+                  marginBottom: 12,
+                  boxSizing: "border-box",
+                  outline: "none",
+                }}
+              />
+
+              <button
+                type="submit"
+                style={{
+                  width: "100%",
+                  background: "linear-gradient(135deg, #0c831f 0%, #15803d 100%)",
+                  color: "#ffffff",
+                  border: "none",
+                  borderRadius: 12,
+                  padding: "12px 16px",
+                  fontSize: 13.5,
+                  fontWeight: 900,
+                  cursor: "pointer",
+                  boxShadow: "0 4px 14px rgba(12, 131, 31, 0.3)",
+                }}
+              >
+                ⭐ Submit Rider &amp; Item Rating
+              </button>
+            </form>
           </div>
         </div>
       )}

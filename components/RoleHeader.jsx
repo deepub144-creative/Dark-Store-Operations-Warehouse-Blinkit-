@@ -68,11 +68,6 @@ export default function RoleHeader({ activeRole = "sm", onRoleSelect, currentSto
         </div>
 
         <div style={S.rightControls}>
-          {/* Audio Alert Mute Toggle */}
-          <button style={S.iconBtn} onClick={toggleMute} title="Toggle Audio Alarms">
-            {muted ? "🔇 Muted" : "🔊 Audio Live"}
-          </button>
-
           {/* Google OAuth Login / Status */}
           <GoogleAuthButton
             context="staff"
