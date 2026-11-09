@@ -7,6 +7,7 @@ import { db } from "@/lib/firebaseClient";
 import { subscribeToEvents, broadcastEvent, subscribeToLiveOrders, getAllLiveOrders, updateLiveOrder } from "@/lib/realtimeSync";
 import { playSuccessChime, playNotificationChime } from "@/lib/soundSystem";
 import AuditxLogo from "@/components/AuditxLogo";
+import DeliveryReceiptModal from "@/components/DeliveryReceiptModal";
 import {
   IconArrowLeft,
   IconPhone,
@@ -29,6 +30,7 @@ export default function TrackOrderPage() {
   const router = useRouter();
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [showReceiptModal, setShowReceiptModal] = useState(false);
 
   // Today's live clock
   const [currentTimeStr, setCurrentTimeStr] = useState("");
@@ -826,6 +828,52 @@ export default function TrackOrderPage() {
                 <span style={S.trackBillGrandLabel}>Total Paid / To Pay</span>
                 <span style={S.trackBillGrandVal}>₹{grandTotalAmount}</span>
               </div>
+
+              {/* Delivery Receipt Action Button */}
+              <div style={{ marginTop: 14 }}>
+                {isDelivered ? (
+                  <button
+                    type="button"
+                    onClick={() => setShowReceiptModal(true)}
+                    style={{
+                      width: "100%",
+                      padding: "12px 16px",
+                      borderRadius: 12,
+                      border: "1.5px solid #0c831f",
+                      background: "#f0fdf4",
+                      color: "#0c831f",
+                      fontSize: 13,
+                      fontWeight: 800,
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 8,
+                      boxShadow: "0 2px 8px rgba(12, 131, 31, 0.15)",
+                    }}
+                  >
+                    🧾 View &amp; Download Delivery Receipt (PDF)
+                  </button>
+                ) : (
+                  <div
+                    style={{
+                      padding: "10px 14px",
+                      borderRadius: 10,
+                      border: "1px dashed #cbd5e1",
+                      background: "#f8fafc",
+                      color: "#64748b",
+                      fontSize: 12,
+                      fontWeight: 700,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 6,
+                    }}
+                  >
+                    <span>🔒 Delivery receipt will be available to download once order is delivered</span>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </section>
@@ -875,6 +923,28 @@ export default function TrackOrderPage() {
                   <p style={{ margin: "6px 0 0", fontSize: 12.5, color: "#475569" }}>
                     You rated Delivery Partner <b>Sinchana B R</b> {riderRating}/5 ★ and reviewed {(activeOrder.items || []).length} item(s).
                   </p>
+                  <div style={{ marginTop: 14 }}>
+                    <button
+                      type="button"
+                      onClick={() => setShowReceiptModal(true)}
+                      style={{
+                        padding: "11px 18px",
+                        borderRadius: 10,
+                        border: "1.5px solid #0c831f",
+                        background: "#0c831f",
+                        color: "#ffffff",
+                        fontSize: 13,
+                        fontWeight: 800,
+                        cursor: "pointer",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 8,
+                        boxShadow: "0 4px 12px rgba(12, 131, 31, 0.25)",
+                      }}
+                    >
+                      🧾 View &amp; Download Delivery Receipt (PDF)
+                    </button>
+                  </div>
                 </div>
               ) : (
                 <form onSubmit={handleSubmitCustomerRating}>
@@ -1283,6 +1353,12 @@ export default function TrackOrderPage() {
           </div>
         </div>
       )}
+      {/* ── DELIVERY RECEIPT MODAL ── */}
+      <DeliveryReceiptModal
+        order={activeOrder}
+        isOpen={showReceiptModal}
+        onClose={() => setShowReceiptModal(false)}
+      />
     </div>
   );
 }

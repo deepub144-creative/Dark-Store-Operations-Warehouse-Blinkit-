@@ -10,6 +10,7 @@ import AuditxLogo from "@/components/AuditxLogo";
 import AuditxMiniAssistant from "@/components/AuditxMiniAssistant";
 import GoogleAuthButton from "@/components/GoogleAuthButton";
 import OrderPlacedSheet from "@/components/ui/OrderPlacedSheet";
+import DeliveryReceiptModal from "@/components/DeliveryReceiptModal";
 import {
   IconLightning,
   IconRealisticScooter,
@@ -333,6 +334,8 @@ export default function OrderingAppPage() {
   const [rateCompleted, setRateCompleted] = useState(false);
   const [placedOrderAnimation, setPlacedOrderAnimation] = useState(null);
   const playedOrderPlacedIds = useRef(new Set());
+  const [receiptOrder, setReceiptOrder] = useState(null);
+  const [showReceiptModal, setShowReceiptModal] = useState(false);
 
   // Customer Complaint System (Synced with SM Bhaskar N S & ASM Deepu B Dashboard)
   const [showComplaintModal, setShowComplaintModal] = useState(false);
@@ -2329,25 +2332,76 @@ export default function OrderingAppPage() {
                         ))}
                       </div>
 
-                      <button
-                        type="button"
-                        onClick={() => handleReorderAll(po)}
-                        style={{
-                          marginTop: 12,
-                          width: "100%",
-                          padding: "11px 16px",
-                          borderRadius: 10,
-                          border: "none",
-                          background: "#0c831f",
-                          color: "#ffffff",
-                          fontWeight: 800,
-                          fontSize: 13.5,
-                          cursor: "pointer",
-                          boxShadow: "0 4px 14px rgba(12, 131, 31, 0.25)",
-                        }}
-                      >
-                        🛒 Reorder All Items
-                      </button>
+                      <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+                        <button
+                          type="button"
+                          onClick={() => handleReorderAll(po)}
+                          style={{
+                            flex: 1,
+                            padding: "11px 12px",
+                            borderRadius: 10,
+                            border: "none",
+                            background: "#0c831f",
+                            color: "#ffffff",
+                            fontWeight: 800,
+                            fontSize: 13,
+                            cursor: "pointer",
+                            boxShadow: "0 4px 14px rgba(12, 131, 31, 0.25)",
+                          }}
+                        >
+                          🛒 Reorder All
+                        </button>
+                        {po.status === "delivered" || po.deliveredAt || !po.status ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setReceiptOrder(po);
+                              setShowReceiptModal(true);
+                            }}
+                            style={{
+                              padding: "11px 14px",
+                              borderRadius: 10,
+                              border: "1.5px solid #0c831f",
+                              background: "#f0fdf4",
+                              color: "#0c831f",
+                              fontWeight: 800,
+                              fontSize: 12.5,
+                              cursor: "pointer",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 6,
+                              whiteSpace: "nowrap",
+                            }}
+                            title="View & Download Thermal Delivery Receipt"
+                          >
+                            🧾 Receipt
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              triggerToast("🔒 Delivery receipt unlocks once order is delivered to your doorstep!")
+                            }
+                            style={{
+                              padding: "10px 12px",
+                              borderRadius: 10,
+                              border: "1px dashed #94a3b8",
+                              background: "#f8fafc",
+                              color: "#64748b",
+                              fontWeight: 700,
+                              fontSize: 11.5,
+                              cursor: "not-allowed",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 5,
+                              whiteSpace: "nowrap",
+                            }}
+                            title="Receipt available after order is delivered"
+                          >
+                            🔒 Receipt on delivery
+                          </button>
+                        )}
+                      </div>
                     </div>
                   );
                 })}
@@ -3402,6 +3456,35 @@ export default function OrderingAppPage() {
               >
                 ⭐ Submit Rating &amp; Complete Delivery
               </button>
+
+              {(activeDeliveryOrder.status === "delivered" || orderingStage === "delivered") && (
+                <div style={{ marginTop: 10 }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setReceiptOrder(activeDeliveryOrder);
+                      setShowReceiptModal(true);
+                    }}
+                    style={{
+                      width: "100%",
+                      padding: "10px 14px",
+                      borderRadius: 10,
+                      border: "1.5px solid #0c831f",
+                      background: "#f0fdf4",
+                      color: "#0c831f",
+                      fontWeight: 800,
+                      fontSize: 12.5,
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 6,
+                    }}
+                  >
+                    🧾 View &amp; Download Delivery Receipt (PDF)
+                  </button>
+                </div>
+              )}
             </form>
           </div>
         </div>
@@ -4611,6 +4694,13 @@ export default function OrderingAppPage() {
           </div>
         </div>
       )}
+
+      {/* ── DELIVERY RECEIPT MODAL ── */}
+      <DeliveryReceiptModal
+        order={receiptOrder}
+        isOpen={showReceiptModal}
+        onClose={() => setShowReceiptModal(false)}
+      />
 
       {/* ── RAG-BASED EMBEDDED AI ASSISTANT: AUDIT'X Mini ── */}
       <AuditxMiniAssistant isStoreOpen={isStoreOpen} customer={customer} />
