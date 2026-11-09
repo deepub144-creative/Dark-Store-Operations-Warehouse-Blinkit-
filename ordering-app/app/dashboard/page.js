@@ -38,6 +38,8 @@ import AuditxLogo from "@/components/AuditxLogo";
 import GoogleAuthButton from "@/components/GoogleAuthButton";
 import StoreToggleSwitch from "@/components/StoreToggleSwitch";
 import DailyOperationsExportButton from "@/components/DailyOperationsExportButton";
+import ManagingDirectorApp from "@/app/roles/md/page";
+import AssistantStoreManagerApp from "@/app/roles/asm/page";
 import {
   IconRealisticScooter,
   IconRealisticPickerTrolley,
@@ -898,8 +900,14 @@ export default function WarehouseDashboardPage() {
       {actionSuccess && <div style={S.actionAlert}>{actionSuccess}</div>}
       {pingedDevice && <div style={S.pingAlert}>🔔 Pinging terminal "{pingedDevice}"... Chime dispatched to device speaker!</div>}
 
-      {/* ── TWO-COLUMN WORKSPACE: LEFT SLIDE BAR + MAIN CONTENT ── */}
-      <div style={S.workspaceLayout}>
+      {/* ── DYNAMIC ROLE WORKSPACE (ACCORDING TO SWITCH PROFILE DROPDOWN: SM, ASM, MD) ── */}
+      {staff?.id === "harshitha" || staff?.roleCode === "MD" ? (
+        <ManagingDirectorApp embedded={true} />
+      ) : staff?.id === "deepu" || staff?.roleCode === "ASM" ? (
+        <AssistantStoreManagerApp embedded={true} />
+      ) : (
+        /* ── SM STORE MANAGER WORKSPACE ── */
+        <div style={S.workspaceLayout}>
         {/* ── 1. LEFT SLIDE BAR (EXPANDABLE / COLLAPSIBLE) ── */}
         <aside
           style={{
@@ -2324,6 +2332,7 @@ export default function WarehouseDashboardPage() {
           {activeTab === "erdDfd" && <ErdDfdViewer />}
         </main>
       </div>
+      )}
     </div>
   );
 }

@@ -20,7 +20,7 @@ const ASM_OFFICIAL_CATALOG = CATALOG.filter(
   weight: item.category === "Frames" ? "1 unit" : "5 units",
 }));
 
-export default function AssistantStoreManagerApp() {
+export default function AssistantStoreManagerApp({ embedded = false }) {
   const [activeTab, setActiveTab] = useState("itemHelp"); // itemHelp | soloAudit | putawayBay
   const [catalogItems, setCatalogItems] = useState(ASM_OFFICIAL_CATALOG);
   const [searchQuery, setSearchQuery] = useState("");
@@ -45,22 +45,36 @@ export default function AssistantStoreManagerApp() {
     },
   ]);
 
-  // Sync out-of-stock state from localStorage & Firestore
+  // Sync out-of-stock state from localStorage & BroadcastChannel
   useEffect(() => {
-    const rawOos = localStorage.getItem("auditx_oos_items");
-    if (rawOos) {
-      try {
-        const oosList = JSON.parse(rawOos);
-        setCatalogItems((prev) =>
-          prev.map((item) => ({
-            ...item,
-            inStock: !oosList.includes(item.sku),
-          }))
-        );
-      } catch (e) {
-        console.warn(e);
+    function loadOos() {
+      const rawOos = localStorage.getItem("auditx_oos_items");
+      if (rawOos) {
+        try {
+          const oosList = JSON.parse(rawOos);
+          setCatalogItems((prev) =>
+            prev.map((item) => ({
+              ...item,
+              inStock: !oosList.includes(item.sku),
+            }))
+          );
+        } catch (e) {
+          console.warn(e);
+        }
       }
     }
+    loadOos();
+
+    const unsubBus = subscribeToEvents((data) => {
+      if (data.type === "ITEM_STOCK_TOGGLED" && data.payload) {
+        const { sku, inStock } = data.payload;
+        setCatalogItems((prev) =>
+          prev.map((it) => (it.sku === sku ? { ...it, inStock } : it))
+        );
+      }
+    });
+
+    return () => unsubBus();
   }, []);
 
   function handleToggleStockStatus(sku, currentInStock) {
@@ -162,45 +176,93 @@ export default function AssistantStoreManagerApp() {
     <div style={S.container}>
       {actionSuccess && <div style={S.toast}>{actionSuccess}</div>}
 
-      {/* ASM Header */}
-      <header style={S.header}>
-        <div style={S.brandCol}>
-          <div style={S.brandRow}>
-            <AuditxLogo height={30} href="/" />
-            <span style={S.hubBadge}>TIPTUR HUB - KA44</span>
+      {/* ASM Header (Standalone or Embedded Mode) */}
+      {embedded ? (
+        <div
+          style={{
+            padding: "16px 20px 8px",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            flexWrap: "wrap",
+            gap: 12,
+            borderBottom: "1px solid #e2e8f0",
+            background: "#ffffff",
+            marginBottom: 8,
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <img
+              src="/asm-logo.png"
+              alt="Deepu B - D Logo"
+              style={{
+                width: 44,
+                height: 44,
+                borderRadius: "50%",
+                objectFit: "cover",
+                border: "2px solid #10b981",
+                boxShadow: "0 2px 8px rgba(16, 185, 129, 0.35)",
+              }}
+            />
+            <div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <span style={{ fontSize: 17, fontWeight: 900, color: "#0f172a" }}>
+                  Deepu B (Assistant Store Manager)
+                </span>
+                <span style={S.hubBadge}>TIPTUR HUB - KA44</span>
+              </div>
+              <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>
+                Floor Ops, Item Missing Assistance &amp; Solo Inventory Audit (Live Synchronized)
+              </div>
+            </div>
           </div>
-          <div style={S.operatorSub}>
-            Assistant Store Manager (ASM) Floor & Audit Portal • Namma Tiptur - 572201
-          </div>
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
-            <a href="/dashboard" style={S.quickLinkPill}>📊 Command Tower</a>
-            <a href="/roles/sm" style={S.quickLinkPill}>👔 SM: Bhasker N S</a>
-            <a href="/roles/md" style={S.quickLinkPill}>👑 MD: A B Harshitha</a>
-            <a href="/picker" style={S.quickLinkPill}>📦 Picker: Thrupthi</a>
-            <a href="/rider" style={S.quickLinkPill}>🛵 Rider: Sinchana</a>
-            <a href="/warehouse" style={S.quickLinkPill}>🏬 Staging Racks</a>
-          </div>
-        </div>
 
-        <div style={S.profileBox}>
-          <img
-            src="/asm-logo.png"
-            alt="Deepu B - D Logo"
-            style={{
-              width: 44,
-              height: 44,
-              borderRadius: "50%",
-              objectFit: "cover",
-              border: "2px solid #10b981",
-              boxShadow: "0 2px 8px rgba(16, 185, 129, 0.35)",
-            }}
-          />
-          <div>
-            <div style={S.profileName}>Deepu B</div>
-            <div style={S.profileRole}>Assistant Store Manager (ASM)</div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <a href="/roles/asm" target="_blank" style={S.quickLinkPill}>
+              🔗 Open Fullscreen ASM Portal ↗
+            </a>
           </div>
         </div>
-      </header>
+      ) : (
+        <header style={S.header}>
+          <div style={S.brandCol}>
+            <div style={S.brandRow}>
+              <AuditxLogo height={30} href="/" />
+              <span style={S.hubBadge}>TIPTUR HUB - KA44</span>
+            </div>
+            <div style={S.operatorSub}>
+              Assistant Store Manager (ASM) Floor &amp; Audit Portal • Namma Tiptur - 572201
+            </div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
+              <a href="/dashboard" style={S.quickLinkPill}>📊 Command Tower</a>
+              <a href="/roles/sm" style={S.quickLinkPill}>👔 SM: Bhasker N S</a>
+              <a href="/roles/md" style={S.quickLinkPill}>👑 MD: A B Harshitha</a>
+              <a href="/picker" style={S.quickLinkPill}>📦 Picker: Thrupthi</a>
+              <a href="/rider" style={S.quickLinkPill}>🛵 Rider: Sinchana</a>
+              <a href="/warehouse" style={S.quickLinkPill}>🏬 Staging Racks</a>
+            </div>
+          </div>
+
+          <div style={S.profileBox}>
+            <img
+              src="/asm-logo.png"
+              alt="Deepu B - D Logo"
+              style={{
+                width: 44,
+                height: 44,
+                borderRadius: "50%",
+                objectFit: "cover",
+                border: "2px solid #10b981",
+                boxShadow: "0 2px 8px rgba(16, 185, 129, 0.35)",
+              }}
+            />
+            <div>
+              <div style={S.profileName}>Deepu B</div>
+              <div style={S.profileRole}>Assistant Store Manager (ASM)</div>
+            </div>
+          </div>
+        </header>
+      )}
 
       <div style={{ padding: "0 16px" }}>
         <LiveOrderPipeline title="SM Live Order Tracking" />
