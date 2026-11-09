@@ -332,6 +332,58 @@ export default function AssistantStoreManagerApp({ embedded = false }) {
                       </span>
                     </div>
 
+                    {/* Real Product Photo from Catalog */}
+                    <div
+                      style={{
+                        width: "100%",
+                        height: 160,
+                        borderRadius: 10,
+                        overflow: "hidden",
+                        background: "#f8fafc",
+                        margin: "8px 0 10px",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        border: "1px solid #e2e8f0",
+                        position: "relative",
+                      }}
+                    >
+                      <img
+                        src={item.image || (item.category === "Frames" ? "/frames/programming-stickers.jpg" : "/choclates/beatss.jpg")}
+                        alt={item.name}
+                        style={{
+                          width: "100%",
+                          height: "100%",
+                          objectFit: "contain",
+                          padding: 6,
+                          filter: inStock ? "none" : "grayscale(0.85) opacity(0.65)",
+                        }}
+                        loading="lazy"
+                        onError={(e) => {
+                          e.target.onerror = null;
+                          e.target.src = item.category === "Frames" ? "/frames/programming-stickers.jpg" : "/choclates/beatss.jpg";
+                        }}
+                      />
+                      {!inStock && (
+                        <div
+                          style={{
+                            position: "absolute",
+                            inset: 0,
+                            background: "rgba(127, 29, 29, 0.55)",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            color: "#ffffff",
+                            fontWeight: 900,
+                            fontSize: 12,
+                            letterSpacing: "0.5px",
+                          }}
+                        >
+                          OUT OF STOCK
+                        </div>
+                      )}
+                    </div>
+
                     <div style={S.itemName}>{item.name}</div>
                     <div style={S.itemCategory}>
                       {item.category} • ₹{item.price} • <b style={{ color: item.category === "Frames" ? "#2563eb" : "#0c831f" }}>{item.category === "Frames" ? "🖼️ 1 Unit Single" : "🍫 5 Units Fixed"}</b>
@@ -384,6 +436,47 @@ export default function AssistantStoreManagerApp({ embedded = false }) {
               </div>
 
               <form onSubmit={handleSubmitSoloAudit}>
+                {/* Visual SKU Card Preview with Real Image */}
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 14,
+                    background: "#F8FAFC",
+                    border: "1px solid #E2E8F0",
+                    borderRadius: 10,
+                    padding: "10px 14px",
+                    marginBottom: 16,
+                  }}
+                >
+                  <img
+                    src={auditSku.image || (auditSku.category === "Frames" ? "/frames/programming-stickers.jpg" : "/choclates/beatss.jpg")}
+                    alt={auditSku.name}
+                    style={{
+                      width: 68,
+                      height: 68,
+                      objectFit: "contain",
+                      borderRadius: 8,
+                      background: "#ffffff",
+                      border: "1px solid #cbd5e1",
+                      padding: 4,
+                    }}
+                    onError={(e) => {
+                      e.target.onerror = null;
+                      e.target.src = auditSku.category === "Frames" ? "/frames/programming-stickers.jpg" : "/choclates/beatss.jpg";
+                    }}
+                  />
+                  <div>
+                    <div style={{ fontSize: 14, fontWeight: 800, color: "#0F172A" }}>{auditSku.name}</div>
+                    <div style={{ fontSize: 12, color: "#64748B", marginTop: 2 }}>
+                      {auditSku.category} • ₹{auditSku.price} • 📍 Aisle: <b style={{ color: "#0369a1" }}>{auditSku.aisle}</b> • SKU: {auditSku.sku}
+                    </div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: auditSku.category === "Frames" ? "#2563eb" : "#0c831f", marginTop: 3 }}>
+                      {auditSku.category === "Frames" ? "🖼️ 1 Unit Single Verification" : "🍫 5 Units Fixed Verification"}
+                    </div>
+                  </div>
+                </div>
+
                 <div style={S.formGrid}>
                   <div>
                     <label style={S.label}>Selected SKU for Physical Count:</label>
