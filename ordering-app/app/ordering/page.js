@@ -3750,11 +3750,7 @@ export default function OrderingAppPage() {
             )}
 
             <div style={{ padding: "8px 0 4px 0" }}>
-              <p style={{ fontSize: 13, color: "#64748b", margin: "0 0 16px 0", lineHeight: 1.45 }}>
-                Click below to sign in with your official Google Account. Your Gmail name will automatically appear on your orders and live delivery tracking.
-              </p>
-
-              <div style={{ marginBottom: 16 }}>
+              <div style={{ marginBottom: 4 }}>
                 <GoogleAuthButton
                   context="ordering"
                   roleCode="CUSTOMER"
@@ -3782,25 +3778,6 @@ export default function OrderingAppPage() {
                     }
                   }}
                 />
-              </div>
-
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: 6,
-                  padding: "10px 12px",
-                  borderRadius: 10,
-                  background: "#f8fafc",
-                  border: "1px solid #e2e8f0",
-                  fontSize: 11.5,
-                  color: "#64748b",
-                  fontWeight: 600,
-                  textAlign: "center",
-                }}
-              >
-                <span>🔒 Official Google OAuth 2.0 • Opens Google Sign-In Window</span>
               </div>
             </div>
           </div>
