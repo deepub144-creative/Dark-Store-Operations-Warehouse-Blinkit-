@@ -13,6 +13,12 @@ export default function SlideButton({ text, onSlideComplete, color = "#0c831f", 
   const [completed, setCompleted] = useState(false);
   const trackRef = useRef(null);
 
+  useEffect(() => {
+    setCompleted(false);
+    setDragX(0);
+    setIsDragging(false);
+  }, [text]);
+
   const handleStart = (clientX) => {
     if (completed) return;
     setIsDragging(true);
@@ -21,13 +27,13 @@ export default function SlideButton({ text, onSlideComplete, color = "#0c831f", 
   const handleMove = (clientX) => {
     if (!isDragging || !trackRef.current || completed) return;
     const rect = trackRef.current.getBoundingClientRect();
-    const maxDrag = rect.width - 56;
+    const maxDrag = Math.max(10, rect.width - 56);
     let newX = clientX - rect.left - 28;
     if (newX < 0) newX = 0;
     if (newX > maxDrag) newX = maxDrag;
     setDragX(newX);
 
-    if (newX >= maxDrag * 0.82) {
+    if (newX >= maxDrag * 0.68) {
       setCompleted(true);
       setIsDragging(false);
       setDragX(maxDrag);

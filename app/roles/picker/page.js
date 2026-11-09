@@ -270,18 +270,12 @@ export default function OdPickerApp() {
         return;
       }
 
-      // ⚡ Instant auto-assign: resume own in-progress pick, else take the oldest pending order
+      // ⚡ Only resume if Thrupthi was actively in the middle of picking (e.g. page refresh during active pick)
       if (!activeOrderRef.current) {
-        const resume = list.find((d) => d.status === "picking" && (!d.pickerId || d.pickerId === "thrupthi"));
-        const oldestPending = [...pendingDocs].sort(
-          (a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0)
-        )[0];
-        const next = resume || oldestPending;
-        if (next) {
-          activeOrderRef.current = next;
-          playOrderAlarm();
-          setTimeout(() => stopOrderAlarm(), 1800);
-          handleAcceptOrder(next);
+        const resume = list.find((d) => d.status === "picking" && d.pickerId === "thrupthi");
+        if (resume) {
+          activeOrderRef.current = resume;
+          handleAcceptOrder(resume);
         }
       }
     });
@@ -745,62 +739,11 @@ export default function OdPickerApp() {
     if (!activeOrder) return;
     const finalSec = elapsedSec;
     const isSlaAchieved = finalSec <= PICKER_SLA_SECONDS;
+    const currentOrder = activeOrder;
+    const currentRack = assignedRack;
 
-    updateLiveOrder(activeOrder.id, {
-      status: "staged",
-      stage: "Staged in Rack " + assignedRack.id,
-      assignedRack: assignedRack.id,
-      rackQr: assignedRack.qr,
-      rackZone: assignedRack.zone,
-      pickerId: "thrupthi",
-      pickerName: "Thrupthi K S",
-      stagedAt: new Date().toISOString(),
-      pickTimeSec: finalSec,
-      remainingMins: 1,
-      estimatedDeliveryMins: 1,
-      riderEtaMins: 6,
-      handoverToRiderCompleted: true,
-      qrCode: `AUDITX-HANDOVER-${activeOrder.id}-${assignedRack.id}`,
-    });
-
-    broadcastEvent("ORDER_STAGED", {
-      orderId: activeOrder.id,
-      assignedRack: assignedRack.id,
-      pickerName: "Thrupthi K S",
-      captainName: "Sinchana B R",
-      remainingMins: 1,
-      riderEtaMins: 6,
-    });
-
-    broadcastEvent("PICKER_HANDOVER_COMPLETED", {
-      orderId: activeOrder.id,
-      assignedRack: assignedRack.id,
-      pickerName: "Thrupthi K S",
-      captainName: "Sinchana B R",
-      remainingMins: 1,
-      riderEtaMins: 6,
-    });
-
-    if (db) {
-      try {
-        await updateDoc(doc(db, "orders", activeOrder.id), {
-          status: "staged",
-          stage: "Staged in Rack " + assignedRack.id,
-          assignedRack: assignedRack.id,
-          rackQr: assignedRack.qr,
-          pickerId: "thrupthi",
-          pickerName: "Thrupthi K S",
-          stagedAt: new Date().toISOString(),
-          pickTimeSec: finalSec,
-          qrCode: `AUDITX-HANDOVER-${activeOrder.id}-${assignedRack.id}`,
-        });
-      } catch (e) {
-        console.warn(e);
-      }
-    }
-
+    // 1. Immediately reset state so UI instantly returns to home task searching frame
     playSuccessChime();
-    setUnassignedOrders((prev) => prev.filter((o) => o.id !== activeOrder.id));
     setActiveOrder(null);
     activeOrderRef.current = null;
     setActiveStep("accept");
@@ -810,15 +753,68 @@ export default function OdPickerApp() {
     setSelectedItemIdx(0);
     setElapsedSec(0);
     setCaptainScannedRack(false);
+    setUnassignedOrders((prev) => prev.filter((o) => o.id !== currentOrder.id));
+
     if (typeof window !== "undefined") {
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
     setActionSuccess(
       isSlaAchieved
-        ? `🎉 SUCCESS: Picked & Handed Over to Rack ${assignedRack.id} in ${finalSec}s! Searching next order...`
-        : `✅ Placed in Rack ${assignedRack.id} in ${finalSec}s. Searching next order...`
+        ? `🎉 SUCCESS: Picked & Handed Over to Rack ${currentRack.id} in ${finalSec}s! Searching next order...`
+        : `✅ Placed in Rack ${currentRack.id} in ${finalSec}s. Searching next order...`
     );
     setTimeout(() => setActionSuccess(""), 3500);
+
+    // 2. Broadcast and update realtime orders
+    updateLiveOrder(currentOrder.id, {
+      status: "staged",
+      stage: "Staged in Rack " + currentRack.id,
+      assignedRack: currentRack.id,
+      rackQr: currentRack.qr,
+      rackZone: currentRack.zone,
+      pickerId: "thrupthi",
+      pickerName: "Thrupthi K S",
+      stagedAt: new Date().toISOString(),
+      pickTimeSec: finalSec,
+      remainingMins: 1,
+      estimatedDeliveryMins: 1,
+      riderEtaMins: 6,
+      handoverToRiderCompleted: true,
+      qrCode: `AUDITX-HANDOVER-${currentOrder.id}-${currentRack.id}`,
+    });
+
+    broadcastEvent("ORDER_STAGED", {
+      orderId: currentOrder.id,
+      assignedRack: currentRack.id,
+      pickerName: "Thrupthi K S",
+      captainName: "Sinchana B R",
+      remainingMins: 1,
+      riderEtaMins: 6,
+    });
+
+    broadcastEvent("PICKER_HANDOVER_COMPLETED", {
+      orderId: currentOrder.id,
+      assignedRack: currentRack.id,
+      pickerName: "Thrupthi K S",
+      captainName: "Sinchana B R",
+      remainingMins: 1,
+      riderEtaMins: 6,
+    });
+
+    // 3. Fire-and-forget Firestore update without blocking local state reset
+    if (db) {
+      updateDoc(doc(db, "orders", currentOrder.id), {
+        status: "staged",
+        stage: "Staged in Rack " + currentRack.id,
+        assignedRack: currentRack.id,
+        rackQr: currentRack.qr,
+        pickerId: "thrupthi",
+        pickerName: "Thrupthi K S",
+        stagedAt: new Date().toISOString(),
+        pickTimeSec: finalSec,
+        qrCode: `AUDITX-HANDOVER-${currentOrder.id}-${currentRack.id}`,
+      }).catch((e) => console.warn(e));
+    }
   }
 
   function handleResetForNextOrder() {
@@ -978,10 +974,76 @@ export default function OdPickerApp() {
         {/* MAIN BODY — WHITE THEME */}
         <main style={S.main}>
           {/* ════════════════════════════════════════════════════════
-              STEP 1: AWAITING LIVE ORDERS
+              STEP 1: AWAITING LIVE ORDERS & HOME WORKSPACE
           ════════════════════════════════════════════════════════ */}
           {activeStep === "accept" && (
             <div>
+              {/* ── HOME TASK SEARCHING VIDEO (ALWAYS VISIBLE & PLAYING ON HOME) ── */}
+              <div
+                style={{
+                  background: "#ffffff",
+                  borderRadius: 16,
+                  padding: 14,
+                  border: "1.5px solid #e2e8f0",
+                  marginBottom: 16,
+                  boxShadow: "0 4px 18px rgba(0,0,0,0.06)",
+                }}
+              >
+                <div style={{ position: "relative", borderRadius: 12, overflow: "hidden", marginBottom: 12 }}>
+                  <video
+                    autoPlay
+                    loop
+                    muted
+                    playsInline
+                    style={{
+                      width: "100%",
+                      height: 220,
+                      objectFit: "cover",
+                      borderRadius: 12,
+                      display: "block",
+                      background: "#080c14",
+                    }}
+                  >
+                    <source src="/animations/task_search_icon_logo.mp4" type="video/mp4" />
+                    <source src="/task_search_icon_logo.mp4" type="video/mp4" />
+                    <source src="/tasksearching.mp4" type="video/mp4" />
+                    <source src="/task-searching.mp4" type="video/mp4" />
+                    <source src="/videos/task-searching.mp4" type="video/mp4" />
+                  </video>
+                  <div
+                    style={{
+                      position: "absolute",
+                      bottom: 10,
+                      left: "50%",
+                      transform: "translateX(-50%)",
+                      background: "rgba(15, 23, 42, 0.88)",
+                      backdropFilter: "blur(6px)",
+                      color: "#ffffff",
+                      padding: "6px 14px",
+                      borderRadius: 20,
+                      fontSize: 11,
+                      fontWeight: 700,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    <span
+                      style={{
+                        width: 8,
+                        height: 8,
+                        borderRadius: "50%",
+                        background: "#10b981",
+                        boxShadow: "0 0 8px #10b981",
+                        display: "inline-block",
+                      }}
+                    />
+                    <span>Searching Live Picking Tasks...</span>
+                  </div>
+                </div>
+              </div>
+
               {unassignedOrders.length > 0 ? (
                 <div style={S.orderAlertCard}>
                   <div style={S.alertHeader}>
@@ -1059,85 +1121,13 @@ export default function OdPickerApp() {
                     );
                   })}
                 </div>
-              ) : (
-                /* ════════════════════════════════════════════════════════
-                   IDLE WORKSPACE: 6 WAREHOUSE OPERATIONS WITH DROPDOWN SLIDER
-                   - Picker, Putaway, Inventory Audit, Expiry Audit, FNV Audit, FRZ Audit
-                   - Originally animated icons with real app feeling
-                   - Barcode & Aisle scanning for every operation
-                ════════════════════════════════════════════════════════ */
-                <div style={S.operationsWorkspace}>
-                  {/* ANIMATION STYLES INJECTION */}
-                  <AuditxAnimatedStyles />
+              ) : null}
 
-                  {/* ── TASK SEARCHING VIDEO & PICKER ASSIGNMENT CARD ── */}
-                  <div
-                    style={{
-                      background: "#ffffff",
-                      borderRadius: 16,
-                      padding: 14,
-                      border: "1.5px solid #e2e8f0",
-                      marginBottom: 16,
-                      boxShadow: "0 4px 18px rgba(0,0,0,0.06)",
-                    }}
-                  >
-                    <div style={{ position: "relative", borderRadius: 12, overflow: "hidden", marginBottom: 12 }}>
-                      <video
-                        autoPlay
-                        loop
-                        muted
-                        playsInline
-                        style={{
-                          width: "100%",
-                          height: 220,
-                          objectFit: "cover",
-                          borderRadius: 12,
-                          display: "block",
-                          background: "#080c14",
-                        }}
-                      >
-                        <source src="/animations/task_search_icon_logo.mp4" type="video/mp4" />
-                        <source src="/task_search_icon_logo.mp4" type="video/mp4" />
-                        <source src="/tasksearching.mp4" type="video/mp4" />
-                        <source src="/task-searching.mp4" type="video/mp4" />
-                        <source src="/videos/task-searching.mp4" type="video/mp4" />
-                      </video>
-                      <div
-                        style={{
-                          position: "absolute",
-                          bottom: 10,
-                          left: "50%",
-                          transform: "translateX(-50%)",
-                          background: "rgba(15, 23, 42, 0.88)",
-                          backdropFilter: "blur(6px)",
-                          color: "#ffffff",
-                          padding: "6px 14px",
-                          borderRadius: 20,
-                          fontSize: 11,
-                          fontWeight: 700,
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 8,
-                          whiteSpace: "nowrap",
-                          boxShadow: "0 2px 8px rgba(0,0,0,0.4)",
-                        }}
-                      >
-                        <span
-                          style={{
-                            width: 8,
-                            height: 8,
-                            borderRadius: "50%",
-                            background: "#10b981",
-                            boxShadow: "0 0 8px #10b981",
-                            display: "inline-block",
-                          }}
-                        />
-                        <span>Awaiting Order Dispatch • Searching Live Tasks...</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
+              {/* ── 6 WAREHOUSE OPERATIONS WITH DROPDOWN SLIDER ── */}
+              <div style={S.operationsWorkspace}>
+                {/* ANIMATION STYLES INJECTION */}
+                <AuditxAnimatedStyles />
+              </div>
             </div>
           )}
 

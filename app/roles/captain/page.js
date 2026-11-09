@@ -212,20 +212,13 @@ export default function DeliveryCaptainApp() {
         setActiveStep("awaiting_orders");
         stopOrderAlarm();
       } else if (isCheckedIn && !activeOrder) {
-        // ⚡ Instant auto-assign after picker handover: resume own trip, else take oldest staged bag
+        // ⚡ Only resume trip if Captain Sinchana B R was actively en route (e.g. refreshed page mid-delivery)
         const resumeTrip = liveOrders.find(
           (d) => (d.status === "dispatched" || d.status === "en_route") && (!d.captainId || d.captainId === "sinchana")
         );
-        const oldestStaged = [...readyDocs].sort(
-          (a, b) => new Date(a.stagedAt || 0) - new Date(b.stagedAt || 0)
-        )[0];
         if (resumeTrip) {
           setActiveOrder(resumeTrip);
           setActiveStep("en_route");
-        } else if (oldestStaged) {
-          playOrderAlarm();
-          setTimeout(() => stopOrderAlarm(), 1800);
-          handleSelectStagedOrder(oldestStaged);
         }
       }
     });
@@ -449,25 +442,8 @@ export default function DeliveryCaptainApp() {
       console.warn(e);
     }
 
-    if (db) {
-      try {
-        await updateDoc(doc(db, "orders", activeOrder.id), {
-          status: "delivered",
-          stage: "Delivered",
-          deliveredAt: new Date().toISOString(),
-          deliveryDurationSec: elapsedSec,
-          totalSlaSec: (activeOrder.pickTimeSec || 110) + elapsedSec,
-          needsCustomerRating: true,
-        });
-      } catch (e) {
-        console.warn(e);
-      }
-    }
-
-    // Auto-credit Sinchana B R wallet for completed gig (5.1 kms • ₹28)
+    // 1. Immediately reset state so UI instantly returns to home task searching frame
     creditSinchanaWallet();
-
-    // Immediately return to catalog home page with active task searching video playing
     setShowDeliveredSheet(false);
     setActiveOrder(null);
     setActiveStep("awaiting_orders");
@@ -482,6 +458,18 @@ export default function DeliveryCaptainApp() {
     }
     setActionSuccess(`🎉 Handover complete! Order delivered safely. Returning to HUB • Searching live tasks...`);
     setTimeout(() => setActionSuccess(""), 4000);
+
+    // 2. Fire-and-forget Firestore update without blocking local state reset
+    if (db) {
+      updateDoc(doc(db, "orders", activeOrder.id), {
+        status: "delivered",
+        stage: "Delivered",
+        deliveredAt: new Date().toISOString(),
+        deliveryDurationSec: elapsedSec,
+        totalSlaSec: (activeOrder.pickTimeSec || 110) + elapsedSec,
+        needsCustomerRating: true,
+      }).catch((e) => console.warn(e));
+    }
   }
 
   function handleResetForNextDelivery() {
@@ -745,9 +733,69 @@ export default function DeliveryCaptainApp() {
 
         {/* ─── MAIN CONTENT — WHITE THEME ─── */}
         <main style={S.main}>
-          {/* STEP 1: AWAITING PICKUP FROM STAGING RACKS */}
+          {/* STEP 1: AWAITING PICKUP FROM STAGING RACKS (HOME WORKSPACE) */}
           {activeStep === "awaiting_orders" && (
             <div>
+              {/* ── HOME TASK SEARCHING VIDEO (ALWAYS VISIBLE & PLAYING ON HOME) ── */}
+              <div style={S.idleCard}>
+                <div style={{ position: "relative", textAlign: "center", borderRadius: 14, overflow: "hidden", marginBottom: 14 }}>
+                  <video
+                    autoPlay
+                    loop
+                    muted
+                    playsInline
+                    style={{
+                      width: "100%",
+                      maxWidth: 360,
+                      height: 210,
+                      objectFit: "cover",
+                      borderRadius: 14,
+                      boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
+                      display: "inline-block",
+                      border: "1.5px solid #e2e8f0",
+                      background: "#080c14",
+                    }}
+                  >
+                    <source src="/animations/task_search_icon_logo.mp4" type="video/mp4" />
+                    <source src="/task_search_icon_logo.mp4" type="video/mp4" />
+                    <source src="/tasksearching.mp4" type="video/mp4" />
+                    <source src="/task-searching.mp4" type="video/mp4" />
+                    <source src="/videos/task-searching.mp4" type="video/mp4" />
+                  </video>
+                  <div
+                    style={{
+                      position: "absolute",
+                      bottom: 12,
+                      left: "50%",
+                      transform: "translateX(-50%)",
+                      background: "rgba(15, 23, 42, 0.85)",
+                      backdropFilter: "blur(6px)",
+                      color: "#ffffff",
+                      padding: "6px 14px",
+                      borderRadius: 20,
+                      fontSize: 11.5,
+                      fontWeight: 800,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      whiteSpace: "nowrap",
+                      boxShadow: "0 2px 8px rgba(0,0,0,0.4)",
+                    }}
+                  >
+                    <span
+                      style={{
+                        width: 8,
+                        height: 8,
+                        borderRadius: "50%",
+                        background: "#10b981",
+                        boxShadow: "0 0 8px #10b981",
+                        display: "inline-block",
+                      }}
+                    />
+                    <span>Awaiting Order Dispatch • Searching Live Tasks...</span>
+                  </div>
+                </div>
+              </div>
 
               {/* INCOMING LIVE ASSIGNED ORDERS (PICKING IN PROGRESS) */}
               {incomingAssignedOrders.length > 0 && (
@@ -882,68 +930,7 @@ export default function DeliveryCaptainApp() {
                     })}
                   </div>
                 </div>
-              ) : (
-                /* IDLE STATE WITH CLEAN TASK SEARCHING ANIMATION */
-                <div style={S.idleCard}>
-                  <div style={{ position: "relative", textAlign: "center", borderRadius: 14, overflow: "hidden", marginBottom: 14 }}>
-                    <video
-                      autoPlay
-                      loop
-                      muted
-                      playsInline
-                      style={{
-                        width: "100%",
-                        maxWidth: 360,
-                        height: 210,
-                        objectFit: "cover",
-                        borderRadius: 14,
-                        boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
-                        display: "inline-block",
-                        border: "1.5px solid #e2e8f0",
-                        background: "#080c14",
-                      }}
-                    >
-                      <source src="/animations/task_search_icon_logo.mp4" type="video/mp4" />
-                      <source src="/task_search_icon_logo.mp4" type="video/mp4" />
-                      <source src="/tasksearching.mp4" type="video/mp4" />
-                      <source src="/task-searching.mp4" type="video/mp4" />
-                      <source src="/videos/task-searching.mp4" type="video/mp4" />
-                    </video>
-                    <div
-                      style={{
-                        position: "absolute",
-                        bottom: 12,
-                        left: "50%",
-                        transform: "translateX(-50%)",
-                        background: "rgba(15, 23, 42, 0.85)",
-                        backdropFilter: "blur(6px)",
-                        color: "#ffffff",
-                        padding: "6px 14px",
-                        borderRadius: 20,
-                        fontSize: 11.5,
-                        fontWeight: 800,
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 8,
-                        whiteSpace: "nowrap",
-                        boxShadow: "0 2px 8px rgba(0,0,0,0.4)",
-                      }}
-                    >
-                      <span
-                        style={{
-                          width: 8,
-                          height: 8,
-                          borderRadius: "50%",
-                          background: "#10b981",
-                          boxShadow: "0 0 8px #10b981",
-                          display: "inline-block",
-                        }}
-                      />
-                      <span>Awaiting Order Dispatch • Searching Live Tasks...</span>
-                    </div>
-                  </div>
-                </div>
-              )}
+              ) : null}
             </div>
           )}
 
