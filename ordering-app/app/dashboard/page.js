@@ -35,7 +35,6 @@ import {
 } from "@/lib/soundSystem";
 import ErdDfdViewer from "@/components/ErdDfdViewer";
 import AuditxLogo from "@/components/AuditxLogo";
-import GoogleAuthButton from "@/components/GoogleAuthButton";
 import StoreToggleSwitch from "@/components/StoreToggleSwitch";
 import DailyOperationsExportButton from "@/components/DailyOperationsExportButton";
 import ManagingDirectorApp from "@/app/roles/md/page";
@@ -905,25 +904,6 @@ export default function WarehouseDashboardPage() {
               ))}
             </select>
           </div>
-
-          <GoogleAuthButton
-            context="staff"
-            theme="dark"
-            size="small"
-            label="Google Workspace"
-            fullWidth={false}
-            onSuccess={(authData) => {
-              if (authData.staff) {
-                if (DASHBOARD_MANAGERS.some((m) => m.id === authData.staff.id)) {
-                  setStaff(authData.staff);
-                  setActionSuccess(`Google Account Connected: ${authData.name}`);
-                } else {
-                  setActionSuccess(`Connected ${authData.name}. Operating in Dashboard as ${staff?.name || "Bhaskar N S"}.`);
-                }
-                setTimeout(() => setActionSuccess(""), 3000);
-              }
-            }}
-          />
 
           <button style={S.logoutBtn} onClick={logout}>
             Exit Portal
