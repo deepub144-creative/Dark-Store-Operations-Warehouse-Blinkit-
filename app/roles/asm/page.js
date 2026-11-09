@@ -9,24 +9,34 @@ import { playNotificationChime, playSuccessChime, playScanSuccess } from "@/lib/
 import { subscribeToEvents, broadcastEvent } from "@/lib/realtimeSync";
 import AuditxLogo from "@/components/AuditxLogo";
 
+// Official Dark Store Catalog for ASM: Strictly matching Ordering App & SM Dashboard (Frames = 1 unit, Chocolates = 5 units)
+const ASM_OFFICIAL_CATALOG = CATALOG.filter(
+  (item) => item.category === "Frames" || item.category === "Chocolates"
+).map((item) => ({
+  ...item,
+  units: item.category === "Frames" ? 1 : 5,
+  unitSpecification: item.category === "Frames" ? "1 unit single" : "5 units fixed",
+  weight: item.category === "Frames" ? "1 unit" : "5 units",
+}));
+
 export default function AssistantStoreManagerApp() {
   const [activeTab, setActiveTab] = useState("itemHelp"); // itemHelp | soloAudit | putawayBay
-  const [catalogItems, setCatalogItems] = useState(CATALOG);
+  const [catalogItems, setCatalogItems] = useState(ASM_OFFICIAL_CATALOG);
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedItem, setSelectedItem] = useState(CATALOG[0]);
+  const [selectedItem, setSelectedItem] = useState(ASM_OFFICIAL_CATALOG[0]);
   const [actionSuccess, setActionSuccess] = useState("");
 
   // Solo Inventory Audit states (Dedicated alone to ASM Deepu B)
-  const [auditSku, setAuditSku] = useState(CATALOG[0]);
-  const [physicalCountInput, setPhysicalCountInput] = useState(85);
+  const [auditSku, setAuditSku] = useState(ASM_OFFICIAL_CATALOG[0]);
+  const [physicalCountInput, setPhysicalCountInput] = useState(5);
   const [auditNotes, setAuditNotes] = useState("");
   const [submittedAudits, setSubmittedAudits] = useState([
     {
       id: "AUD-KA44-901",
-      sku: "Tiptur Special Copra (Grade-A Dry Coconut)",
-      aisle: "F0 - A1 - 001",
-      systemQty: 85,
-      physicalQty: 85,
+      sku: "Cadbury Dairy Milk Silk Chocolate (150g)",
+      aisle: "Aisle C1 - S1 - 001",
+      systemQty: 5,
+      physicalQty: 5,
       variance: 0,
       status: "VERIFIED_ACCURATE",
       date: "Today, 14:00",
@@ -97,10 +107,11 @@ export default function AssistantStoreManagerApp() {
     playScanSuccess();
     const found = catalogItems.find(
       (c) => c.sku === code || c.barcode === code || code.includes(c.sku) || code.toLowerCase().includes(c.name.toLowerCase().slice(0, 5))
-    );
+    ) || catalogItems[0];
     if (found) {
       setAuditSku(found);
-      setPhysicalCountInput(found.price > 100 ? 45 : 85);
+      const defaultUnits = found.category === "Frames" ? 1 : 5;
+      setPhysicalCountInput(defaultUnits);
       setActionSuccess(`✅ Barcode Scanned: ${found.name} at Aisle ${found.aisle}`);
       setTimeout(() => setActionSuccess(""), 3000);
     }
@@ -108,7 +119,7 @@ export default function AssistantStoreManagerApp() {
 
   function handleSubmitSoloAudit(e) {
     e.preventDefault();
-    const systemQty = auditSku.price > 100 ? 45 : 85;
+    const systemQty = auditSku.category === "Frames" ? 1 : 5;
     const physicalQty = parseInt(physicalCountInput) || 0;
     const variance = physicalQty - systemQty;
 
@@ -255,7 +266,9 @@ export default function AssistantStoreManagerApp() {
                     </div>
 
                     <div style={S.itemName}>{item.name}</div>
-                    <div style={S.itemCategory}>{item.category} • ₹{item.price}</div>
+                    <div style={S.itemCategory}>
+                      {item.category} • ₹{item.price} • <b style={{ color: item.category === "Frames" ? "#2563eb" : "#0c831f" }}>{item.category === "Frames" ? "🖼️ 1 Unit Single" : "🍫 5 Units Fixed"}</b>
+                    </div>
 
                     <div style={S.itemCardBottom}>
                       <button
@@ -311,7 +324,10 @@ export default function AssistantStoreManagerApp() {
                       value={auditSku.sku}
                       onChange={(e) => {
                         const it = catalogItems.find((c) => c.sku === e.target.value);
-                        if (it) setAuditSku(it);
+                        if (it) {
+                          setAuditSku(it);
+                          setPhysicalCountInput(it.category === "Frames" ? 1 : 5);
+                        }
                       }}
                       style={S.select}
                     >
@@ -332,7 +348,7 @@ export default function AssistantStoreManagerApp() {
                     <label style={S.label}>System Ledger Quantity:</label>
                     <input
                       type="text"
-                      value={`${auditSku.price > 100 ? 45 : 85} units`}
+                      value={`${auditSku.category === "Frames" ? "1 unit single" : "5 units fixed"} (System Ledger)`}
                       disabled
                       style={S.inputDisabled}
                     />

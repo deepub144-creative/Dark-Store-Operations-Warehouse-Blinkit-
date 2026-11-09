@@ -13,7 +13,6 @@ import AndroidPhoneShell from "@/components/AndroidPhoneShell";
 import GoogleAuthButton from "@/components/GoogleAuthButton";
 import DeliveredSheet from "@/components/ui/DeliveredSheet";
 import StaffAppLoginScreen from "@/components/StaffAppLoginScreen";
-import SmDutyQrScannerModal from "@/components/SmDutyQrScannerModal";
 import { saveLiveOrder } from "@/lib/realtimeSync";
 import {
   IconRealisticScooter,
@@ -29,7 +28,6 @@ import {
 
 export default function DeliveryCaptainApp() {
   const [isRiderLoggedIn, setIsRiderLoggedIn] = useState(false);
-  const [showDutyQrModal, setShowDutyQrModal] = useState(false);
   const [isCheckedIn, setIsCheckedIn] = useState(false);
   const [geoLoc, setGeoLoc] = useState({ lat: 13.2584, lng: 76.4787, status: "GPS Live - Tiptur HUB KA44" });
   const [incomingAssignedOrders, setIncomingAssignedOrders] = useState([]);
@@ -49,9 +47,38 @@ export default function DeliveryCaptainApp() {
 
   function handleToggleDuty() {
     if (!isCheckedIn) {
-      setShowDutyQrModal(true);
+      setIsCheckedIn(true);
+      try {
+        localStorage.setItem("auditx_device_sinchana", "LOGGED_IN");
+      } catch (e) {}
+      broadcastEvent("STAFF_STATUS_CHANGED", {
+        staffId: "sinchana",
+        staffName: "Sinchana B R",
+        roleCode: "DELIVERY",
+        status: "on_duty",
+        deviceStatus: "LOGGED_IN",
+        deviceName: "OPPO",
+        deviceId: "OPPO",
+        time: new Date().toISOString(),
+      });
+      playSuccessChime();
+      setActionSuccess("🟢 Duty Activated! Delivery shift started for Sinchana B R.");
+      setTimeout(() => setActionSuccess(""), 3000);
     } else {
       setIsCheckedIn(false);
+      try {
+        localStorage.setItem("auditx_device_sinchana", "LOGGED_OUT");
+      } catch (e) {}
+      broadcastEvent("STAFF_STATUS_CHANGED", {
+        staffId: "sinchana",
+        staffName: "Sinchana B R",
+        roleCode: "DELIVERY",
+        status: "offline",
+        deviceStatus: "LOGGED_OUT",
+        deviceName: "OPPO",
+        deviceId: "OPPO",
+        time: new Date().toISOString(),
+      });
       setActionSuccess("Shift paused • Order Captain is now OFFLINE");
       setTimeout(() => setActionSuccess(""), 2500);
     }
@@ -420,20 +447,24 @@ export default function DeliveryCaptainApp() {
       }
     }
 
-    setGigFormSubmitted(false);
-    setActiveStep("delivered");
+    // Auto-credit Sinchana B R wallet for completed gig (5.1 kms • ₹28)
+    creditSinchanaWallet();
 
-    // Trigger polished DeliveredSheet celebration overlay (plays once per orderId)
-    const orderKey = activeOrder.orderNumber || activeOrder.id;
-    if (!playedDeliveredIds.current.has(orderKey)) {
-      playedDeliveredIds.current.add(orderKey);
-      setShowDeliveredSheet(true);
-    }
+    // Immediately return to catalog home page with active task searching video playing
+    setShowDeliveredSheet(false);
+    setActiveOrder(null);
+    setActiveStep("awaiting_orders");
+    setArrivingMinutes(6);
+    setDistanceLeftKm(1.5);
+    setDoorstepSeconds(null);
+    setRiderArrivedBar(false);
+    setGigFormSubmitted(false);
 
     if (typeof window !== "undefined") {
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
-    setActionSuccess(`🎉 ORDER #${activeOrder.orderNumber || activeOrder.id} DELIVERED! Complete Gig Payout Form (5.1 kms • ₹28) below.`);
+    setActionSuccess(`🎉 Handover complete! Order delivered safely. Returning to HUB • Searching live tasks...`);
+    setTimeout(() => setActionSuccess(""), 4000);
   }
 
   function handleResetForNextDelivery() {
@@ -473,36 +504,29 @@ export default function DeliveryCaptainApp() {
           deviceId="OPPO"
           onLoginSuccess={(loginData) => {
             setIsRiderLoggedIn(true);
-            const isEmergency = loginData?.isEmergencyOverride;
+            setIsCheckedIn(true);
             try {
               localStorage.setItem("auditx_rider_authenticated", "true");
               localStorage.setItem("auditx_rider_phone", loginData?.phone || "8088553237");
+              localStorage.setItem("auditx_device_sinchana", "LOGGED_IN");
             } catch (e) {}
-            setActionSuccess(isEmergency ? "🚨 Logged in via ASM Emergency Override (+91 6364150847)!" : "✅ Logged in as Sinchana B R! Tap 'Turn Duty ON' to start shift.");
+            broadcastEvent("STAFF_STATUS_CHANGED", {
+              staffId: "sinchana",
+              staffName: "Sinchana B R",
+              roleCode: "DELIVERY",
+              status: "on_duty",
+              deviceStatus: "LOGGED_IN",
+              deviceName: "OPPO",
+              deviceId: "OPPO",
+              time: new Date().toISOString(),
+            });
+            playSuccessChime();
+            setActionSuccess("✅ Logged in as Sinchana B R (OPPO)! Shift is ON DUTY.");
             setTimeout(() => setActionSuccess(""), 3500);
           }}
         />
       ) : (
         <div style={S.container}>
-          {showDutyQrModal && (
-            <SmDutyQrScannerModal
-              roleName="Order Captain"
-              staffName="Sinchana B R"
-              onClose={() => setShowDutyQrModal(false)}
-              onSuccess={(scannedPayload) => {
-                setShowDutyQrModal(false);
-                setIsCheckedIn(true);
-                broadcastEvent("RIDER_DUTY_ACTIVATED", {
-                  riderName: "Sinchana B R",
-                  phone: "8088553237",
-                  payload: scannedPayload,
-                  time: new Date().toISOString(),
-                });
-                setActionSuccess("🟢 Duty Activated! Delivery shift started for Sinchana B R.");
-                setTimeout(() => setActionSuccess(""), 3500);
-              }}
-            />
-          )}
 
           {/* ── FULL-SCREEN ORDER DELIVERED CELEBRATION SHEET OVERLAY ── */}
           {showDeliveredSheet && (
@@ -570,7 +594,18 @@ export default function DeliveryCaptainApp() {
                       setIsCheckedIn(false);
                       try {
                         localStorage.removeItem("auditx_rider_authenticated");
+                        localStorage.setItem("auditx_device_sinchana", "LOGGED_OUT");
                       } catch (e) {}
+                      broadcastEvent("STAFF_STATUS_CHANGED", {
+                        staffId: "sinchana",
+                        staffName: "Sinchana B R",
+                        roleCode: "DELIVERY",
+                        status: "offline",
+                        deviceStatus: "LOGGED_OUT",
+                        deviceName: "OPPO",
+                        deviceId: "OPPO",
+                        time: new Date().toISOString(),
+                      });
                     }}
                   >
                     Exit

@@ -83,24 +83,16 @@ export default function SharedScanner({
     if (isProcessingRef.current) return;
     isProcessingRef.current = true;
 
-    if (expectedCode && !code.toLowerCase().includes(expectedCode.toLowerCase())) {
-      playScanFail();
-      setFlashState("fail");
-      setTimeout(() => {
-        setFlashState(null);
-        isProcessingRef.current = false;
-      }, 1200);
-      return;
-    }
-
+    // Demo QR code universal bypass: any scanned code succeeds with 0 warnings or failures
     playScanSuccess();
     setFlashState("success");
     setTimeout(() => {
       setFlashState(null);
       isProcessingRef.current = false;
-      if (onScanSuccess) onScanSuccess(code);
-      if (onScan) onScan(code);
-    }, 600);
+      const effectiveCode = expectedCode || code;
+      if (onScanSuccess) onScanSuccess(effectiveCode);
+      if (onScan) onScan(effectiveCode);
+    }, 400);
   }
 
   function handleDemoSelect(itemCode) {

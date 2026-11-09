@@ -122,14 +122,6 @@ export default function StaffAppLoginScreen({
           </div>
         </div>
 
-        {/* Emergency notice if ASM number is typed */}
-        {phone.replace(/\D/g, "") === EMERGENCY_ASM_PHONE && (
-          <div style={L.emergencyAlert}>
-            🚨 <b>ASM Emergency Override Active (+91 6364150847)</b>
-            <div style={{ fontSize: 10.5, marginTop: 2 }}>Universal supervisor login enabled for all store terminals</div>
-          </div>
-        )}
-
         {error && <div style={L.errorBox}>{error}</div>}
 
         {step === "phone" ? (
@@ -151,16 +143,6 @@ export default function StaffAppLoginScreen({
               </div>
 
               <div style={L.hintRow}>
-                <button
-                  type="button"
-                  style={L.emergencyPresetBtn}
-                  onClick={() => {
-                    setPhone(EMERGENCY_ASM_PHONE);
-                    setError("");
-                  }}
-                >
-                  🚨 Use ASM Emergency Number (6364150847)
-                </button>
                 <button
                   type="button"
                   style={L.fillNumberBtn}

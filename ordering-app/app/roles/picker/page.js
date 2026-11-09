@@ -113,7 +113,6 @@ export const WAREHOUSE_OPERATIONS = [
 
 export default function OdPickerApp() {
   const [isPickerLoggedIn, setIsPickerLoggedIn] = useState(false);
-  const [showDutyQrModal, setShowDutyQrModal] = useState(false);
   const [isOnline, setIsOnline] = useState(false);
   const [loginSeconds, setLoginSeconds] = useState(1); // Starts at 0m 1s live tracking
   const [unassignedOrders, setUnassignedOrders] = useState([]);
@@ -130,9 +129,38 @@ export default function OdPickerApp() {
 
   function handleToggleDuty() {
     if (!isOnline) {
-      setShowDutyQrModal(true);
+      setIsOnline(true);
+      try {
+        localStorage.setItem("auditx_device_thrupthi", "LOGGED_IN");
+      } catch (e) {}
+      broadcastEvent("STAFF_STATUS_CHANGED", {
+        staffId: "thrupthi",
+        staffName: "Thrupthi K S",
+        roleCode: "PICKER",
+        status: "on_duty",
+        deviceStatus: "LOGGED_IN",
+        deviceName: "MOTOROLA",
+        deviceId: "MOTOROLA",
+        time: new Date().toISOString(),
+      });
+      playSuccessChime();
+      setActionSuccess("🟢 Duty Activated! Thrupthi K S is online on MOTOROLA.");
+      setTimeout(() => setActionSuccess(""), 3000);
     } else {
       setIsOnline(false);
+      try {
+        localStorage.setItem("auditx_device_thrupthi", "LOGGED_OUT");
+      } catch (e) {}
+      broadcastEvent("STAFF_STATUS_CHANGED", {
+        staffId: "thrupthi",
+        staffName: "Thrupthi K S",
+        roleCode: "PICKER",
+        status: "offline",
+        deviceStatus: "LOGGED_OUT",
+        deviceName: "MOTOROLA",
+        deviceId: "MOTOROLA",
+        time: new Date().toISOString(),
+      });
       setActionSuccess("Shift paused • OD Picker is now OFFLINE");
       setTimeout(() => setActionSuccess(""), 2500);
     }
@@ -749,15 +777,23 @@ export default function OdPickerApp() {
 
     playSuccessChime();
     setUnassignedOrders((prev) => prev.filter((o) => o.id !== activeOrder.id));
-    setActiveStep("complete");
+    setActiveOrder(null);
+    setActiveStep("accept");
+    setPickedItemsMap({});
+    setBarcodeScannedMap({});
+    setAisleScannedMap({});
+    setSelectedItemIdx(0);
+    setElapsedSec(0);
+    setCaptainScannedRack(false);
     if (typeof window !== "undefined") {
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
     setActionSuccess(
       isSlaAchieved
-        ? `🎉 SUCCESS: Picked & Handed Over to Rack ${assignedRack.id} in ${finalSec}s! Searching next task...`
-        : `⚠️ Placed in Rack ${assignedRack.id} in ${finalSec}s. Searching next task...`
+        ? `🎉 SUCCESS: Picked & Handed Over to Rack ${assignedRack.id} in ${finalSec}s! Searching next order...`
+        : `✅ Placed in Rack ${assignedRack.id} in ${finalSec}s. Searching next order...`
     );
+    setTimeout(() => setActionSuccess(""), 3500);
   }
 
   function handleResetForNextOrder() {
@@ -797,37 +833,29 @@ export default function OdPickerApp() {
           deviceId="MOTOROLA"
           onLoginSuccess={(loginData) => {
             setIsPickerLoggedIn(true);
-            const isEmergency = loginData?.isEmergencyOverride;
+            setIsOnline(true);
             try {
               localStorage.setItem("auditx_picker_authenticated", "true");
               localStorage.setItem("auditx_picker_phone", loginData?.phone || "6362435746");
+              localStorage.setItem("auditx_device_thrupthi", "LOGGED_IN");
             } catch (e) {}
-            setActionSuccess(isEmergency ? "🚨 Logged in via ASM Emergency Override (+91 6364150847)!" : "✅ Logged in as Thrupthi K S! Tap 'Turn Duty ON' to start shift.");
+            broadcastEvent("STAFF_STATUS_CHANGED", {
+              staffId: "thrupthi",
+              staffName: "Thrupthi K S",
+              roleCode: "PICKER",
+              status: "on_duty",
+              deviceStatus: "LOGGED_IN",
+              deviceName: "MOTOROLA",
+              deviceId: "MOTOROLA",
+              time: new Date().toISOString(),
+            });
+            playSuccessChime();
+            setActionSuccess("✅ Logged in as Thrupthi K S (MOTOROLA)! Shift is ON DUTY.");
             setTimeout(() => setActionSuccess(""), 3500);
           }}
         />
       ) : (
         <div style={S.container}>
-          {showDutyQrModal && (
-            <SmDutyQrScannerModal
-              roleName="OD Picker"
-              staffName="Thrupthi K S"
-              onClose={() => setShowDutyQrModal(false)}
-              onSuccess={(scannedPayload) => {
-                setShowDutyQrModal(false);
-                setIsOnline(true);
-                broadcastEvent("PICKER_DUTY_ACTIVATED", {
-                  pickerName: "Thrupthi K S",
-                  phone: "6362435746",
-                  payload: scannedPayload,
-                  time: new Date().toISOString(),
-                });
-                setActionSuccess("🟢 Duty Activated! Shift started for Thrupthi K S.");
-                setTimeout(() => setActionSuccess(""), 3500);
-              }}
-            />
-          )}
-
           {actionSuccess && <div style={S.toast}>{actionSuccess}</div>}
 
           {/* ── 1. TOP HEADER (MATCHING ORDERING PAGE THEME) ── */}
@@ -883,7 +911,18 @@ export default function OdPickerApp() {
                       setIsOnline(false);
                       try {
                         localStorage.removeItem("auditx_picker_authenticated");
+                        localStorage.setItem("auditx_device_thrupthi", "LOGGED_OUT");
                       } catch (e) {}
+                      broadcastEvent("STAFF_STATUS_CHANGED", {
+                        staffId: "thrupthi",
+                        staffName: "Thrupthi K S",
+                        roleCode: "PICKER",
+                        status: "offline",
+                        deviceStatus: "LOGGED_OUT",
+                        deviceName: "MOTOROLA",
+                        deviceId: "MOTOROLA",
+                        time: new Date().toISOString(),
+                      });
                     }}
                   >
                     Exit
@@ -1178,381 +1217,66 @@ export default function OdPickerApp() {
                     </button>
                   </div>
 
-                  {/* Top Operational Status Banner */}
-                  <div style={S.opStatusBanner}>
-                    <div style={S.opStatusLeft}>
-                      <img
-                        src="/thrupthi-logo.png"
-                        alt="Thrupthi K S"
+                  {/* Active Dark Store Inventory Reference (Frames 1 unit, Chocolates 5 units) */}
+                  <div
+                    style={{
+                      background: "#ffffff",
+                      border: "1px solid #e2e8f0",
+                      borderRadius: 14,
+                      padding: "14px 16px",
+                      marginTop: 14,
+                      boxShadow: "0 2px 10px rgba(0,0,0,0.04)",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                      <span style={{ fontSize: 11, fontWeight: 900, color: "#0c831f", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                        Active Dark Store Inventory
+                      </span>
+                      <span style={{ fontSize: 10, fontWeight: 800, background: "#dcfce7", color: "#15803d", padding: "2px 8px", borderRadius: 4 }}>
+                        SLA: 2-MIN PICK
+                      </span>
+                    </div>
+
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                      <div
                         style={{
-                          width: 38,
-                          height: 38,
-                          borderRadius: "50%",
-                          objectFit: "cover",
-                          border: "2px solid #0c831f",
-                          boxShadow: "0 2px 8px rgba(12,131,31,0.25)",
+                          background: "#f8fafc",
+                          border: "1px solid #e2e8f0",
+                          borderRadius: 10,
+                          padding: 10,
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: 4,
                         }}
-                      />
-                      <div>
-                        <div style={S.opStatusTitle}>⚡ TIPTUR DARK STORE OPERATIONS DESK</div>
-                        <div style={S.opStatusSub}>OD Picker Lead • Thrupthi K S • MOTOROLA</div>
-                      </div>
-                    </div>
-                    <span style={S.onlineLivePill}>READY</span>
-                  </div>
-
-                  {/* DROPDOWN & SLIDER HEADER */}
-                  <div style={S.opSelectorContainer}>
-                    <div style={S.opDropdownRow}>
-                      <span style={S.opDropdownLabel}>Switch Operation:</span>
-                      <select
-                        value={selectedOperation}
-                        onChange={(e) => {
-                          setSelectedOperation(e.target.value);
-                          setOpBarcodeScanned(false);
-                          setOpAisleScanned(false);
-                          playNotificationChime();
-                        }}
-                        style={S.opDropdownSelect}
                       >
-                        <option value="picker">📦 Picker (2-Min SLA Order Picking)</option>
-                        <option value="putaway">📥 Putaway (Inbound GRN to Bins)</option>
-                        <option value="inventory">🔍 Inventory Audit (Stock Count)</option>
-                        <option value="expiry">⏳ Expiry Audit (Batch Validation)</option>
-                        <option value="fnv">🥦 FNV Audit (Fresh Produce)</option>
-                        <option value="frz">❄️ FRZ Audit (Frozen &amp; Dairy 4°C)</option>
-                      </select>
-                    </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <span style={{ fontSize: 18 }}>🍫</span>
+                          <span style={{ fontSize: 12, fontWeight: 800, color: "#0f172a" }}>Chocolates</span>
+                        </div>
+                        <span style={{ fontSize: 11, fontWeight: 800, color: "#0c831f" }}>5 Units Fixed</span>
+                        <span style={{ fontSize: 10, color: "#64748b" }}>Cadbury, Amul, Beats &amp; more</span>
+                      </div>
 
-                    {/* HORIZONTAL ANIMATED ICON SLIDER CAROUSEL */}
-                    <div style={S.opHorizontalSlider}>
-                      {WAREHOUSE_OPERATIONS.map((op) => {
-                        const isActive = selectedOperation === op.id;
-                        return (
-                          <button
-                            key={op.id}
-                            type="button"
-                            onClick={() => {
-                              setSelectedOperation(op.id);
-                              setOpBarcodeScanned(false);
-                              setOpAisleScanned(false);
-                              playNotificationChime();
-                            }}
-                            style={{
-                              ...S.opPillBtn,
-                              borderColor: isActive ? op.color : "#e2e8f0",
-                              background: isActive ? op.bg : "#ffffff",
-                              boxShadow: isActive ? `0 2px 8px ${op.color}33` : "none",
-                            }}
-                          >
-                            <span style={S.opPillIconWrap}>{op.icon(isActive)}</span>
-                            <div style={S.opPillTextWrap}>
-                              <span style={{ ...S.opPillName, color: isActive ? op.color : "#0f172a" }}>
-                                {op.name}
-                              </span>
-                              <span style={S.opPillBadge}>{op.badge}</span>
-                            </div>
-                          </button>
-                        );
-                      })}
+                      <div
+                        style={{
+                          background: "#f8fafc",
+                          border: "1px solid #e2e8f0",
+                          borderRadius: 10,
+                          padding: 10,
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: 4,
+                        }}
+                      >
+                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <span style={{ fontSize: 18 }}>🖼️</span>
+                          <span style={{ fontSize: 12, fontWeight: 800, color: "#0f172a" }}>Wall Frames</span>
+                        </div>
+                        <span style={{ fontSize: 11, fontWeight: 800, color: "#2563eb" }}>1 Unit Single</span>
+                        <span style={{ fontSize: 10, color: "#64748b" }}>A4, Deep Box, Wood Art &amp; more</span>
+                      </div>
                     </div>
                   </div>
-
-                  {/* ACTIVE OPERATION WORKSPACE CARD */}
-                  {(() => {
-                    const currentOp = WAREHOUSE_OPERATIONS.find((o) => o.id === selectedOperation) || WAREHOUSE_OPERATIONS[0];
-                    const targetItem = opSelectedItem || CATALOG[0];
-                    const aisleCode = targetItem.aisle || "F0 - A1 - 001";
-
-                    return (
-                      <div style={{ ...S.activeOpCard, borderTop: `3px solid ${currentOp.color}` }}>
-                        {/* Operation Info Header */}
-                        <div style={S.activeOpHeader}>
-                          <div style={S.activeOpTitleCol}>
-                            <div style={S.activeOpTitleRow}>
-                              {currentOp.icon(true)}
-                              <h3 style={{ ...S.activeOpTitle, color: currentOp.color }}>{currentOp.name}</h3>
-                              <span style={S.activeOpBadge}>{currentOp.badge}</span>
-                            </div>
-                            <div style={S.activeOpDesc}>{currentOp.desc}</div>
-                          </div>
-                        </div>
-
-                        {/* Item Selector Dropdown from Dark Store Inventory */}
-                        <div style={S.skuSelectContainer}>
-                          <label style={S.skuSelectLabel}>Select Warehouse Stock Item:</label>
-                          <select
-                            value={targetItem.sku}
-                            onChange={(e) => {
-                              const found = CATALOG.find((c) => c.sku === e.target.value);
-                              if (found) {
-                                setOpSelectedItem(found);
-                                setOpBarcodeScanned(false);
-                                setOpAisleScanned(false);
-                                playNotificationChime();
-                              }
-                            }}
-                            style={S.skuSelectField}
-                          >
-                            {CATALOG.slice(0, 16).map((item) => (
-                              <option key={item.sku} value={item.sku}>
-                                {item.name} ({item.zone || item.aisle})
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-
-                        {/* User Layout SKU Card: Picture left, units left down, aisle right */}
-                        <div style={S.opItemCard}>
-                          <div style={S.itemMainRow}>
-                            {/* Left Side: Product Image */}
-                            <div style={S.itemLeftCol}>
-                              <div style={S.itemImgWrapper}>
-                                <img
-                                  src={targetItem.image || "https://images.unsplash.com/photo-1546548970-71785318a17b?auto=format&fit=crop&w=300&q=80"}
-                                  alt={targetItem.name}
-                                  style={S.itemImg}
-                                  onError={(e) => {
-                                    e.target.src = "https://images.unsplash.com/photo-1546548970-71785318a17b?auto=format&fit=crop&w=300&q=80";
-                                  }}
-                                />
-                                {opBarcodeScanned && opAisleScanned && (
-                                  <div style={S.imgPickedOverlay}>✅</div>
-                                )}
-                              </div>
-                              {/* Left Down: Units Badge */}
-                              <div style={S.unitBadge}>
-                                <span style={S.plusIcon}>+</span>
-                                <span style={S.unitCount}>
-                                  {selectedOperation === "putaway"
-                                    ? `${opPutawayUnits} Units`
-                                    : selectedOperation === "inventory"
-                                    ? `${opCountedUnits} Units`
-                                    : "1 Unit"}
-                                </span>
-                              </div>
-                            </div>
-
-                            {/* Right Side: Aisle Location & Item Info */}
-                            <div style={S.itemRightCol}>
-                              <div style={S.aisleBadge}>
-                                <span style={S.aisleIcon}>📍</span>
-                                <div style={S.aisleTextCol}>
-                                  <span style={S.aisleMicroLabel}>AISLE LOCATION</span>
-                                  <span style={S.aisleCodeLarge}>{aisleCode}</span>
-                                </div>
-                              </div>
-
-                              <div style={S.itemName}>{targetItem.name}</div>
-                              <div style={S.itemMetaRow}>
-                                <span style={S.itemCategory}>{targetItem.category}</span>
-                                <span>•</span>
-                                <span style={S.barcodeText}>
-                                  Barcode: <code style={S.barcodeSnippet}>{targetItem.barcode || targetItem.sku}</code>
-                                </span>
-                              </div>
-
-                              {/* Dual Verification Pills */}
-                              <div style={S.dualStatusRow}>
-                                <span style={opBarcodeScanned ? S.verifiedPill : S.pendingPill}>
-                                  {opBarcodeScanned ? "✅ Barcode Verified" : "⏳ Scan Barcode"}
-                                </span>
-                                <span style={opAisleScanned ? S.verifiedPill : S.pendingPill}>
-                                  {opAisleScanned ? "✅ Aisle Verified" : "⏳ Scan Aisle"}
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* DUAL SCANNER BARCODE & AISLE CONTROLS */}
-                        <div style={S.opScanActionBlock}>
-                          <div style={S.opScanActionTitle}>⚡ Instant Scanner / Verification:</div>
-                          <div style={S.quickButtonsRow}>
-                            <button
-                              type="button"
-                              style={{
-                                ...S.scanSubBtn,
-                                background: opBarcodeScanned ? "#ecfdf5" : "#0284c7",
-                                color: opBarcodeScanned ? "#047857" : "#ffffff",
-                                borderColor: opBarcodeScanned ? "#10b981" : "#0284c7",
-                              }}
-                              onClick={() => handleOpScan(targetItem.barcode || targetItem.sku)}
-                            >
-                              {opBarcodeScanned ? "✅ Barcode Done" : `📷 Scan Barcode (${targetItem.barcode})`}
-                            </button>
-
-                            <button
-                              type="button"
-                              style={{
-                                ...S.scanSubBtn,
-                                background: opAisleScanned ? "#ecfdf5" : "#d97706",
-                                color: opAisleScanned ? "#047857" : "#ffffff",
-                                borderColor: opAisleScanned ? "#10b981" : "#d97706",
-                              }}
-                              onClick={() => handleOpScan(aisleCode)}
-                            >
-                              {opAisleScanned ? "✅ Aisle Done" : `📍 Scan Aisle (${aisleCode})`}
-                            </button>
-                          </div>
-
-                          {/* Test Warehouse Aisle QR Chips */}
-                          <div style={S.testAislesRow}>
-                            <span style={S.testAislesLabel}>Test Aisle QR Codes:</span>
-                            {["F0-A01-04", "F1-A01-04", "F2-A01-04", "F3-A01-04", "F4-A01-04"].map((code) => (
-                              <button
-                                key={code}
-                                type="button"
-                                style={S.testAisleChip}
-                                onClick={() => handleOpScan(code)}
-                              >
-                                📍 {code}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-
-                        {/* OPERATION-SPECIFIC PARAMETERS */}
-                        <div style={S.opParamsSection}>
-                          {selectedOperation === "putaway" && (
-                            <div>
-                              <div style={S.paramRow}>
-                                <span style={S.paramLabel}>Inbound Pallet Units:</span>
-                                <div style={S.stepperBox}>
-                                  <button style={S.stepperBtn} onClick={() => setOpPutawayUnits(Math.max(1, opPutawayUnits - 6))}>-</button>
-                                  <span style={S.stepperVal}>{opPutawayUnits} pcs</span>
-                                  <button style={S.stepperBtn} onClick={() => setOpPutawayUnits(opPutawayUnits + 6)}>+</button>
-                                </div>
-                              </div>
-                              <div style={S.paramInfoText}>📦 Inbound Supplier Batch: <b>GRN-TIPTUR-2026-904</b></div>
-                            </div>
-                          )}
-
-                          {selectedOperation === "inventory" && (
-                            <div>
-                              <div style={S.paramRow}>
-                                <span style={S.paramLabel}>Physical Shelf Count:</span>
-                                <div style={S.stepperBox}>
-                                  <button style={S.stepperBtn} onClick={() => setOpCountedUnits(Math.max(0, opCountedUnits - 5))}>-</button>
-                                  <span style={S.stepperVal}>{opCountedUnits} units</span>
-                                  <button style={S.stepperBtn} onClick={() => setOpCountedUnits(opCountedUnits + 5)}>+</button>
-                                </div>
-                              </div>
-                              <div style={S.paramInfoText}>📋 System Expected: <b>{opCountedUnits} units</b> • Variance: <b style={{ color: "#10b981" }}>0 (100% Match)</b></div>
-                            </div>
-                          )}
-
-                          {selectedOperation === "expiry" && (
-                            <div>
-                              <div style={S.paramRow}>
-                                <span style={S.paramLabel}>Batch Freshness Status:</span>
-                                <select
-                                  value={opExpiryStatus}
-                                  onChange={(e) => setOpExpiryStatus(e.target.value)}
-                                  style={S.paramSelect}
-                                >
-                                  <option value="VERIFIED_FRESH_90_DAYS">✅ Fresh (Valid &gt; 90 Days)</option>
-                                  <option value="NEAR_EXPIRY_3_DAYS">⚠️ Near Expiry (&lt; 3 Days)</option>
-                                  <option value="EXPIRED_ITEM_DUMP">🚨 Expired (Route to Dump)</option>
-                                </select>
-                              </div>
-                              <div style={S.paramInfoText}>⏳ Tamper-evident seal verified intact by Thrupthi K S</div>
-                            </div>
-                          )}
-
-                          {selectedOperation === "fnv" && (
-                            <div>
-                              <div style={S.paramRow}>
-                                <span style={S.paramLabel}>Freshness Grade:</span>
-                                <select
-                                  value={opProduceGrade}
-                                  onChange={(e) => setOpProduceGrade(e.target.value)}
-                                  style={S.paramSelect}
-                                >
-                                  <option value="Grade-A (Premium Fresh)">🥦 Grade-A (Premium Fresh)</option>
-                                  <option value="Grade-B (Good Standard)">🥦 Grade-B (Good Standard)</option>
-                                  <option value="Grade-C (Quality Re-sort)">⚠️ Grade-C (Needs Sorting)</option>
-                                </select>
-                              </div>
-                              <div style={S.paramInfoText}>💧 Hydration &amp; Moisture: <b>98% Optimal</b> • Ambient: <b>12.4°C</b></div>
-                            </div>
-                          )}
-
-                          {selectedOperation === "frz" && (
-                            <div>
-                              <div style={S.paramRow}>
-                                <span style={S.paramLabel}>Freezer Temp Sensor:</span>
-                                <span style={S.tempBadge}>❄️ {opFreezerTemp}</span>
-                              </div>
-                              <div style={S.paramInfoText}>🧊 Cold-Room &amp; Deep Freeze cold chain uninterrupted (0 condensation)</div>
-                            </div>
-                          )}
-
-                          {selectedOperation === "picker" && (
-                            <div style={S.pickerDemoNotice}>
-                              <span>⚡ Ready to pick active dark store orders under 2:00 min SLA.</span>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* RECTANGULAR ACTION CONFIRMATION BUTTON */}
-                        <button
-                          type="button"
-                          style={{
-                            ...S.opConfirmBtn,
-                            background: opBarcodeScanned && opAisleScanned ? "#0c831f" : "#2563eb",
-                          }}
-                          onClick={handleSubmitOperation}
-                        >
-                          {selectedOperation === "putaway"
-                            ? "📥 CONFIRM INBOUND PUTAWAY TO SHELF AISLE"
-                            : selectedOperation === "inventory"
-                            ? "🔍 SUBMIT INVENTORY CYCLE AUDIT TO ASM"
-                            : selectedOperation === "expiry"
-                            ? "⏳ CERTIFY BATCH FRESHNESS & RECORD EXPIRY"
-                            : selectedOperation === "fnv"
-                            ? "🥦 PASS FNV QUALITY AUDIT FOR NAMMA TIPTUR"
-                            : selectedOperation === "frz"
-                            ? "❄️ CERTIFY FRZ COLD-CHAIN INTEGRITY"
-                            : "📦 COMPLETE SKU VERIFICATION & ADD TO TOTE"}
-                        </button>
-                      </div>
-                    );
-                  })()}
-
-                  {/* FAST ACTION: GENERATE REAL TEST ORDER */}
-                  <div style={S.generateTestOrderCard}>
-                    <div style={S.generateTestLeft}>
-                      <span style={{ fontSize: 24 }}>⚡</span>
-                      <div>
-                        <div style={S.generateTestTitle}>Customer Order Dispatch Simulator</div>
-                        <div style={S.generateTestSub}>Trigger instant live customer order for Thrupthi K S to pick under 2:00 min SLA</div>
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      style={S.generateTestBtn}
-                      onClick={handleGenerateTestOrder}
-                    >
-                      ⚡ Start Live 2-Min Pick Task →
-                    </button>
-                  </div>
-
-                  {/* RECENT OPERATIONAL LOGS STREAM */}
-                  {opCompletedLogs.length > 0 && (
-                    <div style={S.opLogsBox}>
-                      <div style={S.opLogsTitle}>📋 Terminal Audit Activity Log (MOTOROLA):</div>
-                      <div style={S.opLogsList}>
-                        {opCompletedLogs.map((log) => (
-                          <div key={log.id} style={S.opLogRow}>
-                            <span style={S.opLogTime}>{log.time}</span>
-                            <span style={S.opLogSummary}>{log.summary}</span>
-                            <span style={S.opLogBadge}>LOGGED</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
                 </div>
               )}
             </div>

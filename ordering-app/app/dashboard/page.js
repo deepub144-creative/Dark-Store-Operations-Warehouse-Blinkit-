@@ -113,6 +113,20 @@ export default function WarehouseDashboardPage() {
   // Inventory Units State (persisted to localStorage)
   const [inventoryStockMap, setInventoryStockMap] = useState({});
 
+  // Device Fleet Login Tracking (MOTOROLA for Thrupthi, OPPO for Sinchana)
+  const [deviceFleet, setDeviceFleet] = useState({
+    thrupthi: "LOGGED_IN",
+    sinchana: "LOGGED_IN",
+  });
+
+  useEffect(() => {
+    try {
+      const p = localStorage.getItem("auditx_device_thrupthi") || "LOGGED_IN";
+      const r = localStorage.getItem("auditx_device_sinchana") || "LOGGED_IN";
+      setDeviceFleet({ thrupthi: p, sinchana: r });
+    } catch (e) {}
+  }, []);
+
   const router = useRouter();
 
   // Load initial staff
@@ -300,6 +314,18 @@ export default function WarehouseDashboardPage() {
         setOrders((prev) => sanitizeOrders([data.payload, ...prev.filter((o) => o.id !== data.payload.id)]));
       } else if (data.type === "ORDER_STAGED" || data.type === "ORDER_DISPATCHED" || data.type === "ORDER_DELIVERED") {
         setOrders(getAllLiveOrders());
+      } else if (data.type === "STAFF_STATUS_CHANGED" && data.payload) {
+        const { staffId, deviceStatus, staffName, deviceName } = data.payload;
+        if (staffId) {
+          setDeviceFleet((prev) => ({ ...prev, [staffId]: deviceStatus }));
+          playNotificationChime();
+          setActionSuccess(
+            deviceStatus === "LOGGED_IN"
+              ? `🟢 ${staffName} is LOGGED IN on ${deviceName}!`
+              : `🔴 ${staffName} is LOGGED OUT on ${deviceName}.`
+          );
+          setTimeout(() => setActionSuccess(""), 4000);
+        }
       } else if (data.type === "PICKER_DUTY_ACTIVATED") {
         playSuccessChime();
         setActionSuccess(`🟢 OD Picker Thrupthi K S scanned SM Station QR & turned Duty ON!`);
@@ -958,11 +984,11 @@ export default function WarehouseDashboardPage() {
 
         {/* ── 2. MAIN WORKSPACE CONTENT ── */}
         <main style={S.mainContent}>
-          {/* FIXED DUTY QR CODE STATION BANNER (FOR PICKER & RIDER TO SCAN) */}
+          {/* LIVE TERMINAL DEVICE FLEET TRACKER (MOTOROLA & OPPO) */}
           <div
             style={{
               background: "linear-gradient(135deg, #1e293b 0%, #0f172a 100%)",
-              border: "1.5px solid #f59e0b",
+              border: "1.5px solid #334155",
               borderRadius: 14,
               padding: "16px 20px",
               marginBottom: 16,
@@ -974,92 +1000,125 @@ export default function WarehouseDashboardPage() {
               boxShadow: "0 4px 20px rgba(0, 0, 0, 0.25)",
             }}
           >
-            <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+            <div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                <span
+                  style={{
+                    background: "#0c831f",
+                    color: "#ffffff",
+                    fontSize: 10,
+                    fontWeight: 900,
+                    padding: "2px 8px",
+                    borderRadius: 4,
+                    letterSpacing: "0.5px",
+                  }}
+                >
+                  LIVE TERMINAL TRACKER
+                </span>
+                <span style={{ color: "#38bdf8", fontSize: 12, fontWeight: 700 }}>
+                  ● Real-Time Device Status
+                </span>
+              </div>
+              <h3 style={{ margin: "2px 0 4px", color: "#ffffff", fontSize: 16, fontWeight: 800 }}>
+                Store Staff Terminal Fleet (MOTOROLA &amp; OPPO)
+              </h3>
+              <p style={{ margin: 0, color: "#94a3b8", fontSize: 12 }}>
+                Live handheld terminal tracking for OD Picker Lead and Delivery Captain at Tiptur Hub KA44.
+              </p>
+            </div>
+
+            <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+              {/* Thrupthi K S - MOTOROLA */}
               <div
                 style={{
-                  background: "#ffffff",
-                  padding: 6,
+                  background: "#0f172a",
+                  border: deviceFleet.thrupthi === "LOGGED_IN" ? "1.5px solid #10b981" : "1.5px solid #ef4444",
                   borderRadius: 10,
-                  display: "inline-flex",
-                  boxShadow: "0 2px 10px rgba(0,0,0,0.3)",
+                  padding: "10px 14px",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
                 }}
               >
                 <img
-                  src="/duty-qr.png"
-                  alt="Fixed Duty QR Code - Tiptur Hub KA44"
-                  style={{ width: 88, height: 88, objectFit: "contain", borderRadius: 6 }}
+                  src="/thrupthi-logo.png"
+                  alt="Thrupthi K S"
+                  style={{ width: 34, height: 34, borderRadius: "50%", objectFit: "cover", border: "1.5px solid #10b981" }}
                 />
-              </div>
-              <div>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span
-                    style={{
-                      background: "#f59e0b",
-                      color: "#0f172a",
-                      fontSize: 10,
-                      fontWeight: 900,
-                      padding: "2px 8px",
-                      borderRadius: 4,
-                      letterSpacing: "0.5px",
-                    }}
-                  >
-                    SM DUTY SCANNER STATION
-                  </span>
-                  <span style={{ color: "#10b981", fontSize: 12, fontWeight: 700 }}>
-                    ● Active for Shift Check-In
-                  </span>
-                </div>
-                <h3 style={{ margin: "4px 0", color: "#ffffff", fontSize: 15, fontWeight: 800 }}>
-                  Fixed Shift Duty QR Code • Tiptur HUB KA44
-                </h3>
-                <p style={{ margin: 0, color: "#94a3b8", fontSize: 12 }}>
-                  Both OD Picker <b>Thrupthi K S</b> (+91 6362435746) and Rider <b>Sinchana B R</b> (+91 8088553237) scan this QR code to turn Duty ON.
-                </p>
-                <div style={{ marginTop: 4, color: "#cbd5e1", fontSize: 11, fontFamily: "monospace" }}>
-                  Payload: <b style={{ color: "#38bdf8" }}>AUDITX-DUTY-TIPTUR-KA44-STATION</b>
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 800, color: "#ffffff" }}>
+                    Thrupthi K S • <b style={{ color: "#38bdf8" }}>MOTOROLA</b>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
+                    <span
+                      style={{
+                        fontSize: 10,
+                        fontWeight: 900,
+                        padding: "1px 6px",
+                        borderRadius: 4,
+                        background: deviceFleet.thrupthi === "LOGGED_IN" ? "#065f46" : "#7f1d1d",
+                        color: deviceFleet.thrupthi === "LOGGED_IN" ? "#6ee7b7" : "#fca5a5",
+                      }}
+                    >
+                      {deviceFleet.thrupthi === "LOGGED_IN" ? "🟢 LOGGED IN" : "🔴 LOGGED OUT"}
+                    </span>
+                    <a
+                      href="/picker"
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{ fontSize: 10.5, color: "#38bdf8", textDecoration: "underline", fontWeight: 700 }}
+                    >
+                      Open Terminal →
+                    </a>
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-              <a
-                href="/picker"
-                target="_blank"
-                rel="noreferrer"
+              {/* Sinchana B R - OPPO */}
+              <div
                 style={{
-                  background: "#0c831f",
-                  color: "#ffffff",
-                  padding: "8px 14px",
-                  borderRadius: 8,
-                  fontSize: 12,
-                  fontWeight: 800,
-                  textDecoration: "none",
-                  display: "inline-flex",
+                  background: "#0f172a",
+                  border: deviceFleet.sinchana === "LOGGED_IN" ? "1.5px solid #10b981" : "1.5px solid #ef4444",
+                  borderRadius: 10,
+                  padding: "10px 14px",
+                  display: "flex",
                   alignItems: "center",
-                  gap: 6,
+                  gap: 10,
                 }}
               >
-                📦 Open OD Picker App
-              </a>
-              <a
-                href="/rider"
-                target="_blank"
-                rel="noreferrer"
-                style={{
-                  background: "#f97316",
-                  color: "#ffffff",
-                  padding: "8px 14px",
-                  borderRadius: 8,
-                  fontSize: 12,
-                  fontWeight: 800,
-                  textDecoration: "none",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 6,
-                }}
-              >
-                🛵 Open Rider App
-              </a>
+                <img
+                  src="/sinchana-logo.png"
+                  alt="Sinchana B R"
+                  style={{ width: 34, height: 34, borderRadius: "50%", objectFit: "cover", border: "1.5px solid #ca8a04" }}
+                />
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 800, color: "#ffffff" }}>
+                    Sinchana B R • <b style={{ color: "#f59e0b" }}>OPPO</b>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
+                    <span
+                      style={{
+                        fontSize: 10,
+                        fontWeight: 900,
+                        padding: "1px 6px",
+                        borderRadius: 4,
+                        background: deviceFleet.sinchana === "LOGGED_IN" ? "#065f46" : "#7f1d1d",
+                        color: deviceFleet.sinchana === "LOGGED_IN" ? "#6ee7b7" : "#fca5a5",
+                      }}
+                    >
+                      {deviceFleet.sinchana === "LOGGED_IN" ? "🟢 LOGGED IN" : "🔴 LOGGED OUT"}
+                    </span>
+                    <a
+                      href="/rider"
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{ fontSize: 10.5, color: "#f59e0b", textDecoration: "underline", fontWeight: 700 }}
+                    >
+                      Open Terminal →
+                    </a>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -1991,7 +2050,22 @@ export default function WarehouseDashboardPage() {
                           </span>
                         </td>
                         <td style={S.td}>
-                          <span style={S.onlineBadge}>● {p.online ? "ONLINE" : "OFFLINE"}</span>
+                          {p.id === "thrupthi" || p.id === "sinchana" ? (
+                            <span
+                              style={{
+                                fontSize: 11,
+                                fontWeight: 800,
+                                padding: "3px 8px",
+                                borderRadius: 6,
+                                background: deviceFleet[p.id] === "LOGGED_IN" ? "#dcfce7" : "#fee2e2",
+                                color: deviceFleet[p.id] === "LOGGED_IN" ? "#15803d" : "#b91c1c",
+                              }}
+                            >
+                              {deviceFleet[p.id] === "LOGGED_IN" ? "🟢 LOGGED IN" : "🔴 LOGGED OUT"}
+                            </span>
+                          ) : (
+                            <span style={S.onlineBadge}>● {p.online ? "ONLINE" : "OFFLINE"}</span>
+                          )}
                         </td>
                         <td style={S.td}>
                           <button style={S.pingBtn} onClick={() => handlePingDevice(p.deviceName || p.name)}>

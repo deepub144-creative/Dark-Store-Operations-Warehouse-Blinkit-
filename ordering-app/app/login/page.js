@@ -28,7 +28,7 @@ export const AUTHORIZED_STAFF_NUMBERS = [
     route: "/roles/asm",
     avatar: "⚡",
     badgeColor: "#0284c7",
-    desk: "Emergency All-Role Supervisor",
+    desk: "Assistant Store Manager",
   },
   {
     phone: "8971720997",
@@ -310,23 +310,20 @@ export default function LoginPage() {
                   </div>
                 </div>
 
-                {/* ASM Emergency Universal Override Notice & Target Selector */}
+                {/* Target Terminal Selector for ASM Supervisor */}
                 {phone.replace(/\D/g, "") === "6364150847" && (
                   <div
                     style={{
-                      background: "rgba(220, 38, 38, 0.12)",
-                      border: "1.5px solid #ef4444",
+                      background: "rgba(30, 41, 59, 0.7)",
+                      border: "1px solid #475569",
                       borderRadius: 10,
                       padding: "10px 12px",
                       marginTop: 12,
                       marginBottom: 8,
                     }}
                   >
-                    <div style={{ fontWeight: 800, color: "#f87171", fontSize: 12.5, display: "flex", alignItems: "center", gap: 6 }}>
-                      <span>🚨</span> ASM Emergency Universal Override (+91 6364150847)
-                    </div>
-                    <div style={{ fontSize: 11, color: "#cbd5e1", marginTop: 3 }}>
-                      Deepu B has universal access to ALL dark store roles. Select target terminal:
+                    <div style={{ fontSize: 11, color: "#cbd5e1" }}>
+                      Select target terminal:
                     </div>
                     <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
                       {[
