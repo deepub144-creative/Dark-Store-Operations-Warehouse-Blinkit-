@@ -17,20 +17,21 @@ export default function CustomerInteractiveLoginPage() {
     if (typeof window !== "undefined") {
       setCurrentOrigin(window.location.origin);
 
-      // Check if user has an active session
+      // If already signed in, immediately return to main ordering catalog
       try {
         const raw = localStorage.getItem("auditx_customer");
         if (raw) {
           const parsed = JSON.parse(raw);
           if (parsed?.name && parsed?.email) {
-            setSignedInUser(parsed);
+            router.replace("/ordering");
+            return;
           }
         }
       } catch (e) {
         console.warn(e);
       }
     }
-  }, []);
+  }, [router]);
 
   return (
     <div style={styles.page}>
@@ -56,120 +57,76 @@ export default function CustomerInteractiveLoginPage() {
           </p>
         </div>
 
-        {/* SUCCESS CONFIRMATION IF ALREADY SIGNED IN */}
-        {signedInUser ? (
-          <div style={styles.successBlock}>
-            <div style={styles.successCheckCircle}>
-              <IconCheck size={36} color="#ffffff" />
-            </div>
-            <h3 style={styles.welcomeTitle}>Welcome back, {signedInUser.name}!</h3>
-            <p style={styles.welcomeSub}>
-              Signed in with Google as <b>{signedInUser.email}</b>
-            </p>
+        <div style={styles.authContainer}>
+          {/* OFFICIAL GOOGLE SIGN IN BUTTON */}
+          <div style={{ marginTop: 8, marginBottom: 16 }}>
+            <GoogleAuthButton
+              clientId={GOOGLE_CLIENT_ID}
+              context="ordering"
+              roleCode="CUSTOMER"
+              variant="small-bar"
+              size="medium"
+              label="Sign in with Google"
+              theme="light"
+              onSuccess={() => {
+                router.replace("/ordering");
+              }}
+            />
+          </div>
+
+          <div style={styles.privacyNote}>
+            <span>🔒 Official Google OAuth 2.0 • Automatic sign-in to Namma Tiptur KA-44 Hub</span>
+          </div>
+
+          {/* Developer Google Cloud Console Help Accordion */}
+          <div style={{ marginTop: 16, textAlign: "center" }}>
             <button
               type="button"
-              onClick={() => router.push("/ordering")}
-              style={styles.continueCatalogBtn}
+              onClick={() => setShowConsoleHelp(!showConsoleHelp)}
+              style={styles.toggleHelpBtn}
             >
-              Continue to Dark Store Catalog →
+              {showConsoleHelp
+                ? "− Hide Google Cloud Console Setup"
+                : "ℹ️ Developer: Google OAuth Origins Guide"}
             </button>
-            <div style={{ marginTop: 10 }}>
-              <button
-                type="button"
-                onClick={() => {
-                  try {
-                    localStorage.removeItem("auditx_customer");
-                    localStorage.removeItem("blinkit_customer");
-                    localStorage.removeItem("auditx_google_user");
-                  } catch (e) {}
-                  setSignedInUser(null);
-                }}
-                style={styles.switchAccountBtn}
-              >
-                Sign out / Switch Google Account
-              </button>
-            </div>
           </div>
-        ) : (
-          <div style={styles.authContainer}>
-            {/* OFFICIAL GOOGLE SIGN IN BUTTON */}
-            <div style={{ marginTop: 8, marginBottom: 16 }}>
-              <GoogleAuthButton
-                clientId={GOOGLE_CLIENT_ID}
-                context="ordering"
-                roleCode="CUSTOMER"
-                variant="small-bar"
-                size="medium"
-                label="Sign in with Google"
-                theme="light"
-                onSuccess={(authData) => {
-                  if (authData?.name) {
-                    setSignedInUser({
-                      name: authData.name,
-                      email: authData.email,
-                    });
-                    setTimeout(() => {
-                      router.push("/ordering");
-                    }, 500);
-                  }
-                }}
-              />
-            </div>
 
-            <div style={styles.privacyNote}>
-              <span>🔒 Official Google OAuth 2.0 Security • Name & Email retrieved directly from your Google account.</span>
-            </div>
-
-            {/* Developer Google Cloud Console Help Accordion */}
-            <div style={{ marginTop: 16, textAlign: "center" }}>
-              <button
-                type="button"
-                onClick={() => setShowConsoleHelp(!showConsoleHelp)}
-                style={styles.toggleHelpBtn}
-              >
-                {showConsoleHelp
-                  ? "− Hide Google Cloud Console Setup"
-                  : "ℹ️ Developer: Google OAuth Origins Guide"}
-              </button>
-            </div>
-
-            {showConsoleHelp && (
-              <div style={styles.consoleHelpBox}>
-                <div style={{ fontWeight: 800, color: "#92400e", marginBottom: 6 }}>
-                  Google Cloud Console Settings:
-                </div>
-                <div style={{ fontSize: 11.5, color: "#78350f", lineHeight: 1.5 }}>
-                  Ensure this domain is added in your Google Cloud Console:
-                </div>
-                <div style={{ marginTop: 6, marginBottom: 6 }}>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: "#451a03" }}>
-                    Authorized JavaScript origin:
-                  </span>
-                  <code style={styles.codeSnippet}>
-                    {currentOrigin || "http://localhost:3000"}
-                  </code>
-                </div>
-                <div style={{ marginBottom: 6 }}>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: "#451a03" }}>
-                    Authorized redirect URIs (add both):
-                  </span>
-                  <code style={styles.codeSnippet}>
-                    {currentOrigin || "http://localhost:3000"}
-                  </code>
-                  <code style={styles.codeSnippet}>
-                    {(currentOrigin || "http://localhost:3000") + "/ordering"}
-                  </code>
-                </div>
-                <div>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: "#451a03" }}>
-                    Client ID:
-                  </span>
-                  <code style={styles.codeSnippet}>{GOOGLE_CLIENT_ID}</code>
-                </div>
+          {showConsoleHelp && (
+            <div style={styles.consoleHelpBox}>
+              <div style={{ fontWeight: 800, color: "#92400e", marginBottom: 6 }}>
+                Google Cloud Console Settings:
               </div>
-            )}
-          </div>
-        )}
+              <div style={{ fontSize: 11.5, color: "#78350f", lineHeight: 1.5 }}>
+                Ensure this domain is added in your Google Cloud Console:
+              </div>
+              <div style={{ marginTop: 6, marginBottom: 6 }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: "#451a03" }}>
+                  Authorized JavaScript origin:
+                </span>
+                <code style={styles.codeSnippet}>
+                  {currentOrigin || "http://localhost:3000"}
+                </code>
+              </div>
+              <div style={{ marginBottom: 6 }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: "#451a03" }}>
+                  Authorized redirect URIs (add both):
+                </span>
+                <code style={styles.codeSnippet}>
+                  {currentOrigin || "http://localhost:3000"}
+                </code>
+                <code style={styles.codeSnippet}>
+                  {(currentOrigin || "http://localhost:3000") + "/ordering"}
+                </code>
+              </div>
+              <div>
+                <span style={{ fontSize: 11, fontWeight: 700, color: "#451a03" }}>
+                  Client ID:
+                </span>
+                <code style={styles.codeSnippet}>{GOOGLE_CLIENT_ID}</code>
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* FOOTER NAVIGATION */}
         <div style={styles.footerRow}>
