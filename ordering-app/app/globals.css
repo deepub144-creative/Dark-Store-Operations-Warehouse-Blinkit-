@@ -615,7 +615,7 @@ header, nav {
   align-items: center;
   justify-content: space-between;
   flex-wrap: nowrap;
-  gap: 10px;
+  gap: 8px;
   background: var(--card);
   border-bottom: 1px solid var(--line);
   box-shadow: 0 1px 3px rgba(0,0,0,.06);
@@ -644,8 +644,9 @@ header, nav {
   height: 30px;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 0 10px;
+  justify-content: center;
+  gap: 5px;
+  padding: 0 8px;
   border-radius: 4px;
   border: 1px solid var(--line);
   background: var(--ctl);
@@ -654,6 +655,7 @@ header, nav {
   white-space: nowrap;
   cursor: default;
   text-decoration: none;
+  box-sizing: border-box;
 }
 button.c {
   cursor: pointer;
@@ -673,15 +675,17 @@ button.c {
   background: var(--ybg);
   border-color: var(--y);
   color: var(--ytx);
+  padding: 0 8px;
 }
 .open {
   background: var(--gbg);
   border-color: var(--gline);
   color: var(--g);
+  padding: 0 8px;
 }
 .open i {
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
   background: var(--g);
   display: block;
@@ -690,7 +694,14 @@ button.c {
   background: var(--gbg);
   border-color: var(--gline);
   color: var(--g);
-  padding: 0 10px 0 4px;
+  padding: 0;
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  flex: none;
 }
 .av {
   width: 22px;
@@ -720,6 +731,7 @@ button.c {
 .exit {
   color: var(--mute);
   background: transparent;
+  padding: 0 6px;
 }
 .exit:hover {
   background: var(--line);
@@ -728,11 +740,13 @@ button.c {
   background: var(--gbg);
   border-color: var(--gline);
   color: var(--g);
+  padding: 0 8px;
 }
 .cart {
   background: var(--g);
   border-color: var(--g);
   color: #fff;
+  padding: 0 8px;
 }
 .cart b {
   min-width: 16px;
@@ -750,11 +764,12 @@ button.c {
   background: var(--rbg);
   border-color: var(--rline);
   color: var(--r);
+  padding: 0 8px;
 }
 .duty {
   position: relative;
   flex: none;
-  width: 104px;
+  width: 92px;
   height: 30px;
   border: 0;
   border-radius: 15px;
@@ -764,11 +779,12 @@ button.c {
   font: 800 11px/1 system-ui, sans-serif;
   letter-spacing: .4px;
   cursor: pointer;
-  padding: 0 8px 0 30px;
+  padding: 0 6px 0 26px;
   transition: background .25s, padding .25s;
   display: flex;
   align-items: center;
   justify-content: center;
+  box-sizing: border-box;
 }
 .duty .knob {
   position: absolute;
@@ -792,10 +808,10 @@ button.c {
 }
 .duty[aria-checked="true"] {
   background: var(--on);
-  padding: 0 30px 0 8px;
+  padding: 0 26px 0 6px;
 }
 .duty[aria-checked="true"] .knob {
-  transform: translateX(74px);
+  transform: translateX(62px);
 }
 .duty[aria-checked="true"] .knob::after {
   background: var(--on);
@@ -806,8 +822,45 @@ button.c {
 }
 @media (max-width: 640px) {
   .bar {
-    padding: 6px 8px;
-    gap: 6px;
+    padding: 5px 6px;
+    gap: 4px;
+    min-height: 40px;
+  }
+  .grp {
+    gap: 4px;
+  }
+  .c {
+    height: 28px;
+    padding: 0 6px;
+    gap: 4px;
+    font-size: 11px;
+  }
+  .user {
+    width: 28px;
+    height: 28px;
+  }
+  .av {
+    width: 20px;
+    height: 20px;
+    font-size: 11px;
+  }
+  .duty {
+    width: 86px;
+    height: 28px;
+    font-size: 10px;
+    padding: 0 4px 0 24px;
+  }
+  .duty .knob {
+    top: 4px;
+    left: 4px;
+    width: 20px;
+    height: 20px;
+  }
+  .duty[aria-checked="true"] {
+    padding: 0 24px 0 4px;
+  }
+  .duty[aria-checked="true"] .knob {
+    transform: translateX(58px);
   }
 }
 

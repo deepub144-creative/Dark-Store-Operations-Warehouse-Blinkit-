@@ -85,16 +85,15 @@ export default function AuditxSuiteTopBar({
 
         {/* Right action group */}
         <div className="grp">
-          {/* Variant 1: PICKER (Thrupthi K S) */}
+          {/* Variant 1: PICKER (Thrupthi K S - Logo only) */}
           {variant === "picker" && (
             <>
-              <div className="c user" title="OD Picker Lead">
+              <div className="c user" title={`OD Picker · ${userName || "Thrupthi K S"}`}>
                 <img
                   className="av ncc"
                   src={userAvatarSrc || "/thrupthi-logo.png"}
                   alt="Thrupthi K S"
                 />
-                <span>{userName || "Thrupthi K S"}</span>
               </div>
               <button
                 type="button"
@@ -128,21 +127,22 @@ export default function AuditxSuiteTopBar({
             </>
           )}
 
-          {/* Variant 2: RIDER / CAPTAIN (Sinchana B R) */}
+          {/* Variant 2: RIDER / CAPTAIN (Sinchana B R - Logo only) */}
           {variant === "rider" && (
             <>
-              <div className="c user" title="Order Delivery Captain">
-                {userAvatarSrc ? (
-                  <img
-                    className="av"
-                    src={userAvatarSrc}
-                    alt="Sinchana B R"
-                    style={{ border: "2px solid #d4a017", borderRadius: 4 }}
-                  />
-                ) : (
-                  <span className="av sv">S</span>
-                )}
-                <span>{userName || "Sinchana B R"}</span>
+              <div className="c user" title={`Order Delivery Captain · ${userName || "Sinchana B R"}`}>
+                <img
+                  className="av"
+                  src={userAvatarSrc || "/sinchana-logo.png"}
+                  alt="Sinchana B R"
+                  style={{ border: "2px solid #d4a017", borderRadius: 4, width: 22, height: 22, objectFit: "cover" }}
+                  onError={(e) => {
+                    e.currentTarget.style.display = "none";
+                    const fb = e.currentTarget.parentElement?.querySelector(".av.sv");
+                    if (fb) fb.style.display = "grid";
+                  }}
+                />
+                <span className="av sv" style={{ display: "none" }}>{userInitial || "S"}</span>
               </div>
               <button
                 type="button"
@@ -176,18 +176,17 @@ export default function AuditxSuiteTopBar({
             </>
           )}
 
-          {/* Variant 3: ORDERING (Deepu Customer) */}
+          {/* Variant 3: ORDERING (Customer - First letter logo only) */}
           {variant === "ordering" && (
             <>
               <button
                 type="button"
                 className="c user"
                 onClick={onUserClick}
-                style={{ cursor: "pointer", border: "1px solid var(--gline)" }}
-                title="Customer Profile & Order History"
+                style={{ cursor: "pointer", border: "1px solid var(--gline)", padding: 0 }}
+                title={userName ? `Customer: ${userName}` : "Customer Profile & Order History"}
               >
                 <span className="av dd">{userInitial || "D"}</span>
-                <span>{userName || "DEEPU"}</span>
               </button>
               <button
                 type="button"
