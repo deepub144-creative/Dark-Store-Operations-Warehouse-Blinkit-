@@ -443,13 +443,16 @@ export default function OrderingAppPage() {
           active = liveOrders[0];
         }
         if (active && active.status !== "cancelled") {
-          setActiveDeliveryOrder(active);
-          if (active.status === "delivered") {
+          if (active.status === "delivered" && active.customerRatingSubmitted) {
+            setRateCompleted(true);
+            setShowRateOrderModal(false);
+            setActiveDeliveryOrder(null);
+            setOrderingStage("idle");
+          } else if (active.status === "delivered") {
+            setActiveDeliveryOrder(active);
             setOrderingStage("delivered");
-            setRateCompleted(Boolean(active.customerRatingSubmitted));
-            if (!active.customerRatingSubmitted) {
-              setShowRateOrderModal(true);
-            }
+            setRateCompleted(false);
+            setShowRateOrderModal(true);
           } else if (
             active.status === "staged" ||
             active.status === "picked" ||
@@ -457,10 +460,12 @@ export default function OrderingAppPage() {
             active.status === "en_route" ||
             active.handoverToRiderCompleted
           ) {
+            setActiveDeliveryOrder(active);
             setOrderingStage((prev) =>
               prev === "idle" || prev === "packing" ? "one_minute" : prev
             );
           } else {
+            setActiveDeliveryOrder(active);
             setOrderingStage((prev) => (prev === "idle" ? "packing" : prev));
           }
         } else {
@@ -525,18 +530,25 @@ export default function OrderingAppPage() {
           setOrderingOneMinSec(60);
           setOrderingStage("one_minute");
           playNotificationChime();
-          triggerToast("⚡ OD Picker Handover Complete! Delivery timing reduced to 1 minute!");
+          triggerToast("⚡ Your order is on the way! Arriving in 1 minute.");
         }
         if (data.type === "ORDER_DELIVERED") {
           setOrderingStage("delivered");
           setRateCompleted(false);
           setShowRateOrderModal(true);
           playSuccessChime();
-          triggerToast("🎉 Order Delivered! Please rate Rider Sinchana B R & your items.");
+          triggerToast("🎉 Order Delivered! Please rate your rider & items.");
         }
+      }
+      if (data.type === "ORDER_RATED") {
+        setRateCompleted(true);
+        setShowRateOrderModal(false);
+        setActiveDeliveryOrder(null);
+        setOrderingStage("idle");
       }
       if (data.type === "QUEUE_CLEARED") {
         setActiveDeliveryOrder(null);
+        setOrderingStage("idle");
         setCustomerComplaints([]);
         triggerToast("🧹 Today's dispatch queue cleared across all apps!");
       }
@@ -629,7 +641,8 @@ export default function OrderingAppPage() {
     broadcastEvent("ORDER_RATED", ratingPayload);
     setRateCompleted(true);
     setShowRateOrderModal(false);
-    setActiveDeliveryOrder((prev) => (prev ? { ...prev, customerRatingSubmitted: true } : prev));
+    setActiveDeliveryOrder(null);
+    setOrderingStage("idle");
     triggerToast("⭐ Thank you for rating Rider Sinchana B R and your ordered items!");
   }
 
@@ -1106,11 +1119,11 @@ export default function OrderingAppPage() {
                   {orderingStage === "rider_arrived" ? (
                     <>Rider <span style={S.etaMinutes}>ARRIVED AT LOCATION</span></>
                   ) : orderingStage === "almost_doorstep" ? (
-                    <>Almost to your doorstep • <span style={S.etaMinutes}>{orderingDoorstepSec}s</span></>
+                    <>Almost to your <span style={S.etaMinutes}>DOORSTEP</span></>
                   ) : orderingStage === "one_minute" ? (
-                    <>Arriving in <span style={S.etaMinutes}>1 MIN ({orderingOneMinSec}s)</span></>
-                  ) : orderingStage === "delivered" ? (
-                    <>Delivered • <span style={S.etaMinutes}>{rateCompleted ? "RATED ★" : "RATE RIDER & ITEMS"}</span></>
+                    <>Arriving in <span style={S.etaMinutes}>1 MIN</span></>
+                  ) : orderingStage === "delivered" && !rateCompleted ? (
+                    <>Delivered • <span style={S.etaMinutes}>RATE RIDER & ITEMS</span></>
                   ) : (
                     <>Delivery in <span style={S.etaMinutes}>6 MINS</span></>
                   )}
@@ -2599,8 +2612,8 @@ export default function OrderingAppPage() {
         </main>
       )}
 
-      {/* ── LIVE FLOATING DELIVERY / HANDOVER / RATING STATUS BAR ── */}
-      {activeDeliveryOrder && !isCheckoutView && (
+      {/* ── LIVE FLOATING DELIVERY / HANDOVER / RATING STATUS BAR (DISAPPEARS ONCE RATED) ── */}
+      {activeDeliveryOrder && !rateCompleted && !activeDeliveryOrder.customerRatingSubmitted && !isCheckoutView && (
         <div
           id="active-order-floating-bar"
           style={{
@@ -2679,13 +2692,11 @@ export default function OrderingAppPage() {
                   }}
                 >
                   {activeDeliveryOrder.status === "delivered" || orderingStage === "delivered"
-                    ? rateCompleted
-                      ? "Order Delivered & Rated ★"
-                      : "Rate Rider & Ordered Items"
+                    ? "Rate Rider & Ordered Items"
                     : orderingStage === "rider_arrived"
                     ? "Rider arrived to your location"
                     : orderingStage === "almost_doorstep"
-                    ? `Almost to your doorstep • ${orderingDoorstepSec}s`
+                    ? "Almost to your doorstep"
                     : orderingStage === "one_minute"
                     ? "Arriving in 1 minute"
                     : "Order arriving soon"}
@@ -2705,9 +2716,9 @@ export default function OrderingAppPage() {
                     : orderingStage === "rider_arrived"
                     ? "📲 Show QR"
                     : orderingStage === "almost_doorstep"
-                    ? `⚡ ${orderingDoorstepSec}s`
+                    ? "⚡ Reaching Now"
                     : orderingStage === "one_minute"
-                    ? `⚡ ${orderingOneMinSec}s`
+                    ? "⚡ 1 min"
                     : "⚡ 6 mins"}
                 </span>
               </div>
@@ -2722,10 +2733,10 @@ export default function OrderingAppPage() {
                 }}
               >
                 {activeDeliveryOrder.status === "delivered" || orderingStage === "delivered"
-                  ? "Delivered by Sinchana B R • Tap to rate rider & items"
+                  ? "Delivered • Tap to rate rider & items"
                   : orderingStage === "rider_arrived"
-                  ? "Show Handover QR Code to Rider Sinchana B R"
-                  : "OD Picker handover synced • Sinchana B R on the way"}
+                  ? "Please show your handover QR code at the doorstep"
+                  : "Your order is on the way to your doorstep"}
               </div>
             </div>
           </div>

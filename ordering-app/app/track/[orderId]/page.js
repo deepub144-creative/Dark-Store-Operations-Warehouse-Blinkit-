@@ -425,24 +425,35 @@ export default function TrackOrderPage() {
     triggerToast("🎉 Handover QR Verified! Please rate Rider Sinchana B R & your items below.");
   }
 
-  // Dynamic status text for top green header
-  let phaseText = `OD Picker Thrupthi K S packing (${Math.floor(pickerWindowSec / 60)}:${String(pickerWindowSec % 60).padStart(2, "0")} fixed task)`;
-  if (isDelivered) phaseText = "Doorstep Handover Verified • Rate Rider & Items";
-  else if (trackingStage === "rider_arrived") phaseText = "Show Handover QR Code to Rider Sinchana B R";
-  else if (trackingStage === "almost_doorstep") phaseText = "2-Min Countdown Over • Final Doorstep Approach";
+  const isRatingDone = ratingSubmitted || !!activeOrder.customerRatingSubmitted;
+
+  // Clean customer-facing status text for top green header (background countdowns stay invisible)
+  let phaseText = "Packing your order";
+  if (isDelivered) phaseText = "Order delivered";
+  else if (trackingStage === "rider_arrived") phaseText = "Delivery partner at your doorstep";
+  else if (trackingStage === "almost_doorstep") phaseText = "Reaching your doorstep";
   else if (trackingStage === "one_minute" || isStaged || activeOrder.status === "picked")
-    phaseText = "OD Picker Handover Complete • Reduced to 1 Minute!";
+    phaseText = "Order on the way";
 
   let arrivalTitle = `Arriving in ${arrivingMinutes} ${arrivingMinutes === 1 ? "minute" : "minutes"}`;
   if (trackingStage === "one_minute") {
-    arrivalTitle = `Arriving in 1 minute (${oneMinCountdownSec}s)`;
+    arrivalTitle = "Arriving in 1 minute";
   } else if (trackingStage === "almost_doorstep") {
-    arrivalTitle = `Almost to your doorstep • ${doorstepCountdownSec} seconds`;
+    arrivalTitle = "Almost to your doorstep";
   } else if (trackingStage === "rider_arrived") {
     arrivalTitle = "Rider arrived to your location";
   }
   if (isDelivered) arrivalTitle = "Delivered to your doorstep";
   if (isCancelled) arrivalTitle = "Order Cancelled";
+
+  const scooterCoords =
+    isDelivered || trackingStage === "rider_arrived"
+      ? { x: 592, y: 248 }
+      : trackingStage === "almost_doorstep"
+      ? { x: 552, y: 252 }
+      : trackingStage === "one_minute" || isDispatched
+      ? { x: 470, y: 238 }
+      : { x: 336, y: 189 };
 
   return (
     <div style={S.pageBackground}>
@@ -484,131 +495,116 @@ export default function TrackOrderPage() {
           </div>
         </header>
 
-        {/* ── 2. AUTHENTIC TIPTUR KA44 GOOGLE MAPS WITH LIVE ROUTE & RIDER ── */}
+        {/* ── 2. CUSTOMER LIVE TRACKING MAP (DEDICATED ORDERING TRACKING VIEW) ── */}
         <section style={S.mapSection}>
-          {isDispatched ? (
-            <div style={{ position: "relative", width: "100%", borderRadius: "0 0 16px 16px", overflow: "hidden", background: "#0f172a" }}>
-              <img
-                src="/tiptur-gps-route.jpg"
-                alt="Two-wheeler 3 min 1.7 km route from Madihalli to KFGSC Tiptur"
-                style={{
-                  width: "100%",
-                  height: "auto",
-                  display: "block",
-                }}
+          <div style={S.mapViewport}>
+            <svg
+              viewBox="230 70 530 250"
+              style={S.mapSvg}
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              {/* Customer Live Tracking Map centered on Kalpatharu First Grade Science College */}
+              <image
+                href="/tiptur-live-map.png"
+                x="0"
+                y="0"
+                width="1024"
+                height="411"
               />
-              {/* Live Route Info Strip */}
-              <div style={S.mapLiveRouteBadge}>
-                <span style={S.mapLiveGreenDot} />
-                <span><b>Live Route:</b> Madihalli Hub → <b>KFGSC, Tiptur (3 min • 1.7 km)</b></span>
-              </div>
+
+              {/* Highway NH 73 Live Delivery Route line from Tiptur Hub to KFGSC */}
+              <path
+                d="M 320 185 Q 380 195 440 228 T 530 254 T 598 248"
+                stroke="rgba(0, 0, 0, 0.45)"
+                strokeWidth="6"
+                strokeLinecap="round"
+                fill="none"
+              />
+              <path
+                d="M 320 185 Q 380 195 440 228 T 530 254 T 598 248"
+                stroke="#0c831f"
+                strokeWidth="4"
+                strokeLinecap="round"
+                fill="none"
+              />
+              <path
+                d="M 320 185 Q 380 195 440 228 T 530 254 T 598 248"
+                stroke="#ffffff"
+                strokeWidth="2"
+                strokeDasharray="6,6"
+                strokeLinecap="round"
+                fill="none"
+              />
+
+              {/* ── TIPTUR HUB KA44 (DARK STORE DISPATCH POINT) ── */}
+              <g transform="translate(320, 185)">
+                {/* Hub pulse */}
+                <circle cx="0" cy="0" r="15" fill="rgba(12, 131, 31, 0.3)">
+                  <animate attributeName="r" values="10;20;10" dur="2s" repeatCount="indefinite" />
+                  <animate attributeName="opacity" values="0.8;0.1;0.8" dur="2s" repeatCount="indefinite" />
+                </circle>
+                <circle cx="0" cy="0" r="10" fill="#0c831f" stroke="#ffffff" strokeWidth="2" />
+                <text x="0" y="3.5" textAnchor="middle" fontSize="9" fill="#ffffff" fontWeight="bold">🏬</text>
+                <rect x="-44" y="-24" width="88" height="15" rx="4" fill="#0f172a" opacity="0.92" />
+                <text x="0" y="-13" textAnchor="middle" fontSize="7.5" fill="#ffffff" fontWeight="800">
+                  Tiptur HUB KA44
+                </text>
+              </g>
+
+              {/* ── KFGSC DESTINATION PIN (PULSING RED MARKER) ── */}
+              <g transform="translate(598, 246)">
+                {/* Destination pulse ring */}
+                <circle cx="0" cy="0" r="14" fill="rgba(220, 38, 38, 0.35)">
+                  <animate attributeName="r" values="8;18;8" dur="2s" repeatCount="indefinite" />
+                  <animate attributeName="opacity" values="0.8;0.2;0.8" dur="2s" repeatCount="indefinite" />
+                </circle>
+                <circle cx="0" cy="0" r="4.5" fill="#dc2626" stroke="#ffffff" strokeWidth="1.5" />
+                {/* Destination Badge */}
+                <rect x="-52" y="8" width="104" height="16" rx="4" fill="#1e293b" opacity="0.94" />
+                <text x="0" y="19" textAnchor="middle" fontSize="7" fill="#f8fafc" fontWeight="bold">
+                  📍 KFGSC , Tiptur 572201
+                </text>
+              </g>
+
+              {/* ── LIVE ANIMATED DELIVERY RIDER SCOOTER ── */}
+              <g transform={`translate(${scooterCoords.x}, ${scooterCoords.y})`}>
+                {/* Pulsing radar */}
+                <circle cx="0" cy="0" r="16" fill="rgba(16, 185, 129, 0.35)">
+                  <animate attributeName="r" values="12;22;12" dur="1.6s" repeatCount="indefinite" />
+                  <animate attributeName="opacity" values="0.7;0.1;0.7" dur="1.6s" repeatCount="indefinite" />
+                </circle>
+                <circle cx="0" cy="-2" r="12" fill="#0f172a" stroke="#10b981" strokeWidth="2" />
+                <text x="0" y="2.5" textAnchor="middle" fontSize="11">🛵</text>
+                <rect x="-32" y="-22" width="64" height="13" rx="4" fill="#0c831f" />
+                <text x="0" y="-13" textAnchor="middle" fontSize="6.5" fill="#ffffff" fontWeight="800">
+                  {trackingStage === "rider_arrived" || isDelivered
+                    ? "📍 At Doorstep"
+                    : trackingStage === "almost_doorstep"
+                    ? "⚡ Almost Here"
+                    : `⚡ ${arrivingMinutes} ${arrivingMinutes === 1 ? "Min" : "Mins"}`}
+                </text>
+              </g>
+            </svg>
+
+            {/* Live Route Info Strip */}
+            <div style={S.mapLiveRouteBadge}>
+              <span style={S.mapLiveGreenDot} />
+              <span><b>Live Tracking:</b> Tiptur Hub KA44 → <b>KFGSC, Tiptur 572201</b></span>
             </div>
-          ) : (
-            <div style={S.mapViewport}>
-              <svg
-                viewBox="230 70 530 250"
-                style={S.mapSvg}
-                xmlns="http://www.w3.org/2000/svg"
-              >
-                {/* Actual Google Maps of Tiptur centered on Kalpatharu First Grade Science College */}
-                <image
-                  href="/tiptur-live-map.png"
-                  x="0"
-                  y="0"
-                  width="1024"
-                  height="411"
-                />
 
-                {/* Highway NH 73 Live Delivery Route line from Tiptur Hub to KFGSC */}
-                <path
-                  d="M 320 185 Q 380 195 440 228 T 530 254 T 598 248"
-                  stroke="rgba(0, 0, 0, 0.45)"
-                  strokeWidth="6"
-                  strokeLinecap="round"
-                  fill="none"
-                />
-                <path
-                  d="M 320 185 Q 380 195 440 228 T 530 254 T 598 248"
-                  stroke="#0c831f"
-                  strokeWidth="4"
-                  strokeLinecap="round"
-                  fill="none"
-                />
-                <path
-                  d="M 320 185 Q 380 195 440 228 T 530 254 T 598 248"
-                  stroke="#ffffff"
-                  strokeWidth="2"
-                  strokeDasharray="6,6"
-                  strokeLinecap="round"
-                  fill="none"
-                />
+            {/* Google Watermark Logo on bottom-left */}
+            <div style={S.googleWatermark}>Google</div>
 
-                {/* ── TIPTUR HUB KA44 (DARK STORE DISPATCH POINT) ── */}
-                <g transform="translate(320, 185)">
-                  {/* Hub pulse */}
-                  <circle cx="0" cy="0" r="15" fill="rgba(12, 131, 31, 0.3)">
-                    <animate attributeName="r" values="10;20;10" dur="2s" repeatCount="indefinite" />
-                    <animate attributeName="opacity" values="0.8;0.1;0.8" dur="2s" repeatCount="indefinite" />
-                  </circle>
-                  <circle cx="0" cy="0" r="10" fill="#0c831f" stroke="#ffffff" strokeWidth="2" />
-                  <text x="0" y="3.5" textAnchor="middle" fontSize="9" fill="#ffffff" fontWeight="bold">🏬</text>
-                  <rect x="-44" y="-24" width="88" height="15" rx="4" fill="#0f172a" opacity="0.92" />
-                  <text x="0" y="-13" textAnchor="middle" fontSize="7.5" fill="#ffffff" fontWeight="800">
-                    Tiptur HUB KA44
-                  </text>
-                </g>
-
-                {/* ── KFGSC DESTINATION PIN (PULSING RED MARKER) ── */}
-                <g transform="translate(598, 246)">
-                  {/* Destination pulse ring */}
-                  <circle cx="0" cy="0" r="14" fill="rgba(220, 38, 38, 0.35)">
-                    <animate attributeName="r" values="8;18;8" dur="2s" repeatCount="indefinite" />
-                    <animate attributeName="opacity" values="0.8;0.2;0.8" dur="2s" repeatCount="indefinite" />
-                  </circle>
-                  <circle cx="0" cy="0" r="4.5" fill="#dc2626" stroke="#ffffff" strokeWidth="1.5" />
-                  {/* Destination Badge */}
-                  <rect x="-52" y="8" width="104" height="16" rx="4" fill="#1e293b" opacity="0.94" />
-                  <text x="0" y="19" textAnchor="middle" fontSize="7" fill="#f8fafc" fontWeight="bold">
-                    📍 KFGSC , Tiptur 572201
-                  </text>
-                </g>
-
-                {/* ── LIVE ANIMATED DELIVERY RIDER SCOOTER ── */}
-                <g transform="translate(470, 238)">
-                  {/* Pulsing radar */}
-                  <circle cx="0" cy="0" r="16" fill="rgba(16, 185, 129, 0.35)">
-                    <animate attributeName="r" values="12;22;12" dur="1.6s" repeatCount="indefinite" />
-                    <animate attributeName="opacity" values="0.7;0.1;0.7" dur="1.6s" repeatCount="indefinite" />
-                  </circle>
-                  <circle cx="0" cy="-2" r="12" fill="#0f172a" stroke="#10b981" strokeWidth="2" />
-                  <text x="0" y="2.5" textAnchor="middle" fontSize="11">🛵</text>
-                  <rect x="-28" y="-22" width="56" height="13" rx="4" fill="#0c831f" />
-                  <text x="0" y="-13" textAnchor="middle" fontSize="6.5" fill="#ffffff" fontWeight="800">
-                    ⚡ {arrivingMinutes} Mins SLA
-                  </text>
-                </g>
-              </svg>
-
-              {/* Live Route Info Strip */}
-              <div style={S.mapLiveRouteBadge}>
-                <span style={S.mapLiveGreenDot} />
-                <span><b>Live Route:</b> Tiptur Hub KA44 → <b>KFGSC, Tiptur 572201</b></span>
-              </div>
-
-              {/* Google Watermark Logo on bottom-left */}
-              <div style={S.googleWatermark}>Google</div>
-
-              {/* Re-center / Expand Button on top-right */}
-              <button
-                type="button"
-                style={S.mapRecenterBtn}
-                onClick={() => triggerToast("Map re-centered to KFGSC, Tiptur 572201")}
-                title="Re-center map"
-              >
-                <IconTarget size={16} color="#0c831f" />
-              </button>
-            </div>
-          )}
+            {/* Re-center / Expand Button on top-right */}
+            <button
+              type="button"
+              style={S.mapRecenterBtn}
+              onClick={() => triggerToast("Map re-centered to KFGSC, Tiptur 572201")}
+              title="Re-center map"
+            >
+              <IconTarget size={16} color="#0c831f" />
+            </button>
+          </div>
         </section>
 
         {/* ── 3. PAYMENT / COD CARD (EXACT SCREENSHOT) ── */}
@@ -837,7 +833,14 @@ export default function TrackOrderPage() {
               <p style={S.qrSub}>
                 Show this code to your <b>Delivery Partner (Sinchana B R)</b> at doorstep to complete verification:
               </p>
-              <div style={S.qrGraphicWrapper}>
+              <div
+                style={{
+                  ...S.qrGraphicWrapper,
+                  cursor: !isDelivered ? "pointer" : "default",
+                }}
+                onClick={!isDelivered ? handleConfirmHandoverFromCustomerQr : undefined}
+                title={!isDelivered ? "Tap QR upon doorstep arrival" : "Verified"}
+              >
                 <img
                   src="/delivery-qr.png"
                   alt="Delivery Handover QR Code"
@@ -852,60 +855,6 @@ export default function TrackOrderPage() {
                 />
                 <code style={S.qrTextCode}>AUDITX-{activeOrder.orderNumber || orderId}</code>
               </div>
-
-              {!isDelivered && (
-                <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center" }}>
-                  {trackingStage !== "rider_arrived" && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (trackingStage === "packing") {
-                          setArrivingMinutes(1);
-                          setOneMinCountdownSec(60);
-                          setTrackingStage("one_minute");
-                          playNotificationChime();
-                        } else if (trackingStage === "one_minute") {
-                          setDoorstepCountdownSec(15);
-                          setTrackingStage("almost_doorstep");
-                          playNotificationChime();
-                        } else {
-                          setTrackingStage("rider_arrived");
-                          playSuccessChime();
-                        }
-                      }}
-                      style={{
-                        background: "#eff6ff",
-                        color: "#1d4ed8",
-                        border: "1px solid #bfdbfe",
-                        borderRadius: 8,
-                        padding: "7px 12px",
-                        fontSize: 11.5,
-                        fontWeight: 800,
-                        cursor: "pointer",
-                      }}
-                    >
-                      ⚡ Next Stage ({trackingStage === "packing" ? "1 Min Handover" : trackingStage === "one_minute" ? "15s Doorstep" : "Rider Arrived"})
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    onClick={handleConfirmHandoverFromCustomerQr}
-                    style={{
-                      background: "#0c831f",
-                      color: "#ffffff",
-                      border: "none",
-                      borderRadius: 8,
-                      padding: "8px 14px",
-                      fontSize: 12,
-                      fontWeight: 800,
-                      cursor: "pointer",
-                      boxShadow: "0 3px 10px rgba(12, 131, 31, 0.28)",
-                    }}
-                  >
-                    ✅ Rider Scanned Handover QR (Complete Delivery)
-                  </button>
-                </div>
-              )}
             </div>
           </div>
         </section>
@@ -1165,8 +1114,8 @@ export default function TrackOrderPage() {
 
         <div style={{ height: 96 }} />
 
-        {/* ── LIVE STICKY BOTTOM STATUS BAR ON TRACKING PAGE ── */}
-        {!isCancelled && (
+        {/* ── LIVE STICKY BOTTOM STATUS BAR ON TRACKING PAGE (DISAPPEARS ONCE RATED) ── */}
+        {!isCancelled && !isRatingDone && (
           <div
             style={{
               position: "fixed",
@@ -1194,23 +1143,21 @@ export default function TrackOrderPage() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontSize: 13, fontWeight: 900, color: "#ffffff" }}>
                 {isDelivered
-                  ? "⭐ Rate Rider Sinchana B R & Ordered Items"
+                  ? "⭐ Rate Rider & Ordered Items"
                   : trackingStage === "rider_arrived"
                   ? "🛵 Rider arrived to your location"
                   : trackingStage === "almost_doorstep"
-                  ? `⚡ Almost to your doorstep • ${doorstepCountdownSec} seconds`
+                  ? "⚡ Almost to your doorstep"
                   : trackingStage === "one_minute"
-                  ? `⚡ Arriving in 1 minute (${oneMinCountdownSec}s)`
-                  : `📦 OD Picker Packing • Arriving in ${arrivingMinutes} mins`}
+                  ? "⚡ Arriving in 1 minute"
+                  : `📦 Arriving in ${arrivingMinutes} ${arrivingMinutes === 1 ? "minute" : "minutes"}`}
               </div>
               <div style={{ fontSize: 11, color: "#bbf7d0", fontWeight: 600 }}>
                 {isDelivered
-                  ? ratingSubmitted
-                    ? "Thank you for rating your Tiptur Hub KA-44 delivery!"
-                    : "Order delivered! Tap Rate Now to review rider & items"
+                  ? "Order delivered! Tap Rate Now to review your order"
                   : trackingStage === "rider_arrived"
-                  ? "Show Handover QR Code above to Rider Sinchana B R"
-                  : "Live sync with OD Picker Thrupthi K S & Rider Sinchana B R"}
+                  ? "Please show your handover QR code at the doorstep"
+                  : "Your order is on the way to your doorstep"}
               </div>
             </div>
             <button
@@ -1233,7 +1180,7 @@ export default function TrackOrderPage() {
                 flexShrink: 0,
               }}
             >
-              {isDelivered ? (ratingSubmitted ? "Rated ✓" : "Rate Now") : "Show QR"}
+              {isDelivered ? "Rate Now" : "Show QR"}
             </button>
           </div>
         )}

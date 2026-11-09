@@ -52,8 +52,51 @@ export default function DeliveryCaptainApp() {
   const [currentWaypointIdx, setCurrentWaypointIdx] = useState(0);
 
   const [actionSuccess, setActionSuccess] = useState("");
+  const [sinchanaWalletBalance, setSinchanaWalletBalance] = useState(28);
+  const [sinchanaTotalGigsKm, setSinchanaTotalGigsKm] = useState(5.1);
+  const [gigFormSubmitted, setGigFormSubmitted] = useState(false);
   const timerRef = useRef(null);
   const transitRef = useRef(null);
+
+  // Load Sinchana B R Wallet from localStorage on mount
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("auditx_sinchana_wallet");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (typeof parsed.balance === "number") setSinchanaWalletBalance(parsed.balance);
+        if (typeof parsed.totalGigsKm === "number") setSinchanaTotalGigsKm(parsed.totalGigsKm);
+      }
+    } catch (e) {
+      // ignore storage error
+    }
+  }, []);
+
+  function creditSinchanaWallet() {
+    playSuccessChime();
+    const nextBalance = sinchanaWalletBalance + 28;
+    const nextKm = Number((sinchanaTotalGigsKm + 5.1).toFixed(1));
+    setSinchanaWalletBalance(nextBalance);
+    setSinchanaTotalGigsKm(nextKm);
+    setGigFormSubmitted(true);
+    try {
+      localStorage.setItem(
+        "auditx_sinchana_wallet",
+        JSON.stringify({
+          riderName: "Sinchana B R",
+          balance: nextBalance,
+          totalGigsKm: nextKm,
+          lastGigKm: 5.1,
+          lastEarnedRupees: 28,
+          updatedAt: new Date().toISOString(),
+        })
+      );
+    } catch (e) {
+      // ignore storage error
+    }
+    setActionSuccess(`💰 Credited ₹28 (Gigs: 5.1 kms) to Sinchana B R Wallet! Balance: ₹${nextBalance}`);
+    setTimeout(() => setActionSuccess(""), 3500);
+  }
 
   // Clear entire queue across all apps
   function handleClearQueue() {
@@ -324,17 +367,25 @@ export default function DeliveryCaptainApp() {
       }
     }
 
+    setGigFormSubmitted(false);
     setActiveStep("delivered");
-    setActionSuccess(`🎉 ORDER #${activeOrder.orderNumber || activeOrder.id} DELIVERED! Customer Rating prompt sent to Ordering App.`);
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+    setActionSuccess(`🎉 ORDER #${activeOrder.orderNumber || activeOrder.id} DELIVERED! Complete Gig Payout Form (5.1 kms • ₹28) below.`);
   }
 
   function handleResetForNextDelivery() {
+    if (!gigFormSubmitted) {
+      creditSinchanaWallet();
+    }
     setActiveOrder(null);
     setActiveStep("awaiting_orders");
     setArrivingMinutes(6);
     setDistanceLeftKm(1.5);
     setDoorstepSeconds(null);
     setRiderArrivedBar(false);
+    setGigFormSubmitted(false);
     setActionSuccess("");
   }
 
@@ -397,25 +448,24 @@ export default function DeliveryCaptainApp() {
                   {isCheckedIn ? "🟢 ON DUTY" : "🔴 OFFLINE"}
                 </button>
 
-                <button
-                  onClick={handleClearQueue}
-                  title="Clear entire dispatch queue across warehouse, picker, and ordering apps"
+                {/* Sinchana B R Wallet Badge */}
+                <div
+                  title="Sinchana B R Rider Wallet Balance & Gigs Distance"
                   style={{
-                    padding: "6px 10px",
-                    background: "#fef2f2",
-                    border: "1px solid #fecaca",
-                    color: "#dc2626",
+                    padding: "5px 10px",
+                    background: "#f0fdf4",
+                    border: "1.5px solid #86efac",
+                    color: "#15803d",
                     borderRadius: 8,
-                    fontWeight: 700,
+                    fontWeight: 800,
                     fontSize: "0.74rem",
-                    cursor: "pointer",
                     display: "inline-flex",
                     alignItems: "center",
                     gap: 4,
                   }}
                 >
-                  🗑️ Clear Queue
-                </button>
+                  <span>💰 Wallet: ₹{sinchanaWalletBalance}</span>
+                </div>
               </div>
             </div>
 
@@ -989,9 +1039,146 @@ export default function DeliveryCaptainApp() {
             </div>
           )}
 
-          {/* STEP 4: DELIVERED CELEBRATION + TASKSEARCHING.MP4 */}
+          {/* STEP 4: DELIVERED CELEBRATION + GIG EARNINGS FORM (5.1 KMS / 28 RUPEES -> SINCHANA B R WALLET) + TASKSEARCHING.MP4 */}
           {activeStep === "delivered" && (
             <div style={S.deliveredCard}>
+              {/* ── RIDER GIG PAYOUT FORM: GIGS 5.1 KMS, EARNED 28 RUPEES -> SINCHANA B R WALLET ── */}
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (!gigFormSubmitted) {
+                    creditSinchanaWallet();
+                  }
+                }}
+                style={{
+                  background: "linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)",
+                  border: "2px solid #16a34a",
+                  borderRadius: 16,
+                  padding: 16,
+                  marginBottom: 16,
+                  textAlign: "left",
+                  boxShadow: "0 8px 24px rgba(12, 131, 31, 0.14)",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <img
+                      src="/sinchana-logo.png"
+                      alt="Sinchana B R"
+                      style={{
+                        width: 42,
+                        height: 42,
+                        borderRadius: "50%",
+                        objectFit: "cover",
+                        border: "2px solid #0c831f",
+                      }}
+                    />
+                    <div>
+                      <div style={{ fontSize: 14, fontWeight: 900, color: "#0f172a" }}>
+                        Sinchana B R Wallet — Gig Payout Form
+                      </div>
+                      <div style={{ fontSize: 11.5, color: "#15803d", fontWeight: 700 }}>
+                        Order #{activeOrder?.orderNumber || activeOrder?.id} • Namma Tiptur KA-44
+                      </div>
+                    </div>
+                  </div>
+                  <span
+                    style={{
+                      background: "#0c831f",
+                      color: "#ffffff",
+                      fontSize: 10.5,
+                      fontWeight: 900,
+                      padding: "4px 9px",
+                      borderRadius: 8,
+                    }}
+                  >
+                    {gigFormSubmitted ? "CREDITED ✓" : "GIG COMPLETED"}
+                  </span>
+                </div>
+
+                <div
+                  style={{
+                    background: "#ffffff",
+                    borderRadius: 12,
+                    padding: 12,
+                    border: "1px solid #86efac",
+                    marginBottom: 12,
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      padding: "6px 0",
+                      borderBottom: "1px dashed #cbd5e1",
+                    }}
+                  >
+                    <span style={{ fontSize: 13, fontWeight: 700, color: "#334155" }}>🛵 Gigs :</span>
+                    <b style={{ fontSize: 15, fontWeight: 900, color: "#0f172a" }}>5.1 kms</b>
+                  </div>
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      padding: "6px 0",
+                      borderBottom: "1px dashed #cbd5e1",
+                    }}
+                  >
+                    <span style={{ fontSize: 13, fontWeight: 700, color: "#334155" }}>💰 Earned :</span>
+                    <b style={{ fontSize: 16, fontWeight: 900, color: "#0c831f" }}>₹28 (28 Rupees)</b>
+                  </div>
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      padding: "6px 0",
+                    }}
+                  >
+                    <span style={{ fontSize: 13, fontWeight: 700, color: "#334155" }}>🏦 Transfer To :</span>
+                    <b style={{ fontSize: 13.5, fontWeight: 900, color: "#15803d" }}>
+                      Sinchana B R Wallet (Balance: ₹{sinchanaWalletBalance})
+                    </b>
+                  </div>
+                </div>
+
+                {gigFormSubmitted ? (
+                  <div
+                    style={{
+                      background: "#0c831f",
+                      color: "#ffffff",
+                      borderRadius: 10,
+                      padding: "10px 14px",
+                      fontSize: 12.5,
+                      fontWeight: 800,
+                      textAlign: "center",
+                    }}
+                  >
+                    ✅ Gigs: 5.1 kms • Earned: ₹28 Credited to Sinchana B R Wallet! (Total: ₹{sinchanaWalletBalance} • {sinchanaTotalGigsKm} kms)
+                  </div>
+                ) : (
+                  <button
+                    type="submit"
+                    style={{
+                      width: "100%",
+                      background: "linear-gradient(135deg, #0c831f 0%, #15803d 100%)",
+                      color: "#ffffff",
+                      border: "none",
+                      borderRadius: 10,
+                      padding: "11px 16px",
+                      fontSize: 13.5,
+                      fontWeight: 900,
+                      cursor: "pointer",
+                      boxShadow: "0 4px 14px rgba(12, 131, 31, 0.3)",
+                    }}
+                  >
+                    💰 Credit ₹28 (Gigs: 5.1 kms) to Sinchana B R Wallet
+                  </button>
+                )}
+              </form>
+
               {/* Play tasksearching.mp4 when all tasks are completed in Rider app */}
               <div style={{ textAlign: "center", marginBottom: 14 }}>
                 <video
@@ -1023,21 +1210,21 @@ export default function DeliveryCaptainApp() {
               <div style={S.celebrateIcon}>🎉</div>
               <h2 style={S.deliveredTitle}>Order Successfully Delivered!</h2>
               <p style={S.deliveredSub}>
-                Great job Sinchana B R! Order #{activeOrder?.orderNumber || activeOrder?.id} was safely delivered to the customer in Namma Tiptur under SLA! Customer can now rate the rider &amp; items in the Ordering App.
+                Great job Sinchana B R! Order #{activeOrder?.orderNumber || activeOrder?.id} was safely delivered to the customer in Namma Tiptur under SLA!
               </p>
 
               <div style={S.slaResultBox}>
                 <div style={S.slaResultItem}>
-                  <span style={S.slaItemLabel}>Order Pick Time (Thrupthi K S)</span>
-                  <b style={S.slaItemVal}>{activeOrder?.pickTimeSec || 104}s (&lt; 2:00 mins)</b>
+                  <span style={S.slaItemLabel}>Gigs Distance Completed</span>
+                  <b style={S.slaItemVal}>5.1 kms</b>
                 </div>
                 <div style={S.slaResultItem}>
-                  <span style={S.slaItemLabel}>Last-Mile Delivery Time (1.5 kms)</span>
-                  <b style={S.slaItemVal}>{elapsedSec}s (&lt; 6:00 mins)</b>
+                  <span style={S.slaItemLabel}>Earned &amp; Credited to Sinchana B R Wallet</span>
+                  <b style={{ color: "#0c831f", fontSize: 15 }}>₹28 (28 Rupees)</b>
                 </div>
                 <div style={S.slaResultItem}>
-                  <span style={S.slaItemLabel}>Total Delivery Turnaround</span>
-                  <b style={{ color: "#0c831f", fontSize: 16 }}>{(activeOrder?.pickTimeSec || 104) + elapsedSec}s / 480s SLA</b>
+                  <span style={S.slaItemLabel}>Sinchana B R Wallet Balance</span>
+                  <b style={{ color: "#0c831f", fontSize: 16 }}>₹{sinchanaWalletBalance} ({sinchanaTotalGigsKm} kms)</b>
                 </div>
               </div>
 

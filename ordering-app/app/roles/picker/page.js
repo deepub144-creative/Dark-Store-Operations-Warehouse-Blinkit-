@@ -111,8 +111,33 @@ export const WAREHOUSE_OPERATIONS = [
 
 export default function OdPickerApp() {
   const [isOnline, setIsOnline] = useState(true);
+  const [loginSeconds, setLoginSeconds] = useState(1); // Starts at 0m 1s live tracking
   const [unassignedOrders, setUnassignedOrders] = useState([]);
   const [activeOrder, setActiveOrder] = useState(null);
+
+  // Live Login Hours / Active Shift Timer for OD Picker Thrupthi K S
+  useEffect(() => {
+    if (!isOnline) return;
+    const t = setInterval(() => {
+      setLoginSeconds((prev) => prev + 1);
+    }, 1000);
+    return () => clearInterval(t);
+  }, [isOnline]);
+
+  function formatLiveTrackingTime(sec) {
+    const h = Math.floor(sec / 3600);
+    const m = Math.floor((sec % 3600) / 60);
+    const s = sec % 60;
+    if (h > 0) return `${h}hr ${m}min ${s}s`;
+    return `${m}m ${s}s`;
+  }
+
+  function formatCumulativeShiftHours(sec) {
+    const total = 3720 + sec; // 1hr 2min shift base + live session seconds
+    const h = Math.floor(total / 3600);
+    const m = Math.floor((total % 3600) / 60);
+    return `${h}hr ${m}min`;
+  }
   
   // Per-item verification state
   const [pickedItemsMap, setPickedItemsMap] = useState({});
@@ -700,11 +725,15 @@ export default function OdPickerApp() {
     }
 
     playSuccessChime();
+    setUnassignedOrders((prev) => prev.filter((o) => o.id !== activeOrder.id));
     setActiveStep("complete");
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
     setActionSuccess(
       isSlaAchieved
-        ? `🎉 SUCCESS: Picked & Handed Over to Rack ${assignedRack.id} in ${finalSec}s! (SLA Target <= 2:00 min Achieved)`
-        : `⚠️ Placed in Rack ${assignedRack.id} in ${finalSec}s. (SLA Target 2:00 min Exceeded)`
+        ? `🎉 SUCCESS: Picked & Handed Over to Rack ${assignedRack.id} in ${finalSec}s! Searching next task...`
+        : `⚠️ Placed in Rack ${assignedRack.id} in ${finalSec}s. Searching next task...`
     );
   }
 
@@ -782,19 +811,19 @@ export default function OdPickerApp() {
               </div>
             </div>
 
-            {/* Sub-bar: ETA / Terminal bar matching ordering page */}
+            {/* Sub-bar: Live Login Hours & OD Picker SLA Bar */}
             <div style={S.etaAddressBar}>
               <div style={S.etaAddressLeft}>
                 <div style={S.etaBadgeRow}>
                   <div style={S.lightningPill}>
-                    ⚡
+                    ⏱️
                   </div>
                   <div style={S.etaTitle}>
-                    OD Picker SLA: <span style={S.etaMinutes}>2 MINS</span>
+                    Live Tracking: <span style={S.etaMinutes}>{formatLiveTrackingTime(loginSeconds)}</span> • Login Hours: <span style={S.etaMinutes}>{formatCumulativeShiftHours(loginSeconds)}</span>
                   </div>
                 </div>
                 <div style={S.addressSnippetRow}>
-                  <span>📍 Warehouse Bay • Zebra TC52 #04</span>
+                  <span>📍 Warehouse Bay • Zebra TC52 #04 • SLA Target: 2 Mins</span>
                 </div>
               </div>
               <span style={S.roleBadgeTag}>OD PICKER LEAD</span>
@@ -829,23 +858,6 @@ export default function OdPickerApp() {
                       <span style={S.alertTitle}>⚡ LIVE TASK FOR THRUPTHI K S (OD PICKER LEAD)</span>
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                      <button
-                        type="button"
-                        style={{
-                          background: "#fee2e2",
-                          color: "#b91c1c",
-                          border: "1px solid #fca5a5",
-                          borderRadius: 6,
-                          padding: "3px 8px",
-                          fontSize: 10,
-                          fontWeight: 800,
-                          cursor: "pointer",
-                        }}
-                        onClick={handleClearQueue}
-                        title="Clear all pending orders in queue"
-                      >
-                        🗑️ Clear Queue
-                      </button>
                       <span style={S.liveBadge}>&lt; 0.1s DISPATCH</span>
                     </div>
                   </div>
