@@ -883,7 +883,6 @@ export default function OdPickerApp() {
           {/* ── 1. TOP HEADER (AUDIT'X SUITE TOP BAR DESIGN SPEC) ── */}
           <AuditxSuiteTopBar
             variant="picker"
-            hubText="KA-44 Hub"
             isDutyOn={isOnline}
             onDutyToggle={handleToggleDuty}
             onExit={() => {

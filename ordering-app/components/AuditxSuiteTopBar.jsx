@@ -62,15 +62,7 @@ export default function AuditxSuiteTopBar({
       <header className="bar">
         {/* Left branding group */}
         <div className="grp">
-          <Link href="/" style={{ display: "inline-flex", alignItems: "center", textDecoration: "none" }}>
-            <AuditxLogo height={20} href="/" />
-          </Link>
-          <div className="c hub" title="Delivery Fulfillment Darkstore Hub">
-            <svg>
-              <use href="#ax-pin" />
-            </svg>
-            <span>{hubText}</span>
-          </div>
+          <AuditxLogo height={16} href="/" />
           {variant === "ordering" && (
             <div
               className={`c ${isStoreOpen ? "open" : "support"}`}

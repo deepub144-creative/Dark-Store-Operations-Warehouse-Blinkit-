@@ -1125,7 +1125,6 @@ export default function OrderingAppPage() {
         {/* ── 1. TOP HEADER (AUDIT'X SUITE TOP BAR DESIGN SPEC) ── */}
         <AuditxSuiteTopBar
           variant="ordering"
-          hubText="KA-44 Hub"
           isStoreOpen={isStoreOpen}
           userName={customer?.name ? customer.name.split(" ")[0].toUpperCase() : "DEEPU"}
           userInitial={customer?.name ? customer.name.charAt(0).toUpperCase() : "D"}

@@ -549,7 +549,6 @@ export default function DeliveryCaptainApp() {
           {/* ── 1. TOP HEADER (AUDIT'X SUITE TOP BAR DESIGN SPEC) ── */}
           <AuditxSuiteTopBar
             variant="rider"
-            hubText="KA-44 Hub"
             isDutyOn={isCheckedIn}
             onDutyToggle={handleToggleDuty}
             onExit={() => {
