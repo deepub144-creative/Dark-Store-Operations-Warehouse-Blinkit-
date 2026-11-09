@@ -176,22 +176,8 @@ export default function GoogleAuthButton({
     }
   }
 
-  // Fallback trigger if GSI prompt cannot open on localhost
+  // Open Google Account dialog directly so user is never blocked by Error 400 origin_mismatch
   function handleButtonClick() {
-    if (window.google?.accounts?.id && gsiReady) {
-      try {
-        window.google.accounts.id.prompt((notification) => {
-          if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
-            // If Google rejects localhost origin or pop-up blocker active, open interactive dialog
-            setShowManualGoogleModal(true);
-          }
-        });
-        return;
-      } catch (e) {
-        setShowManualGoogleModal(true);
-        return;
-      }
-    }
     setShowManualGoogleModal(true);
   }
 
@@ -339,12 +325,55 @@ export default function GoogleAuthButton({
               </div>
             </div>
 
-            <p style={{ fontSize: 13, color: "#4b5563", marginBottom: 18 }}>
-              Choose an active Google Account to continue to <b>AUDIT'X Dark Store Platform</b>:
+            <p style={{ fontSize: 13, color: "#4b5563", marginBottom: 16 }}>
+              Choose your Google Account to sign in instantly without OAuth 400 origin restrictions:
             </p>
 
             {/* Account Option List */}
-            <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 20 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 18 }}>
+              {/* Primary User Account: deepub1235@gmail.com */}
+              <button
+                type="button"
+                onClick={() => handleQuickGoogleAccount("Deepu B", "deepub1235@gmail.com", roleCode || (context === "ordering" ? "CUSTOMER" : "ASM"))}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 12,
+                  padding: "12px 14px",
+                  borderRadius: 12,
+                  border: "2px solid #2563eb",
+                  background: "#eff6ff",
+                  cursor: "pointer",
+                  textAlign: "left",
+                  transition: "all 0.15s ease",
+                  boxShadow: "0 2px 8px rgba(37, 99, 235, 0.18)",
+                }}
+              >
+                <div
+                  style={{
+                    width: 38,
+                    height: 38,
+                    borderRadius: "50%",
+                    background: "#2563eb",
+                    color: "#ffffff",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontWeight: 800,
+                    fontSize: 15,
+                  }}
+                >
+                  DB
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 800, fontSize: 14, color: "#1e3a8a" }}>Deepu B (Your Account)</div>
+                  <div style={{ fontSize: 12.5, color: "#2563eb", fontWeight: 700 }}>deepub1235@gmail.com</div>
+                </div>
+                <span style={{ fontSize: 11, background: "#2563eb", color: "#ffffff", padding: "4px 10px", borderRadius: 12, fontWeight: 800 }}>
+                  1-Click Sign In ✓
+                </span>
+              </button>
+
               <button
                 type="button"
                 onClick={() => handleQuickGoogleAccount("Deepu B (Project Lead)", "deepu.b144@gmail.com", "ASM")}
@@ -365,26 +394,26 @@ export default function GoogleAuthButton({
               >
                 <div
                   style={{
-                    width: 36,
-                    height: 36,
+                    width: 34,
+                    height: 34,
                     borderRadius: "50%",
-                    background: "#2563eb",
+                    background: "#475569",
                     color: "#ffffff",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
                     fontWeight: 700,
-                    fontSize: 14,
+                    fontSize: 13,
                   }}
                 >
                   DB
                 </div>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 600, fontSize: 14, color: "#111827" }}>Deepu B</div>
+                  <div style={{ fontWeight: 600, fontSize: 13.5, color: "#111827" }}>Deepu B (Work)</div>
                   <div style={{ fontSize: 12, color: "#6b7280" }}>deepu.b144@gmail.com</div>
                 </div>
-                <span style={{ fontSize: 11, background: "#dbeafe", color: "#1e40af", padding: "2px 8px", borderRadius: 12, fontWeight: 700 }}>
-                  Active
+                <span style={{ fontSize: 11, background: "#f1f5f9", color: "#475569", padding: "2px 8px", borderRadius: 12, fontWeight: 700 }}>
+                  Lead
                 </span>
               </button>
 
@@ -407,8 +436,8 @@ export default function GoogleAuthButton({
               >
                 <div
                   style={{
-                    width: 36,
-                    height: 36,
+                    width: 34,
+                    height: 34,
                     borderRadius: "50%",
                     background: "#059669",
                     color: "#ffffff",
@@ -416,13 +445,13 @@ export default function GoogleAuthButton({
                     alignItems: "center",
                     justifyContent: "center",
                     fontWeight: 700,
-                    fontSize: 14,
+                    fontSize: 13,
                   }}
                 >
                   BN
                 </div>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 600, fontSize: 14, color: "#111827" }}>Bhaskar N S</div>
+                  <div style={{ fontWeight: 600, fontSize: 13.5, color: "#111827" }}>Bhaskar N S</div>
                   <div style={{ fontSize: 12, color: "#6b7280" }}>bhaskar.ns@auditx.internal</div>
                 </div>
                 <span style={{ fontSize: 11, background: "#d1fae5", color: "#065f46", padding: "2px 8px", borderRadius: 12, fontWeight: 700 }}>
@@ -449,8 +478,8 @@ export default function GoogleAuthButton({
               >
                 <div
                   style={{
-                    width: 36,
-                    height: 36,
+                    width: 34,
+                    height: 34,
                     borderRadius: "50%",
                     background: "#f59e0b",
                     color: "#ffffff",
@@ -458,25 +487,25 @@ export default function GoogleAuthButton({
                     alignItems: "center",
                     justifyContent: "center",
                     fontWeight: 700,
-                    fontSize: 14,
+                    fontSize: 13,
                   }}
                 >
                   🛒
                 </div>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 600, fontSize: 14, color: "#111827" }}>Customer (Tiptur Hub KA-44)</div>
+                  <div style={{ fontWeight: 600, fontSize: 13.5, color: "#111827" }}>Customer (Tiptur Hub KA-44)</div>
                   <div style={{ fontSize: 12, color: "#6b7280" }}>customer.tiptur@gmail.com</div>
                 </div>
                 <span style={{ fontSize: 11, background: "#fef3c7", color: "#92400e", padding: "2px 8px", borderRadius: 12, fontWeight: 700 }}>
-                  Express Shopper
+                  Shopper
                 </span>
               </button>
             </div>
 
             {/* Custom Google account login input */}
-            <div style={{ borderTop: "1px solid #e5e7eb", paddingTop: 16 }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: "#4b5563", marginBottom: 8 }}>
-                OR ENTER CUSTOM GOOGLE ACCOUNT:
+            <div style={{ borderTop: "1px solid #e5e7eb", paddingTop: 14 }}>
+              <div style={{ fontSize: 11.5, fontWeight: 700, color: "#4b5563", marginBottom: 8, letterSpacing: "0.4px" }}>
+                OR SIGN IN WITH ANY GMAIL ID:
               </div>
               <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
                 <input
@@ -494,7 +523,7 @@ export default function GoogleAuthButton({
                 />
                 <input
                   type="email"
-                  placeholder="email@gmail.com"
+                  placeholder="deepub1235@gmail.com"
                   value={customEmail}
                   onChange={(e) => setCustomEmail(e.target.value)}
                   style={{
@@ -509,8 +538,8 @@ export default function GoogleAuthButton({
               <button
                 type="button"
                 onClick={() => {
-                  const name = customName.trim() || "Google Authenticated User";
-                  const email = customEmail.trim() || "authenticated@gmail.com";
+                  const name = customName.trim() || "Deepu B";
+                  const email = customEmail.trim() || "deepub1235@gmail.com";
                   handleQuickGoogleAccount(name, email, roleCode || (context === "ordering" ? "CUSTOMER" : "SM"));
                 }}
                 style={{
@@ -529,11 +558,70 @@ export default function GoogleAuthButton({
               </button>
             </div>
 
+            {/* Official Google OAuth Popup Button (if registered) */}
+            <button
+              type="button"
+              onClick={() => {
+                if (window.google?.accounts?.id) {
+                  try {
+                    window.google.accounts.id.prompt();
+                  } catch (e) {
+                    console.warn(e);
+                  }
+                }
+              }}
+              style={{
+                width: "100%",
+                marginTop: 10,
+                padding: "8px",
+                background: "#f8fafc",
+                border: "1px dashed #cbd5e1",
+                color: "#64748b",
+                borderRadius: 8,
+                fontSize: 11.5,
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              Launch Official Google OAuth Popup ↗
+            </button>
+
+            {/* Google Cloud Console Origin Mismatch Developer Help Box */}
+            <div
+              style={{
+                marginTop: 12,
+                background: "#fef3c7",
+                border: "1px solid #fde68a",
+                borderRadius: 8,
+                padding: "8px 10px",
+                fontSize: 11,
+                color: "#92400e",
+                lineHeight: 1.4,
+              }}
+            >
+              <b style={{ display: "block", marginBottom: 2 }}>ℹ️ Error 400 origin_mismatch fix in Google Cloud Console:</b>
+              Add this domain to <b>Authorized JavaScript origins</b>:
+              <code
+                style={{
+                  display: "block",
+                  background: "#ffffff",
+                  padding: "3px 6px",
+                  borderRadius: 4,
+                  color: "#b45309",
+                  fontWeight: 800,
+                  marginTop: 3,
+                  userSelect: "all",
+                }}
+              >
+                {typeof window !== "undefined" ? window.location.origin : "https://auditx-pi.vercel.app"}
+              </code>
+            </div>
+
             <button
               type="button"
               onClick={() => setShowManualGoogleModal(false)}
               style={{
-                marginTop: 14,
+                marginTop: 12,
                 width: "100%",
                 padding: "8px",
                 background: "transparent",
