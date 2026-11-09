@@ -871,6 +871,30 @@ export default function TrackOrderPage() {
                 boxShadow: "0 10px 28px rgba(12, 131, 31, 0.14)",
               }}
             >
+              {/* Doorstep Delivery Animation Video */}
+              <div style={{ textAlign: "center", marginBottom: 14 }}>
+                <video
+                  autoPlay
+                  loop
+                  muted
+                  playsInline
+                  style={{
+                    width: "100%",
+                    maxWidth: 320,
+                    height: 180,
+                    borderRadius: 14,
+                    objectFit: "cover",
+                    border: "1.5px solid #86efac",
+                    boxShadow: "0 6px 18px rgba(12, 131, 31, 0.12)",
+                    display: "inline-block",
+                    background: "#080c14",
+                  }}
+                >
+                  <source src="/animations/rider_order_delivered.mp4" type="video/mp4" />
+                  <source src="/rider_order_delivered.mp4" type="video/mp4" />
+                </video>
+              </div>
+
               {ratingSubmitted ? (
                 <div style={{ textAlign: "center", padding: "12px 6px" }}>
                   <div style={{ fontSize: 34, marginBottom: 6 }}>🌟</div>

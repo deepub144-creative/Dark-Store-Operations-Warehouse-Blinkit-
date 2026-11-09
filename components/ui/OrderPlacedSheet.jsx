@@ -236,43 +236,38 @@ export default function OrderPlacedSheet({
             );
           })}
 
-        {/* 168px Green Circle with easeOutBack pop */}
+        {/* 168px Green Circle / Animation Video with easeOutBack pop */}
         <div
           style={{
             position: "relative",
-            width: 168,
-            height: 168,
+            width: 172,
+            height: 172,
             borderRadius: "50%",
             background: "var(--green, #2F6B4F)",
             boxShadow: "0 16px 40px rgba(47, 107, 79, 0.36), 0 4px 12px rgba(42, 23, 16, 0.12)",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
+            overflow: "hidden",
+            border: "3px solid rgba(255, 255, 255, 0.8)",
             animation: reducedMotion ? "none" : "axCirclePop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) 300ms both",
           }}
         >
-          {/* White check stroke draws itself inside circle */}
-          <svg
-            width="120"
-            height="120"
-            viewBox="-60 -60 120 120"
-            fill="none"
-            style={{ overflow: "visible" }}
+          <video
+            autoPlay
+            loop
+            muted
+            playsInline
+            style={{
+              width: "100%",
+              height: "100%",
+              objectFit: "cover",
+              display: "block",
+            }}
           >
-            <path
-              d="M-36,2 L-10,30 L38,-24"
-              stroke="#FFFFFF"
-              strokeWidth="15"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeDasharray="130"
-              strokeDashoffset={stage >= 2 || reducedMotion ? "0" : "130"}
-              style={{
-                transition: "stroke-dashoffset 0.42s cubic-bezier(0.2, 0.8, 0.25, 1)",
-                filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.18))",
-              }}
-            />
-          </svg>
+            <source src="/animations/Order_Placed.mp4" type="video/mp4" />
+            <source src="/Order_Placed.mp4" type="video/mp4" />
+          </video>
         </div>
       </div>
 

@@ -1076,6 +1076,8 @@ export default function OdPickerApp() {
                           background: "#080c14",
                         }}
                       >
+                        <source src="/animations/task_search_icon_logo.mp4" type="video/mp4" />
+                        <source src="/task_search_icon_logo.mp4" type="video/mp4" />
                         <source src="/tasksearching.mp4" type="video/mp4" />
                         <source src="/task-searching.mp4" type="video/mp4" />
                         <source src="/videos/task-searching.mp4" type="video/mp4" />

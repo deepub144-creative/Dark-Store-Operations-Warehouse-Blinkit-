@@ -258,6 +258,54 @@ export default function DeliveredSheet({
         )}
       </div>
 
+      {/* ── CELEBRATION VIDEO ANIMATION ── */}
+      <div
+        style={{
+          width: "100%",
+          maxWidth: 340,
+          height: 180,
+          borderRadius: 16,
+          overflow: "hidden",
+          border: "2px solid rgba(47, 107, 79, 0.45)",
+          boxShadow: "0 8px 24px rgba(42, 23, 16, 0.12)",
+          margin: "4px 0 12px",
+          background: "#080c14",
+          position: "relative",
+          flexShrink: 0,
+        }}
+      >
+        <video
+          autoPlay
+          loop
+          muted
+          playsInline
+          style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+        >
+          <source src="/animations/rider_order_delivered.mp4" type="video/mp4" />
+          <source src="/rider_order_delivered.mp4" type="video/mp4" />
+        </video>
+        <div
+          style={{
+            position: "absolute",
+            bottom: 8,
+            left: 10,
+            background: "rgba(15, 23, 42, 0.85)",
+            backdropFilter: "blur(4px)",
+            padding: "3px 8px",
+            borderRadius: 6,
+            fontSize: 10.5,
+            fontWeight: 800,
+            color: "#4ade80",
+            display: "flex",
+            alignItems: "center",
+            gap: 5,
+          }}
+        >
+          <span>✓</span>
+          <span>Doorstep Handover Verified</span>
+        </div>
+      </div>
+
       {/* ── SCENE: Flat Illustration in Brand Colors (~320px tall) ── */}
       <div
         style={{

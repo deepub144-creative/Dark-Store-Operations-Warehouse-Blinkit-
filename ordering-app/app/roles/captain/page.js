@@ -902,6 +902,8 @@ export default function DeliveryCaptainApp() {
                         background: "#080c14",
                       }}
                     >
+                      <source src="/animations/task_search_icon_logo.mp4" type="video/mp4" />
+                      <source src="/task_search_icon_logo.mp4" type="video/mp4" />
                       <source src="/tasksearching.mp4" type="video/mp4" />
                       <source src="/task-searching.mp4" type="video/mp4" />
                       <source src="/videos/task-searching.mp4" type="video/mp4" />
@@ -1380,9 +1382,11 @@ export default function DeliveryCaptainApp() {
                     background: "#080c14",
                   }}
                 >
+                  <source src="/animations/rider_order_delivered.mp4" type="video/mp4" />
+                  <source src="/rider_order_delivered.mp4" type="video/mp4" />
+                  <source src="/animations/task_search_icon_logo.mp4" type="video/mp4" />
+                  <source src="/task_search_icon_logo.mp4" type="video/mp4" />
                   <source src="/tasksearching.mp4" type="video/mp4" />
-                  <source src="/task-searching.mp4" type="video/mp4" />
-                  <source src="/videos/task-searching.mp4" type="video/mp4" />
                 </video>
                 <div style={{ fontSize: 11.5, fontWeight: 800, color: "#0c831f", marginTop: 6 }}>
                   ⚡ All Tasks Completed • Searching Next Live Rider Dispatch Task...
