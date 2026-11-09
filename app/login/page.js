@@ -6,10 +6,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { STAFF, staffByPhone } from "@/lib/roles";
 import AuditxLogo from "@/components/AuditxLogo";
-import GoogleAuthButton, {
-  generateRandomGoogleUser,
-  SAMPLE_GOOGLE_ACCOUNTS,
-} from "@/components/GoogleAuthButton";
+import GoogleAuthButton from "@/components/GoogleAuthButton";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -157,80 +154,11 @@ export default function LoginPage() {
         {/* CUSTOMER MODE: GOOGLE AUTHENTICATION ONLY */}
         {loginMode === "customer" && (
           <div>
-            <div style={{ marginBottom: 14 }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-                <span style={{ fontSize: 11, fontWeight: 800, color: "#64748b", letterSpacing: "0.06em" }}>
-                  QUICK SIGN IN
-                </span>
-                <span style={{ fontSize: 10, fontWeight: 800, color: "#2F6B4F", background: "rgba(47, 107, 79, 0.12)", padding: "2px 8px", borderRadius: 10 }}>
-                  Random & Any Account
-                </span>
-              </div>
+            <p style={{ fontSize: 13, color: "#64748b", margin: "0 0 16px 0", lineHeight: 1.45, textAlign: "center" }}>
+              Sign in with your official Google Account to access the customer ordering app & live order tracking.
+            </p>
 
-              {/* 🎲 RANDOM GOOGLE SIGN IN */}
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 12,
-                  padding: "14px",
-                  borderRadius: 14,
-                  border: "2px solid #059669",
-                  background: "linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%)",
-                  cursor: "pointer",
-                  boxShadow: "0 4px 14px rgba(5, 150, 105, 0.16)",
-                  marginBottom: 12,
-                }}
-                onClick={() => {
-                  const rand = generateRandomGoogleUser();
-                  handleQuickCustomerLogin(rand.name, "9845112233", rand.email);
-                }}
-              >
-                <div
-                  style={{
-                    width: 42,
-                    height: 42,
-                    borderRadius: "50%",
-                    background: "#059669",
-                    color: "#ffffff",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontSize: 22,
-                    flexShrink: 0,
-                  }}
-                >
-                  🎲
-                </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 14, fontWeight: 800, color: "#065f46" }}>
-                    Sign in with Random Google Account
-                  </div>
-                  <div style={{ fontSize: 11.5, color: "#047857" }}>
-                    Generates fresh Google credentials on the fly
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 6,
-                    background: "#059669",
-                    color: "#ffffff",
-                    border: "none",
-                    padding: "8px 12px",
-                    borderRadius: 10,
-                    fontSize: 12,
-                    fontWeight: 800,
-                    cursor: "pointer",
-                    flexShrink: 0,
-                  }}
-                >
-                  <span>1-Click Sign In</span>
-                </button>
-              </div>
-
+            <div style={{ marginBottom: 16 }}>
               <GoogleAuthButton
                 context="ordering"
                 roleCode="CUSTOMER"
@@ -245,17 +173,18 @@ export default function LoginPage() {
                 alignItems: "center",
                 justifyContent: "center",
                 gap: 6,
-                padding: "8px 12px",
+                padding: "10px 12px",
                 borderRadius: 10,
                 background: "#f8fafc",
                 border: "1px solid #e2e8f0",
-                fontSize: 11,
+                fontSize: 11.5,
                 color: "#64748b",
                 fontWeight: 600,
+                textAlign: "center",
                 marginBottom: 10,
               }}
             >
-              <span>⚡ Dual Mode: Works Online & Offline without OAuth Errors</span>
+              <span>🔒 Official Google OAuth 2.0 • Real Gmail Name & Profile</span>
             </div>
           </div>
         )}
@@ -317,15 +246,12 @@ export default function LoginPage() {
           <div style={S.quickGrid}>
             <button
               style={S.quickRoleBtn}
-              onClick={() => {
-                const rand = generateRandomGoogleUser();
-                handleQuickCustomerLogin(rand.name, "9845112233", rand.email);
-              }}
+              onClick={() => handleQuickCustomerLogin("Namma Tiptur Shopper", "9845112233", "customer.tiptur@gmail.com")}
             >
-              <span>🎲</span>
+              <span>🛒</span>
               <div>
-                <b>Random Customer</b>
-                <small>Instant Google Profile</small>
+                <b>Demo Customer</b>
+                <small>KFGSC Tiptur 572201</small>
               </div>
             </button>
 

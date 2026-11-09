@@ -8,10 +8,7 @@ import { playNotificationChime, playSuccessChime } from "@/lib/soundSystem";
 import { getRandomStagingRack } from "@/lib/roles";
 import AuditxLogo from "@/components/AuditxLogo";
 import AuditxMiniAssistant from "@/components/AuditxMiniAssistant";
-import GoogleAuthButton, {
-  generateRandomGoogleUser,
-  SAMPLE_GOOGLE_ACCOUNTS,
-} from "@/components/GoogleAuthButton";
+import GoogleAuthButton from "@/components/GoogleAuthButton";
 import OrderPlacedSheet from "@/components/ui/OrderPlacedSheet";
 import {
   IconLightning,
@@ -3519,199 +3516,37 @@ export default function OrderingAppPage() {
               <div style={S.loginErrorBanner}>{loginError}</div>
             )}
 
-            <div style={{ padding: "4px 0" }}>
-              {/* PRIMARY: 1-CLICK INSTANT RANDOM GOOGLE ACCOUNT */}
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-                <span style={{ fontSize: 11, fontWeight: 800, color: "#64748b", letterSpacing: "0.06em" }}>
-                  QUICK SIGN IN
-                </span>
-                <span style={{ fontSize: 10, fontWeight: 800, color: "#2F6B4F", background: "rgba(47, 107, 79, 0.12)", padding: "2px 8px", borderRadius: 10 }}>
-                  Zero Blockers
-                </span>
-              </div>
+            <div style={{ padding: "8px 0 4px 0" }}>
+              <p style={{ fontSize: 13, color: "#64748b", margin: "0 0 16px 0", lineHeight: 1.45 }}>
+                Click below to sign in with your official Google Account. Your Gmail name will automatically appear on your orders and live delivery tracking.
+              </p>
 
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 12,
-                  padding: "13px 14px",
-                  borderRadius: 14,
-                  border: "2px solid #059669",
-                  background: "linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%)",
-                  cursor: "pointer",
-                  boxShadow: "0 4px 14px rgba(5, 150, 105, 0.16)",
-                  marginBottom: 12,
-                }}
-                onClick={() => {
-                  const rand = generateRandomGoogleUser();
-                  const custObj = {
-                    customerId: `google_${rand.email.replace(/[^a-zA-Z0-9]/g, "_")}`,
-                    name: rand.name,
-                    email: rand.email,
-                    phone: "9845112233",
-                    location: "KFGSC , Tiptur 572201",
-                    walletBalance: 1000000,
-                    provider: "google",
-                    loginMethod: "Google OAuth 2.0 (Verified)",
-                    verifiedAt: new Date().toISOString(),
-                  };
-                  try {
-                    localStorage.setItem("auditx_customer", JSON.stringify(custObj));
-                    localStorage.setItem("blinkit_customer", JSON.stringify(custObj));
-                    localStorage.setItem(
-                      "auditx_google_user",
-                      JSON.stringify({
-                        name: rand.name,
-                        email: rand.email,
-                        picture: "https://lh3.googleusercontent.com/a/default-user=s96-c",
-                        provider: "google",
-                        verifiedAt: new Date().toISOString(),
-                      })
-                    );
-                  } catch (e) {
-                    console.warn(e);
-                  }
-                  setCustomer(custObj);
-                  setShowLoginModal(false);
-                  triggerToast(`Signed in as ${rand.name} (${rand.email})!`);
-                }}
-              >
-                <div
-                  style={{
-                    width: 40,
-                    height: 40,
-                    borderRadius: "50%",
-                    background: "#059669",
-                    color: "#ffffff",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontSize: 20,
-                    flexShrink: 0,
-                  }}
-                >
-                  🎲
-                </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 14, fontWeight: 800, color: "#065f46" }}>
-                    Sign in with Random Google Account
-                  </div>
-                  <div style={{ fontSize: 11.5, color: "#047857" }}>
-                    Generates a fresh verified Google identity instantly
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 6,
-                    background: "#059669",
-                    color: "#ffffff",
-                    border: "none",
-                    padding: "8px 12px",
-                    borderRadius: 10,
-                    fontSize: 12,
-                    fontWeight: 800,
-                    cursor: "pointer",
-                    flexShrink: 0,
-                  }}
-                >
-                  <span>1-Click</span>
-                  <IconArrowRight size={14} color="#ffffff" />
-                </button>
-              </div>
-
-              {/* SECONDARY: GOOGLE AUTH BUTTON */}
-              <div style={{ marginBottom: 12 }}>
+              <div style={{ marginBottom: 16 }}>
                 <GoogleAuthButton
                   context="ordering"
                   roleCode="CUSTOMER"
                   label="Sign in with Google"
                   theme="light"
                   onSuccess={(authData) => {
-                    if (authData?.customer) {
-                      setCustomer(authData.customer);
+                    if (authData?.name) {
+                      const custObj = authData.customer || {
+                        customerId: `google_${authData.email ? authData.email.replace(/[^a-zA-Z0-9]/g, "_") : Date.now()}`,
+                        name: authData.name,
+                        email: authData.email || "",
+                        picture: authData.picture || "https://lh3.googleusercontent.com/a/default-user=s96-c",
+                        phone: "9845112233",
+                        location: "KFGSC , Tiptur 572201",
+                        walletBalance: 1000000,
+                        provider: "google",
+                        loginMethod: "Official Google OAuth 2.0",
+                        verifiedAt: new Date().toISOString(),
+                      };
+                      setCustomer(custObj);
                       setShowLoginModal(false);
-                      triggerToast(`Signed in with Google as ${authData.name}!`);
+                      triggerToast(`Welcome, ${authData.name}! Signed in with Google.`);
                     }
                   }}
                 />
-              </div>
-
-              {/* SAMPLE PROFILES TO PICK */}
-              <div style={{ marginBottom: 10 }}>
-                <div style={{ fontSize: 10.5, fontWeight: 800, color: "#64748b", marginBottom: 6, letterSpacing: "0.05em" }}>
-                  OR SELECT ANY SAMPLE GOOGLE PROFILE:
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
-                  {SAMPLE_GOOGLE_ACCOUNTS.slice(0, 4).map((acc) => (
-                    <button
-                      key={acc.email}
-                      type="button"
-                      onClick={() => {
-                        const custObj = {
-                          customerId: `google_${acc.email.replace(/[^a-zA-Z0-9]/g, "_")}`,
-                          name: acc.name,
-                          email: acc.email,
-                          phone: "9845112233",
-                          location: "KFGSC , Tiptur 572201",
-                          walletBalance: 1000000,
-                          provider: "google",
-                          loginMethod: "Google OAuth 2.0 (Verified)",
-                          verifiedAt: new Date().toISOString(),
-                        };
-                        try {
-                          localStorage.setItem("auditx_customer", JSON.stringify(custObj));
-                          localStorage.setItem("blinkit_customer", JSON.stringify(custObj));
-                        } catch (e) {
-                          console.warn(e);
-                        }
-                        setCustomer(custObj);
-                        setShowLoginModal(false);
-                        triggerToast(`Signed in as ${acc.name}!`);
-                      }}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 8,
-                        padding: "8px 10px",
-                        borderRadius: 8,
-                        border: "1px solid #e2e8f0",
-                        background: "#f8fafc",
-                        cursor: "pointer",
-                        textAlign: "left",
-                      }}
-                    >
-                      <div
-                        style={{
-                          width: 26,
-                          height: 26,
-                          borderRadius: "50%",
-                          background: acc.color,
-                          color: "#ffffff",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          fontSize: 11,
-                          fontWeight: 800,
-                          flexShrink: 0,
-                        }}
-                      >
-                        {acc.avatar}
-                      </div>
-                      <div style={{ minWidth: 0, flex: 1 }}>
-                        <div style={{ fontSize: 12, fontWeight: 700, color: "#1e293b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                          {acc.name}
-                        </div>
-                        <div style={{ fontSize: 10, color: "#64748b" }}>
-                          {acc.role}
-                        </div>
-                      </div>
-                    </button>
-                  ))}
-                </div>
               </div>
 
               <div
@@ -3720,16 +3555,17 @@ export default function OrderingAppPage() {
                   alignItems: "center",
                   justifyContent: "center",
                   gap: 6,
-                  padding: "8px 12px",
+                  padding: "10px 12px",
                   borderRadius: 10,
                   background: "#f8fafc",
                   border: "1px solid #e2e8f0",
-                  fontSize: 11,
+                  fontSize: 11.5,
                   color: "#64748b",
                   fontWeight: 600,
+                  textAlign: "center",
                 }}
               >
-                <span>⚡ Works 100% Online & Offline • Zero Origin Errors</span>
+                <span>🔒 Official Google OAuth 2.0 • Opens Google Sign-In Window</span>
               </div>
             </div>
           </div>
