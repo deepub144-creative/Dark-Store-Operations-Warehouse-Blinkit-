@@ -651,78 +651,78 @@ export default function DeliveryCaptainApp() {
                   </div>
                   <div style={S.addressSnippetRow}>
                     <span>
-                      🛵 {riderArrivedBar ? "Arrived at Customer Location • Verify Handover QR" : `${distanceLeftKm} kms left to the location • Tiptur Fleet KA44`}
+                      🛵 {riderArrivedBar ? "Arrived at Customer Location" : activeOrder ? `${distanceLeftKm} kms left to destination • Tiptur Fleet KA44` : "Stationed at Tiptur Hub KA44 • Fleet Ready"}
                     </span>
                   </div>
                 </div>
                 <span style={S.roleBadgeTag}>ORDER CAPTAIN</span>
               </div>
 
-            {/* Live Ordering-App-Style Rider Progress Bar Message */}
-            <div
-              style={{
-                marginTop: 8,
-                background: "linear-gradient(135deg, #0f172a 0%, #1e293b 100%)",
-                borderRadius: 12,
-                padding: "9px 12px",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: 8,
-                border: "1.5px solid rgba(12, 131, 31, 0.65)",
-                boxShadow: "0 4px 14px rgba(15, 23, 42, 0.25)",
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, flex: 1 }}>
-                <div
-                  style={{
-                    width: 30,
-                    height: 30,
-                    borderRadius: 8,
-                    background: "rgba(12, 131, 31, 0.25)",
-                    border: "1px solid rgba(34, 197, 94, 0.5)",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    flexShrink: 0,
-                  }}
-                >
-                  <IconRealisticScooter size={18} color="#4ade80" animated={true} />
-                </div>
-                <div style={{ minWidth: 0, flex: 1 }}>
-                  <div style={{ fontSize: 12, fontWeight: 900, color: "#ffffff", letterSpacing: "-0.1px" }}>
-                    {riderArrivedBar
-                      ? "Rider arrived to customer location • Scan Handover QR"
-                      : doorstepSeconds !== null
-                      ? `Almost to customer doorstep • ${doorstepSeconds} seconds`
-                      : `${distanceLeftKm} kms left to the location • Taking ${arrivingMinutes} ${arrivingMinutes === 1 ? "minute" : "minutes"}`}
-                  </div>
-                  <div style={{ fontSize: 10.5, color: "#94a3b8", fontWeight: 600 }}>
-                    {activeOrder
-                      ? `Order #${activeOrder.orderNumber || activeOrder.id} • Auto-reducing countdown (${minStr}:${secStr})`
-                      : "1.5 kms left to the location • Normal 6-min auto-reduce SLA ready"}
-                  </div>
-                </div>
-              </div>
-              <span
+            {/* Live Ordering-App-Style Rider Progress Bar Message (Only when active order in transit) */}
+            {activeOrder && (activeStep === "out_for_delivery" || activeStep === "in_transit" || activeStep === "delivery") && (
+              <div
                 style={{
-                  background: riderArrivedBar ? "#22c55e" : "rgba(34, 197, 94, 0.18)",
-                  color: riderArrivedBar ? "#ffffff" : "#4ade80",
-                  fontSize: 10.5,
-                  fontWeight: 900,
-                  padding: "4px 8px",
-                  borderRadius: 6,
-                  whiteSpace: "nowrap",
-                  border: "1px solid rgba(34, 197, 94, 0.4)",
+                  marginTop: 8,
+                  background: "linear-gradient(135deg, #0f172a 0%, #1e293b 100%)",
+                  borderRadius: 12,
+                  padding: "9px 12px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 8,
+                  border: "1.5px solid rgba(12, 131, 31, 0.65)",
+                  boxShadow: "0 4px 14px rgba(15, 23, 42, 0.25)",
                 }}
               >
-                {riderArrivedBar
-                  ? "📍 ARRIVED"
-                  : doorstepSeconds !== null
-                  ? `⚡ ${doorstepSeconds}s`
-                  : `⚡ ${arrivingMinutes} MIN`}
-              </span>
-            </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, flex: 1 }}>
+                  <div
+                    style={{
+                      width: 30,
+                      height: 30,
+                      borderRadius: 8,
+                      background: "rgba(12, 131, 31, 0.25)",
+                      border: "1px solid rgba(34, 197, 94, 0.5)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      flexShrink: 0,
+                    }}
+                  >
+                    <IconRealisticScooter size={18} color="#4ade80" animated={true} />
+                  </div>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ fontSize: 12, fontWeight: 900, color: "#ffffff", letterSpacing: "-0.1px" }}>
+                      {riderArrivedBar
+                        ? "Rider arrived at customer doorstep"
+                        : doorstepSeconds !== null
+                        ? `Almost to customer doorstep • ${doorstepSeconds} seconds`
+                        : `${distanceLeftKm} kms left to location • Taking ${arrivingMinutes} ${arrivingMinutes === 1 ? "minute" : "minutes"}`}
+                    </div>
+                    <div style={{ fontSize: 10.5, color: "#94a3b8", fontWeight: 600 }}>
+                      Order #{activeOrder.orderNumber || activeOrder.id} • Auto-reducing countdown ({minStr}:{secStr})
+                    </div>
+                  </div>
+                </div>
+                <span
+                  style={{
+                    background: riderArrivedBar ? "#22c55e" : "rgba(34, 197, 94, 0.18)",
+                    color: riderArrivedBar ? "#ffffff" : "#4ade80",
+                    fontSize: 10.5,
+                    fontWeight: 900,
+                    padding: "4px 8px",
+                    borderRadius: 6,
+                    whiteSpace: "nowrap",
+                    border: "1px solid rgba(34, 197, 94, 0.4)",
+                  }}
+                >
+                  {riderArrivedBar
+                    ? "📍 ARRIVED"
+                    : doorstepSeconds !== null
+                    ? `⚡ ${doorstepSeconds}s`
+                    : `⚡ ${arrivingMinutes} MIN`}
+                </span>
+              </div>
+            )}
           </div>
         </header>
 
@@ -731,9 +731,6 @@ export default function DeliveryCaptainApp() {
           {/* STEP 1: AWAITING PICKUP FROM STAGING RACKS */}
           {activeStep === "awaiting_orders" && (
             <div>
-              <div style={S.infoBanner}>
-                <span>⚡ 10-Min Dark Store SLA: <b>2 Min Pick (OD Picker)</b> + <b>8 Min Delivery (Order Captain)</b></span>
-              </div>
 
               {/* INCOMING LIVE ASSIGNED ORDERS (PICKING IN PROGRESS) */}
               {incomingAssignedOrders.length > 0 && (
@@ -873,9 +870,9 @@ export default function DeliveryCaptainApp() {
                   </div>
                 </div>
               ) : (
-                /* IDLE STATE WITH TASK SEARCHING ANIMATION */
+                /* IDLE STATE WITH CLEAN TASK SEARCHING ANIMATION */
                 <div style={S.idleCard}>
-                  <div style={{ textAlign: "center", marginBottom: 16 }}>
+                  <div style={{ position: "relative", textAlign: "center", borderRadius: 14, overflow: "hidden", marginBottom: 14 }}>
                     <video
                       autoPlay
                       loop
@@ -883,8 +880,8 @@ export default function DeliveryCaptainApp() {
                       playsInline
                       style={{
                         width: "100%",
-                        maxWidth: 320,
-                        height: 200,
+                        maxWidth: 360,
+                        height: 210,
                         objectFit: "cover",
                         borderRadius: 14,
                         boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
@@ -899,58 +896,98 @@ export default function DeliveryCaptainApp() {
                       <source src="/task-searching.mp4" type="video/mp4" />
                       <source src="/videos/task-searching.mp4" type="video/mp4" />
                     </video>
-                  </div>
-                  <div style={S.idleIcon}>
-                    <IconRealisticScooter size={76} color="#0c831f" animated={true} />
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, margin: "8px 0 14px" }}>
-                    <img
-                      src="/sinchana-logo.png"
-                      alt="Sinchana B R Logo"
+                    <div
                       style={{
-                        width: 32,
-                        height: 32,
-                        borderRadius: "50%",
-                        objectFit: "cover",
-                        border: "1.5px solid #ca8a04",
-                        background: "#000000",
-                        boxShadow: "0 2px 8px rgba(0,0,0,0.25)",
+                        position: "absolute",
+                        bottom: 12,
+                        left: "50%",
+                        transform: "translateX(-50%)",
+                        background: "rgba(15, 23, 42, 0.85)",
+                        backdropFilter: "blur(6px)",
+                        color: "#ffffff",
+                        padding: "6px 14px",
+                        borderRadius: 20,
+                        fontSize: 11.5,
+                        fontWeight: 800,
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        whiteSpace: "nowrap",
+                        boxShadow: "0 2px 8px rgba(0,0,0,0.4)",
                       }}
-                    />
-                    <span style={{ fontSize: 13, fontWeight: 800, color: "#0f172a" }}>
-                      Sinchana B R • Delivery Partner Rider Captain
-                    </span>
-                  </div>
-                  <h3 style={S.idleTitle}>Task Searching • Ready for Orders at Tiptur HUB Bay</h3>
-                  <p style={S.idleSub}>
-                    <img
-                      src="/thrupthi-logo.png"
-                      alt="Thrupthi K S"
-                      style={{
-                        width: 18,
-                        height: 18,
-                        borderRadius: "50%",
-                        objectFit: "cover",
-                        border: "1px solid #f59e0b",
-                        verticalAlign: "middle",
-                        marginRight: 6,
-                      }}
-                    />
-                    Scanning live dark store dispatch queue. When OD Picker <b>Thrupthi K S</b> completes picking and stages a bag into racks (B7, H2, D5, H4, T1, T6, B5, S4, T4), your phone will sound an alert!
-                  </p>
-                  <div style={S.hubInfoPill}>
-                    <span>📍 Base: Tiptur HUB - KA44</span>
-                    <span>⚡ Delivery Guarantee: 8 Mins</span>
+                    >
+                      <span
+                        style={{
+                          width: 8,
+                          height: 8,
+                          borderRadius: "50%",
+                          background: "#10b981",
+                          boxShadow: "0 0 8px #10b981",
+                          display: "inline-block",
+                        }}
+                      />
+                      <span>Awaiting Order Dispatch • Searching Live Tasks...</span>
+                    </div>
                   </div>
 
-                  <div style={{ marginTop: 14 }}>
-                    <button
-                      type="button"
-                      style={S.fastTrackStagingBtn}
-                      onClick={handleSimulateIncomingStagedOrder}
-                    >
-                      ⚡ Simulate Staged Order in Rack D5 (Demo)
-                    </button>
+                  {/* Active Dark Store Inventory Reference (Frames 1 unit, Chocolates 5 units) */}
+                  <div
+                    style={{
+                      background: "#ffffff",
+                      border: "1px solid #e2e8f0",
+                      borderRadius: 14,
+                      padding: "14px 16px",
+                      boxShadow: "0 2px 10px rgba(0,0,0,0.04)",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                      <span style={{ fontSize: 11, fontWeight: 900, color: "#0c831f", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                        Active Dark Store Inventory
+                      </span>
+                      <span style={{ fontSize: 10, fontWeight: 800, background: "#dcfce7", color: "#15803d", padding: "2px 8px", borderRadius: 4 }}>
+                        SLA: 8-MIN TRANSIT
+                      </span>
+                    </div>
+
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                      <div
+                        style={{
+                          background: "#f8fafc",
+                          border: "1px solid #e2e8f0",
+                          borderRadius: 10,
+                          padding: 10,
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: 4,
+                        }}
+                      >
+                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <span style={{ fontSize: 18 }}>🍫</span>
+                          <span style={{ fontSize: 12, fontWeight: 800, color: "#0f172a" }}>Chocolates</span>
+                        </div>
+                        <span style={{ fontSize: 11, fontWeight: 800, color: "#0c831f" }}>5 Units Fixed</span>
+                        <span style={{ fontSize: 10, color: "#64748b" }}>Cadbury, Amul, Beats &amp; more</span>
+                      </div>
+
+                      <div
+                        style={{
+                          background: "#f8fafc",
+                          border: "1px solid #e2e8f0",
+                          borderRadius: 10,
+                          padding: 10,
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: 4,
+                        }}
+                      >
+                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <span style={{ fontSize: 18 }}>🖼️</span>
+                          <span style={{ fontSize: 12, fontWeight: 800, color: "#0f172a" }}>Frames</span>
+                        </div>
+                        <span style={{ fontSize: 11, fontWeight: 800, color: "#0c831f" }}>1 Unit Single</span>
+                        <span style={{ fontSize: 10, color: "#64748b" }}>Glass framed art &amp; heritage</span>
+                      </div>
+                    </div>
                   </div>
                 </div>
               )}
