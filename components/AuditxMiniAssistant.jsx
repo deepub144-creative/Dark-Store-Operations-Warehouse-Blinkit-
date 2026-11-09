@@ -315,15 +315,24 @@ export function buildWalletAndComplaintsText() {
   ].join("\n");
 }
 
-export default function AuditxMiniAssistant() {
+function formatWelcomeGreeting(userName) {
+  if (userName && typeof userName === "string" && userName.trim()) {
+    const firstName = userName.trim().split(" ")[0];
+    return `Hello ${firstName}! I am AUDIT'X Mini.`;
+  }
+  return "Hello! I am AUDIT'X Mini.";
+}
+
+export default function AuditxMiniAssistant({ isStoreOpen = true, customer = null }) {
   const [isOpen, setIsOpen] = useState(false);
+  const [detectedUser, setDetectedUser] = useState(null);
 
   // Persistent Chat State (auto-restored from localStorage key `auditx_mini_chat_history`)
   const [messages, setMessages] = useState([
     {
       id: "welcome_initial",
       role: "bot",
-      text: "Hello! I am AUDIT'X Mini. Ask me anything about the AUDIT'X dark store project, our 5-member team, the 10-minute SLA, or the 9 staging bays at Namma Tiptur Hub KA-44.",
+      text: "Hello! I am AUDIT'X Mini.",
       time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
     },
   ]);
@@ -347,6 +356,53 @@ export default function AuditxMiniAssistant() {
   const streamPendingMsgRef = useRef(null);
   const chatScrollRef = useRef(null);
 
+  // Auto-detect customer name from Google OAuth (prop or localStorage)
+  useEffect(() => {
+    function resolveUserName() {
+      if (customer?.name) {
+        setDetectedUser(customer.name);
+        return;
+      }
+      try {
+        const raw = localStorage.getItem("auditx_customer") || localStorage.getItem("blinkit_customer");
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed?.name) {
+            setDetectedUser(parsed.name);
+            return;
+          }
+        }
+      } catch (e) {}
+      setDetectedUser(null);
+    }
+
+    resolveUserName();
+
+    const handleStorageChange = (e) => {
+      if (e.key === "auditx_customer" || e.key === "blinkit_customer") {
+        resolveUserName();
+      }
+    };
+    window.addEventListener("storage", handleStorageChange);
+    return () => window.removeEventListener("storage", handleStorageChange);
+  }, [customer]);
+
+  // Dynamically personalize initial welcome message when user logs in with Google
+  useEffect(() => {
+    const greeting = formatWelcomeGreeting(detectedUser);
+    setMessages((prev) => {
+      if (prev.length === 1 && (prev[0].id === "welcome_initial" || prev[0].text.includes("AUDIT'X Mini"))) {
+        return [{ ...prev[0], text: greeting }];
+      }
+      return prev.map((m, idx) => {
+        if (idx === 0 && (m.id === "welcome_initial" || m.text.includes("AUDIT'X Mini") || m.text.includes("Ask me anything"))) {
+          return { ...m, text: greeting };
+        }
+        return m;
+      });
+    });
+  }, [detectedUser]);
+
   // ============================================================================
   // SILENT AUTOMATIC MEMORY & RESTORE ON RELOAD (`auditx_mini_chat_history`)
   // ============================================================================
@@ -357,7 +413,14 @@ export default function AuditxMiniAssistant() {
       if (raw) {
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed.currentMessages) && parsed.currentMessages.length > 0) {
-          setMessages(parsed.currentMessages);
+          const targetGreeting = formatWelcomeGreeting(detectedUser);
+          const sanitizedMessages = parsed.currentMessages.map((m, idx) => {
+            if (idx === 0 && (m.id === "welcome_initial" || m.text.includes("AUDIT'X Mini") || m.text.includes("Ask me anything"))) {
+              return { ...m, text: targetGreeting };
+            }
+            return m;
+          });
+          setMessages(sanitizedMessages);
         }
         if (Array.isArray(parsed.archivedSessions)) {
           setArchivedSessions(parsed.archivedSessions);
@@ -973,6 +1036,129 @@ export default function AuditxMiniAssistant() {
   // ============================================================================
   function handleNormalQuestion(rawQuery, meta = {}) {
     const norm = normalizeQuery(rawQuery);
+    const firstName = detectedUser ? detectedUser.trim().split(" ")[0] : "";
+
+    // 0a. User Identity & Google Account Name Queries
+    if (
+      norm.includes("who am i") ||
+      norm.includes("what is my name") ||
+      norm.includes("my name") ||
+      norm.includes("what my name") ||
+      norm.includes("who i am") ||
+      norm.includes("am i logged in") ||
+      norm.includes("do you know me") ||
+      norm.includes("do you know my name") ||
+      norm.includes("my profile") ||
+      norm.includes("my account")
+    ) {
+      if (detectedUser) {
+        revealBotResponse(
+          `You are signed in as ${detectedUser}! Your Google Account is connected to Namma Tiptur Hub KA-44, and your Gmail name is automatically linked to your live orders, delivery tracking, and our conversation.`,
+          {},
+          { lastTopic: "user_identity", lastUserQuestion: rawQuery }
+        );
+      } else {
+        revealBotResponse(
+          "You are currently browsing as a Guest. When you click 'Sign in with Google' at the top of the store, your Gmail name will automatically connect to your live orders and our conversation!",
+          {},
+          { lastTopic: "user_identity", lastUserQuestion: rawQuery }
+        );
+      }
+      return;
+    }
+
+    // 0b. Bot Identity Queries
+    if (
+      norm === "who are you" ||
+      norm === "what are you" ||
+      norm === "what is your name" ||
+      norm === "who r u" ||
+      norm.includes("who are you") ||
+      norm.includes("what is your name") ||
+      norm.includes("what can you do") ||
+      norm.includes("what do you do")
+    ) {
+      revealBotResponse(
+        `I am AUDIT'X Mini${firstName ? `, ${firstName}` : ""}! I am your AI assistant for the AUDIT'X Dark Store and Warehouse Operations project at Namma Tiptur Hub KA-44. You can ask me anything about our 5-member team, 10-minute SLA, 9 staging bays, warehouse stock, active orders, and system architecture.`,
+        {},
+        { lastTopic: "bot_identity", lastUserQuestion: rawQuery }
+      );
+      return;
+    }
+
+    // 0c. Live Order Tracking & My Orders Queries
+    if (
+      norm.includes("my order") ||
+      norm.includes("where is my order") ||
+      norm.includes("track my order") ||
+      norm.includes("order status") ||
+      norm.includes("track order") ||
+      norm.includes("delivery status") ||
+      norm.includes("active order")
+    ) {
+      const liveOrders = getAllLiveOrders();
+      let matchedOrder = null;
+      if (detectedUser) {
+        matchedOrder = liveOrders.find(
+          (o) =>
+            o.customerName?.toLowerCase().includes(detectedUser.toLowerCase()) ||
+            detectedUser.toLowerCase().includes((o.customerName || "").toLowerCase())
+        );
+      }
+      if (!matchedOrder && liveOrders.length > 0) {
+        matchedOrder = liveOrders[0];
+      }
+
+      if (matchedOrder) {
+        const ordId = matchedOrder.orderNumber || matchedOrder.id;
+        const ordStage = matchedOrder.stage || matchedOrder.status || "In Process";
+        const itemCount = matchedOrder.items?.length || 1;
+        const total = matchedOrder.totalAmount || matchedOrder.grandTotal || 0;
+        const addr = matchedOrder.address || matchedOrder.customerAddress || "Tiptur 572201";
+        revealBotResponse(
+          [
+            `Here is your live order update${firstName ? `, ${firstName}` : ""}:`,
+            `• Order ID: #${ordId}`,
+            `• Current Stage: ${ordStage}`,
+            `• Order Total: Rs. ${total} (${itemCount} item(s))`,
+            `• Destination: ${addr}`,
+            `• Fulfillment SLA: 10-Minute Dark Store Delivery (2-Min Picking by Thrupthi K S + Handover to Sinchana B R).`,
+          ].join("\n"),
+          {},
+          { lastTopic: "orders", lastUserQuestion: rawQuery }
+        );
+      } else {
+        revealBotResponse(
+          `You don't have an active order right now${firstName ? `, ${firstName}` : ""}. You can pick your favorite Chocolates or Wall Frames in the catalog and place an order under our 10-minute SLA!`,
+          {},
+          { lastTopic: "orders", lastUserQuestion: rawQuery }
+        );
+      }
+      return;
+    }
+
+    // 0d. Store Info & Hours Queries
+    if (
+      norm.includes("is store open") ||
+      norm.includes("store status") ||
+      norm.includes("timing") ||
+      norm.includes("hours") ||
+      norm.includes("where is hub") ||
+      norm.includes("hub ka 44")
+    ) {
+      revealBotResponse(
+        [
+          `AUDIT'X Dark Store Hub Information:`,
+          `• Hub: Namma Tiptur Hub KA-44 (Pin: 572201)`,
+          `• Store Status: ${isStoreOpen ? "🟢 OPEN (Dispatching orders under 10-minute SLA)" : "🔴 PAUSED (Store Manager Bhaskar N S toggle)"}`,
+          `• College Node: Serves Kalpataru First Grade Science College (KFGSC), Tiptur`,
+          `• Coverage: 1.5 km to 2.5 km rapid delivery radius across Tiptur town.`,
+        ].join("\n"),
+        {},
+        { lastTopic: "store_info", lastUserQuestion: rawQuery }
+      );
+      return;
+    }
 
     if (meta.topicOverride === "team_roles_hierarchy") {
       revealBotResponse(
@@ -1256,20 +1442,68 @@ export default function AuditxMiniAssistant() {
       return;
     }
 
-    // 9. Simple Greeting
+    // 9. Simple Greeting & Polite Pleasantries
     if (
       norm === "hi" ||
       norm === "hello" ||
       norm === "hey" ||
       norm === "namaskara" ||
       norm === "namaste" ||
-      norm === "good morning" ||
-      norm === "good evening"
+      norm === "hola" ||
+      norm.startsWith("hi ") ||
+      norm.startsWith("hello ") ||
+      norm.startsWith("hey ") ||
+      norm.includes("good morning") ||
+      norm.includes("good evening") ||
+      norm.includes("good afternoon")
     ) {
       revealBotResponse(
-        "Hello! How can I help you explore the AUDIT'X Dark Store and Warehouse Operations project at Namma Tiptur Hub KA-44 today?",
+        `Hello${firstName ? ` ${firstName}` : ""}! I am AUDIT'X Mini. How can I assist you today? You can ask me anything about our dark store project, our team, order tracking, 10-minute SLA, or catalog items!`,
         {},
-        { lastTopic: "overview", lastUserQuestion: rawQuery }
+        { lastTopic: "greeting", lastUserQuestion: rawQuery }
+      );
+      return;
+    }
+
+    if (
+      norm.includes("how are you") ||
+      norm.includes("how r u") ||
+      norm.includes("how are u") ||
+      norm === "hru"
+    ) {
+      revealBotResponse(
+        `I am doing great${firstName ? `, ${firstName}` : ""}, thank you for asking! Ready to help you with anything about AUDIT'X dark store operations at Namma Tiptur Hub KA-44. What would you like to explore?`,
+        {},
+        { lastTopic: "pleasantry", lastUserQuestion: rawQuery }
+      );
+      return;
+    }
+
+    if (
+      norm.includes("thank") ||
+      norm.includes("thanks") ||
+      norm.includes("thx") ||
+      norm.includes("dhanyavada")
+    ) {
+      revealBotResponse(
+        `You're very welcome${firstName ? `, ${firstName}` : ""}! Feel free to ask anytime if you need more information about AUDIT'X dark store operations.`,
+        {},
+        { lastTopic: "pleasantry", lastUserQuestion: rawQuery }
+      );
+      return;
+    }
+
+    if (
+      norm === "bye" ||
+      norm === "goodbye" ||
+      norm === "cya" ||
+      norm.includes("see you") ||
+      norm.includes("bye bye")
+    ) {
+      revealBotResponse(
+        `Goodbye${firstName ? `, ${firstName}` : ""}! Have a wonderful day and enjoy fast quick-commerce delivery from AUDIT'X Tiptur Hub KA-44!`,
+        {},
+        { lastTopic: "pleasantry", lastUserQuestion: rawQuery }
       );
       return;
     }

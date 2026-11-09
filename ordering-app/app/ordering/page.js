@@ -4470,7 +4470,7 @@ export default function OrderingAppPage() {
       )}
 
       {/* ── RAG-BASED EMBEDDED AI ASSISTANT: AUDIT'X Mini ── */}
-      <AuditxMiniAssistant isStoreOpen={isStoreOpen} />
+      <AuditxMiniAssistant isStoreOpen={isStoreOpen} customer={customer} />
     </div>
   );
 }
