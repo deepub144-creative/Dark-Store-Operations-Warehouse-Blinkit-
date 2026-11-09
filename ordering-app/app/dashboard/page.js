@@ -37,6 +37,7 @@ import ErdDfdViewer from "@/components/ErdDfdViewer";
 import AuditxLogo from "@/components/AuditxLogo";
 import GoogleAuthButton from "@/components/GoogleAuthButton";
 import StoreToggleSwitch from "@/components/StoreToggleSwitch";
+import DailyOperationsExportButton from "@/components/DailyOperationsExportButton";
 import {
   IconRealisticScooter,
   IconRealisticPickerTrolley,
@@ -1383,6 +1384,12 @@ export default function WarehouseDashboardPage() {
                   <button style={S.actionBtnOutline} onClick={() => setActiveTab("inventory")}>
                     SKU Units &amp; Stock
                   </button>
+                  <DailyOperationsExportButton
+                    orders={orders}
+                    complaints={complaints}
+                    staff={staff}
+                    storeOpen={!isStorePaused}
+                  />
                 </div>
               </div>
 
@@ -1495,6 +1502,12 @@ export default function WarehouseDashboardPage() {
                   <button style={S.simOrderCTA} onClick={handleCreateSimulatedOrder}>
                     + Simulate Live Customer Order
                   </button>
+                  <DailyOperationsExportButton
+                    orders={orders}
+                    complaints={complaints}
+                    staff={staff}
+                    storeOpen={!isStorePaused}
+                  />
                 </div>
               </div>
 
