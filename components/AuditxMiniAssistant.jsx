@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { CATALOG } from "@/lib/items";
-import { ROLES, STAGING_RACKS } from "@/lib/roles";
+import { STAFF, STAGING_RACKS } from "@/lib/roles";
 import { getAllLiveOrders, getAllLiveComplaints } from "@/lib/realtimeSync";
 import { playNotificationChime, playSuccessChime } from "@/lib/soundSystem";
 
@@ -150,9 +150,9 @@ const PROJECT_KNOWLEDGE_BASE = [
     keywords: ["team", "member", "who", "role", "bhaskar", "deepu", "harshitha", "thrupthi", "sinchana", "sm", "asm", "md", "picker", "captain", "rider", "staff", "author"],
     title: "AUDIT'X 5-Member Project Team and Operational Hierarchy",
     content: () => {
-      const roleLines = ROLES.map(
-        (r, idx) =>
-          `${idx + 1}) ${r.personName} - ${r.title} (${r.shortTitle})\n   Staff ID: ${r.staffId} | Login PIN: ${r.pin} | Phone: ${r.phone}\n   Responsibilities: ${r.description}`
+      const roleLines = STAFF.map(
+        (s, idx) =>
+          `${idx + 1}) ${s.name} - ${s.designation}\n   Role Code: ${s.roleCode} | Zone: ${s.zone} | Contact: ${s.phone}\n   Responsibilities: ${(s.responsibilities || []).join("; ")}`
       ).join("\n\n");
       return [
         "AUDIT'X TEAM MEMBERS AND DARK STORE RESPONSIBILITIES (KFGSC BCA 2024-27):",
@@ -446,14 +446,15 @@ export default function AuditxMiniAssistant() {
     {
       id: "welcome_1",
       role: "bot",
-      text: "Namaskara! I am AUDIT'X Mini, your AI Project Assistant for Namma Tiptur Hub KA-44. I answer strictly from the AUDIT'X dark store knowledge base in clean plain text. You can ask about our 5 team members, 10-minute SLA, 9 staging racks, 8 database tables, or type / for commands and PDF exports.",
+      text: "Hello! I am AUDIT'X Mini, the operations assistant for Namma Tiptur Hub KA-44. How can I help you today?",
       time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
       pinned: false,
       feedback: null,
+      hideActions: true,
       suggestions: [
         "Explain the 5 team members and roles",
         "How does the 10-minute SLA work?",
-        "Download this chat as PDF",
+        "Give me the project plan in PDF",
       ],
     },
   ]);
@@ -668,11 +669,12 @@ export default function AuditxMiniAssistant() {
   // ============================================================================
   // BROWSER PDF GENERATOR WITH DYNAMIC IMPORT OF JSPDF (FEATURES 1, 2, 3)
   // ============================================================================
-  async function generateAuditxPdf(optionType) {
+  async function generateAuditxPdf(optionType, customMessages = null) {
     if (pdfGenerating) return;
     setPdfGenerating(true);
 
     try {
+      const activeMessages = Array.isArray(customMessages) ? customMessages : messages;
       const jspdfModule = await import("jspdf");
       const JsPDF = jspdfModule.jsPDF || jspdfModule.default;
       const doc = new JsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
@@ -811,7 +813,7 @@ export default function AuditxMiniAssistant() {
       // ────────────────────────────────────────────────────────────────
       // PINNED ANSWERS ("KEY POINTS") INCLUDED FIRST IF ANY EXIST
       // ────────────────────────────────────────────────────────────────
-      const pinnedMsgs = messages.filter((m) => m.pinned && m.role === "bot");
+      const pinnedMsgs = activeMessages.filter((m) => m.pinned && m.role === "bot");
       if (pinnedMsgs.length > 0) {
         writeSectionHeading("Key Points (Pinned Answers from Session)");
         pinnedMsgs.forEach((pm, idx) => {
@@ -824,7 +826,7 @@ export default function AuditxMiniAssistant() {
       // ────────────────────────────────────────────────────────────────
       if (optionType === "chat") {
         writeSectionHeading("Session Conversation Transcript");
-        messages.forEach((m) => {
+        activeMessages.forEach((m) => {
           const speakerLabel = m.role === "user" ? "You" : "AUDIT'X Mini";
           const headerLine = sanitizePlainText(`${speakerLabel} (${m.time || "Live"}):`, true);
           const cleanMsg = sanitizePlainText(m.text, true);
@@ -885,9 +887,9 @@ export default function AuditxMiniAssistant() {
         );
 
         writeSectionHeading("2) Team and Responsibilities (All Five Members)");
-        ROLES.forEach((r, idx) => {
+        STAFF.forEach((s, idx) => {
           writeParagraph(
-            `${idx + 1}. ${r.personName} - ${r.title} (${r.shortTitle}) | Staff ID: ${r.staffId} | PIN: ${r.pin}\nResponsibilities: ${r.description}`,
+            `${idx + 1}. ${s.name} - ${s.designation} (${s.roleCode}) | Zone: ${s.zone} | Contact: ${s.phone}\nResponsibilities: ${(s.responsibilities || []).join(", ")}`,
             2
           );
         });
@@ -935,11 +937,11 @@ export default function AuditxMiniAssistant() {
       if (optionType === "viva") {
         writeSectionHeading("Part 1: Questions Asked in This Session & AUDIT'X Mini Answers");
         const sessionPairs = [];
-        for (let i = 0; i < messages.length; i++) {
-          if (messages[i].role === "user") {
-            const nextBot = messages.slice(i + 1).find((m) => m.role === "bot");
+        for (let i = 0; i < activeMessages.length; i++) {
+          if (activeMessages[i].role === "user") {
+            const nextBot = activeMessages.slice(i + 1).find((m) => m.role === "bot" && !m.pdfChoices && !m.downloadAgainOption);
             if (nextBot) {
-              sessionPairs.push({ q: messages[i].text, a: nextBot.text });
+              sessionPairs.push({ q: activeMessages[i].text, a: nextBot.text });
             }
           }
         }
@@ -1005,17 +1007,13 @@ export default function AuditxMiniAssistant() {
       const confirmMsg = {
         id: `bot_pdf_${Date.now()}`,
         role: "bot",
-        text: `Your academic PDF (${fileName}) has been generated and downloaded with headers, footers, cover block, and page numbers. You can click Download again below at any time.`,
+        text: `Your PDF report (${fileName}) has been generated and downloaded.`,
         time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
         pinned: false,
         feedback: null,
+        hideActions: true,
         downloadAgainOption: optionType,
         downloadAgainFileName: fileName,
-        suggestions: [
-          "Give me the project plan in PDF",
-          "Download Viva Q and A sheet as PDF",
-          "Summarize our chat",
-        ],
       };
       setMessages((prev) => [...prev, confirmMsg]);
     } catch (err) {
@@ -1025,7 +1023,8 @@ export default function AuditxMiniAssistant() {
         {
           id: `bot_pdf_err_${Date.now()}`,
           role: "bot",
-          text: "Sorry, I encountered an unexpected issue while creating the PDF file in your browser. Please try clicking one of the PDF export options again.",
+          hideActions: true,
+          text: "Unable to generate the PDF right now. Please select an export option below to retry.",
           time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
         },
       ]);
@@ -1040,7 +1039,8 @@ export default function AuditxMiniAssistant() {
     const promptMsg = {
       id: `bot_pdf_choice_${Date.now()}`,
       role: "bot",
-      text: "Which PDF document would you like me to generate? Please select one of the three options below:",
+      hideActions: true,
+      text: "Which PDF report would you like to export?",
       time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
       pdfChoices: [
         { label: "a) Full chat transcript", option: "chat" },
@@ -1195,8 +1195,9 @@ export default function AuditxMiniAssistant() {
     // 4. Strict Project-Only Scope Check
     if (isOutOfScopeQuery(trimmed)) {
       revealBotResponse(
-        "I am AUDIT'X Mini, a strictly scoped academic assistant for the AUDIT'X Dark Store and Warehouse Operations project (Namma Tiptur Hub KA-44, KFGSC BCA 2024-27). I only answer questions related to the AUDIT'X project, our 5 team members, the 10-minute SLA workflow, warehouse inventory, database design, and PDF reports. Please ask a question about AUDIT'X!",
+        "I can only assist with questions related to the AUDIT'X Dark Store and Warehouse Operations project at Namma Tiptur Hub KA-44.",
         {
+          hideActions: true,
           suggestions: [
             "Explain the 5 team members and roles",
             "How does the 10-minute SLA work?",
@@ -1286,10 +1287,11 @@ export default function AuditxMiniAssistant() {
       {
         id: `welcome_${Date.now()}`,
         role: "bot",
-        text: "Started a fresh AUDIT'X Mini session for Namma Tiptur Hub KA-44. Ask me about our 9 completed modules, 5 team members, 10-minute SLA, or export a PDF report.",
+        text: "Hello! How can I assist you with AUDIT'X Dark Store Operations today?",
         time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
         pinned: false,
         feedback: null,
+        hideActions: true,
         suggestions: [
           "Explain the 5 team members and roles",
           "How does the 10-minute SLA work?",
@@ -1365,18 +1367,18 @@ export default function AuditxMiniAssistant() {
         id="auditx-mini-launcher"
         type="button"
         onClick={() => setIsOpen((prev) => !prev)}
-        title="Open AUDIT'X Mini AI Assistant"
+        title="Open AUDIT'X Mini Assistant"
         style={{
           position: "fixed",
           right: "20px",
           bottom: "88px",
-          width: 64,
-          height: 64,
+          width: 62,
+          height: 62,
           borderRadius: "50%",
           padding: 3,
           border: "none",
           background: "linear-gradient(135deg, #0c831f 0%, #f59e0b 50%, #10b981 100%)",
-          boxShadow: "0 10px 28px rgba(12, 131, 31, 0.45), 0 0 0 2px rgba(255,255,255,0.85)",
+          boxShadow: "0 10px 28px rgba(12, 131, 31, 0.45), 0 0 0 2px rgba(255,255,255,0.9)",
           cursor: "pointer",
           zIndex: 9990,
           userSelect: "none",
@@ -1421,7 +1423,7 @@ export default function AuditxMiniAssistant() {
             bottom: -4,
             background: "#0f172a",
             color: "#f8fafc",
-            fontSize: 9,
+            fontSize: 8.5,
             fontWeight: 900,
             padding: "1px 6px",
             borderRadius: 8,
@@ -1435,22 +1437,22 @@ export default function AuditxMiniAssistant() {
       </button>
 
       {/* ====================================================================
-          AUDIT'X MINI CHATBOT WINDOW
+          AUDIT'X MINI CHATBOT WINDOW (CLEAN PROFESSIONAL UI)
           ==================================================================== */}
       {isOpen && (
         <div
           id="auditx-mini-chat-window"
           style={{
             position: "fixed",
-            bottom: 20,
+            bottom: 16,
             right: 16,
             width: "calc(100vw - 32px)",
-            maxWidth: 425,
-            height: "min(640px, calc(100dvh - 40px))",
+            maxWidth: 400,
+            height: "min(600px, calc(100dvh - 36px))",
             background: "#ffffff",
-            borderRadius: 20,
-            boxShadow: "0 22px 60px rgba(15, 23, 42, 0.42)",
-            border: "1.5px solid #cbd5e1",
+            borderRadius: 18,
+            boxShadow: "0 20px 50px rgba(15, 23, 42, 0.35)",
+            border: "1px solid #e2e8f0",
             display: "flex",
             flexDirection: "column",
             overflow: "hidden",
@@ -1458,25 +1460,24 @@ export default function AuditxMiniAssistant() {
             fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
           }}
         >
-          {/* ── CHATBOT HEADER WITH NEW CHAT, HISTORY, DOWNLOAD PDF, CLEAR HISTORY ── */}
+          {/* ── CLEAN PROFESSIONAL HEADER ── */}
           <div
             style={{
-              background: "linear-gradient(135deg, #0f172a 0%, #1e293b 100%)",
+              background: "#0f172a",
               color: "#ffffff",
-              padding: "12px 14px 10px",
-              borderBottom: "2px solid #8B5A2B",
+              padding: "11px 13px 9px",
+              borderBottom: "1px solid #1e293b",
             }}
           >
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                {/* Circle Avatar with Full Video Fit Inside */}
+              <div style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}>
                 <div
                   style={{
-                    width: 40,
-                    height: 40,
+                    width: 36,
+                    height: 36,
                     borderRadius: "50%",
                     overflow: "hidden",
-                    border: "2px solid #22c55e",
+                    border: "1.5px solid #22c55e",
                     background: "#06101e",
                     flexShrink: 0,
                     display: "flex",
@@ -1500,12 +1501,13 @@ export default function AuditxMiniAssistant() {
                     }}
                   />
                 </div>
-                <div>
-                  <div style={{ fontSize: 14, fontWeight: 900, letterSpacing: "-0.2px" }}>
-                    AUDIT'X Mini Assistant
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 800, letterSpacing: "-0.2px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    AUDIT'X Mini
                   </div>
-                  <div style={{ fontSize: 10.5, color: "#94a3b8", fontWeight: 600 }}>
-                    Namma Tiptur Hub KA-44 • Project RAG
+                  <div style={{ fontSize: 10, color: "#94a3b8", fontWeight: 600, display: "flex", alignItems: "center", gap: 5 }}>
+                    <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#22c55e", display: "inline-block" }} />
+                    <span>Tiptur Hub KA-44</span>
                   </div>
                 </div>
               </div>
@@ -1513,40 +1515,45 @@ export default function AuditxMiniAssistant() {
               <button
                 type="button"
                 onClick={() => setIsOpen(false)}
-                title="Close Chatbot"
+                title="Close"
                 style={{
-                  background: "rgba(255,255,255,0.12)",
-                  color: "#ffffff",
+                  background: "rgba(255,255,255,0.1)",
+                  color: "#cbd5e1",
                   border: "none",
                   borderRadius: "50%",
-                  width: 28,
-                  height: 28,
+                  width: 26,
+                  height: 26,
                   cursor: "pointer",
-                  fontWeight: 800,
-                  fontSize: 13,
+                  fontWeight: 700,
+                  fontSize: 12,
+                  flexShrink: 0,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
                 }}
               >
                 ✕
               </button>
             </div>
 
-            {/* Action Toolbar Row: New Chat | History | Download PDF | Clear History | Read-Aloud */}
+            {/* Sleek Single-Row Action Bar */}
             <div
               style={{
                 display: "flex",
                 alignItems: "center",
-                gap: 6,
-                marginTop: 10,
-                flexWrap: "wrap",
+                gap: 5,
+                marginTop: 9,
+                overflowX: "auto",
+                scrollbarWidth: "none",
               }}
             >
               <button
                 type="button"
                 onClick={handleStartNewChat}
                 style={S.headerActionBtn}
-                title="Start a New Chat Session"
+                title="New Chat"
               >
-                + New Chat
+                New Chat
               </button>
 
               <button
@@ -1554,12 +1561,12 @@ export default function AuditxMiniAssistant() {
                 onClick={() => setShowHistoryPanel((prev) => !prev)}
                 style={{
                   ...S.headerActionBtn,
-                  background: showHistoryPanel ? "#22c55e" : "rgba(255,255,255,0.12)",
-                  color: showHistoryPanel ? "#0f172a" : "#f8fafc",
+                  background: showHistoryPanel ? "#22c55e" : "rgba(255,255,255,0.09)",
+                  color: showHistoryPanel ? "#0f172a" : "#e2e8f0",
                 }}
-                title="Open Saved Chat History"
+                title="Chat History"
               >
-                History ({sessions.length})
+                History
               </button>
 
               <button
@@ -1569,9 +1576,10 @@ export default function AuditxMiniAssistant() {
                   ...S.headerActionBtn,
                   background: "#f59e0b",
                   color: "#0f172a",
-                  fontWeight: 900,
+                  border: "1px solid #f59e0b",
+                  fontWeight: 800,
                 }}
-                title="Download Chat, Project Plan, or Viva Sheet as PDF"
+                title="Download PDF"
               >
                 Download PDF
               </button>
@@ -1580,7 +1588,7 @@ export default function AuditxMiniAssistant() {
                 type="button"
                 onClick={handleClearHistory}
                 style={S.headerActionBtn}
-                title="Clear Saved Chat History"
+                title="Clear History"
               >
                 Clear History
               </button>
@@ -1597,11 +1605,12 @@ export default function AuditxMiniAssistant() {
                   }}
                   style={{
                     ...S.headerActionBtn,
-                    background: readAloudEnabled ? "#0c831f" : "rgba(255,255,255,0.1)",
+                    background: readAloudEnabled ? "#0c831f" : "rgba(255,255,255,0.09)",
+                    color: readAloudEnabled ? "#ffffff" : "#cbd5e1",
                   }}
-                  title="Toggle Read-Aloud of Bot Replies"
+                  title={readAloudEnabled ? "Voice Read-Aloud On" : "Voice Read-Aloud Off"}
                 >
-                  {readAloudEnabled ? "Read Aloud: ON" : "Read Aloud: OFF"}
+                  {readAloudEnabled ? "Audio On" : "Audio Off"}
                 </button>
               )}
             </div>
@@ -1609,42 +1618,44 @@ export default function AuditxMiniAssistant() {
 
           {/* ── HISTORY PANEL (SEARCH, LOAD, RENAME, DELETE, EXPORT) ── */}
           {showHistoryPanel ? (
-            <div style={{ flex: 1, overflowY: "auto", padding: 14, background: "#f8fafc" }}>
+            <div style={{ flex: 1, overflowY: "auto", padding: 12, background: "#f8fafc" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-                <div style={{ fontSize: 13.5, fontWeight: 900, color: "#0f172a" }}>
-                  Saved Chat Sessions ({filteredSessions.length})
+                <div style={{ fontSize: 12.5, fontWeight: 800, color: "#0f172a" }}>
+                  Saved Sessions ({filteredSessions.length})
                 </div>
                 <button
                   type="button"
                   onClick={() => setShowHistoryPanel(false)}
                   style={{
                     background: "#e2e8f0",
+                    color: "#0f172a",
                     border: "none",
                     borderRadius: 6,
-                    padding: "4px 10px",
+                    padding: "4px 9px",
                     fontSize: 11,
-                    fontWeight: 800,
+                    fontWeight: 700,
                     cursor: "pointer",
                   }}
                 >
-                  Back to Chat
+                  Back
                 </button>
               </div>
 
               <input
                 type="text"
-                placeholder="Search past sessions by title..."
+                placeholder="Search sessions..."
                 value={historySearch}
                 onChange={(e) => setHistorySearch(e.target.value)}
                 style={{
                   width: "100%",
-                  padding: "8px 12px",
+                  padding: "7px 10px",
                   borderRadius: 8,
                   border: "1px solid #cbd5e1",
                   fontSize: 12,
                   marginBottom: 10,
                   boxSizing: "border-box",
                   outline: "none",
+                  background: "#ffffff",
                 }}
               />
 
@@ -1667,6 +1678,7 @@ export default function AuditxMiniAssistant() {
                           onChange={(e) => setRenameInputText(e.target.value)}
                           style={{
                             flex: 1,
+                            minWidth: 0,
                             padding: "5px 8px",
                             borderRadius: 6,
                             border: "1px solid #94a3b8",
@@ -1682,29 +1694,29 @@ export default function AuditxMiniAssistant() {
                         </button>
                       </div>
                     ) : (
-                      <div style={{ fontSize: 12.5, fontWeight: 800, color: "#0f172a" }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: "#0f172a" }}>
                         {sess.title}
                       </div>
                     )}
                     <div style={{ fontSize: 10.5, color: "#64748b", marginTop: 2 }}>
-                      Date: {sess.updatedAt || sess.createdAt} • {(sess.messages || []).length} messages
+                      {sess.updatedAt || sess.createdAt} • {(sess.messages || []).length} msgs
                     </div>
 
-                    <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+                    <div style={{ display: "flex", gap: 5, marginTop: 8, flexWrap: "wrap" }}>
                       <button
                         type="button"
                         onClick={() => handleLoadSession(sess)}
-                        style={{ ...S.smallSessionBtn, background: "#0c831f", color: "#ffffff" }}
+                        style={{ ...S.smallSessionBtn, background: "#0c831f", color: "#ffffff", border: "none" }}
                       >
-                        Open Session
+                        Open
                       </button>
                       <button
                         type="button"
                         onClick={() => {
                           handleLoadSession(sess);
-                          setTimeout(() => generateAuditxPdf("chat"), 120);
+                          generateAuditxPdf("chat", sess.messages || []);
                         }}
-                        style={{ ...S.smallSessionBtn, background: "#fef3c7", color: "#92400e" }}
+                        style={{ ...S.smallSessionBtn, background: "#fef3c7", color: "#92400e", border: "1px solid #fde68a" }}
                       >
                         Export PDF
                       </button>
@@ -1721,7 +1733,7 @@ export default function AuditxMiniAssistant() {
                       <button
                         type="button"
                         onClick={() => handleDeleteSession(sess.id)}
-                        style={{ ...S.smallSessionBtn, background: "#fee2e2", color: "#b91c1c" }}
+                        style={{ ...S.smallSessionBtn, background: "#fee2e2", color: "#b91c1c", border: "1px solid #fecaca" }}
                       >
                         Delete
                       </button>
@@ -1731,7 +1743,7 @@ export default function AuditxMiniAssistant() {
               </div>
             </div>
           ) : (
-            /* ── MAIN CHAT MESSAGES STREAM (PLAIN TEXT ONLY) ── */
+            /* ── MAIN CHAT MESSAGES STREAM (PLAIN TEXT, CLEAN EXECUTIVE BUBBLES) ── */
             <div
               ref={chatScrollRef}
               style={{
@@ -1746,6 +1758,7 @@ export default function AuditxMiniAssistant() {
             >
               {messages.map((m, idx) => {
                 const isBot = m.role === "bot";
+                const showActions = isBot && !m.hideActions && !m.pdfChoices && !m.downloadAgainOption;
                 return (
                   <div
                     key={m.id || idx}
@@ -1759,8 +1772,8 @@ export default function AuditxMiniAssistant() {
                       {isBot && (
                         <div
                           style={{
-                            width: 28,
-                            height: 28,
+                            width: 26,
+                            height: 26,
                             borderRadius: "50%",
                             overflow: "hidden",
                             border: "1.5px solid #0c831f",
@@ -1790,49 +1803,35 @@ export default function AuditxMiniAssistant() {
                       <div
                         style={{
                           background: isBot ? "#ffffff" : "#0c831f",
-                          color: isBot ? "#0f172a" : "#ffffff",
+                          color: isBot ? "#1e293b" : "#ffffff",
                           border: isBot
                             ? m.pinned
                               ? "1.5px solid #f59e0b"
                               : "1px solid #e2e8f0"
                             : "none",
                           borderRadius: isBot ? "14px 14px 14px 4px" : "14px 14px 4px 14px",
-                          padding: "10px 12px",
+                          padding: "9px 12px",
                           fontSize: 12.5,
-                          lineHeight: 1.52,
+                          lineHeight: 1.54,
                           whiteSpace: "pre-wrap",
-                          boxShadow: "0 2px 6px rgba(15, 23, 42, 0.05)",
+                          wordBreak: "break-word",
+                          boxShadow: "0 1px 3px rgba(15, 23, 42, 0.05)",
                         }}
                       >
-                        <div
-                          style={{
-                            fontSize: 10,
-                            fontWeight: 800,
-                            color: isBot ? "#0c831f" : "#dcfce7",
-                            marginBottom: 4,
-                            display: "flex",
-                            justifyContent: "space-between",
-                            gap: 10,
-                          }}
-                        >
-                          <span>{isBot ? "AUDIT'X Mini" : "You"}</span>
-                          <span>{m.time}</span>
-                        </div>
-
                         {m.pinned && (
                           <div
                             style={{
-                              fontSize: 10,
+                              fontSize: 9.5,
                               fontWeight: 800,
                               color: "#b45309",
                               background: "#fef3c7",
-                              padding: "2px 6px",
+                              padding: "1px 6px",
                               borderRadius: 4,
-                              marginBottom: 6,
+                              marginBottom: 5,
                               display: "inline-block",
                             }}
                           >
-                            Pinned Key Point (Included first in PDF)
+                            Pinned
                           </div>
                         )}
 
@@ -1840,7 +1839,7 @@ export default function AuditxMiniAssistant() {
 
                         {/* PDF 3-Option Chips (a, b, c) */}
                         {m.pdfChoices && (
-                          <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 10 }}>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 9 }}>
                             {m.pdfChoices.map((ch) => (
                               <button
                                 key={ch.option}
@@ -1848,13 +1847,13 @@ export default function AuditxMiniAssistant() {
                                 onClick={() => generateAuditxPdf(ch.option)}
                                 disabled={pdfGenerating}
                                 style={{
-                                  background: "#fffbeb",
-                                  border: "1.5px solid #f59e0b",
-                                  color: "#92400e",
+                                  background: "#f8fafc",
+                                  border: "1px solid #cbd5e1",
+                                  color: "#0f172a",
                                   borderRadius: 8,
                                   padding: "7px 10px",
                                   fontSize: 11.5,
-                                  fontWeight: 800,
+                                  fontWeight: 700,
                                   textAlign: "left",
                                   cursor: "pointer",
                                 }}
@@ -1875,10 +1874,10 @@ export default function AuditxMiniAssistant() {
                                 background: "#0c831f",
                                 color: "#ffffff",
                                 border: "none",
-                                borderRadius: 8,
-                                padding: "6px 12px",
-                                fontSize: 11.5,
-                                fontWeight: 800,
+                                borderRadius: 7,
+                                padding: "6px 11px",
+                                fontSize: 11,
+                                fontWeight: 700,
                                 cursor: "pointer",
                               }}
                             >
@@ -1887,14 +1886,14 @@ export default function AuditxMiniAssistant() {
                           </div>
                         )}
 
-                        {/* Message Actions Bar on Bot Replies: Copy, Regenerate, Thumbs Up/Down, Pin */}
-                        {isBot && (
+                        {/* Subtle Minimal Action Row ONLY on Real Knowledge Answers */}
+                        {showActions && (
                           <div
                             style={{
                               display: "flex",
                               alignItems: "center",
-                              gap: 6,
-                              marginTop: 8,
+                              gap: 4,
+                              marginTop: 7,
                               paddingTop: 6,
                               borderTop: "1px solid #f1f5f9",
                               flexWrap: "wrap",
@@ -1904,7 +1903,7 @@ export default function AuditxMiniAssistant() {
                               type="button"
                               onClick={() => handleCopyMessage(m.text)}
                               style={S.msgActionBtn}
-                              title="Copy plain text"
+                              title="Copy"
                             >
                               Copy
                             </button>
@@ -1912,19 +1911,19 @@ export default function AuditxMiniAssistant() {
                               type="button"
                               onClick={() => handleRegenerate(idx)}
                               style={S.msgActionBtn}
-                              title="Regenerate response"
+                              title="Regenerate"
                             >
-                              Regenerate
+                              Retry
                             </button>
                             <button
                               type="button"
                               onClick={() => handleTogglePin(m.id)}
                               style={{
                                 ...S.msgActionBtn,
-                                background: m.pinned ? "#fef3c7" : "#f8fafc",
-                                color: m.pinned ? "#b45309" : "#475569",
+                                background: m.pinned ? "#fef3c7" : "transparent",
+                                color: m.pinned ? "#b45309" : "#64748b",
                               }}
-                              title="Pin answer to Key Points in PDF"
+                              title="Pin key point"
                             >
                               {m.pinned ? "Pinned" : "Pin"}
                             </button>
@@ -1933,39 +1932,39 @@ export default function AuditxMiniAssistant() {
                               onClick={() => handleFeedback(m.id, "up")}
                               style={{
                                 ...S.msgActionBtn,
-                                background: m.feedback === "up" ? "#dcfce7" : "#f8fafc",
-                                color: m.feedback === "up" ? "#15803d" : "#475569",
+                                background: m.feedback === "up" ? "#dcfce7" : "transparent",
+                                color: m.feedback === "up" ? "#15803d" : "#64748b",
                               }}
                               title="Helpful"
                             >
-                              Thumbs Up
+                              👍
                             </button>
                             <button
                               type="button"
                               onClick={() => handleFeedback(m.id, "down")}
                               style={{
                                 ...S.msgActionBtn,
-                                background: m.feedback === "down" ? "#fee2e2" : "#f8fafc",
-                                color: m.feedback === "down" ? "#b91c1c" : "#475569",
+                                background: m.feedback === "down" ? "#fee2e2" : "transparent",
+                                color: m.feedback === "down" ? "#b91c1c" : "#64748b",
                               }}
-                              title="Needs improvement"
+                              title="Not helpful"
                             >
-                              Thumbs Down
+                              👎
                             </button>
                           </div>
                         )}
                       </div>
                     </div>
 
-                    {/* 3 Smart Suggestion Chips After Bot Answer */}
+                    {/* Smart Follow-up Suggestion Chips */}
                     {isBot && m.suggestions && m.suggestions.length > 0 && (
                       <div
                         style={{
                           display: "flex",
-                          gap: 6,
+                          gap: 5,
                           flexWrap: "wrap",
                           marginTop: 6,
-                          marginLeft: 36,
+                          marginLeft: 34,
                         }}
                       >
                         {m.suggestions.slice(0, 3).map((sug, sIdx) => (
@@ -1975,12 +1974,12 @@ export default function AuditxMiniAssistant() {
                             onClick={() => handleSendMessage(sug)}
                             style={{
                               background: "#ffffff",
-                              border: "1px solid #cbd5e1",
-                              color: "#0f172a",
+                              border: "1px solid #e2e8f0",
+                              color: "#334155",
                               borderRadius: 14,
                               padding: "4px 10px",
                               fontSize: 11,
-                              fontWeight: 700,
+                              fontWeight: 600,
                               cursor: "pointer",
                             }}
                           >
@@ -1993,25 +1992,22 @@ export default function AuditxMiniAssistant() {
                 );
               })}
 
-              {/* Typing Indicator & Streaming Reveal with Stop-Generating Button */}
+              {/* Typing Indicator & Streaming Reveal with Stop Button */}
               {isStreaming && (
                 <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 6 }}>
                   <div
                     style={{
                       background: "#ffffff",
-                      border: "1px solid #cbd5e1",
+                      border: "1px solid #e2e8f0",
                       borderRadius: "14px 14px 14px 4px",
-                      padding: "10px 12px",
+                      padding: "9px 12px",
                       fontSize: 12.5,
-                      color: "#0f172a",
+                      color: "#1e293b",
                       whiteSpace: "pre-wrap",
                       maxWidth: "90%",
                     }}
                   >
-                    <div style={{ fontSize: 10, fontWeight: 800, color: "#0c831f", marginBottom: 4 }}>
-                      AUDIT'X Mini is typing...
-                    </div>
-                    <div>{streamingText || "..."}</div>
+                    <div>{streamingText || "Thinking..."}</div>
                   </div>
                   <button
                     type="button"
@@ -2019,36 +2015,33 @@ export default function AuditxMiniAssistant() {
                     style={{
                       background: "#fee2e2",
                       color: "#b91c1c",
-                      border: "1px solid #fca5a5",
-                      borderRadius: 8,
-                      padding: "4px 10px",
-                      fontSize: 11,
-                      fontWeight: 800,
+                      border: "1px solid #fecaca",
+                      borderRadius: 7,
+                      padding: "3px 9px",
+                      fontSize: 10.5,
+                      fontWeight: 700,
                       cursor: "pointer",
                     }}
                   >
-                    Stop generating
+                    Stop
                   </button>
                 </div>
               )}
             </div>
           )}
 
-          {/* ── SLASH COMMAND HINT LIST POPUP WHEN USER TYPES "/" ── */}
+          {/* ── SLASH COMMAND POPUP WHEN USER TYPES "/" ── */}
           {showSlashHints && matchingSlashCmds.length > 0 && (
             <div
               style={{
                 background: "#0f172a",
                 color: "#ffffff",
-                padding: "8px 10px",
+                padding: "7px 10px",
                 borderTop: "1px solid #334155",
-                maxHeight: 165,
+                maxHeight: 155,
                 overflowY: "auto",
               }}
             >
-              <div style={{ fontSize: 10, fontWeight: 800, color: "#94a3b8", marginBottom: 4 }}>
-                SLASH COMMANDS (CLICK TO RUN):
-              </div>
               {matchingSlashCmds.map((sc) => (
                 <div
                   key={sc.cmd}
@@ -2057,67 +2050,78 @@ export default function AuditxMiniAssistant() {
                     display: "flex",
                     justifyContent: "space-between",
                     alignItems: "center",
-                    padding: "5px 8px",
+                    gap: 8,
+                    padding: "5px 6px",
                     borderRadius: 6,
                     cursor: "pointer",
                     fontSize: 11.5,
                   }}
                 >
-                  <b style={{ color: "#4ade80" }}>{sc.cmd}</b>
-                  <span style={{ color: "#cbd5e1", fontSize: 11 }}>{sc.desc}</span>
+                  <b style={{ color: "#4ade80", flexShrink: 0 }}>{sc.cmd}</b>
+                  <span style={{ color: "#cbd5e1", fontSize: 10.5, textAlign: "right" }}>{sc.desc}</span>
                 </div>
               ))}
             </div>
           )}
 
-          {/* ── INPUT BOX WITH VOICE INPUT & SEND BUTTON ── */}
+          {/* ── CLEAN RESPONSIVE INPUT BAR (minWidth: 0 PREVENTS BUTTON CLIPPING) ── */}
           <form
             onSubmit={(e) => {
               e.preventDefault();
               handleSendMessage();
             }}
             style={{
-              padding: "10px 12px",
+              padding: "9px 10px",
               background: "#ffffff",
               borderTop: "1px solid #e2e8f0",
               display: "flex",
               alignItems: "center",
-              gap: 8,
+              gap: 6,
+              boxSizing: "border-box",
+              width: "100%",
             }}
           >
             {speechSupported && (
               <button
                 type="button"
                 onClick={handleToggleVoiceInput}
-                title={isListening ? "Stop Voice Input" : "Speak Question (Web Speech API)"}
+                title={isListening ? "Stop voice input" : "Voice input"}
                 style={{
                   background: isListening ? "#dc2626" : "#f1f5f9",
-                  color: isListening ? "#ffffff" : "#0f172a",
-                  border: "1px solid #cbd5e1",
+                  color: isListening ? "#ffffff" : "#334155",
+                  border: "1px solid #e2e8f0",
                   borderRadius: 10,
-                  padding: "8px 10px",
-                  fontSize: 11,
-                  fontWeight: 800,
+                  width: 36,
+                  height: 36,
+                  fontSize: 14,
                   cursor: "pointer",
                   flexShrink: 0,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
                 }}
               >
-                {isListening ? "Listening..." : "Mic"}
+                {isListening ? "●" : "🎙"}
               </button>
             )}
 
             <input
               type="text"
-              placeholder="Ask about AUDIT'X, type / for commands, or 'download this chat as pdf'..."
+              placeholder="Ask anything about AUDIT'X..."
               value={inputVal}
               onChange={(e) => setInputVal(e.target.value)}
               style={{
                 flex: 1,
-                padding: "9px 12px",
+                minWidth: 0,
+                width: "100%",
+                padding: "9px 11px",
                 borderRadius: 10,
                 border: "1px solid #cbd5e1",
                 fontSize: 12.5,
+                color: "#0f172a",
+                background: "#f8fafc",
                 outline: "none",
+                boxSizing: "border-box",
               }}
             />
 
@@ -2128,11 +2132,13 @@ export default function AuditxMiniAssistant() {
                 color: "#ffffff",
                 border: "none",
                 borderRadius: 10,
-                padding: "9px 14px",
-                fontSize: 12.5,
-                fontWeight: 900,
+                height: 36,
+                padding: "0 14px",
+                fontSize: 12,
+                fontWeight: 800,
                 cursor: "pointer",
                 flexShrink: 0,
+                whiteSpace: "nowrap",
               }}
             >
               Send
@@ -2146,23 +2152,25 @@ export default function AuditxMiniAssistant() {
 
 const S = {
   headerActionBtn: {
-    background: "rgba(255,255,255,0.12)",
-    color: "#f8fafc",
-    border: "1px solid rgba(255,255,255,0.18)",
+    background: "rgba(255,255,255,0.09)",
+    color: "#e2e8f0",
+    border: "1px solid rgba(255,255,255,0.14)",
     borderRadius: 6,
     padding: "4px 8px",
     fontSize: 10.5,
-    fontWeight: 800,
+    fontWeight: 700,
     cursor: "pointer",
+    whiteSpace: "nowrap",
+    flexShrink: 0,
   },
   msgActionBtn: {
-    background: "#f8fafc",
-    color: "#475569",
-    border: "1px solid #e2e8f0",
-    borderRadius: 5,
-    padding: "2px 7px",
-    fontSize: 10,
-    fontWeight: 700,
+    background: "transparent",
+    color: "#64748b",
+    border: "none",
+    borderRadius: 4,
+    padding: "2px 6px",
+    fontSize: 10.5,
+    fontWeight: 600,
     cursor: "pointer",
   },
   smallSessionBtn: {
@@ -2170,9 +2178,9 @@ const S = {
     color: "#334155",
     border: "1px solid #cbd5e1",
     borderRadius: 6,
-    padding: "4px 8px",
+    padding: "3px 8px",
     fontSize: 10.5,
-    fontWeight: 800,
+    fontWeight: 700,
     cursor: "pointer",
   },
 };
