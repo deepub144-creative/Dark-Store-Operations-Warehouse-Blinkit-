@@ -4,51 +4,40 @@ import { useState, useEffect, useRef } from "react";
 import { CATALOG } from "@/lib/items";
 import { STAFF, STAGING_RACKS } from "@/lib/roles";
 import { getAllLiveOrders, getAllLiveComplaints } from "@/lib/realtimeSync";
-import { playNotificationChime, playSuccessChime } from "@/lib/soundSystem";
+import { playSuccessChime } from "@/lib/soundSystem";
+import {
+  INTENT_TYPES,
+  classifyUserIntent,
+  normalizeQuery,
+} from "@/lib/intentRouter";
+
+const STORAGE_KEY = "auditx_mini_chat_history";
 
 // ============================================================================
 // PLAIN-TEXT SANITIZER (NO MARKDOWN SYMBOLS IN CHAT OR PDF)
-// Strips *, **, <, >, #, `, ~, _ and normalizes spacing
+// Never outputs *, **, <, >, #, `, ~, _
 // ============================================================================
 export function sanitizePlainText(rawText, forPdf = false) {
   if (!rawText) return "";
   let text = String(rawText);
-  // Remove markdown bold/italics/code/headings/angle brackets
   text = text.replace(/[*<>#`~_]/g, "");
   if (forPdf) {
-    // Replace Rupee symbol with Rs. for jsPDF standard font compatibility
     text = text.replace(/₹/g, "Rs. ");
-    // Replace bullet/arrow/em-dash symbols with clean ASCII equivalents for jsPDF
     text = text
       .replace(/[•·]/g, "-")
       .replace(/[→➔➜]/g, "->")
       .replace(/[—–]/g, "-")
       .replace(/[“”]/g, '"')
       .replace(/[‘’]/g, "'");
-    // Strip unsupported non-ASCII characters (such as Kannada glyphs or emojis) safely so jsPDF never crashes
     text = text.replace(/[^\x09\x0A\x0D\x20-\x7E]/g, "");
   }
   return text.replace(/\n{3,}/g, "\n\n").trim();
 }
 
 // ============================================================================
-// SLASH COMMAND DEFINITIONS
-// ============================================================================
-const SLASH_COMMANDS = [
-  { cmd: "/plan", desc: "View complete project plan, 9 modules, and progress report" },
-  { cmd: "/team", desc: "Meet all 5 BCA team members and their dark store roles" },
-  { cmd: "/sla", desc: "Explain the 10-minute SLA architecture (2m pick + 8m transit)" },
-  { cmd: "/bays", desc: "Inspect the 9 warehouse staging racks (B7 to T4) and barcodes" },
-  { cmd: "/stack", desc: "View Next.js 16, React 19, Firebase, and Web Audio tech stack" },
-  { cmd: "/pdf", desc: "Export chat transcript, project plan, or viva Q&A sheet as PDF" },
-  { cmd: "/history", desc: "Open saved chat sessions panel (search, load, rename, delete)" },
-  { cmd: "/help", desc: "Show all AUDIT'X Mini capabilities, commands, and voice controls" },
-];
-
-// ============================================================================
 // 9 COMPLETED PROJECT MODULES (FOR PROJECT PLAN & PROGRESS REPORT)
 // ============================================================================
-const PROJECT_MODULES_TABLE = [
+export const PROJECT_MODULES_TABLE = [
   { module: "1. Store Manager (SM) Control Tower & Live Toggle", owner: "Bhaskar N S", status: "Completed" },
   { module: "2. Assistant Store Manager (ASM) Stock & OOS Desk", owner: "Deepu B", status: "Completed" },
   { module: "3. Inventory, Merchandising (MD), GRN & DAD Ledger", owner: "A B Harshitha", status: "Completed" },
@@ -61,20 +50,20 @@ const PROJECT_MODULES_TABLE = [
 ];
 
 // ============================================================================
-// 10 EXTRA VIVA QUESTIONS & MODEL ANSWERS (FOR VIVA PDF OPTION C)
+// 10 EXTRA VIVA QUESTIONS & MODEL ANSWERS (FOR VIVA PDF OPTION 3)
 // ============================================================================
-const EXTRA_VIVA_QA = [
+export const EXTRA_VIVA_QA = [
   {
     q: "What is the core objective of the AUDIT'X AI-Driven Dark Store and Warehouse Operations project?",
     a: "AUDIT'X is an academic dark store and quick-commerce operations ecosystem built for Namma Tiptur Hub KA-44 (572201) by five BCA Data Science students at Kalpataru First Grade Science College (KFGSC), Tiptur. Its objective is to eliminate inventory shrinkage, automate bin-to-rack order picking, synchronize store-to-doorstep fulfillment under a strict 10-minute SLA, and provide real-time multi-role visibility across Store Manager, Assistant Store Manager, Merchandising Lead, OD Picker, and Order Captain.",
   },
   {
     q: "How is the 10-minute SLA mathematically partitioned in the AUDIT'X architecture?",
-    a: "The 10-minute (600-second) SLA is divided into two deterministic stages: Stage 1 is a fixed 2-minute (120-second) Warehouse Picking SLA executed by OD Picker Thrupthi K S using aisle-sorted bin paths and barcode verification into 9 staging bays. Stage 2 is the Last-Mile Transit SLA executed by Order Captain Sinchana B R covering the 1.5 km to 1.7 km route from Tiptur Hub KA-44 to KFGSC in 6 to 8 minutes with live post-handover countdown reduction.",
+    a: "The 10-minute (600-second) SLA is divided into two deterministic stages: Stage 1 is a fixed 2-minute (120-second) Warehouse Picking SLA executed by OD Picker Thrupthi K S using aisle-sorted bin paths and barcode verification into 9 staging bays. Stage 2 is the Last-Mile Transit SLA executed by Order Captain Sinchana B R covering the 1.5 km route from Tiptur Hub KA-44 to KFGSC in 6 to 8 minutes with live post-handover countdown reduction.",
   },
   {
     q: "Explain the 5 operational roles in AUDIT'X and their respective team owners.",
-    a: "1) Store Manager (SM) is led by Bhaskar N S (ID: 8055), managing store open/close status, overall SLA governance, and complaint resolution. 2) Assistant Store Manager (ASM) is led by Deepu B (ID: 8088), handling floor operations, out-of-stock toggles, and shift coordination. 3) Inventory and Merchandising Lead (MD) is led by A B Harshitha (ID: 8099), managing 59 SKUs, GRN inwarding, and DAD shrinkage audits. 4) OD Picker Specialist is led by Thrupthi K S (ID: 8066), executing 2-minute bin-to-rack picking. 5) Order Captain is led by Sinchana B R (ID: 8077), handling rack pickup and doorstep QR handover.",
+    a: "1) Deepu B serves as Assistant Store Manager (ASM) and Lead Full-Stack Architect, handling floor operations, out-of-stock toggles, and real-time sync. 2) Bhaskar N S serves as Store Manager (SM), managing store open/close status, overall SLA governance, and complaint resolution. 3) A B Harshitha serves as Managing Director and Inventory Lead (MD), managing 59 SKUs, GRN inwarding, and DAD shrinkage audits. 4) Thrupthi K S serves as OD Picker Lead, executing 2-minute bin-to-rack picking. 5) Sinchana B R serves as Order Captain, handling rack pickup and doorstep QR handover.",
   },
   {
     q: "How does cross-tab real-time synchronization work in AUDIT'X without page reloads?",
@@ -86,7 +75,7 @@ const EXTRA_VIVA_QA = [
   },
   {
     q: "What are the 9 physical and digital warehouse staging bays used for picker-to-rider handover?",
-    a: "The 9 color-coded staging racks at Tiptur Hub KA-44 are B7, H2, D5, H4, T1, T6, B5, S4, and T4. Each rack has a unique barcode (AUDITX-RACK-B7-QR through AUDITX-RACK-T4-QR). OD Picker Thrupthi K S scans the assigned rack barcode to stage the packed bag, and Order Captain Sinchana B R scans the same rack barcode to verify pickup.",
+    a: "The 9 color-coded staging racks at Tiptur Hub KA-44 are B7, H2, D5, H4, T1, T6, B5, S4, and T4. Each rack has a unique barcode (AUDITX-RACK-B7-TIPTUR-KA44 through AUDITX-RACK-T4-TIPTUR-KA44). OD Picker Thrupthi K S scans the assigned rack barcode to stage the packed bag, and Order Captain Sinchana B R scans the same rack barcode to verify pickup.",
   },
   {
     q: "What are the 4 backend API endpoints implemented in the Next.js App Router?",
@@ -98,7 +87,7 @@ const EXTRA_VIVA_QA = [
   },
   {
     q: "What are the current known limitations of the AUDIT'X prototype?",
-    a: "The three primary academic prototype limitations are: 1) Simulated GPS telemetry along fixed waypoints between Madihalli Hub and KFGSC Tiptur rather than live fleet hardware transponders, 2) A pre-funded Audit'X Demo Wallet (Rs. 10,00,000 limit) instead of a live banking settlement gateway, and 3) Manual picker bin walking guided by digital picklists rather than automated conveyor sorting.",
+    a: "The three primary academic prototype limitations are: 1) Simulated GPS telemetry along fixed waypoints between Tiptur Hub KA-44 and KFGSC rather than live fleet hardware transponders, 2) A pre-funded Audit'X Demo Wallet (Rs. 10,00,000 limit) instead of a live banking settlement gateway, and 3) Manual picker bin walking guided by digital picklists rather than automated conveyor sorting.",
   },
   {
     q: "What is the 4-phase future roadmap proposed for AUDIT'X?",
@@ -107,402 +96,283 @@ const EXTRA_VIVA_QA = [
 ];
 
 // ============================================================================
-// LOCAL RAG KNOWLEDGE BASE (DETAILED AUTHOR ANSWERS, PLAIN TEXT ONLY)
+// DETAILED PLAIN-TEXT KNOWLEDGE BUILDERS
 // ============================================================================
-const PROJECT_KNOWLEDGE_BASE = [
-  {
-    id: "project_plan_overview",
-    keywords: ["plan", "project plan", "progress", "report", "overview", "about", "auditx", "audit'x", "summary", "objective", "what have you done"],
-    title: "AUDIT'X Project Plan and Progress Summary",
-    content: () => {
-      return [
-        "AUDIT'X - AI DRIVEN WAREHOUSE AND DARK STORE OPERATIONS (2026-27)",
-        "",
-        "1) Project Objective:",
-        "AUDIT'X is a full-stack Quick-Commerce Dark Store and Warehouse Operations platform engineered for Tiptur Hub KA-44 (572201) by the 5th Semester BCA (Data Science) team at Kalpataru First Grade Science College (KFGSC), Tiptur. It unifies customer ordering, 2-minute warehouse bin picking, 9-bay rack staging, last-mile rider dispatch, live countdown tracking, and post-delivery rider/item ratings.",
-        "",
-        "2) Work Completed Across All 9 Modules:",
-        "1. Store Manager (SM) Control Tower - Owner: Bhaskar N S - Status: Completed",
-        "2. Assistant Store Manager (ASM) Floor & OOS Desk - Owner: Deepu B - Status: Completed",
-        "3. Inventory, Merchandising (MD), GRN & DAD Audit - Owner: A B Harshitha - Status: Completed",
-        "4. OD Picker 2-Min SLA Terminal & Rack Barcode Staging - Owner: Thrupthi K S - Status: Completed",
-        "5. Order Captain (Rider) 6-Min Auto-Reduce & Doorstep QR - Owner: Sinchana B R - Status: Completed",
-        "6. Customer Ordering App & Rs. 10,00,000 Demo Wallet - Owner: Deepu B & Team - Status: Completed",
-        "7. Live Order Tracking (1-Min -> 15s Doorstep -> Arrived) - Owner: Sinchana B R & Team - Status: Completed",
-        "8. 8-Table ERD & DFD Level 0, 1, 2 Interactive Viewer - Owner: A B Harshitha & Team - Status: Completed",
-        "9. AUDIT'X Mini RAG Assistant & Academic PDF Exporter - Owner: Full Team - Status: Completed",
-        "",
-        "3) Build & Verification Metrics:",
-        "- Physical Prototype: 3D Foam-Board Dark Store Layout of Tiptur Hub KA-44 with 9 staging bays.",
-        "- Database Design: 8 normalized tables (STORES, STAFF, SKUS, ORDERS, ORDER_ITEMS, COMPLAINTS, GRN, DAD).",
-        "- Backend APIs: 4 Next.js App Router endpoints (/api/place-order, /api/export-margin, /api/auth/send-otp, /api/auth/verify-otp).",
-        "- Production Build: 19 routes compiled with 0 errors and deployed on Vercel.",
-      ].join("\n");
-    },
-    suggestions: [
-      "Give me the project plan in PDF",
-      "Explain the 5 team members and roles",
-      "How does the 10-minute SLA work?",
-    ],
-  },
-  {
-    id: "team_roles_hierarchy",
-    keywords: ["team", "member", "who", "role", "bhaskar", "deepu", "harshitha", "thrupthi", "sinchana", "sm", "asm", "md", "picker", "captain", "rider", "staff", "author"],
-    title: "AUDIT'X 5-Member Project Team and Operational Hierarchy",
-    content: () => {
-      const roleLines = STAFF.map(
-        (s, idx) =>
-          `${idx + 1}) ${s.name} - ${s.designation}\n   Role Code: ${s.roleCode} | Zone: ${s.zone} | Contact: ${s.phone}\n   Responsibilities: ${(s.responsibilities || []).join("; ")}`
-      ).join("\n\n");
-      return [
-        "AUDIT'X TEAM MEMBERS AND DARK STORE RESPONSIBILITIES (KFGSC BCA 2024-27):",
-        "",
-        roleLines,
-        "",
-        "Operational Workflow Chain:",
-        "Customer places order -> Thrupthi K S (OD Picker) picks SKUs in 2 minutes and scans one of the 9 staging racks -> Sinchana B R (Order Captain) scans the rack QR, rides 1.5 kms to customer location with auto-reducing 6-minute timer -> Customer shows Doorstep Handover QR -> Customer rates Rider Sinchana B R and ordered items.",
-      ].join("\n");
-    },
-    suggestions: [
-      "How does OD Picker handover to Rider work?",
-      "What are the 9 staging racks?",
-      "Download Viva Q and A sheet as PDF",
-    ],
-  },
-  {
-    id: "sla_timer_workflow",
-    keywords: ["sla", "10 min", "8 min", "6 min", "2 min", "1 min", "15 sec", "timer", "countdown", "handover", "doorstep", "tracking", "rate", "rating", "qr"],
-    title: "SLA Countdown Architecture and Post-Handover Tracking Flow",
-    content: () => {
-      return [
-        "AUDIT'X SLA ARCHITECTURE AND LIVE TRACKING WORKFLOW:",
-        "",
-        "1) Fixed 2-Minute OD Picker Task (120 Seconds):",
-        "When an order is placed, OD Picker Thrupthi K S receives an instant audio alarm and a 2:00 minute countdown. She scans the item barcodes from the warehouse aisles and stages the bag into one of the 9 staging bays (B7, H2, D5, H4, T1, T6, B5, S4, T4).",
-        "",
-        "2) Ordering App and Tracking Page Timing Reduction After Handover:",
-        "- Step A (Reduce to 1 Minute): As soon as OD Picker completes rack staging handover to the rider (or the 2-minute picking phase finishes), the Ordering App and Tracking Page automatically reduce the delivery countdown to 1 minute (Arriving in 1 minute).",
-        "- Step B (Almost to Your Doorstep - 15 Seconds): Once the countdown progresses, the status bar and tracking header transition to a live 15-second final approach countdown (Almost to your doorstep - 15 seconds).",
-        "- Step C (Rider Arrived to Your Location): When the 15-second countdown finishes, the bar displays Rider arrived to your location until the customer shows the Delivery Handover QR Code to Rider Sinchana B R.",
-        "",
-        "3) Rider App 1.5 Kms Bar and 6-Minute Auto-Reducing Countdown:",
-        "In the Rider App (/rider), Order Captain Sinchana B R sees a live bar message just like the ordering app showing 1.5 kms left to the location and a normal 6-minute countdown that auto-reduces smoothly along the route from Tiptur Hub KA-44 to KFGSC.",
-        "",
-        "4) Post-Delivery Customer Rating and Task Searching Video:",
-        "- Once doorstep handover is confirmed, the Ordering App and Tracking Page display an interactive Rate the Rider and Ordered Items card.",
-        "- When all tasks are completed in the OD Picker App and Rider App, tasksearching.mp4 plays automatically while scanning for the next dispatch task.",
-      ].join("\n");
-    },
-    suggestions: [
-      "What are the 9 warehouse staging racks?",
-      "Explain the technology stack",
-      "Give me the project plan in PDF",
-    ],
-  },
-  {
-    id: "staging_bays_racks",
-    keywords: ["rack", "bay", "staging", "barcode", "b7", "h2", "d5", "h4", "t1", "t6", "b5", "s4", "t4", "foam", "prototype"],
-    title: "9 Warehouse Staging Bays and Physical Foam-Board Prototype",
-    content: () => {
-      const rackList = STAGING_RACKS.map(
-        (r, i) => `${i + 1}) ${r.label} | Zone: ${r.zone} | QR Code: ${r.qr}`
-      ).join("\n");
-      return [
-        "WAREHOUSE STAGING RACKS AT TIPTUR HUB KA-44:",
-        "",
-        "Our physical foam-board dark store prototype and digital dispatch engine use 9 dedicated staging racks to bridge OD Picker Thrupthi K S and Order Captain Sinchana B R:",
-        "",
-        rackList,
-        "",
-        "How Handover Verification Works:",
-        "1) The system automatically assigns a staging rack when an order is created.",
-        "2) OD Picker Thrupthi K S places the packed order into that rack and scans its barcode.",
-        "3) Order Captain Sinchana B R arrives at the staging zone, scans the exact rack barcode to verify bag custody, and starts last-mile delivery.",
-      ].join("\n");
-    },
-    suggestions: [
-      "How does the 10-minute SLA work?",
-      "Show catalog and warehouse inventory",
-      "Export this chat as PDF",
-    ],
-  },
-  {
-    id: "catalog_inventory_skus",
-    keywords: ["catalog", "item", "product", "sku", "chocolate", "frame", "stock", "price", "inventory", "aisle", "bin", "grn", "dad"],
-    title: "Warehouse SKU Catalog, Pricing, and Inventory Controls",
-    content: () => {
-      const chocolates = CATALOG.filter((i) => i.category === "Chocolates");
-      const frames = CATALOG.filter((i) => i.category === "Frames");
-      const soldOut = CATALOG.filter((i) => i.soldOut || i.inStock === false);
-      return [
-        "TIPTUR HUB KA-44 WAREHOUSE INVENTORY SUMMARY:",
-        "",
-        `1) Total Active Warehouse SKUs: ${CATALOG.length} items across 2 active departments:`,
-        `   - Chocolates Department: ${chocolates.length} varieties (fixed 5-unit packs, priced at Rs. 1 warehouse special with zero handling fee).`,
-        `   - Wall Frames Department: ${frames.length} A4 glass heritage, cinema, and tech frames (single unit, Rs. 5 warehouse special plus Rs. 10 special glass handling care).`,
-        `   - Sold Out / Restricted Items: ${soldOut.length} item(s) currently marked Sold Out.`,
-        "",
-        "2) Inventory Governance (A B Harshitha - MD & Deepu B - ASM):",
-        "   - Every SKU is mapped to a deterministic warehouse bin code (for example Aisle C1-S1-001 or Aisle F1-S2-014).",
-        "   - Goods Receipt Note (GRN) logs inward stock from suppliers.",
-        "   - Damaged and Disposed (DAD) ledger tracks breakage and expiry shrinkage.",
-        "   - ASM Deepu B can toggle any SKU Out of Stock in real time, which immediately updates the Customer Ordering App.",
-      ].join("\n");
-    },
-    suggestions: [
-      "Explain the 8 database tables and ERD",
-      "How does the Demo Wallet work?",
-      "Give me the project plan in PDF",
-    ],
-  },
-  {
-    id: "tech_stack_database_apis",
-    keywords: ["stack", "technology", "next", "react", "firebase", "database", "erd", "dfd", "table", "api", "endpoint", "vercel", "build", "route", "test", "limitation", "roadmap", "future"],
-    title: "Technology Stack, 8-Table Database, APIs, and Future Roadmap",
-    content: () => {
-      return [
-        "AUDIT'X TECHNOLOGY STACK, DATABASE, AND ARCHITECTURE:",
-        "",
-        "1) Core Technology Stack and Versions:",
-        "- Framework: Next.js 16.3.3 (App Router) with React 19.2.8 and React DOM 19.2.8",
-        "- Cloud & Realtime Database: Firebase 12.18.0 & Firebase Admin 14.3.0 (Firestore) + Local BroadcastChannel & Storage Sync (< 10ms latency)",
-        "- Client PDF & Excel Engine: jsPDF 4.2.1 (dynamic browser import) and SheetJS xlsx 0.18.5",
-        "- Audio Engine: Native Web Audio API multi-harmonic synthesizer (lib/soundSystem.js)",
-        "- Deployment & Build: Vercel cloud deployment, 19 compiled routes (15 pages + 4 API routes), 0 build errors.",
-        "",
-        "2) 8 Database Tables (ERD Schema):",
-        "STORES, STAFF, SKUS, ORDERS, ORDER_ITEMS, COMPLAINTS, GRN (Goods Receipt Note), and DAD (Damaged and Disposed).",
-        "",
-        "3) 4 Backend API Endpoints:",
-        "- /api/place-order (Order creation and rack assignment)",
-        "- /api/export-margin (Margin and shrinkage report export)",
-        "- /api/auth/send-otp (OTP dispatch for authentication)",
-        "- /api/auth/verify-otp (OTP verification and login)",
-        "",
-        "4) Known Limitations:",
-        "Simulated GPS route progression, pre-funded Rs. 10,00,000 Demo Wallet, and manual picker walking.",
-        "",
-        "5) 4-Phase Future Roadmap:",
-        "- Phase 1: YOLOv8 computer-vision shelf audits",
-        "- Phase 2: Demand forecasting with Facebook Prophet or LSTM neural networks",
-        "- Phase 3: Google Maps live traffic-aware SLA calculation",
-        "- Phase 4: Autonomous Mobile Robot (AMR) picking carts",
-      ].join("\n");
-    },
-    suggestions: [
-      "Give me the project plan in PDF",
-      "Download Viva Q and A sheet as PDF",
-      "Show live store and order status",
-    ],
-  },
-  {
-    id: "wallet_complaints_tiptur",
-    keywords: ["wallet", "payment", "coupon", "complaint", "support", "helpdesk", "tiptur", "kfgsc", "ganesha", "akshayakalpa", "location", "address"],
-    title: "Demo Wallet, Customer Helpdesk, and Namma Tiptur Hub KA-44",
-    content: () => {
-      const complaints = getAllLiveComplaints();
-      const orders = getAllLiveOrders();
-      return [
-        "NAMMA TIPTUR HUB KA-44, DEMO WALLET, AND HELPDESK:",
-        "",
-        "1) Audit'X Demo Wallet & Checkout:",
-        "Customers receive a pre-funded Demo Wallet balance of Rs. 10,00,000 for 1-click zero-friction checkout. Delivery is free on all orders of Rs. 1 and above.",
-        "",
-        "2) Customer Helpdesk & 5-Minute Complaint SLA:",
-        `Currently ${complaints.length} complaint ticket(s) and ${orders.length} active order(s) are in the live queue. Customer complaints raised from the Ordering App or Tracking Page are routed immediately to Store Manager Bhaskar N S and ASM Deepu B for instant wallet refund or replacement dispatch.`,
-        "",
-        "3) Namma Tiptur Hub KA-44 & Local Heritage:",
-        "The dark store serves Kalpataru First Grade Science College (KFGSC), Tiptur (572201) and features an Explore Namma Tiptur cultural showcase highlighting the 96+ year Sri Sathya Ganapathi Jatre heritage, local dining landmarks, and Akshayakalpa Organic Farm.",
-      ].join("\n");
-    },
-    suggestions: [
-      "Explain the 5 team members and roles",
-      "How does the 10-minute SLA work?",
-      "Export chat as PDF",
-    ],
-  },
-];
-
-// ============================================================================
-// DEFAULT SEEDED PAST SESSION (SO HISTORY PANEL ALWAYS HAS AN OLD SESSION READY)
-// ============================================================================
-const SEEDED_PAST_SESSION = {
-  id: "session_seeded_viva_prep",
-  title: "Explain the 10-minute SLA and 5 team roles",
-  createdAt: "2026-11-07 16:30",
-  updatedAt: "2026-11-07 16:34",
-  messages: [
-    {
-      id: "seed_msg_1",
-      role: "bot",
-      text: "Namaskara! I am AUDIT'X Mini, your dedicated AI project assistant for Tiptur Hub KA-44. Ask me anything about our dark store architecture, 5 team roles, 10-minute SLA, or export a PDF report.",
-      time: "04:30 PM",
-      pinned: false,
-      feedback: null,
-    },
-    {
-      id: "seed_msg_2",
-      role: "user",
-      text: "Explain the 10-minute SLA and 5 team roles",
-      time: "04:31 PM",
-    },
-    {
-      id: "seed_msg_3",
-      role: "bot",
-      text: "AUDIT'X partitions the 10-minute SLA into a fixed 2-minute warehouse picking task by OD Picker Thrupthi K S across 9 staging racks (B7 to T4) and a 6-to-8 minute last-mile delivery by Order Captain Sinchana B R covering 1.5 kms to KFGSC Tiptur. Store Manager Bhaskar N S oversees store status and complaints, ASM Deepu B controls floor stock and OOS toggles, and MD A B Harshitha manages the 59 SKUs, GRN inwarding, and DAD shrinkage ledger.",
-      time: "04:31 PM",
-      pinned: true,
-      feedback: "up",
-      suggestions: [
-        "Give me the project plan in PDF",
-        "What are the 8 database tables?",
-        "How does post-handover ETA reduction work?",
-      ],
-    },
-  ],
-};
-
-// ============================================================================
-// OUT-OF-SCOPE DETECTOR (STRICT PROJECT-ONLY GUARDRAIL)
-// ============================================================================
-function isOutOfScopeQuery(q) {
-  const lower = q.toLowerCase().trim();
-  const projectWords = [
-    "audit", "store", "warehouse", "picker", "rider", "captain", "order", "sla",
-    "rack", "bay", "sku", "chocolate", "frame", "bhaskar", "deepu", "harshitha",
-    "thrupthi", "sinchana", "tiptur", "kfgsc", "ka44", "ka-44", "wallet", "complaint",
-    "grn", "dad", "erd", "dfd", "table", "database", "api", "route", "next", "react",
-    "firebase", "vercel", "pdf", "export", "download", "report", "plan", "viva",
-    "question", "summary", "summarize", "summarise", "history", "chat", "team",
-    "role", "sm", "asm", "md", "timer", "countdown", "qr", "barcode", "handover",
-    "doorstep", "rate", "rating", "sound", "video", "tasksearching", "limitation",
-    "roadmap", "future", "test", "build", "module", "progress", "help", "hello",
-    "hi", "namaskara", "hey", "status", "ganesha", "akshayakalpa",
+export function buildProjectPlanText(withPdfOffer = true) {
+  const lines = [
+    "Here is the complete project plan and progress report for AUDIT'X at Namma Tiptur Hub KA-44:",
+    "",
+    "1) Project Summary and Objective:",
+    "AUDIT'X is an AI-driven Quick-Commerce Dark Store and Warehouse Operations ecosystem developed for Namma Tiptur Hub KA-44 (572201) by five BCA (Data Science) students at Kalpataru First Grade Science College (KFGSC), Tiptur. The system unifies dark store inventory management, 2-minute barcode-verified bin picking, 9-rack staging handover, real-time rider dispatch, dynamic customer countdown tracking, and instant complaint governance.",
+    "",
+    "2) Team Members and Responsibilities (All 5 Members):",
+    "- Deepu B (Assistant Store Manager - ASM & Lead Full-Stack Architect): Engineered the real-time cross-tab sync engine, Customer Ordering App, Demo Wallet checkout, floor stock verification, and live Out-of-Stock (OOS) controls.",
+    "- Bhaskar N S (Store Manager - SM): Leads the Store Control Tower, live store open/close governance, SLA monitoring, expiry quarantine, and 5-minute customer complaint resolution.",
+    "- A B Harshitha (Managing Director & Inventory Lead - MD): Designed the 59-SKU catalog, Goods Receipt Note (GRN) inwarding, Damaged and Disposed (DAD) shrinkage ledger, and the 8-table ERD and DFD architecture.",
+    "- Thrupthi K S (OD Picker Specialist): Operates the 2-minute warehouse picking terminal, aisle-sorted bin navigation, item barcode scanning, and 9-bay staging handover.",
+    "- Sinchana B R (Order Captain & Last-Mile Lead): Operates the Rider App with rack QR verification, 1.5 km route telemetry, 6-minute auto-reducing transit countdown, and doorstep QR handover.",
+    "",
+    "3) Work Completed:",
+    "- All 9 operational modules are Completed (SM Control Tower, ASM Stock Desk, MD Inventory/GRN/DAD, OD Picker Terminal, Order Captain Rider App, Customer Ordering App, Live Order Tracking & Rating Page, 8-Table ERD/DFD Visualizer, and AUDIT'X Mini Assistant).",
+    "- Physical Prototype: Built a physical 3D foam-board scale model of Tiptur Hub KA-44 with aisle bins and 9 color-coded staging bays (B7, H2, D5, H4, T1, T6, B5, S4, T4).",
+    "- Database & APIs: 8 relational tables (STORES, STAFF, SKUS, ORDERS, ORDER_ITEMS, COMPLAINTS, GRN, DAD) and 4 backend API endpoints (/api/place-order, /api/export-margin, /api/auth/send-otp, /api/auth/verify-otp).",
+    "- Testing & Deployment: Deployed on Vercel with 19 compiled Next.js routes, 0 build errors, and 10 out of 10 end-to-end test cases passed.",
+    "",
+    "4) 10-Minute SLA Design:",
+    "2 minutes for in-store picking by Thrupthi K S plus 8 minutes SLA (6 minutes normal auto-reducing rider countdown) for last-mile transit by Sinchana B R, with post-handover customer tracking reducing to 1 minute, then 15 seconds (Almost to your doorstep), and finally Rider arrived to your location.",
+    "",
+    "5) Known Limitations and Future Roadmap:",
+    "- Current Limitations: Simulated GPS route progression, pre-funded Rs. 10,00,000 Demo Wallet, and manual picker aisle walking.",
+    "- Future Roadmap: Phase 1 YOLOv8 computer-vision shelf audits, Phase 2 demand forecasting with Prophet or LSTM, Phase 3 Google Maps live traffic-aware SLA, and Phase 4 AMR robot carts.",
+    "",
+    "6) Module Progress Table (Module | Owner | Status):",
+    ...PROJECT_MODULES_TABLE.map((r) => `${r.module} | ${r.owner} | ${r.status}`),
   ];
-  if (projectWords.some((w) => lower.includes(w))) return false;
-  const offTopicPatterns = [
-    "weather", "cricket", "ipl", "movie", "actor", "politics", "prime minister",
-    "president", "bitcoin", "crypto", "stock market", "recipe", "cook", "biryani",
-    "joke", "poem", "song", "lyrics", "horoscope", "astrology", "fifa", "football",
-  ];
-  if (offTopicPatterns.some((p) => lower.includes(p))) return true;
-  return false;
+
+  if (withPdfOffer) {
+    lines.push("", "I can also give this as a PDF if you want.");
+  }
+  return lines.join("\n");
 }
 
-// ============================================================================
-// NATURAL LANGUAGE PDF INTENT DETECTOR
-// ============================================================================
-function detectPdfIntent(query) {
-  const lower = query.toLowerCase().trim();
-  if (lower === "/pdf") return { triggered: true, option: null };
+export function buildTeamAndAuthorsText() {
+  return [
+    "AUDIT'X was designed and built by a 5-member BCA (Data Science, 2024-27) team at Kalpataru First Grade Science College (KFGSC), Tiptur for Namma Tiptur Hub KA-44:",
+    "",
+    "1) Deepu B - Assistant Store Manager (ASM) & Lead Full-Stack Developer",
+    "Role Code: ASM | Contact: 8050475078 | Zone: Aisle Audit & Shelf Verification",
+    "Contributions: Architected the Next.js 16 multi-terminal ecosystem, real-time BroadcastChannel and Firestore sync engine, Customer Ordering App, Rs. 10,00,000 Demo Wallet, ASM floor scanner desk, and real-time Out-of-Stock (OOS) synchronization.",
+    "",
+    "2) Bhaskar N S - Store Manager (SM) & Operations Lead",
+    "Role Code: SM | Contact: 8431453058 | Zone: Store Control Tower",
+    "Contributions: Leads overall dark store governance, live store open/close switch, 10-minute SLA compliance tracking, expiry quarantine, shrinkage control, and the 5-minute customer complaint resolution desk.",
+    "",
+    "3) A B Harshitha - Managing Director (MD) & Inventory Lead",
+    "Role Code: MD | Contact: 8971720997 | Zone: Executive Ops Command",
+    "Contributions: Engineered the 59-SKU warehouse catalog, Goods Receipt Note (GRN) inwarding workflow, Damaged and Disposed (DAD) audit ledger, gross margin analytics, and the 8-table ERD and DFD Level 0/1/2 models.",
+    "",
+    "4) Thrupthi K S - OD Picker Lead (Inside Warehouse)",
+    "Role Code: PICKER | Contact: 6362435746 | Zone: Inside Warehouse Aisles",
+    "Contributions: Designed the 2-minute strict SLA picking workflow, aisle and bin path navigation, item barcode scanner verification, and handover staging across the 9 warehouse bays.",
+    "",
+    "5) Sinchana B R - Order Captain & Last-Mile Delivery Lead",
+    "Role Code: DELIVERY | Contact: 8088553237 | Zone: Staging Bay & Namma Tiptur Fleet",
+    "Contributions: Built the Rider App dispatch flow, staging rack QR pickup verification, 1.5 km live GPS route progression, 6-minute auto-reducing transit timer, doorstep QR handover, and post-delivery rating flow.",
+    "",
+    "Would you like me to explain how these five roles coordinate during a live 10-minute order?",
+  ].join("\n");
+}
 
-  const pdfPhrases = [
-    "pdf",
-    "download our conversation",
-    "export chat",
-    "save this as pdf",
-    "send me the report",
-    "give me the project plan",
-    "what have you done, give it in pdf",
-    "download this chat",
-    "export conversation",
-  ];
-  const hasPdfTrigger = pdfPhrases.some((p) => lower.includes(p));
-  if (!hasPdfTrigger) return { triggered: false, option: null };
+export function buildDeepPersonFollowUp(personKey = "deepu") {
+  const details = {
+    deepu: [
+      "Deepu B serves as the Assistant Store Manager (ASM, Device ID: DEV-ASM-8050) and Lead Full-Stack Architect of the AUDIT'X platform at Tiptur Hub KA-44.",
+      "",
+      "His core technical and operational contributions include:",
+      "1) Full-Stack System Architecture: Built the 19-route Next.js 16.3.3 and React 19 application connecting all 5 staff terminals and the customer ordering app in real time.",
+      "2) Zero-Lag Floor Operations: On the ASM terminal (/roles/asm), he assists OD Picker Thrupthi K S when an item is not visible on a shelf and can toggle any SKU Out of Stock with one tap, immediately updating the Customer Ordering App.",
+      "3) Solo Physical Inventory Audits: Conducts aisle-by-aisle physical stock verification and clears inbound putaway batches into warehouse bins.",
+      "4) Customer Ordering & RAG Experience: Engineered the Blinkit-style ordering interface, 1-click Demo Wallet checkout, live post-handover countdown progression, and the AUDIT'X Mini assistant.",
+    ].join("\n"),
+    bhaskar: [
+      "Bhaskar N S serves as the Store Manager (SM, Device ID: DEV-SM-8431) and heads the Store Control Tower at Tiptur Hub KA-44.",
+      "",
+      "His core responsibilities and module features include:",
+      "1) Master Store Availability: Controls the live Store Open / Closed toggle that governs whether customers in Namma Tiptur can place new orders.",
+      "2) 5-Minute Complaint Resolution SLA: Reviews incoming customer tickets (damaged items, missing items, or late delivery) and triggers instant wallet refunds or replacement dispatches.",
+      "3) Expiry & Shrinkage Governance: Oversees quarantine of near-expiry batches, putaway verification, and daily queue refresh across the hub.",
+    ].join("\n"),
+    harshitha: [
+      "A B Harshitha serves as the Managing Director and Inventory Lead (MD, Device ID: DEV-MD-8971) at Tiptur Hub KA-44.",
+      "",
+      "Her core responsibilities and module features include:",
+      "1) 59-SKU Catalog & Bin Mapping: Structured the Chocolates (38 SKUs) and Wall Frames (21 SKUs) catalog with deterministic warehouse bin locations.",
+      "2) GRN & DAD Ledgers: Manages Goods Receipt Note (GRN) supplier inwarding and the Damaged and Disposed (DAD) shrinkage audit trail.",
+      "3) Database & Margin Analytics: Designed the 8-table relational database schema (STORES, STAFF, SKUS, ORDERS, ORDER_ITEMS, COMPLAINTS, GRN, DAD) and the margin export engine.",
+    ].join("\n"),
+    thrupthi: [
+      "Thrupthi K S serves as the OD Picker Lead (Role Code: PICKER, Device ID: DEV-PCK-6362) operating inside the warehouse aisles at Tiptur Hub KA-44.",
+      "",
+      "Her core responsibilities and module features include:",
+      "1) Strict 2-Minute Picking SLA: Receives an instant multi-harmonic audio alert as soon as an order is placed and picks all items within 120 seconds.",
+      "2) Aisle & Bin Navigation: Follows sorted bin paths so she never backtracks across warehouse aisles.",
+      "3) Barcode Verification & Rack Handover: Scans each item barcode and stages the packed bag into one of the 9 staging bays (B7, H2, D5, H4, T1, T6, B5, S4, T4) for rider pickup.",
+    ].join("\n"),
+    sinchana: [
+      "Sinchana B R serves as the Order Captain and Last-Mile Delivery Lead (Role Code: DELIVERY, Device ID: DEV-CPT-8088) for Namma Tiptur Fleet.",
+      "",
+      "Her core responsibilities and module features include:",
+      "1) Staging Bay QR Pickup: Scans the assigned warehouse rack barcode (B7 through T4) to verify custody of the packed order.",
+      "2) 1.5 km Last-Mile Transit: Rides from Tiptur Hub KA-44 to KFGSC with a live status bar showing 1.5 kms left to the location and an auto-reducing 6-minute countdown.",
+      "3) Doorstep QR Handover: Verifies the customer's Delivery Handover QR Code at the doorstep to mark the order Delivered and trigger the customer rating card.",
+    ].join("\n"),
+  };
+  return details[personKey] || details.deepu;
+}
 
-  if (
-    lower.includes("project plan") ||
-    lower.includes("progress report") ||
-    lower.includes("what have you done") ||
-    lower.includes("send me the report")
-  ) {
-    return { triggered: true, option: "plan" };
-  }
-  if (lower.includes("viva") || lower.includes("question and answer") || lower.includes("q&a") || lower.includes("q and a")) {
-    return { triggered: true, option: "viva" };
-  }
-  if (
-    lower.includes("this chat") ||
-    lower.includes("our conversation") ||
-    lower.includes("export chat") ||
-    lower.includes("transcript")
-  ) {
-    return { triggered: true, option: null }; // Ask with the 3 chips first per instructions!
-  }
-  return { triggered: true, option: null };
+export function buildSlaWorkflowText() {
+  return [
+    "AUDIT'X enforces a deterministic 10-minute (600-second) fulfillment SLA divided between in-store warehouse picking and last-mile rider transit:",
+    "",
+    "1) Stage 1 - In-Store Warehouse Picking (Fixed 2-Minute / 120-Second SLA):",
+    "When a customer places an order, OD Picker Thrupthi K S receives an instant audio alarm and a 2:00 minute countdown. She walks the sorted bin path, scans each item barcode, packs the bag, and scans the assigned staging rack barcode (one of B7, H2, D5, H4, T1, T6, B5, S4, or T4).",
+    "",
+    "2) Stage 2 - Post-Handover Ordering App Countdown Reduction:",
+    "As soon as OD Picker completes the rack handover to the rider, the customer's Ordering App and Tracking Page automatically reduce the remaining delivery timer to 1 minute (Arriving in 1 minute). Once that phase finishes, it transitions to a 15-second final approach countdown (Almost to your doorstep - 15 seconds), and finally displays Rider arrived to your location while highlighting the customer's Handover QR Code.",
+    "",
+    "3) Stage 3 - Rider App 1.5 km Route & 6-Minute Auto-Reducing Countdown:",
+    "In the Rider App (/rider), Order Captain Sinchana B R scans the staging rack barcode to pick up the bag. Her live transit bar shows 1.5 kms left to the location with a 6-minute countdown that auto-reduces along the route from Tiptur Hub KA-44 to KFGSC.",
+    "",
+    "4) Stage 4 - Doorstep QR Verification & Post-Delivery Rating:",
+    "The customer shows the Handover QR Code to Sinchana B R to complete delivery. Immediately after handover, the Ordering App displays a Rate the Rider and Ordered Items card, and both the Picker and Rider terminals play tasksearching.mp4 once all active tasks are completed.",
+    "",
+    "Would you like me to explain how the 9 staging bays connect the picker and the rider?",
+  ].join("\n");
+}
+
+export function buildStagingBaysText() {
+  const rackList = STAGING_RACKS.map(
+    (r, i) => `${i + 1}) ${r.label} - Zone: ${r.zone} - Barcode: ${r.qr}`
+  ).join("\n");
+
+  return [
+    "Namma Tiptur Hub KA-44 uses 9 dedicated physical and digital staging bays to ensure zero-error handover between OD Picker Thrupthi K S and Order Captain Sinchana B R:",
+    "",
+    rackList,
+    "",
+    "How the Physical Foam-Board Prototype & Bay Handover Work:",
+    "1) Our team constructed a physical 3D foam-board scale model of the Tiptur Hub KA-44 dark store showing the receiving dock, category aisles, and the 9 color-coded dispatch bays.",
+    "2) Every new order is automatically assigned one of the 9 racks.",
+    "3) OD Picker Thrupthi K S places the packed order into that specific bay and scans its rack barcode.",
+    "4) Order Captain Sinchana B R scans the matching rack barcode on her mobile terminal to confirm bag custody before starting the 1.5 km ride.",
+    "",
+    "Would you like to hear about the 8 database tables or the 59 warehouse SKUs next?",
+  ].join("\n");
+}
+
+export function buildTechStackAndDbText() {
+  return [
+    "AUDIT'X is built on a modern real-time full-stack architecture:",
+    "",
+    "1) Technology Stack and Versions:",
+    "- Frontend & Routing: Next.js 16.3.3 (App Router), React 19.2.8, and React DOM 19.2.8",
+    "- Real-Time Sync & Database: Firebase 12.18.0, Firebase Admin 14.3.0 (Cloud Firestore), Browser BroadcastChannel API, and localStorage sync (< 10ms cross-tab latency)",
+    "- Reporting & Exports: jsPDF 4.2.1 (dynamic browser PDF generator) and SheetJS xlsx 0.18.5",
+    "- Audio Engine: Native Web Audio API multi-harmonic synthesizer (lib/soundSystem.js)",
+    "- Deployment: Vercel production cloud hosting (19 routes compiled, 0 build errors)",
+    "",
+    "2) 8 Relational Database Tables (ERD Schema):",
+    "1. STORES (store_id, store_name, hub_code, is_open)",
+    "2. STAFF (staff_id, full_name, role_code, login_pin)",
+    "3. SKUS (sku_id, item_name, category, price, mrp, bin_location, in_stock)",
+    "4. ORDERS (order_id, customer_name, status, assigned_rack, total_amount)",
+    "5. ORDER_ITEMS (item_row_id, order_id, sku_id, qty, unit_price)",
+    "6. COMPLAINTS (complaint_id, order_id, category, severity, status, resolved_by)",
+    "7. GRN (grn_id, sku_id, received_qty, supplier_name)",
+    "8. DAD (dad_id, sku_id, damaged_qty, reason, audit_by)",
+    "",
+    "3) 4 Backend API Endpoints:",
+    "- POST /api/place-order",
+    "- GET & POST /api/export-margin",
+    "- POST /api/auth/send-otp",
+    "- POST /api/auth/verify-otp",
+  ].join("\n");
+}
+
+export function buildCatalogAndInventoryText() {
+  const chocolates = CATALOG.filter((i) => i.category === "Chocolates");
+  const frames = CATALOG.filter((i) => i.category === "Frames");
+  const soldOut = CATALOG.filter((i) => i.soldOut || i.inStock === false);
+
+  return [
+    `Tiptur Hub KA-44 manages ${CATALOG.length} active SKUs across two specialized warehouse departments:`,
+    "",
+    `1) Chocolates Department (${chocolates.length} SKUs):`,
+    "Includes Beatss, Boomer, Candyman Lacto, Center Fresh, Center Fruit, Choco Blitz, Dark Choco Hearts, Eclairs, Fruit Bearz, Fubon, Guava Chatpat, Hajmola Anardana, Happydent Wave, Kaccha Aam, Kofilik, Kopiko, Lacto King, Melody, and more. Sold in 5-unit packs at Rs. 1 warehouse special pricing with zero handling fee.",
+    "",
+    `2) Wall Frames Department (${frames.length} SKUs):`,
+    "Includes A4 glass heritage, cinema, and tech frames (such as Sri Sathya Ganapathi Tiptur Heritage Frame, Yash Toxic Frame, Virat Kohli Frame, and Dr. B.R. Ambedkar Frame) at Rs. 5 warehouse special pricing plus Rs. 10 glass handling care.",
+    "",
+    "3) Real-Time Stock Governance:",
+    `Currently ${soldOut.length} SKU(s) are marked Sold Out. Assistant Store Manager Deepu B can toggle any item Out of Stock from /roles/asm, and Managing Director A B Harshitha tracks inward stock via GRN and breakage via DAD.`,
+  ].join("\n");
+}
+
+export function buildWalletAndComplaintsText() {
+  const complaints = getAllLiveComplaints();
+  const orders = getAllLiveOrders();
+  return [
+    "Here is how checkout, customer support, and local Tiptur hub operations work in AUDIT'X:",
+    "",
+    "1) Audit'X Demo Wallet:",
+    "Every customer session includes a pre-funded Rs. 10,00,000 Demo Wallet for instant 1-click checkout with free delivery on orders of Rs. 1 and above.",
+    "",
+    "2) 5-Minute Customer Complaint SLA:",
+    `There are currently ${orders.length} active order(s) and ${complaints.length} complaint ticket(s) in the live store queue. When a customer reports an issue from the Ordering App or Tracking Page, it routes immediately to Store Manager Bhaskar N S and ASM Deepu B for instant refund or replacement.`,
+    "",
+    "3) Namma Tiptur Hub KA-44 Showcase:",
+    "Serves Kalpataru First Grade Science College (KFGSC), Tiptur (572201) and highlights local heritage including the 96+ year Sri Sathya Ganapathi Jatre and Akshayakalpa Organic Farm.",
+  ].join("\n");
 }
 
 export default function AuditxMiniAssistant() {
   const [isOpen, setIsOpen] = useState(false);
-  const [showHistoryPanel, setShowHistoryPanel] = useState(false);
-  const [historySearch, setHistorySearch] = useState("");
-  const [renamingSessionId, setRenamingSessionId] = useState(null);
-  const [renameInputText, setRenameInputText] = useState("");
 
-  // Sessions & Current Conversation State
-  const [sessions, setSessions] = useState([SEEDED_PAST_SESSION]);
-  const [currentSessionId, setCurrentSessionId] = useState("session_active_now");
+  // Persistent Chat State (auto-restored from localStorage key `auditx_mini_chat_history`)
   const [messages, setMessages] = useState([
     {
-      id: "welcome_1",
+      id: "welcome_initial",
       role: "bot",
-      text: "Hello! I am AUDIT'X Mini, the operations assistant for Namma Tiptur Hub KA-44. How can I help you today?",
+      text: "Hello! I am AUDIT'X Mini. Ask me anything about the AUDIT'X dark store project, our 5-member team, the 10-minute SLA, or the 9 staging bays at Namma Tiptur Hub KA-44.",
       time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-      pinned: false,
-      feedback: null,
-      hideActions: true,
-      suggestions: [
-        "Explain the 5 team members and roles",
-        "How does the 10-minute SLA work?",
-        "Give me the project plan in PDF",
-      ],
     },
   ]);
+  const [archivedSessions, setArchivedSessions] = useState([]);
+  const [keyPoints, setKeyPoints] = useState([]);
+  const [pendingState, setPendingState] = useState({
+    type: null,
+    lastTopic: "overview",
+    lastPerson: "deepu",
+    lastAnswerText: "",
+    lastUserQuestion: "",
+  });
 
   const [inputVal, setInputVal] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingText, setStreamingText] = useState("");
   const [pdfGenerating, setPdfGenerating] = useState(false);
-
-  // Voice Input & Read-Aloud Support
-  const [speechSupported, setSpeechSupported] = useState(false);
-  const [ttsSupported, setTtsSupported] = useState(false);
-  const [isListening, setIsListening] = useState(false);
-  const [readAloudEnabled, setReadAloudEnabled] = useState(false);
+  const [historyLoaded, setHistoryLoaded] = useState(false);
 
   const streamIntervalRef = useRef(null);
   const streamPendingMsgRef = useRef(null);
   const chatScrollRef = useRef(null);
-  const recognitionRef = useRef(null);
 
-  // Initialize Speech Support and Saved Sessions from localStorage
+  // ============================================================================
+  // SILENT AUTOMATIC MEMORY & RESTORE ON RELOAD (`auditx_mini_chat_history`)
+  // ============================================================================
   useEffect(() => {
     if (typeof window === "undefined") return;
-
-    // Check Web Speech API support
-    const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (SpeechRec) {
-      setSpeechSupported(true);
-    }
-    if ("speechSynthesis" in window) {
-      setTtsSupported(true);
-    }
-
-    // Load sessions from localStorage with try/catch
     try {
-      const rawSessions = localStorage.getItem("auditx_mini_chat_sessions");
-      if (rawSessions) {
-        const parsed = JSON.parse(rawSessions);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          setSessions(parsed);
-        } else {
-          localStorage.setItem("auditx_mini_chat_sessions", JSON.stringify([SEEDED_PAST_SESSION]));
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed.currentMessages) && parsed.currentMessages.length > 0) {
+          setMessages(parsed.currentMessages);
         }
-      } else {
-        localStorage.setItem("auditx_mini_chat_sessions", JSON.stringify([SEEDED_PAST_SESSION]));
+        if (Array.isArray(parsed.archivedSessions)) {
+          setArchivedSessions(parsed.archivedSessions);
+        }
+        if (Array.isArray(parsed.keyPoints)) {
+          setKeyPoints(parsed.keyPoints);
+        }
+        if (parsed.pendingState && typeof parsed.pendingState === "object") {
+          setPendingState((prev) => ({ ...prev, ...parsed.pendingState }));
+        }
       }
     } catch (e) {
-      console.warn("History storage read error:", e);
+      // Silent fallback if storage is blocked
+    } finally {
+      setHistoryLoaded(true);
     }
 
     return () => {
@@ -510,41 +380,24 @@ export default function AuditxMiniAssistant() {
     };
   }, []);
 
-  // Persist current session into sessions list in localStorage whenever messages update
+  // Save every message and state change automatically to `auditx_mini_chat_history`
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (!messages || messages.length <= 1) return;
-
-    const firstUserMsg = messages.find((m) => m.role === "user");
-    const autoTitle = firstUserMsg
-      ? sanitizePlainText(firstUserMsg.text).slice(0, 44)
-      : "AUDIT'X Project Session";
-    const nowStr = new Date().toISOString().slice(0, 16).replace("T", " ");
-
-    setSessions((prev) => {
-      const existing = prev.find((s) => s.id === currentSessionId);
-      const updatedSession = {
-        id: currentSessionId,
-        title: existing?.customTitle || autoTitle,
-        customTitle: existing?.customTitle || null,
-        createdAt: existing?.createdAt || nowStr,
-        updatedAt: nowStr,
-        messages,
+    if (typeof window === "undefined" || !historyLoaded) return;
+    try {
+      const payload = {
+        currentMessages: messages,
+        archivedSessions,
+        keyPoints,
+        pendingState,
+        updatedAt: new Date().toISOString(),
       };
-      const nextList = [
-        updatedSession,
-        ...prev.filter((s) => s.id !== currentSessionId),
-      ];
-      try {
-        localStorage.setItem("auditx_mini_chat_sessions", JSON.stringify(nextList));
-      } catch (e) {
-        console.warn("Failed to persist chat sessions:", e);
-      }
-      return nextList;
-    });
-  }, [messages, currentSessionId]);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+    } catch (e) {
+      // Silent catch
+    }
+  }, [messages, archivedSessions, keyPoints, pendingState, historyLoaded]);
 
-  // Auto-scroll chat container
+  // Smooth auto-scroll on new messages or streaming text
   useEffect(() => {
     if (chatScrollRef.current) {
       chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
@@ -552,56 +405,22 @@ export default function AuditxMiniAssistant() {
   }, [messages, streamingText, isOpen]);
 
   // ============================================================================
-  // READ-ALOUD & VOICE INPUT
+  // STREAMING-STYLE REVEAL ENGINE (SMOOTH CHATGPT-STYLE TYPING)
   // ============================================================================
-  function speakReplyText(text) {
-    if (!readAloudEnabled || !ttsSupported || typeof window === "undefined") return;
-    try {
-      window.speechSynthesis.cancel();
-      const utter = new SpeechSynthesisUtterance(sanitizePlainText(text));
-      utter.rate = 1.03;
-      utter.pitch = 1.0;
-      window.speechSynthesis.speak(utter);
-    } catch (e) {}
-  }
-
-  function handleToggleVoiceInput() {
-    if (!speechSupported || typeof window === "undefined") return;
-    if (isListening && recognitionRef.current) {
-      recognitionRef.current.stop();
-      setIsListening(false);
-      return;
-    }
-    try {
-      const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
-      const rec = new SpeechRec();
-      rec.lang = "en-IN";
-      rec.interimResults = false;
-      rec.maxAlternatives = 1;
-      rec.onstart = () => setIsListening(true);
-      rec.onend = () => setIsListening(false);
-      rec.onerror = () => setIsListening(false);
-      rec.onresult = (event) => {
-        const transcript = event.results?.[0]?.[0]?.transcript || "";
-        if (transcript) {
-          setInputVal(transcript);
-        }
-      };
-      recognitionRef.current = rec;
-      rec.start();
-    } catch (e) {
-      setIsListening(false);
-    }
-  }
-
-  // ============================================================================
-  // STREAMING-STYLE REVEAL ENGINE WITH STOP-GENERATING SUPPORT
-  // ============================================================================
-  function revealBotResponse(plainReply, extraProps = {}) {
+  function revealBotResponse(plainReply, extraProps = {}, nextContext = {}) {
     const cleanText = sanitizePlainText(plainReply, false);
     if (streamIntervalRef.current) {
       clearInterval(streamIntervalRef.current);
     }
+
+    setPendingState((prev) => ({
+      ...prev,
+      type: nextContext.pendingType ?? null,
+      lastTopic: nextContext.lastTopic || prev.lastTopic,
+      lastPerson: nextContext.lastPerson || prev.lastPerson,
+      lastAnswerText: cleanText,
+      lastUserQuestion: nextContext.lastUserQuestion ?? prev.lastUserQuestion,
+    }));
 
     setIsStreaming(true);
     setStreamingText("");
@@ -616,13 +435,11 @@ export default function AuditxMiniAssistant() {
       role: "bot",
       text: cleanText,
       time: timestamp,
-      pinned: false,
-      feedback: null,
       ...extraProps,
     };
 
     streamIntervalRef.current = setInterval(() => {
-      idx += 4;
+      idx += 5;
       if (idx >= words.length) {
         clearInterval(streamIntervalRef.current);
         streamIntervalRef.current = null;
@@ -632,15 +449,14 @@ export default function AuditxMiniAssistant() {
         streamPendingMsgRef.current = null;
         if (finalMsg) {
           setMessages((prev) => [...prev, finalMsg]);
-          speakReplyText(finalMsg.text);
         }
       } else {
         setStreamingText(words.slice(0, idx).join(" "));
       }
-    }, 28);
+    }, 24);
   }
 
-  function handleStopGenerating() {
+  function handleStopStreaming() {
     if (streamIntervalRef.current) {
       clearInterval(streamIntervalRef.current);
       streamIntervalRef.current = null;
@@ -657,32 +473,54 @@ export default function AuditxMiniAssistant() {
           ...(pending || {}),
           id: pending?.id || `bot_${Date.now()}`,
           role: "bot",
-          text: `${partial} [Generation stopped by user]`,
+          text: partial,
           time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-          pinned: false,
-          feedback: null,
         },
       ]);
     }
   }
 
   // ============================================================================
-  // BROWSER PDF GENERATOR WITH DYNAMIC IMPORT OF JSPDF (FEATURES 1, 2, 3)
+  // CONVERSATION-DRIVEN VOICE synthesis ("read this aloud" / "speak")
   // ============================================================================
-  async function generateAuditxPdf(optionType, customMessages = null) {
+  function handleVoiceReadAloud() {
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) {
+      revealBotResponse(
+        "Voice read-aloud is not available on this browser or device, but I can continue answering all your questions in text."
+      );
+      return;
+    }
+    const lastBot = [...messages].reverse().find((m) => m.role === "bot");
+    const textToRead = sanitizePlainText(lastBot?.text || "Hello from AUDIT'X Mini at Namma Tiptur Hub KA-44.");
+    try {
+      window.speechSynthesis.cancel();
+      const utter = new SpeechSynthesisUtterance(textToRead);
+      utter.rate = 1.02;
+      utter.pitch = 1.0;
+      window.speechSynthesis.speak(utter);
+      revealBotResponse("Reading the last answer aloud for you now.");
+    } catch (e) {
+      revealBotResponse("Voice playback could not be started on this device.");
+    }
+  }
+
+  // ============================================================================
+  // BROWSER PDF GENERATOR WITH DYNAMIC IMPORT OF JSPDF
+  // Shows a small download card ONLY inside the reply to a PDF request
+  // ============================================================================
+  async function generateAuditxPdf(optionType = "chat") {
     if (pdfGenerating) return;
     setPdfGenerating(true);
 
     try {
-      const activeMessages = Array.isArray(customMessages) ? customMessages : messages;
       const jspdfModule = await import("jspdf");
       const JsPDF = jspdfModule.jsPDF || jspdfModule.default;
       const doc = new JsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
 
-      const pageWidth = doc.internal.pageSize.getWidth(); // 210mm
-      const pageHeight = doc.internal.pageSize.getHeight(); // 297mm
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
       const marginX = 15;
-      const contentWidth = pageWidth - marginX * 2; // 180mm
+      const contentWidth = pageWidth - marginX * 2;
 
       const now = new Date();
       const yyyy = now.getFullYear();
@@ -717,7 +555,7 @@ export default function AuditxMiniAssistant() {
         cursorY += 3;
         doc.setFont("helvetica", "bold");
         doc.setFontSize(11.5);
-        doc.setTextColor(120, 63, 4); // Academic brown accent
+        doc.setTextColor(120, 63, 4);
         doc.text(cleanHeading, marginX, cursorY);
         cursorY += 2;
         doc.setDrawColor(180, 130, 70);
@@ -741,9 +579,7 @@ export default function AuditxMiniAssistant() {
         cursorY += 1.5;
       }
 
-      // ────────────────────────────────────────────────────────────────
-      // PAGE 1 ACADEMIC COVER BLOCK
-      // ────────────────────────────────────────────────────────────────
+      // Page 1 Cover Block
       doc.setFillColor(253, 248, 240);
       doc.setDrawColor(139, 90, 43);
       doc.setLineWidth(0.45);
@@ -797,36 +633,31 @@ export default function AuditxMiniAssistant() {
       doc.setFontSize(8.6);
       doc.setTextColor(30, 41, 59);
       doc.text(
-        "1. Bhaskar N S (Store Manager - SM)   2. Deepu B (Assistant Store Manager - ASM)   3. A B Harshitha (Merchandising & Inventory - MD)",
+        "1. Deepu B (ASM & Lead Architect)   2. Bhaskar N S (Store Manager - SM)   3. A B Harshitha (Managing Director - MD)",
         marginX + 5,
         cursorY
       );
       cursorY += 4.3;
       doc.text(
-        "4. Thrupthi K S (OD Picker Specialist - 2-Min Pick SLA)   5. Sinchana B R (Order Captain & Last-Mile Lead - 6-to-8 Min Transit SLA)",
+        "4. Thrupthi K S (OD Picker Lead - 2-Min Pick SLA)   5. Sinchana B R (Order Captain - Last-Mile Delivery Lead)",
         marginX + 5,
         cursorY
       );
 
       cursorY += 14;
 
-      // ────────────────────────────────────────────────────────────────
-      // PINNED ANSWERS ("KEY POINTS") INCLUDED FIRST IF ANY EXIST
-      // ────────────────────────────────────────────────────────────────
-      const pinnedMsgs = activeMessages.filter((m) => m.pinned && m.role === "bot");
-      if (pinnedMsgs.length > 0) {
-        writeSectionHeading("Key Points (Pinned Answers from Session)");
-        pinnedMsgs.forEach((pm, idx) => {
-          writeParagraph(`${idx + 1}) ${pm.text}`, 2, false, [15, 23, 42]);
+      // Key Points (remembered notes) included first if any exist
+      if (keyPoints.length > 0) {
+        writeSectionHeading("Key Points");
+        keyPoints.forEach((kp, idx) => {
+          writeParagraph(`${idx + 1}) ${kp}`, 2, false, [15, 23, 42]);
         });
       }
 
-      // ────────────────────────────────────────────────────────────────
-      // OPTION A: FULL CHAT TRANSCRIPT
-      // ────────────────────────────────────────────────────────────────
+      // Option 1: Full Chat Transcript
       if (optionType === "chat") {
         writeSectionHeading("Session Conversation Transcript");
-        activeMessages.forEach((m) => {
+        messages.forEach((m) => {
           const speakerLabel = m.role === "user" ? "You" : "AUDIT'X Mini";
           const headerLine = sanitizePlainText(`${speakerLabel} (${m.time || "Live"}):`, true);
           const cleanMsg = sanitizePlainText(m.text, true);
@@ -836,7 +667,6 @@ export default function AuditxMiniAssistant() {
           ensureSpace(Math.min(blockHeight, 45), false);
 
           if (m.role === "bot") {
-            // Light grey box for bot replies if it fits on the current page
             if (cursorY + blockHeight < pageHeight - 20) {
               doc.setFillColor(244, 246, 250);
               doc.setDrawColor(218, 224, 233);
@@ -877,9 +707,7 @@ export default function AuditxMiniAssistant() {
         });
       }
 
-      // ────────────────────────────────────────────────────────────────
-      // OPTION B: PROJECT PLAN AND PROGRESS REPORT (9 REQUIRED SECTIONS)
-      // ────────────────────────────────────────────────────────────────
+      // Option 2: Project Plan and Progress Report (9 Required Sections)
       if (optionType === "plan") {
         writeSectionHeading("1) Project Summary and Objective");
         writeParagraph(
@@ -931,23 +759,21 @@ export default function AuditxMiniAssistant() {
         });
       }
 
-      // ────────────────────────────────────────────────────────────────
-      // OPTION C: VIVA QUESTION AND ANSWER SHEET
-      // ────────────────────────────────────────────────────────────────
+      // Option 3: Viva Question and Answer Sheet
       if (optionType === "viva") {
         writeSectionHeading("Part 1: Questions Asked in This Session & AUDIT'X Mini Answers");
         const sessionPairs = [];
-        for (let i = 0; i < activeMessages.length; i++) {
-          if (activeMessages[i].role === "user") {
-            const nextBot = activeMessages.slice(i + 1).find((m) => m.role === "bot" && !m.pdfChoices && !m.downloadAgainOption);
+        for (let i = 0; i < messages.length; i++) {
+          if (messages[i].role === "user") {
+            const nextBot = messages.slice(i + 1).find((m) => m.role === "bot" && !m.pdfDownload);
             if (nextBot) {
-              sessionPairs.push({ q: activeMessages[i].text, a: nextBot.text });
+              sessionPairs.push({ q: messages[i].text, a: nextBot.text });
             }
           }
         }
 
         if (sessionPairs.length === 0) {
-          writeParagraph("No custom user questions were recorded prior to export in this session. Refer to Part 2 below for the 10 comprehensive viva questions and model answers.");
+          writeParagraph("No custom session questions were recorded prior to export. Refer to Part 2 below for the 10 model viva questions and answers.");
         } else {
           sessionPairs.forEach((pair, idx) => {
             writeParagraph(`Question ${idx + 1}: ${pair.q}`, 0, true, [139, 90, 43]);
@@ -964,32 +790,23 @@ export default function AuditxMiniAssistant() {
         });
       }
 
-      // ────────────────────────────────────────────────────────────────
-      // APPLY HEADER AND FOOTER WITH PAGE NUMBERS ON EVERY PAGE
-      // ────────────────────────────────────────────────────────────────
+      // Header and Footer with Page Numbers on Every Page
       const totalPages = doc.getNumberOfPages();
       for (let p = 1; p <= totalPages; p++) {
         doc.setPage(p);
 
-        // Header on every page
         doc.setFont("helvetica", "bold");
         doc.setFontSize(9);
         doc.setTextColor(92, 51, 23);
-        doc.text(
-          "AUDIT'X - AI Driven Warehouse Operations 2026-27",
-          marginX,
-          12
-        );
+        doc.text("AUDIT'X - AI Driven Warehouse Operations 2026-27", marginX, 12);
         doc.setFont("helvetica", "normal");
         doc.setFontSize(8.5);
         doc.text("Namma Tiptur Hub KA-44", pageWidth - marginX, 12, { align: "right" });
 
-        // Thin brown line under header
         doc.setDrawColor(139, 90, 43);
         doc.setLineWidth(0.4);
         doc.line(marginX, 14.5, pageWidth - marginX, 14.5);
 
-        // Footer on every page
         doc.setDrawColor(210, 190, 170);
         doc.setLineWidth(0.25);
         doc.line(marginX, pageHeight - 13, pageWidth - marginX, pageHeight - 13);
@@ -1001,21 +818,29 @@ export default function AuditxMiniAssistant() {
         doc.text(`Page ${p} of ${totalPages}`, pageWidth - marginX, pageHeight - 8, { align: "right" });
       }
 
+      // Create blob URL for fallback download link + trigger auto-download
+      let blobUrl = null;
+      try {
+        const blob = doc.output("blob");
+        blobUrl = URL.createObjectURL(blob);
+      } catch (e) {}
+
       doc.save(fileName);
       playSuccessChime();
 
       const confirmMsg = {
         id: `bot_pdf_${Date.now()}`,
         role: "bot",
-        text: `Your PDF report (${fileName}) has been generated and downloaded.`,
+        text: `I have generated your PDF (${fileName}) and started the download.`,
         time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-        pinned: false,
-        feedback: null,
-        hideActions: true,
-        downloadAgainOption: optionType,
-        downloadAgainFileName: fileName,
+        pdfDownload: {
+          fileName,
+          optionType,
+          blobUrl,
+        },
       };
       setMessages((prev) => [...prev, confirmMsg]);
+      setPendingState((prev) => ({ ...prev, type: null }));
     } catch (err) {
       console.error("PDF generation error:", err);
       setMessages((prev) => [
@@ -1023,8 +848,7 @@ export default function AuditxMiniAssistant() {
         {
           id: `bot_pdf_err_${Date.now()}`,
           role: "bot",
-          hideActions: true,
-          text: "Unable to generate the PDF right now. Please select an export option below to retry.",
+          text: "I ran into a browser issue while building the PDF file. Please tell me which PDF you want again and I will retry right away.",
           time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
         },
       ]);
@@ -1033,54 +857,439 @@ export default function AuditxMiniAssistant() {
     }
   }
 
-  // Ask the short question with 3 PDF option chips
-  function promptPdfOptionsInChat() {
-    playNotificationChime();
-    const promptMsg = {
-      id: `bot_pdf_choice_${Date.now()}`,
-      role: "bot",
-      hideActions: true,
-      text: "Which PDF report would you like to export?",
-      time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-      pdfChoices: [
-        { label: "a) Full chat transcript", option: "chat" },
-        { label: "b) Project plan and progress report", option: "plan" },
-        { label: "c) Viva question and answer sheet from this chat", option: "viva" },
-      ],
-    };
-    setMessages((prev) => [...prev, promptMsg]);
+  // ============================================================================
+  // CONVERSATION-DRIVEN HISTORY & ARCHIVED SESSIONS HANDLER
+  // ============================================================================
+  function handleHistoryConversation(meta = {}) {
+    const userMsgs = messages.filter((m) => m.role === "user");
+    const subType = meta.subType || "summary";
+
+    if (subType === "search" && meta.searchTopic) {
+      const term = meta.searchTopic.toLowerCase();
+      const match = archivedSessions.find(
+        (s) =>
+          (s.title || "").toLowerCase().includes(term) ||
+          (s.messages || []).some((m) => (m.text || "").toLowerCase().includes(term))
+      );
+      if (match) {
+        const prevUserQuestions = (match.messages || [])
+          .filter((m) => m.role === "user")
+          .map((m, idx) => `${idx + 1}) ${m.text}`)
+          .join("\n");
+        // Restore that session's messages into the active view and continue seamlessly
+        const restoredMsg = {
+          id: `bot_restore_${Date.now()}`,
+          role: "bot",
+          text: sanitizePlainText(
+            `I found your earlier chat about "${meta.searchTopic}" (${match.date || "saved session"}) and restored it here. In that session you asked:\n${prevUserQuestions || "1) Overview of " + match.title}\n\nHow would you like to continue from here?`
+          ),
+          time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        };
+        setMessages([...(match.messages || []), restoredMsg]);
+        return;
+      }
+      revealBotResponse(
+        `I checked your saved chat history, and while I did not find a separate archived session specifically titled "${meta.searchTopic}", we can explore "${meta.searchTopic}" right now. What would you like to know about it?`
+      );
+      return;
+    }
+
+    if (subType === "list") {
+      const archivedLines =
+        archivedSessions.length > 0
+          ? archivedSessions
+              .map(
+                (s, i) =>
+                  `${i + 1}) "${s.title}" (${s.date || "Recent"} - ${(s.messages || []).length} messages)`
+              )
+              .join("\n")
+          : "No separate archived sessions yet.";
+
+      const currentQuestions =
+        userMsgs.length > 0
+          ? userMsgs.map((m, i) => `${i + 1}) ${m.text}`).join("\n")
+          : "None yet in this active session.";
+
+      revealBotResponse(
+        [
+          "Here is what I have in your saved chat history:",
+          "",
+          "Archived Conversations:",
+          archivedLines,
+          "",
+          "Questions Asked in Our Current Session:",
+          currentQuestions,
+          "",
+          "You can ask me to open any old chat by topic (for example, 'open my chat about SLA') or ask me to summarize our chat.",
+        ].join("\n")
+      );
+      return;
+    }
+
+    // Default: "what did I ask before" / "summarize our chat"
+    const allUserQuestions = userMsgs.map((m, i) => `${i + 1}) ${m.text}`);
+    const archivedSummary =
+      archivedSessions.length > 0
+        ? `You also have ${archivedSessions.length} earlier archived chat session(s): ${archivedSessions
+            .map((s) => `"${s.title}"`)
+            .join(", ")}.`
+        : "";
+
+    if (allUserQuestions.length === 0) {
+      revealBotResponse(
+        [
+          "We just started this conversation, so you have not asked any project questions in this session yet.",
+          archivedSummary,
+          "You can ask me about our 5 team members, the 10-minute SLA, the 9 staging bays, or our project plan.",
+        ]
+          .filter(Boolean)
+          .join("\n\n")
+      );
+      return;
+    }
+
+    revealBotResponse(
+      [
+        "Here is a summary of our conversation so far:",
+        "",
+        `Questions you asked in this session (${allUserQuestions.length}):`,
+        allUserQuestions.join("\n"),
+        "",
+        "Key AUDIT'X takeaways discussed:",
+        "1) Project & Team: Built for Namma Tiptur Hub KA-44 (KFGSC BCA 2024-27) by Deepu B (ASM), Bhaskar N S (SM), A B Harshitha (MD), Thrupthi K S (OD Picker), and Sinchana B R (Order Captain).",
+        "2) Fulfillment Workflow: 10-minute SLA (2-minute warehouse picking across 9 staging bays B7 to T4 + 6-to-8 minute last-mile rider delivery with live 1-minute and 15-second doorstep countdowns).",
+        "3) Architecture: Next.js 16.3.3, React 19, Firebase Firestore, 8 database tables, 4 API routes, and 19 error-free compiled routes.",
+        archivedSummary,
+        "",
+        "If you would like a copy of this conversation, just say download this chat as pdf.",
+      ]
+        .filter(Boolean)
+        .join("\n")
+    );
   }
 
   // ============================================================================
-  // SUMMARIZE CHAT HANDLER
+  // MULTI-TURN NORMAL QUESTION & CONTEXT RESOLVER
   // ============================================================================
-  function generateSessionSummary() {
-    const userQuestions = messages.filter((m) => m.role === "user").map((m) => sanitizePlainText(m.text));
-    const pinnedCount = messages.filter((m) => m.pinned).length;
-    const topicsCovered =
-      userQuestions.length > 0
-        ? userQuestions.map((q, idx) => `${idx + 1}) ${q}`).join("\n")
-        : "1) Initial overview of AUDIT'X Dark Store Operations at Namma Tiptur Hub KA-44.";
+  function handleNormalQuestion(rawQuery, meta = {}) {
+    const norm = normalizeQuery(rawQuery);
 
-    return [
-      "SESSION CHAT SUMMARY (AUDIT'X MINI - TIPTUR HUB KA-44):",
-      "",
-      `Total Messages Exchanged: ${messages.length} (${userQuestions.length} user questions, ${pinnedCount} pinned key points)`,
-      "",
-      "Questions & Topics Discussed in This Session:",
-      topicsCovered,
-      "",
-      "Core Project Takeaways:",
-      "- AUDIT'X is built by Bhaskar N S (SM), Deepu B (ASM), A B Harshitha (MD), Thrupthi K S (OD Picker), and Sinchana B R (Order Captain) at KFGSC, Tiptur.",
-      "- Enforces a 10-minute SLA (2-minute picking across 9 staging bays + last-mile rider delivery with 1-minute and 15-second doorstep countdowns).",
-      "- Backed by 8 database tables, 4 API endpoints, and 19 error-free Next.js routes.",
-      "",
-      "Would you like to export this session or the full project plan as a PDF? Choose an option below:",
-    ].join("\n");
+    if (meta.topicOverride === "team_roles_hierarchy") {
+      revealBotResponse(
+        buildTeamAndAuthorsText(),
+        {},
+        { lastTopic: "team", lastPerson: "deepu", lastUserQuestion: rawQuery }
+      );
+      return;
+    }
+    if (meta.topicOverride === "sla_timer_workflow") {
+      revealBotResponse(
+        buildSlaWorkflowText(),
+        {},
+        { lastTopic: "sla", lastUserQuestion: rawQuery }
+      );
+      return;
+    }
+    if (meta.topicOverride === "staging_bays_racks") {
+      revealBotResponse(
+        buildStagingBaysText(),
+        { showcaseImage: "/physical_warehouse_model.jpeg" },
+        { lastTopic: "bays", lastUserQuestion: rawQuery }
+      );
+      return;
+    }
+    if (meta.topicOverride === "tech_stack_database_apis") {
+      revealBotResponse(
+        buildTechStackAndDbText(),
+        {},
+        { lastTopic: "stack", lastUserQuestion: rawQuery }
+      );
+      return;
+    }
+
+    // 1. Pronoun & Multi-Turn Follow-up Resolution ("tell me more about him", "her", "the second one", "tell me more")
+    const isPronounFollowUp =
+      norm.includes("tell me more") ||
+      norm.includes("more about him") ||
+      norm.includes("more about her") ||
+      norm.includes("what does he do") ||
+      norm.includes("what does she do") ||
+      norm.includes("his role") ||
+      norm.includes("her role") ||
+      norm.includes("about him") ||
+      norm.includes("about her") ||
+      norm.includes("the second one") ||
+      norm.includes("the first one") ||
+      norm.includes("that module");
+
+    if (isPronounFollowUp) {
+      if (norm.includes("her") || norm.includes("she")) {
+        const person =
+          pendingState.lastPerson === "thrupthi" ||
+          pendingState.lastPerson === "sinchana" ||
+          pendingState.lastPerson === "harshitha"
+            ? pendingState.lastPerson
+            : "harshitha";
+        revealBotResponse(
+          buildDeepPersonFollowUp(person),
+          {},
+          { lastTopic: "team_member", lastPerson: person, lastUserQuestion: rawQuery }
+        );
+        return;
+      }
+
+      if (norm.includes("him") || norm.includes("he") || norm.includes("his")) {
+        const person = pendingState.lastPerson === "bhaskar" ? "bhaskar" : "deepu";
+        revealBotResponse(
+          buildDeepPersonFollowUp(person),
+          {},
+          { lastTopic: "team_member", lastPerson: person, lastUserQuestion: rawQuery }
+        );
+        return;
+      }
+
+      if (norm.includes("second one")) {
+        revealBotResponse(
+          buildDeepPersonFollowUp("bhaskar"),
+          {},
+          { lastTopic: "team_member", lastPerson: "bhaskar", lastUserQuestion: rawQuery }
+        );
+        return;
+      }
+
+      // General "tell me more" based on lastTopic
+      if (pendingState.lastTopic === "team") {
+        revealBotResponse(
+          buildDeepPersonFollowUp(pendingState.lastPerson || "deepu"),
+          {},
+          { lastTopic: "team_member", lastUserQuestion: rawQuery }
+        );
+        return;
+      }
+      if (pendingState.lastTopic === "sla") {
+        revealBotResponse(
+          buildStagingBaysText(),
+          { showcaseImage: "/physical_warehouse_model.jpeg" },
+          { lastTopic: "bays", lastUserQuestion: rawQuery }
+        );
+        return;
+      }
+      if (pendingState.lastTopic === "bays") {
+        revealBotResponse(
+          buildTechStackAndDbText(),
+          {},
+          { lastTopic: "stack", lastUserQuestion: rawQuery }
+        );
+        return;
+      }
+    }
+
+    // 2. Specific Individual Team Member Queries
+    if (norm.includes("bhaskar")) {
+      revealBotResponse(
+        buildDeepPersonFollowUp("bhaskar"),
+        {},
+        { lastTopic: "team_member", lastPerson: "bhaskar", lastUserQuestion: rawQuery }
+      );
+      return;
+    }
+    if (norm.includes("harshitha")) {
+      revealBotResponse(
+        buildDeepPersonFollowUp("harshitha"),
+        {},
+        { lastTopic: "team_member", lastPerson: "harshitha", lastUserQuestion: rawQuery }
+      );
+      return;
+    }
+    if (norm.includes("thrupthi")) {
+      revealBotResponse(
+        buildDeepPersonFollowUp("thrupthi"),
+        {},
+        { lastTopic: "team_member", lastPerson: "thrupthi", lastUserQuestion: rawQuery }
+      );
+      return;
+    }
+    if (norm.includes("sinchana")) {
+      revealBotResponse(
+        buildDeepPersonFollowUp("sinchana"),
+        {},
+        { lastTopic: "team_member", lastPerson: "sinchana", lastUserQuestion: rawQuery }
+      );
+      return;
+    }
+    if (norm.includes("deepu") && !norm.includes("team") && !norm.includes("all")) {
+      revealBotResponse(
+        buildDeepPersonFollowUp("deepu"),
+        {},
+        { lastTopic: "team_member", lastPerson: "deepu", lastUserQuestion: rawQuery }
+      );
+      return;
+    }
+
+    // 3. Author / Team / Roles Queries (Always lists all 5 members with roles & contributions)
+    if (
+      norm.includes("author") ||
+      norm.includes("who built") ||
+      norm.includes("who created") ||
+      norm.includes("who developed") ||
+      norm.includes("team") ||
+      norm.includes("member") ||
+      norm.includes("roles") ||
+      norm.includes("staff")
+    ) {
+      revealBotResponse(
+        buildTeamAndAuthorsText(),
+        {},
+        { lastTopic: "team", lastPerson: "deepu", lastUserQuestion: rawQuery }
+      );
+      return;
+    }
+
+    // 4. 9 Bays / Racks / Physical Model / Prototype Queries
+    if (
+      norm.includes("bay") ||
+      norm.includes("rack") ||
+      norm.includes("staging") ||
+      norm.includes("b7") ||
+      norm.includes("h2") ||
+      norm.includes("d5") ||
+      norm.includes("t4") ||
+      norm.includes("foam") ||
+      norm.includes("prototype") ||
+      norm.includes("physical model")
+    ) {
+      revealBotResponse(
+        buildStagingBaysText(),
+        { showcaseImage: "/physical_warehouse_model.jpeg" },
+        { lastTopic: "bays", lastUserQuestion: rawQuery }
+      );
+      return;
+    }
+
+    // 5. SLA / 10-Minute / Countdown / Handover / Picker / Rider Queries
+    if (
+      norm.includes("sla") ||
+      norm.includes("10 min") ||
+      norm.includes("10 minute") ||
+      norm.includes("2 min") ||
+      norm.includes("6 min") ||
+      norm.includes("8 min") ||
+      norm.includes("1 min") ||
+      norm.includes("15 sec") ||
+      norm.includes("timer") ||
+      norm.includes("countdown") ||
+      norm.includes("handover") ||
+      norm.includes("doorstep") ||
+      norm.includes("picker") ||
+      norm.includes("rider") ||
+      norm.includes("captain") ||
+      norm.includes("tracking")
+    ) {
+      revealBotResponse(
+        buildSlaWorkflowText(),
+        {},
+        { lastTopic: "sla", lastUserQuestion: rawQuery }
+      );
+      return;
+    }
+
+    // 6. Database / ERD / DFD / Tech Stack / APIs / Limitations / Roadmap Queries
+    if (
+      norm.includes("stack") ||
+      norm.includes("technology") ||
+      norm.includes("database") ||
+      norm.includes("table") ||
+      norm.includes("erd") ||
+      norm.includes("dfd") ||
+      norm.includes("api") ||
+      norm.includes("endpoint") ||
+      norm.includes("firebase") ||
+      norm.includes("next") ||
+      norm.includes("vercel") ||
+      norm.includes("limitation") ||
+      norm.includes("roadmap") ||
+      norm.includes("future")
+    ) {
+      revealBotResponse(
+        buildTechStackAndDbText(),
+        {},
+        { lastTopic: "stack", lastUserQuestion: rawQuery }
+      );
+      return;
+    }
+
+    // 7. Catalog / Inventory / Chocolates / Frames / GRN / DAD Queries
+    if (
+      norm.includes("catalog") ||
+      norm.includes("sku") ||
+      norm.includes("item") ||
+      norm.includes("product") ||
+      norm.includes("chocolate") ||
+      norm.includes("frame") ||
+      norm.includes("inventory") ||
+      norm.includes("stock") ||
+      norm.includes("grn") ||
+      norm.includes("dad")
+    ) {
+      revealBotResponse(
+        buildCatalogAndInventoryText(),
+        {},
+        { lastTopic: "catalog", lastUserQuestion: rawQuery }
+      );
+      return;
+    }
+
+    // 8. Wallet / Complaints / Tiptur Queries
+    if (
+      norm.includes("wallet") ||
+      norm.includes("complaint") ||
+      norm.includes("helpdesk") ||
+      norm.includes("refund") ||
+      norm.includes("ganesha") ||
+      norm.includes("akshayakalpa")
+    ) {
+      revealBotResponse(
+        buildWalletAndComplaintsText(),
+        {},
+        { lastTopic: "wallet", lastUserQuestion: rawQuery }
+      );
+      return;
+    }
+
+    // 9. Simple Greeting
+    if (
+      norm === "hi" ||
+      norm === "hello" ||
+      norm === "hey" ||
+      norm === "namaskara" ||
+      norm === "namaste" ||
+      norm === "good morning" ||
+      norm === "good evening"
+    ) {
+      revealBotResponse(
+        "Hello! How can I help you explore the AUDIT'X Dark Store and Warehouse Operations project at Namma Tiptur Hub KA-44 today?",
+        {},
+        { lastTopic: "overview", lastUserQuestion: rawQuery }
+      );
+      return;
+    }
+
+    // 10. Default Project Overview Answer
+    revealBotResponse(
+      [
+        "AUDIT'X is an AI-driven Quick-Commerce Dark Store and Warehouse Operations platform built for Namma Tiptur Hub KA-44 (572201) by five BCA (Data Science) students at Kalpataru First Grade Science College (KFGSC), Tiptur: Deepu B (ASM), Bhaskar N S (SM), A B Harshitha (MD), Thrupthi K S (OD Picker), and Sinchana B R (Order Captain).",
+        "",
+        "It coordinates 59 warehouse SKUs across 9 staging bays (B7 to T4) under a 10-minute fulfillment SLA (2 minutes for in-store barcode picking + 6-to-8 minutes for last-mile delivery), backed by 8 relational database tables, 4 API routes, and real-time cross-tab synchronization.",
+        "",
+        "Would you like me to explain the 5 team roles, the 10-minute SLA countdown flow, or our full project plan?",
+      ].join("\n"),
+      {},
+      { lastTopic: "overview", lastUserQuestion: rawQuery }
+    );
   }
 
   // ============================================================================
-  // QUERY DISPATCHER & LOCAL RAG ENGINE
+  // MAIN MESSAGE SUBMIT DISPATCHER (USES `lib/intentRouter.js`)
   // ============================================================================
   function handleSendMessage(customQuery) {
     const rawQuery = typeof customQuery === "string" ? customQuery : inputVal;
@@ -1096,278 +1305,185 @@ export default function AuditxMiniAssistant() {
     };
     setMessages((prev) => [...prev, userMsg]);
 
-    const lower = trimmed.toLowerCase();
+    const { intent, meta } = classifyUserIntent(trimmed, pendingState);
 
-    // 1. Slash commands handling
-    if (lower === "/history") {
-      setShowHistoryPanel(true);
-      revealBotResponse(
-        "I have opened the Chat History panel for you. You can search past sessions, load an old conversation, rename a session, delete a session, or export any loaded session as a PDF."
-      );
-      return;
-    }
-    if (lower === "/help") {
-      revealBotResponse(
-        [
-          "AUDIT'X MINI COMMANDS AND CAPABILITIES:",
-          "",
-          "1) Slash Commands:",
-          "- /plan : Complete project plan, 9 modules, and progress table",
-          "- /team : All 5 BCA team members and dark store roles",
-          "- /sla  : 10-minute SLA breakdown and post-handover countdowns",
-          "- /bays : 9 warehouse staging racks (B7 to T4) and barcodes",
-          "- /stack: Next.js 16, React 19, Firebase, 8 tables, and 4 APIs",
-          "- /pdf  : Export Full Chat, Project Plan, or Viva Q&A Sheet as PDF",
-          "- /history : Open saved sessions panel",
-          "",
-          "2) Advanced Features:",
-          "- Pin any bot answer to include it under Key Points at the top of your PDF.",
-          "- Copy, Regenerate, or rate answers with Thumbs Up / Down.",
-          "- Say 'summarize our chat' or 'download this chat as pdf' anytime.",
-        ].join("\n"),
-        {
-          suggestions: [
-            "Give me the project plan in PDF",
-            "Explain the 5 team members and roles",
-            "Summarize our chat",
-          ],
+    switch (intent) {
+      case INTENT_TYPES.NEW_CHAT: {
+        // Archive current session silently if it has user messages
+        const userCount = messages.filter((m) => m.role === "user").length;
+        if (userCount > 0) {
+          const firstUser = messages.find((m) => m.role === "user");
+          const archiveEntry = {
+            id: `arch_${Date.now()}`,
+            title: sanitizePlainText(firstUser?.text || "AUDIT'X Session").slice(0, 48),
+            date: new Date().toLocaleString([], { dateStyle: "short", timeStyle: "short" }),
+            messages,
+          };
+          setArchivedSessions((prev) => [archiveEntry, ...prev]);
         }
-      );
-      return;
-    }
-    if (lower === "/plan") {
-      const entry = PROJECT_KNOWLEDGE_BASE.find((k) => k.id === "project_plan_overview");
-      revealBotResponse(entry.content(), { suggestions: entry.suggestions });
-      return;
-    }
-    if (lower === "/team") {
-      const entry = PROJECT_KNOWLEDGE_BASE.find((k) => k.id === "team_roles_hierarchy");
-      revealBotResponse(entry.content(), { suggestions: entry.suggestions });
-      return;
-    }
-    if (lower === "/sla") {
-      const entry = PROJECT_KNOWLEDGE_BASE.find((k) => k.id === "sla_timer_workflow");
-      revealBotResponse(entry.content(), { suggestions: entry.suggestions });
-      return;
-    }
-    if (lower === "/bays") {
-      const entry = PROJECT_KNOWLEDGE_BASE.find((k) => k.id === "staging_bays_racks");
-      revealBotResponse(entry.content(), { suggestions: entry.suggestions });
-      return;
-    }
-    if (lower === "/stack") {
-      const entry = PROJECT_KNOWLEDGE_BASE.find((k) => k.id === "tech_stack_database_apis");
-      revealBotResponse(entry.content(), { suggestions: entry.suggestions });
-      return;
-    }
-
-    // 2. Summarize chat request
-    if (
-      lower.includes("summarize our chat") ||
-      lower.includes("summarise our chat") ||
-      lower.includes("summarize chat") ||
-      lower.includes("chat summary")
-    ) {
-      const summaryText = generateSessionSummary();
-      revealBotResponse(summaryText, {
-        pdfChoices: [
-          { label: "a) Full chat transcript", option: "chat" },
-          { label: "b) Project plan and progress report", option: "plan" },
-          { label: "c) Viva question and answer sheet from this chat", option: "viva" },
-        ],
-      });
-      return;
-    }
-
-    // 3. Natural language PDF export request
-    const pdfCheck = detectPdfIntent(trimmed);
-    if (pdfCheck.triggered) {
-      if (pdfCheck.option) {
-        // User already specified which PDF (e.g., "give me the project plan in pdf") -> generate immediately AND show option chips
-        generateAuditxPdf(pdfCheck.option);
-      } else {
-        // Ask one short question with the three chips
-        promptPdfOptionsInChat();
+        const freshGreeting = {
+          id: `bot_fresh_${Date.now()}`,
+          role: "bot",
+          text: "Started a fresh conversation. What would you like to explore about AUDIT'X today?",
+          time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        };
+        setMessages([freshGreeting]);
+        setPendingState((prev) => ({ ...prev, type: null, lastTopic: "overview" }));
+        return;
       }
-      return;
-    }
 
-    // 4. Strict Project-Only Scope Check
-    if (isOutOfScopeQuery(trimmed)) {
-      revealBotResponse(
-        "I can only assist with questions related to the AUDIT'X Dark Store and Warehouse Operations project at Namma Tiptur Hub KA-44.",
-        {
-          hideActions: true,
-          suggestions: [
-            "Explain the 5 team members and roles",
-            "How does the 10-minute SLA work?",
-            "Give me the project plan in PDF",
-          ],
+      case INTENT_TYPES.DELETE_HISTORY: {
+        if (meta.confirmed === true) {
+          try {
+            localStorage.removeItem(STORAGE_KEY);
+          } catch (e) {}
+          setArchivedSessions([]);
+          setKeyPoints([]);
+          setPendingState({
+            type: null,
+            lastTopic: "overview",
+            lastPerson: "deepu",
+            lastAnswerText: "",
+            lastUserQuestion: "",
+          });
+          setMessages([
+            {
+              id: `bot_cleared_${Date.now()}`,
+              role: "bot",
+              text: "All saved chats and history have been deleted. How can I help you with AUDIT'X today?",
+              time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+            },
+          ]);
+          return;
         }
-      );
-      return;
-    }
-
-    // 5. Match from Local Knowledge Base (Scored Keyword RAG)
-    let bestEntry = null;
-    let bestScore = 0;
-    for (const entry of PROJECT_KNOWLEDGE_BASE) {
-      let score = 0;
-      for (const kw of entry.keywords) {
-        if (lower.includes(kw)) {
-          score += kw.length + 2;
+        if (meta.confirmed === false) {
+          revealBotResponse(
+            "Okay, I have kept all your saved chats intact.",
+            {},
+            { pendingType: null }
+          );
+          return;
         }
+        revealBotResponse(
+          "Do you want me to delete all saved chats? Reply yes or no.",
+          {},
+          { pendingType: "confirm_delete_history" }
+        );
+        return;
       }
-      if (score > bestScore) {
-        bestScore = score;
-        bestEntry = entry;
+
+      case INTENT_TYPES.HISTORY_REQUEST: {
+        handleHistoryConversation(meta);
+        return;
+      }
+
+      case INTENT_TYPES.PDF_REQUEST: {
+        if (meta.cancelled) {
+          revealBotResponse("No problem, I have cancelled the PDF export.", {}, { pendingType: null });
+          return;
+        }
+        if (meta.pdfType) {
+          generateAuditxPdf(meta.pdfType);
+          return;
+        }
+        revealBotResponse(
+          "Which one do you want: 1) full chat transcript, 2) project plan and progress report, or 3) viva questions and answers from this chat?",
+          {},
+          { pendingType: "choose_pdf_type" }
+        );
+        return;
+      }
+
+      case INTENT_TYPES.PLAN_REQUEST: {
+        revealBotResponse(
+          buildProjectPlanText(true),
+          {},
+          {
+            pendingType: "offer_plan_pdf",
+            lastTopic: "plan",
+            lastUserQuestion: trimmed,
+          }
+        );
+        return;
+      }
+
+      case INTENT_TYPES.REMEMBER_NOTE: {
+        const lastBot = [...messages].reverse().find((m) => m.role === "bot");
+        const noteToSave = sanitizePlainText(lastBot?.text || trimmed);
+        if (noteToSave) {
+          setKeyPoints((prev) => [noteToSave, ...prev]);
+        }
+        revealBotResponse(
+          "I have noted that point and will include it first under Key Points whenever you export a PDF.",
+          {},
+          { pendingType: null }
+        );
+        return;
+      }
+
+      case INTENT_TYPES.REGENERATE: {
+        const prevText = pendingState.lastAnswerText || "";
+        if (meta.style === "shorter" && prevText) {
+          const sentences = prevText.split(/(?<=[.!?])\s+/).slice(0, 3).join(" ");
+          revealBotResponse(
+            sentences || "AUDIT'X unifies 2-minute warehouse picking across 9 staging bays and 6-to-8 minute last-mile delivery at Namma Tiptur Hub KA-44.",
+            {},
+            { pendingType: null }
+          );
+          return;
+        }
+        if (meta.style === "detailed") {
+          revealBotResponse(
+            buildProjectPlanText(false),
+            {},
+            { pendingType: null, lastTopic: "plan" }
+          );
+          return;
+        }
+        // Retry last user question
+        handleNormalQuestion(pendingState.lastUserQuestion || "overview");
+        return;
+      }
+
+      case INTENT_TYPES.VOICE_REQUEST: {
+        handleVoiceReadAloud();
+        return;
+      }
+
+      case INTENT_TYPES.OUT_OF_SCOPE: {
+        revealBotResponse(
+          [
+            "I focus exclusively on the AUDIT'X Dark Store and Warehouse Operations project at Namma Tiptur Hub KA-44.",
+            "",
+            "You can ask me questions such as:",
+            "1) Who are the 5 team members and what are their roles?",
+            "2) How does the 10-minute SLA and post-handover countdown work?",
+            "3) How do the 9 warehouse staging bays and barcode handovers work?",
+          ].join("\n"),
+          {},
+          { pendingType: null }
+        );
+        return;
+      }
+
+      case INTENT_TYPES.NORMAL_QUESTION:
+      default: {
+        handleNormalQuestion(trimmed, meta);
+        return;
       }
     }
-
-    if (bestEntry && bestScore > 0) {
-      revealBotResponse(bestEntry.content(), {
-        suggestions: bestEntry.suggestions,
-      });
-      return;
-    }
-
-    // Default Comprehensive Project Answer
-    const fallbackEntry = PROJECT_KNOWLEDGE_BASE[0];
-    revealBotResponse(fallbackEntry.content(), {
-      suggestions: fallbackEntry.suggestions,
-    });
   }
-
-  // ============================================================================
-  // MESSAGE ACTIONS: COPY, REGENERATE, THUMBS UP/DOWN, PIN
-  // ============================================================================
-  function handleCopyMessage(text) {
-    try {
-      navigator.clipboard.writeText(sanitizePlainText(text));
-      playSuccessChime();
-    } catch (e) {}
-  }
-
-  function handleTogglePin(msgId) {
-    setMessages((prev) =>
-      prev.map((m) => (m.id === msgId ? { ...m, pinned: !m.pinned } : m))
-    );
-    playSuccessChime();
-  }
-
-  function handleFeedback(msgId, dir) {
-    setMessages((prev) =>
-      prev.map((m) => (m.id === msgId ? { ...m, feedback: m.feedback === dir ? null : dir } : m))
-    );
-  }
-
-  function handleRegenerate(msgIndex) {
-    const prevUser = messages
-      .slice(0, msgIndex)
-      .reverse()
-      .find((m) => m.role === "user");
-    if (prevUser) {
-      handleSendMessage(prevUser.text);
-    } else {
-      const entry = PROJECT_KNOWLEDGE_BASE[0];
-      revealBotResponse(entry.content(), { suggestions: entry.suggestions });
-    }
-  }
-
-  // ============================================================================
-  // SESSION MANAGEMENT: NEW CHAT, CLEAR HISTORY, LOAD, RENAME, DELETE
-  // ============================================================================
-  function handleStartNewChat() {
-    if (streamIntervalRef.current) clearInterval(streamIntervalRef.current);
-    setIsStreaming(false);
-    setStreamingText("");
-    const newId = `session_${Date.now()}`;
-    setCurrentSessionId(newId);
-    setMessages([
-      {
-        id: `welcome_${Date.now()}`,
-        role: "bot",
-        text: "Hello! How can I assist you with AUDIT'X Dark Store Operations today?",
-        time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-        pinned: false,
-        feedback: null,
-        hideActions: true,
-        suggestions: [
-          "Explain the 5 team members and roles",
-          "How does the 10-minute SLA work?",
-          "Give me the project plan in PDF",
-        ],
-      },
-    ]);
-    setShowHistoryPanel(false);
-  }
-
-  function handleClearHistory() {
-    try {
-      localStorage.removeItem("auditx_mini_chat_sessions");
-    } catch (e) {}
-    setSessions([SEEDED_PAST_SESSION]);
-    handleStartNewChat();
-  }
-
-  function handleLoadSession(sess) {
-    if (!sess) return;
-    setCurrentSessionId(sess.id);
-    setMessages(sess.messages || []);
-    setShowHistoryPanel(false);
-    playSuccessChime();
-  }
-
-  function handleRenameSession(sessId) {
-    if (!renameInputText.trim()) {
-      setRenamingSessionId(null);
-      return;
-    }
-    const cleanTitle = sanitizePlainText(renameInputText.trim()).slice(0, 50);
-    setSessions((prev) => {
-      const next = prev.map((s) =>
-        s.id === sessId ? { ...s, title: cleanTitle, customTitle: cleanTitle } : s
-      );
-      try {
-        localStorage.setItem("auditx_mini_chat_sessions", JSON.stringify(next));
-      } catch (e) {}
-      return next;
-    });
-    setRenamingSessionId(null);
-    setRenameInputText("");
-  }
-
-  function handleDeleteSession(sessId) {
-    setSessions((prev) => {
-      const next = prev.filter((s) => s.id !== sessId);
-      const finalSessions = next.length > 0 ? next : [SEEDED_PAST_SESSION];
-      try {
-        localStorage.setItem("auditx_mini_chat_sessions", JSON.stringify(finalSessions));
-      } catch (e) {}
-      return finalSessions;
-    });
-  }
-
-  const showSlashHints = inputVal.startsWith("/");
-  const matchingSlashCmds = showSlashHints
-    ? SLASH_COMMANDS.filter((c) => c.cmd.startsWith(inputVal.toLowerCase().trim()))
-    : [];
-
-  const filteredSessions = sessions.filter((s) =>
-    (s.title || "").toLowerCase().includes(historySearch.toLowerCase())
-  );
 
   return (
     <>
       {/* ====================================================================
-          STATIONARY LAUNCHER BUTTON (FIXED IN PLACE — NEVER ATTACHES TO CURSOR)
-          CIRCLE VIDEO COVERED 100% INSIDE
+          STATIONARY MASCOT LAUNCHER (FIXED IN PLACE — NEVER ATTACHES TO CURSOR)
           ==================================================================== */}
       <button
         id="auditx-mini-launcher"
         type="button"
         onClick={() => setIsOpen((prev) => !prev)}
-        title="Open AUDIT'X Mini Assistant"
+        title="Open AUDIT'X Mini"
         style={{
           position: "fixed",
           right: "20px",
@@ -1417,27 +1533,10 @@ export default function AuditxMiniAssistant() {
             }}
           />
         </div>
-        <span
-          style={{
-            position: "absolute",
-            bottom: -4,
-            background: "#0f172a",
-            color: "#f8fafc",
-            fontSize: 8.5,
-            fontWeight: 900,
-            padding: "1px 6px",
-            borderRadius: 8,
-            border: "1px solid #22c55e",
-            letterSpacing: "0.03em",
-            pointerEvents: "none",
-          }}
-        >
-          AI MINI
-        </span>
       </button>
 
       {/* ====================================================================
-          AUDIT'X MINI CHATBOT WINDOW (CLEAN PROFESSIONAL UI)
+          PURE CHAT WINDOW (MINIMAL HEADER + MESSAGE LIST + INPUT BOX ONLY)
           ==================================================================== */}
       {isOpen && (
         <div
@@ -1448,682 +1547,293 @@ export default function AuditxMiniAssistant() {
             right: 16,
             width: "calc(100vw - 32px)",
             maxWidth: 400,
-            height: "min(600px, calc(100dvh - 36px))",
+            height: "min(580px, calc(100dvh - 36px))",
             background: "#ffffff",
             borderRadius: 18,
-            boxShadow: "0 20px 50px rgba(15, 23, 42, 0.35)",
+            boxShadow: "0 20px 50px rgba(15, 23, 42, 0.32)",
             border: "1px solid #e2e8f0",
             display: "flex",
             flexDirection: "column",
             overflow: "hidden",
             zIndex: 9995,
-            fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+            fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Inter, sans-serif",
           }}
         >
-          {/* ── CLEAN PROFESSIONAL HEADER ── */}
+          {/* ── MINIMAL HEADER: ONLY BOT NAME "AUDIT'X Mini" AND CLOSE BUTTON ── */}
           <div
             style={{
               background: "#0f172a",
               color: "#ffffff",
-              padding: "11px 13px 9px",
+              padding: "12px 14px",
               borderBottom: "1px solid #1e293b",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 10,
             }}
           >
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}>
-                <div
-                  style={{
-                    width: 36,
-                    height: 36,
-                    borderRadius: "50%",
-                    overflow: "hidden",
-                    border: "1.5px solid #22c55e",
-                    background: "#06101e",
-                    flexShrink: 0,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  <video
-                    src="/robot_transparent.webm"
-                    autoPlay
-                    loop
-                    muted
-                    playsInline
-                    style={{
-                      width: "100%",
-                      height: "100%",
-                      objectFit: "cover",
-                      transform: "scale(1.22)",
-                      borderRadius: "50%",
-                      display: "block",
-                    }}
-                  />
-                </div>
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: 13.5, fontWeight: 800, letterSpacing: "-0.2px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                    AUDIT'X Mini
-                  </div>
-                  <div style={{ fontSize: 10, color: "#94a3b8", fontWeight: 600, display: "flex", alignItems: "center", gap: 5 }}>
-                    <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#22c55e", display: "inline-block" }} />
-                    <span>Tiptur Hub KA-44</span>
-                  </div>
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setIsOpen(false)}
-                title="Close"
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div
                 style={{
-                  background: "rgba(255,255,255,0.1)",
-                  color: "#cbd5e1",
-                  border: "none",
+                  width: 32,
+                  height: 32,
                   borderRadius: "50%",
-                  width: 26,
-                  height: 26,
-                  cursor: "pointer",
-                  fontWeight: 700,
-                  fontSize: 12,
+                  overflow: "hidden",
+                  border: "1.5px solid #22c55e",
+                  background: "#06101e",
                   flexShrink: 0,
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
                 }}
               >
-                ✕
-              </button>
+                <video
+                  src="/robot_transparent.webm"
+                  autoPlay
+                  loop
+                  muted
+                  playsInline
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    objectFit: "cover",
+                    transform: "scale(1.22)",
+                    borderRadius: "50%",
+                    display: "block",
+                  }}
+                />
+              </div>
+              <span style={{ fontSize: 14, fontWeight: 700, letterSpacing: "-0.2px" }}>
+                AUDIT'X Mini
+              </span>
             </div>
 
-            {/* Sleek Single-Row Action Bar */}
-            <div
+            <button
+              type="button"
+              onClick={() => setIsOpen(false)}
+              title="Close"
               style={{
+                background: "transparent",
+                color: "#cbd5e1",
+                border: "none",
+                borderRadius: "50%",
+                width: 28,
+                height: 28,
+                cursor: "pointer",
+                fontSize: 14,
                 display: "flex",
                 alignItems: "center",
-                gap: 5,
-                marginTop: 9,
-                overflowX: "auto",
-                scrollbarWidth: "none",
+                justifyContent: "center",
               }}
             >
-              <button
-                type="button"
-                onClick={handleStartNewChat}
-                style={S.headerActionBtn}
-                title="New Chat"
-              >
-                New Chat
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setShowHistoryPanel((prev) => !prev)}
-                style={{
-                  ...S.headerActionBtn,
-                  background: showHistoryPanel ? "#22c55e" : "rgba(255,255,255,0.09)",
-                  color: showHistoryPanel ? "#0f172a" : "#e2e8f0",
-                }}
-                title="Chat History"
-              >
-                History
-              </button>
-
-              <button
-                type="button"
-                onClick={promptPdfOptionsInChat}
-                style={{
-                  ...S.headerActionBtn,
-                  background: "#f59e0b",
-                  color: "#0f172a",
-                  border: "1px solid #f59e0b",
-                  fontWeight: 800,
-                }}
-                title="Download PDF"
-              >
-                Download PDF
-              </button>
-
-              <button
-                type="button"
-                onClick={handleClearHistory}
-                style={S.headerActionBtn}
-                title="Clear History"
-              >
-                Clear History
-              </button>
-
-              {ttsSupported && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    const next = !readAloudEnabled;
-                    setReadAloudEnabled(next);
-                    if (!next && typeof window !== "undefined") {
-                      window.speechSynthesis.cancel();
-                    }
-                  }}
-                  style={{
-                    ...S.headerActionBtn,
-                    background: readAloudEnabled ? "#0c831f" : "rgba(255,255,255,0.09)",
-                    color: readAloudEnabled ? "#ffffff" : "#cbd5e1",
-                  }}
-                  title={readAloudEnabled ? "Voice Read-Aloud On" : "Voice Read-Aloud Off"}
-                >
-                  {readAloudEnabled ? "Audio On" : "Audio Off"}
-                </button>
-              )}
-            </div>
+              ✕
+            </button>
           </div>
 
-          {/* ── HISTORY PANEL (SEARCH, LOAD, RENAME, DELETE, EXPORT) ── */}
-          {showHistoryPanel ? (
-            <div style={{ flex: 1, overflowY: "auto", padding: 12, background: "#f8fafc" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-                <div style={{ fontSize: 12.5, fontWeight: 800, color: "#0f172a" }}>
-                  Saved Sessions ({filteredSessions.length})
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setShowHistoryPanel(false)}
-                  style={{
-                    background: "#e2e8f0",
-                    color: "#0f172a",
-                    border: "none",
-                    borderRadius: 6,
-                    padding: "4px 9px",
-                    fontSize: 11,
-                    fontWeight: 700,
-                    cursor: "pointer",
-                  }}
-                >
-                  Back
-                </button>
-              </div>
-
-              <input
-                type="text"
-                placeholder="Search sessions..."
-                value={historySearch}
-                onChange={(e) => setHistorySearch(e.target.value)}
-                style={{
-                  width: "100%",
-                  padding: "7px 10px",
-                  borderRadius: 8,
-                  border: "1px solid #cbd5e1",
-                  fontSize: 12,
-                  marginBottom: 10,
-                  boxSizing: "border-box",
-                  outline: "none",
-                  background: "#ffffff",
-                }}
-              />
-
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {filteredSessions.map((sess) => (
-                  <div
-                    key={sess.id}
-                    style={{
-                      background: "#ffffff",
-                      border: sess.id === currentSessionId ? "1.5px solid #0c831f" : "1px solid #e2e8f0",
-                      borderRadius: 10,
-                      padding: 10,
-                    }}
-                  >
-                    {renamingSessionId === sess.id ? (
-                      <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
-                        <input
-                          type="text"
-                          value={renameInputText}
-                          onChange={(e) => setRenameInputText(e.target.value)}
-                          style={{
-                            flex: 1,
-                            minWidth: 0,
-                            padding: "5px 8px",
-                            borderRadius: 6,
-                            border: "1px solid #94a3b8",
-                            fontSize: 12,
-                          }}
-                        />
-                        <button
-                          type="button"
-                          onClick={() => handleRenameSession(sess.id)}
-                          style={S.smallSessionBtn}
-                        >
-                          Save
-                        </button>
-                      </div>
-                    ) : (
-                      <div style={{ fontSize: 12, fontWeight: 700, color: "#0f172a" }}>
-                        {sess.title}
-                      </div>
-                    )}
-                    <div style={{ fontSize: 10.5, color: "#64748b", marginTop: 2 }}>
-                      {sess.updatedAt || sess.createdAt} • {(sess.messages || []).length} msgs
-                    </div>
-
-                    <div style={{ display: "flex", gap: 5, marginTop: 8, flexWrap: "wrap" }}>
-                      <button
-                        type="button"
-                        onClick={() => handleLoadSession(sess)}
-                        style={{ ...S.smallSessionBtn, background: "#0c831f", color: "#ffffff", border: "none" }}
-                      >
-                        Open
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          handleLoadSession(sess);
-                          generateAuditxPdf("chat", sess.messages || []);
-                        }}
-                        style={{ ...S.smallSessionBtn, background: "#fef3c7", color: "#92400e", border: "1px solid #fde68a" }}
-                      >
-                        Export PDF
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setRenamingSessionId(sess.id);
-                          setRenameInputText(sess.title || "");
-                        }}
-                        style={S.smallSessionBtn}
-                      >
-                        Rename
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteSession(sess.id)}
-                        style={{ ...S.smallSessionBtn, background: "#fee2e2", color: "#b91c1c", border: "1px solid #fecaca" }}
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : (
-            /* ── MAIN CHAT MESSAGES STREAM (PLAIN TEXT, CLEAN EXECUTIVE BUBBLES) ── */
-            <div
-              ref={chatScrollRef}
-              style={{
-                flex: 1,
-                overflowY: "auto",
-                padding: "14px 12px",
-                background: "#f8fafc",
-                display: "flex",
-                flexDirection: "column",
-                gap: 12,
-              }}
-            >
-              {messages.map((m, idx) => {
-                const isBot = m.role === "bot";
-                const showActions = isBot && !m.hideActions && !m.pdfChoices && !m.downloadAgainOption;
-                return (
-                  <div
-                    key={m.id || idx}
-                    style={{
-                      display: "flex",
-                      flexDirection: "column",
-                      alignItems: isBot ? "flex-start" : "flex-end",
-                    }}
-                  >
-                    <div style={{ display: "flex", alignItems: "flex-start", gap: 8, maxWidth: "92%" }}>
-                      {isBot && (
-                        <div
-                          style={{
-                            width: 26,
-                            height: 26,
-                            borderRadius: "50%",
-                            overflow: "hidden",
-                            border: "1.5px solid #0c831f",
-                            background: "#06101e",
-                            flexShrink: 0,
-                            marginTop: 2,
-                          }}
-                        >
-                          <video
-                            src="/robot_transparent.webm"
-                            autoPlay
-                            loop
-                            muted
-                            playsInline
-                            style={{
-                              width: "100%",
-                              height: "100%",
-                              objectFit: "cover",
-                              transform: "scale(1.22)",
-                              borderRadius: "50%",
-                              display: "block",
-                            }}
-                          />
-                        </div>
-                      )}
-
-                      <div
-                        style={{
-                          background: isBot ? "#ffffff" : "#0c831f",
-                          color: isBot ? "#1e293b" : "#ffffff",
-                          border: isBot
-                            ? m.pinned
-                              ? "1.5px solid #f59e0b"
-                              : "1px solid #e2e8f0"
-                            : "none",
-                          borderRadius: isBot ? "14px 14px 14px 4px" : "14px 14px 4px 14px",
-                          padding: "9px 12px",
-                          fontSize: 12.5,
-                          lineHeight: 1.54,
-                          whiteSpace: "pre-wrap",
-                          wordBreak: "break-word",
-                          boxShadow: "0 1px 3px rgba(15, 23, 42, 0.05)",
-                        }}
-                      >
-                        {m.pinned && (
-                          <div
-                            style={{
-                              fontSize: 9.5,
-                              fontWeight: 800,
-                              color: "#b45309",
-                              background: "#fef3c7",
-                              padding: "1px 6px",
-                              borderRadius: 4,
-                              marginBottom: 5,
-                              display: "inline-block",
-                            }}
-                          >
-                            Pinned
-                          </div>
-                        )}
-
-                        <div>{sanitizePlainText(m.text, false)}</div>
-
-                        {/* PDF 3-Option Chips (a, b, c) */}
-                        {m.pdfChoices && (
-                          <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 9 }}>
-                            {m.pdfChoices.map((ch) => (
-                              <button
-                                key={ch.option}
-                                type="button"
-                                onClick={() => generateAuditxPdf(ch.option)}
-                                disabled={pdfGenerating}
-                                style={{
-                                  background: "#f8fafc",
-                                  border: "1px solid #cbd5e1",
-                                  color: "#0f172a",
-                                  borderRadius: 8,
-                                  padding: "7px 10px",
-                                  fontSize: 11.5,
-                                  fontWeight: 700,
-                                  textAlign: "left",
-                                  cursor: "pointer",
-                                }}
-                              >
-                                {ch.label}
-                              </button>
-                            ))}
-                          </div>
-                        )}
-
-                        {/* Download Again Link after PDF Export */}
-                        {m.downloadAgainOption && (
-                          <div style={{ marginTop: 8 }}>
-                            <button
-                              type="button"
-                              onClick={() => generateAuditxPdf(m.downloadAgainOption)}
-                              style={{
-                                background: "#0c831f",
-                                color: "#ffffff",
-                                border: "none",
-                                borderRadius: 7,
-                                padding: "6px 11px",
-                                fontSize: 11,
-                                fontWeight: 700,
-                                cursor: "pointer",
-                              }}
-                            >
-                              Download again ({m.downloadAgainFileName})
-                            </button>
-                          </div>
-                        )}
-
-                        {/* Subtle Minimal Action Row ONLY on Real Knowledge Answers */}
-                        {showActions && (
-                          <div
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: 4,
-                              marginTop: 7,
-                              paddingTop: 6,
-                              borderTop: "1px solid #f1f5f9",
-                              flexWrap: "wrap",
-                            }}
-                          >
-                            <button
-                              type="button"
-                              onClick={() => handleCopyMessage(m.text)}
-                              style={S.msgActionBtn}
-                              title="Copy"
-                            >
-                              Copy
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleRegenerate(idx)}
-                              style={S.msgActionBtn}
-                              title="Regenerate"
-                            >
-                              Retry
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleTogglePin(m.id)}
-                              style={{
-                                ...S.msgActionBtn,
-                                background: m.pinned ? "#fef3c7" : "transparent",
-                                color: m.pinned ? "#b45309" : "#64748b",
-                              }}
-                              title="Pin key point"
-                            >
-                              {m.pinned ? "Pinned" : "Pin"}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleFeedback(m.id, "up")}
-                              style={{
-                                ...S.msgActionBtn,
-                                background: m.feedback === "up" ? "#dcfce7" : "transparent",
-                                color: m.feedback === "up" ? "#15803d" : "#64748b",
-                              }}
-                              title="Helpful"
-                            >
-                              👍
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleFeedback(m.id, "down")}
-                              style={{
-                                ...S.msgActionBtn,
-                                background: m.feedback === "down" ? "#fee2e2" : "transparent",
-                                color: m.feedback === "down" ? "#b91c1c" : "#64748b",
-                              }}
-                              title="Not helpful"
-                            >
-                              👎
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Smart Follow-up Suggestion Chips */}
-                    {isBot && m.suggestions && m.suggestions.length > 0 && (
-                      <div
-                        style={{
-                          display: "flex",
-                          gap: 5,
-                          flexWrap: "wrap",
-                          marginTop: 6,
-                          marginLeft: 34,
-                        }}
-                      >
-                        {m.suggestions.slice(0, 3).map((sug, sIdx) => (
-                          <button
-                            key={sIdx}
-                            type="button"
-                            onClick={() => handleSendMessage(sug)}
-                            style={{
-                              background: "#ffffff",
-                              border: "1px solid #e2e8f0",
-                              color: "#334155",
-                              borderRadius: 14,
-                              padding: "4px 10px",
-                              fontSize: 11,
-                              fontWeight: 600,
-                              cursor: "pointer",
-                            }}
-                          >
-                            {sug}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-
-              {/* Typing Indicator & Streaming Reveal with Stop Button */}
-              {isStreaming && (
-                <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 6 }}>
-                  <div
-                    style={{
-                      background: "#ffffff",
-                      border: "1px solid #e2e8f0",
-                      borderRadius: "14px 14px 14px 4px",
-                      padding: "9px 12px",
-                      fontSize: 12.5,
-                      color: "#1e293b",
-                      whiteSpace: "pre-wrap",
-                      maxWidth: "90%",
-                    }}
-                  >
-                    <div>{streamingText || "Thinking..."}</div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleStopGenerating}
-                    style={{
-                      background: "#fee2e2",
-                      color: "#b91c1c",
-                      border: "1px solid #fecaca",
-                      borderRadius: 7,
-                      padding: "3px 9px",
-                      fontSize: 10.5,
-                      fontWeight: 700,
-                      cursor: "pointer",
-                    }}
-                  >
-                    Stop
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* ── SLASH COMMAND POPUP WHEN USER TYPES "/" ── */}
-          {showSlashHints && matchingSlashCmds.length > 0 && (
-            <div
-              style={{
-                background: "#0f172a",
-                color: "#ffffff",
-                padding: "7px 10px",
-                borderTop: "1px solid #334155",
-                maxHeight: 155,
-                overflowY: "auto",
-              }}
-            >
-              {matchingSlashCmds.map((sc) => (
+          {/* ── MESSAGE LIST ── */}
+          <div
+            ref={chatScrollRef}
+            style={{
+              flex: 1,
+              overflowY: "auto",
+              padding: "16px 14px",
+              background: "#f8fafc",
+              display: "flex",
+              flexDirection: "column",
+              gap: 14,
+            }}
+          >
+            {messages.map((m, idx) => {
+              const isBot = m.role === "bot";
+              return (
                 <div
-                  key={sc.cmd}
-                  onClick={() => handleSendMessage(sc.cmd)}
+                  key={m.id || idx}
                   style={{
                     display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    gap: 8,
-                    padding: "5px 6px",
-                    borderRadius: 6,
-                    cursor: "pointer",
-                    fontSize: 11.5,
+                    flexDirection: "column",
+                    alignItems: isBot ? "flex-start" : "flex-end",
                   }}
                 >
-                  <b style={{ color: "#4ade80", flexShrink: 0 }}>{sc.cmd}</b>
-                  <span style={{ color: "#cbd5e1", fontSize: 10.5, textAlign: "right" }}>{sc.desc}</span>
-                </div>
-              ))}
-            </div>
-          )}
+                  <div
+                    style={{
+                      maxWidth: "88%",
+                      background: isBot ? "#ffffff" : "#0c831f",
+                      color: isBot ? "#1e293b" : "#ffffff",
+                      border: isBot ? "1px solid #e2e8f0" : "none",
+                      borderRadius: isBot ? "14px 14px 14px 4px" : "14px 14px 4px 14px",
+                      padding: "10px 13px",
+                      fontSize: 13,
+                      lineHeight: 1.56,
+                      whiteSpace: "pre-wrap",
+                      wordBreak: "break-word",
+                      boxShadow: "0 1px 2px rgba(15, 23, 42, 0.04)",
+                    }}
+                  >
+                    <div>{sanitizePlainText(m.text, false)}</div>
 
-          {/* ── CLEAN RESPONSIVE INPUT BAR (minWidth: 0 PREVENTS BUTTON CLIPPING) ── */}
+                    {/* Physical Warehouse Model Showcase when discussing the 9 bays / prototype */}
+                    {m.showcaseImage && (
+                      <div style={{ marginTop: 10, borderRadius: 10, overflow: "hidden", border: "1px solid #e2e8f0" }}>
+                        <img
+                          src={m.showcaseImage}
+                          alt="AUDIT'X Physical Dark Store Model"
+                          style={{ width: "100%", height: "auto", display: "block" }}
+                        />
+                      </div>
+                    )}
+
+                    {/* Single Small File Card ONLY in the reply to a PDF request */}
+                    {m.pdfDownload && (
+                      <div
+                        style={{
+                          marginTop: 10,
+                          padding: "8px 10px",
+                          background: "#f8fafc",
+                          border: "1px solid #cbd5e1",
+                          borderRadius: 8,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          gap: 10,
+                          fontSize: 12,
+                        }}
+                      >
+                        <span style={{ fontWeight: 600, color: "#0f172a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {m.pdfDownload.fileName}
+                        </span>
+                        {m.pdfDownload.blobUrl ? (
+                          <a
+                            href={m.pdfDownload.blobUrl}
+                            download={m.pdfDownload.fileName}
+                            style={{
+                              color: "#0c831f",
+                              fontWeight: 700,
+                              textDecoration: "underline",
+                              flexShrink: 0,
+                            }}
+                          >
+                            Download
+                          </a>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => generateAuditxPdf(m.pdfDownload.optionType)}
+                            style={{
+                              background: "none",
+                              border: "none",
+                              color: "#0c831f",
+                              fontWeight: 700,
+                              textDecoration: "underline",
+                              cursor: "pointer",
+                              padding: 0,
+                              fontSize: 12,
+                              flexShrink: 0,
+                            }}
+                          >
+                            Download
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+
+            {/* Subtle Typing / Streaming Bubble */}
+            {isStreaming && (
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start" }}>
+                <div
+                  style={{
+                    maxWidth: "88%",
+                    background: "#ffffff",
+                    border: "1px solid #e2e8f0",
+                    borderRadius: "14px 14px 14px 4px",
+                    padding: "10px 13px",
+                    fontSize: 13,
+                    lineHeight: 1.56,
+                    color: "#1e293b",
+                    whiteSpace: "pre-wrap",
+                    wordBreak: "break-word",
+                  }}
+                >
+                  {streamingText || "..."}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* ── SINGLE INPUT BOX WITH SEND BUTTON (AND SMALL STOP ICON ONLY WHILE STREAMING) ── */}
           <form
             onSubmit={(e) => {
               e.preventDefault();
               handleSendMessage();
             }}
             style={{
-              padding: "9px 10px",
+              padding: "10px 12px",
               background: "#ffffff",
               borderTop: "1px solid #e2e8f0",
               display: "flex",
               alignItems: "center",
-              gap: 6,
+              gap: 8,
               boxSizing: "border-box",
               width: "100%",
             }}
           >
-            {speechSupported && (
-              <button
-                type="button"
-                onClick={handleToggleVoiceInput}
-                title={isListening ? "Stop voice input" : "Voice input"}
-                style={{
-                  background: isListening ? "#dc2626" : "#f1f5f9",
-                  color: isListening ? "#ffffff" : "#334155",
-                  border: "1px solid #e2e8f0",
-                  borderRadius: 10,
-                  width: 36,
-                  height: 36,
-                  fontSize: 14,
-                  cursor: "pointer",
-                  flexShrink: 0,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                {isListening ? "●" : "🎙"}
-              </button>
-            )}
-
-            <input
-              type="text"
-              placeholder="Ask anything about AUDIT'X..."
-              value={inputVal}
-              onChange={(e) => setInputVal(e.target.value)}
+            <div
               style={{
                 flex: 1,
                 minWidth: 0,
-                width: "100%",
-                padding: "9px 11px",
-                borderRadius: 10,
-                border: "1px solid #cbd5e1",
-                fontSize: 12.5,
-                color: "#0f172a",
+                display: "flex",
+                alignItems: "center",
                 background: "#f8fafc",
-                outline: "none",
-                boxSizing: "border-box",
+                border: "1px solid #cbd5e1",
+                borderRadius: 10,
+                paddingRight: isStreaming ? 6 : 0,
               }}
-            />
+            >
+              <input
+                type="text"
+                placeholder="Message AUDIT'X Mini..."
+                value={inputVal}
+                onChange={(e) => setInputVal(e.target.value)}
+                style={{
+                  flex: 1,
+                  minWidth: 0,
+                  width: "100%",
+                  padding: "9px 12px",
+                  border: "none",
+                  background: "transparent",
+                  fontSize: 13,
+                  color: "#0f172a",
+                  outline: "none",
+                  boxSizing: "border-box",
+                }}
+              />
+              {isStreaming && (
+                <button
+                  type="button"
+                  onClick={handleStopStreaming}
+                  title="Stop"
+                  style={{
+                    background: "#0f172a",
+                    color: "#ffffff",
+                    border: "none",
+                    borderRadius: 6,
+                    width: 24,
+                    height: 24,
+                    fontSize: 10,
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    flexShrink: 0,
+                  }}
+                >
+                  ■
+                </button>
+              )}
+            </div>
 
             <button
               type="submit"
@@ -2132,10 +1842,10 @@ export default function AuditxMiniAssistant() {
                 color: "#ffffff",
                 border: "none",
                 borderRadius: 10,
-                height: 36,
-                padding: "0 14px",
-                fontSize: 12,
-                fontWeight: 800,
+                height: 38,
+                padding: "0 15px",
+                fontSize: 13,
+                fontWeight: 700,
                 cursor: "pointer",
                 flexShrink: 0,
                 whiteSpace: "nowrap",
@@ -2149,38 +1859,3 @@ export default function AuditxMiniAssistant() {
     </>
   );
 }
-
-const S = {
-  headerActionBtn: {
-    background: "rgba(255,255,255,0.09)",
-    color: "#e2e8f0",
-    border: "1px solid rgba(255,255,255,0.14)",
-    borderRadius: 6,
-    padding: "4px 8px",
-    fontSize: 10.5,
-    fontWeight: 700,
-    cursor: "pointer",
-    whiteSpace: "nowrap",
-    flexShrink: 0,
-  },
-  msgActionBtn: {
-    background: "transparent",
-    color: "#64748b",
-    border: "none",
-    borderRadius: 4,
-    padding: "2px 6px",
-    fontSize: 10.5,
-    fontWeight: 600,
-    cursor: "pointer",
-  },
-  smallSessionBtn: {
-    background: "#f1f5f9",
-    color: "#334155",
-    border: "1px solid #cbd5e1",
-    borderRadius: 6,
-    padding: "3px 8px",
-    fontSize: 10.5,
-    fontWeight: 700,
-    cursor: "pointer",
-  },
-};
