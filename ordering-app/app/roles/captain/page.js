@@ -573,7 +573,7 @@ export default function DeliveryCaptainApp() {
                     style={{ ...S.dutyBtn, background: isCheckedIn ? "#0c831f" : "#dc2626" }}
                     onClick={handleToggleDuty}
                   >
-                    {isCheckedIn ? "🟢 ON DUTY" : "🔴 OFFLINE"}
+                    {isCheckedIn ? "🟢 ON DUTY" : "🔴 OFF DUTY"}
                   </button>
 
                   <button
@@ -725,51 +725,6 @@ export default function DeliveryCaptainApp() {
             </div>
           </div>
         </header>
-
-        {/* OFFLINE SHIFT PROMPT BANNER */}
-        {!isCheckedIn && (
-          <div
-            style={{
-              background: "linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%)",
-              border: "1.5px solid #ef4444",
-              borderRadius: 12,
-              padding: "10px 14px",
-              margin: "10px 12px 0",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: 8,
-              boxShadow: "0 2px 10px rgba(239, 68, 68, 0.12)",
-            }}
-          >
-            <div>
-              <div style={{ fontSize: 12, fontWeight: 800, color: "#b91c1c" }}>
-                🔴 SHIFT OFFLINE • DUTY OFF
-              </div>
-              <div style={{ fontSize: 11, color: "#7f1d1d", marginTop: 2 }}>
-                Scan SM Dashboard QR to start shift & receive staged delivery tasks
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={handleToggleDuty}
-              style={{
-                background: "#0c831f",
-                color: "#ffffff",
-                border: "none",
-                padding: "8px 13px",
-                borderRadius: 8,
-                fontSize: 11.5,
-                fontWeight: 800,
-                cursor: "pointer",
-                whiteSpace: "nowrap",
-                boxShadow: "0 2px 8px rgba(12, 131, 31, 0.3)",
-              }}
-            >
-              Turn Duty ON ⚡
-            </button>
-          </div>
-        )}
 
         {/* ─── MAIN CONTENT — WHITE THEME ─── */}
         <main style={S.main}>

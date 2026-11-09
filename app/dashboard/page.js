@@ -321,8 +321,8 @@ export default function WarehouseDashboardPage() {
           playNotificationChime();
           setActionSuccess(
             deviceStatus === "LOGGED_IN"
-              ? `🟢 ${staffName} is LOGGED IN on ${deviceName}!`
-              : `🔴 ${staffName} is LOGGED OUT on ${deviceName}.`
+              ? `🟢 ${staffName} turned Duty ON on ${deviceName}!`
+              : `🔴 ${staffName} turned Duty OFF on ${deviceName}.`
           );
           setTimeout(() => setActionSuccess(""), 4000);
         }
@@ -1060,7 +1060,7 @@ export default function WarehouseDashboardPage() {
                         color: deviceFleet.thrupthi === "LOGGED_IN" ? "#6ee7b7" : "#fca5a5",
                       }}
                     >
-                      {deviceFleet.thrupthi === "LOGGED_IN" ? "🟢 LOGGED IN" : "🔴 LOGGED OUT"}
+                      {deviceFleet.thrupthi === "LOGGED_IN" ? "🟢 ON DUTY" : "🔴 OFF DUTY"}
                     </span>
                     <a
                       href="/picker"
@@ -1106,7 +1106,7 @@ export default function WarehouseDashboardPage() {
                         color: deviceFleet.sinchana === "LOGGED_IN" ? "#6ee7b7" : "#fca5a5",
                       }}
                     >
-                      {deviceFleet.sinchana === "LOGGED_IN" ? "🟢 LOGGED IN" : "🔴 LOGGED OUT"}
+                      {deviceFleet.sinchana === "LOGGED_IN" ? "🟢 ON DUTY" : "🔴 OFF DUTY"}
                     </span>
                     <a
                       href="/rider"
@@ -2061,7 +2061,7 @@ export default function WarehouseDashboardPage() {
                                 color: deviceFleet[p.id] === "LOGGED_IN" ? "#15803d" : "#b91c1c",
                               }}
                             >
-                              {deviceFleet[p.id] === "LOGGED_IN" ? "🟢 LOGGED IN" : "🔴 LOGGED OUT"}
+                              {deviceFleet[p.id] === "LOGGED_IN" ? "🟢 ON DUTY" : "🔴 OFF DUTY"}
                             </span>
                           ) : (
                             <span style={S.onlineBadge}>● {p.online ? "ONLINE" : "OFFLINE"}</span>
