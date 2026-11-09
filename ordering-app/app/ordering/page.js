@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { CATALOG } from "@/lib/items";
 import { broadcastEvent, subscribeToEvents, saveLiveOrder, getAllLiveOrders, updateLiveOrder, clearAllLiveOrders, getAllLiveComplaints, sanitizeComplaints } from "@/lib/realtimeSync";
@@ -9,6 +9,7 @@ import { getRandomStagingRack } from "@/lib/roles";
 import AuditxLogo from "@/components/AuditxLogo";
 import AuditxMiniAssistant from "@/components/AuditxMiniAssistant";
 import GoogleAuthButton from "@/components/GoogleAuthButton";
+import OrderPlacedSheet from "@/components/ui/OrderPlacedSheet";
 import {
   IconLightning,
   IconRealisticScooter,
@@ -322,6 +323,8 @@ export default function OrderingAppPage() {
   const [itemStarsMap, setItemStarsMap] = useState({});
   const [rateFeedbackText, setRateFeedbackText] = useState("");
   const [rateCompleted, setRateCompleted] = useState(false);
+  const [placedOrderAnimation, setPlacedOrderAnimation] = useState(null);
+  const playedOrderPlacedIds = useRef(new Set());
 
   // Customer Complaint System (Synced with SM Bhaskar N S & ASM Deepu B Dashboard)
   const [showComplaintModal, setShowComplaintModal] = useState(false);
@@ -944,11 +947,24 @@ export default function OrderingAppPage() {
 
     triggerToast(`Order #${orderId} Placed Successfully! Delivery in 8 mins!`);
 
-    // 3. Clear cart and redirect to live tracking screen
+    // 3. Clear cart and trigger premium OrderPlacedSheet celebration overlay
+    const currentItemCount = totalItems;
+    const currentTotal = grandTotal;
     setCart({});
-    setTimeout(() => {
-      router.push(`/track/${orderId}`);
-    }, 400);
+
+    if (!playedOrderPlacedIds.current.has(orderId)) {
+      playedOrderPlacedIds.current.add(orderId);
+      setPlacedOrderAnimation({
+        orderId,
+        etaMinutes: 10,
+        itemCount: currentItemCount,
+        total: currentTotal,
+      });
+    } else {
+      setTimeout(() => {
+        router.push(`/track/${orderId}`);
+      }, 400);
+    }
   }
 
   // Render Address Icon
@@ -988,6 +1004,21 @@ export default function OrderingAppPage() {
 
       {/* Smartphone Device Shell Container (Dedicated Mobile Layout) */}
       <div style={S.mobileShell}>
+        {/* ── FULL-SCREEN ORDER PLACED CELEBRATION SHEET OVERLAY ── */}
+        {placedOrderAnimation && (
+          <OrderPlacedSheet
+            orderId={placedOrderAnimation.orderId}
+            etaMinutes={placedOrderAnimation.etaMinutes}
+            itemCount={placedOrderAnimation.itemCount}
+            total={placedOrderAnimation.total}
+            onDone={() => {
+              const destId = placedOrderAnimation.orderId;
+              setPlacedOrderAnimation(null);
+              router.push(`/track/${destId}`);
+            }}
+          />
+        )}
+
         {/* ── 1. TOP HEADER (DELIVERY & ADDRESS BAR) ── */}
         <header style={S.topHeader}>
           <div style={S.headerContainer}>

@@ -11,6 +11,7 @@ import { STAGING_RACKS } from "@/lib/roles";
 import AuditxLogo from "@/components/AuditxLogo";
 import AndroidPhoneShell from "@/components/AndroidPhoneShell";
 import GoogleAuthButton from "@/components/GoogleAuthButton";
+import DeliveredSheet from "@/components/ui/DeliveredSheet";
 import {
   IconRealisticScooter,
   IconRealisticSliderArrow,
@@ -55,6 +56,8 @@ export default function DeliveryCaptainApp() {
   const [sinchanaWalletBalance, setSinchanaWalletBalance] = useState(28);
   const [sinchanaTotalGigsKm, setSinchanaTotalGigsKm] = useState(5.1);
   const [gigFormSubmitted, setGigFormSubmitted] = useState(false);
+  const [showDeliveredSheet, setShowDeliveredSheet] = useState(false);
+  const playedDeliveredIds = useRef(new Set());
   const timerRef = useRef(null);
   const transitRef = useRef(null);
 
@@ -369,6 +372,14 @@ export default function DeliveryCaptainApp() {
 
     setGigFormSubmitted(false);
     setActiveStep("delivered");
+
+    // Trigger polished DeliveredSheet celebration overlay (plays once per orderId)
+    const orderKey = activeOrder.orderNumber || activeOrder.id;
+    if (!playedDeliveredIds.current.has(orderKey)) {
+      playedDeliveredIds.current.add(orderKey);
+      setShowDeliveredSheet(true);
+    }
+
     if (typeof window !== "undefined") {
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
@@ -402,6 +413,16 @@ export default function DeliveryCaptainApp() {
     >
       <AuditxAnimatedStyles />
       <div style={S.container}>
+        {/* ── FULL-SCREEN ORDER DELIVERED CELEBRATION SHEET OVERLAY ── */}
+        {showDeliveredSheet && (
+          <DeliveredSheet
+            orderId={activeOrder?.orderNumber || activeOrder?.id}
+            elapsedSeconds={elapsedSec}
+            slaSeconds={CAPTAIN_SLA_SECONDS}
+            onDone={() => setShowDeliveredSheet(false)}
+          />
+        )}
+
         {actionSuccess && <div style={S.toast}>{actionSuccess}</div>}
 
         {/* ── 1. TOP HEADER (MATCHING ORDERING PAGE THEME) ── */}
@@ -1246,6 +1267,7 @@ const S = {
   container: {
     minHeight: "100%",
     width: "100%",
+    position: "relative",
     background: "#f8fafc",
     color: "#0f172a",
     fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
