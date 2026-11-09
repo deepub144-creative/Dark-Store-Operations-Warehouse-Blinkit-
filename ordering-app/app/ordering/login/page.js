@@ -146,7 +146,18 @@ export default function CustomerInteractiveLoginPage() {
                     Authorized JavaScript origin:
                   </span>
                   <code style={styles.codeSnippet}>
-                    {currentOrigin || "https://auditx-pi.vercel.app"}
+                    {currentOrigin || "http://localhost:3000"}
+                  </code>
+                </div>
+                <div style={{ marginBottom: 6 }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: "#451a03" }}>
+                    Authorized redirect URIs (add both):
+                  </span>
+                  <code style={styles.codeSnippet}>
+                    {currentOrigin || "http://localhost:3000"}
+                  </code>
+                  <code style={styles.codeSnippet}>
+                    {(currentOrigin || "http://localhost:3000") + "/ordering"}
                   </code>
                 </div>
                 <div>

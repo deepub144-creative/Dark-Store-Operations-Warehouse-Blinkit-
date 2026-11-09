@@ -606,7 +606,7 @@ export default function OrderingAppPage() {
           if (prev <= 1) {
             setOrderingStage("rider_arrived");
             playSuccessChime();
-            triggerToast("🛵 Rider arrived to your location! Show Handover QR Code to Rider.");
+            triggerToast("🛵 Rider arrived at your doorstep! Delivering your order.");
             return 0;
           }
           return prev - 1;
@@ -2938,7 +2938,7 @@ export default function OrderingAppPage() {
                   {activeDeliveryOrder.status === "delivered" || orderingStage === "delivered"
                     ? "⭐ Doorstep Complete"
                     : orderingStage === "rider_arrived"
-                    ? "📲 Show QR"
+                    ? "🛵 At Doorstep"
                     : orderingStage === "almost_doorstep"
                     ? "⚡ Reaching Now"
                     : orderingStage === "one_minute"
@@ -2959,7 +2959,7 @@ export default function OrderingAppPage() {
                 {activeDeliveryOrder.status === "delivered" || orderingStage === "delivered"
                   ? "Delivered • Tap to rate rider & items"
                   : orderingStage === "rider_arrived"
-                  ? "Please show your handover QR code at the doorstep"
+                  ? "Rider Sinchana B R is at your doorstep with your bag"
                   : "Your order is on the way to your doorstep"}
               </div>
             </div>
@@ -3034,7 +3034,7 @@ export default function OrderingAppPage() {
                     router.push(`/track/${activeDeliveryOrder.orderNumber || activeDeliveryOrder.id || activeDeliveryOrder.orderId}`);
                   }}
                 >
-                  <span>{orderingStage === "rider_arrived" ? "Show QR" : "View"}</span>
+                  <span>View Details</span>
                   <IconArrowRight size={14} color="#ffffff" />
                 </button>
               </>
