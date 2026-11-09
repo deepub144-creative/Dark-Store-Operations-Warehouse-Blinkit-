@@ -828,6 +828,29 @@ export default function OrderingAppPage() {
   const grandTotal = Math.max(0, itemSubtotal - couponSavings + deliveryFee + handlingFee);
   const totalSavings = productDiscount + couponSavings + 25;
 
+  // ── ONGOING ORDER TRACKING LOCK (Cannot order another item while an order is actively being tracked) ──
+  const ongoingTrackedOrder = useMemo(() => {
+    if (activeDeliveryOrder) {
+      const st = (activeDeliveryOrder.status || "").toLowerCase();
+      if (st !== "delivered" && st !== "cancelled") {
+        return activeDeliveryOrder;
+      }
+    }
+    try {
+      const liveOrders = getAllLiveOrders();
+      if (Array.isArray(liveOrders)) {
+        const ongoing = liveOrders.find((o) => {
+          const st = (o.status || "").toLowerCase();
+          return st !== "delivered" && st !== "cancelled";
+        });
+        if (ongoing) return ongoing;
+      }
+    } catch (e) {}
+    return null;
+  }, [activeDeliveryOrder]);
+
+  const hasOngoingOrder = !!ongoingTrackedOrder;
+
   // Upsell Recommendations ("Before you checkout")
   const upsellRecommendations = useMemo(() => {
     return CATALOG.filter((c) => !cart[c.sku] && !oosList.includes(c.sku) && !c.comingSoon).slice(0, 6);
@@ -854,6 +877,13 @@ export default function OrderingAppPage() {
 
   // Final Order Placement
   async function handleFinalOrderPlacement() {
+    if (hasOngoingOrder) {
+      const ongoingId = ongoingTrackedOrder?.orderNumber || ongoingTrackedOrder?.id || ongoingTrackedOrder?.orderId || "Current Order";
+      triggerToast(`⚠️ Active Order in Progress! Order #${ongoingId} is currently being tracked. New orders cannot be placed until this delivery finishes.`);
+      setPlacingOrder(false);
+      setShowPaymentModal(false);
+      return;
+    }
     if (!isStoreOpen) {
       triggerToast("🛑 Oops! Your Store is now closed , opening soon");
       setPlacingOrder(false);
@@ -1294,6 +1324,55 @@ export default function OrderingAppPage() {
               <span style={S.cartCountHeader}>{totalItems} items in cart</span>
             </div>
 
+            {/* ACTIVE ORDER ONGOING TRACKING LOCK BANNER */}
+            {hasOngoingOrder && (
+              <div
+                style={{
+                  background: "linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%)",
+                  border: "1.5px solid #f59e0b",
+                  borderRadius: 14,
+                  padding: "14px 16px",
+                  marginBottom: 16,
+                  boxShadow: "0 4px 14px rgba(245, 158, 11, 0.18)",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+                  <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+                    <span style={{ fontSize: 24, lineHeight: 1 }}>🛵</span>
+                    <div>
+                      <div style={{ fontSize: 13.5, fontWeight: 900, color: "#92400e" }}>
+                        Ongoing Delivery Active • Order #{ongoingTrackedOrder.orderNumber || ongoingTrackedOrder.id}
+                      </div>
+                      <div style={{ fontSize: 11.5, color: "#b45309", marginTop: 3, lineHeight: 1.45 }}>
+                        You cannot place another order while live tracking is in progress. Your cart items are safely preserved and checkout will automatically unlock once this order finishes and is delivered!
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const ordId = ongoingTrackedOrder.orderNumber || ongoingTrackedOrder.id || ongoingTrackedOrder.orderId;
+                      router.push(`/track/${ordId}`);
+                    }}
+                    style={{
+                      background: "#d97706",
+                      color: "#ffffff",
+                      border: "none",
+                      borderRadius: 8,
+                      padding: "8px 12px",
+                      fontSize: 11.5,
+                      fontWeight: 800,
+                      cursor: "pointer",
+                      whiteSpace: "nowrap",
+                      flexShrink: 0,
+                    }}
+                  >
+                    Track Live 📍
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* 1. TOP DELIVERY & ADDRESS BAR (IN CHECKOUT) */}
             <div style={S.checkoutCard}>
               <div style={S.checkoutEtaHeader}>
@@ -1580,18 +1659,27 @@ export default function OrderingAppPage() {
             <section style={S.checkoutCard}>
               <div style={S.sectionHeaderRow}>
                 <h3 style={S.cardSectionTitle}>PAYMENT METHOD</h3>
-                <button
-                  type="button"
-                  style={S.changeLinkBtn}
-                  onClick={() => setShowPaymentModal(true)}
-                >
-                  Change
-                </button>
+                {!hasOngoingOrder && (
+                  <button
+                    type="button"
+                    style={S.changeLinkBtn}
+                    onClick={() => setShowPaymentModal(true)}
+                  >
+                    Change
+                  </button>
+                )}
               </div>
 
               <div
                 style={S.selectedPaymentMethodRow}
-                onClick={() => setShowPaymentModal(true)}
+                onClick={() => {
+                  if (hasOngoingOrder) {
+                    const ordId = ongoingTrackedOrder.orderNumber || ongoingTrackedOrder.id || ongoingTrackedOrder.orderId;
+                    router.push(`/track/${ordId}`);
+                  } else {
+                    setShowPaymentModal(true);
+                  }
+                }}
               >
                 <div style={S.paymentMethodLeftPreview}>
                   <IconRealLogoAuditxWallet size={36} />
@@ -1624,19 +1712,44 @@ export default function OrderingAppPage() {
                   <span style={S.stickyTotalWord}>Total</span>
                 </div>
                 <div style={S.stickySavingsNote}>
-                  Paid through <b>Audit'X Demo Wallet</b>
+                  {hasOngoingOrder ? (
+                    <span style={{ color: "#d97706", fontWeight: 700 }}>
+                      ⚠️ Active: #{ongoingTrackedOrder.orderNumber || ongoingTrackedOrder.id}
+                    </span>
+                  ) : (
+                    <span>Paid through <b>Audit'X Demo Wallet</b></span>
+                  )}
                 </div>
               </div>
 
-              <button
-                type="button"
-                style={S.proceedToPayCTA}
-                onClick={() => setShowPaymentModal(true)}
-                disabled={placingOrder || cartItemsList.length === 0}
-              >
-                <span>{placingOrder ? "DISPATCHING..." : "PAY VIA AUDIT'X WALLET"}</span>
-                <IconArrowRight size={18} color="#ffffff" />
-              </button>
+              {hasOngoingOrder ? (
+                <button
+                  type="button"
+                  style={{
+                    ...S.proceedToPayCTA,
+                    background: "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)",
+                    boxShadow: "0 4px 14px rgba(217, 119, 6, 0.4)",
+                  }}
+                  onClick={() => {
+                    const ordId = ongoingTrackedOrder.orderNumber || ongoingTrackedOrder.id || ongoingTrackedOrder.orderId;
+                    router.push(`/track/${ordId}`);
+                  }}
+                  title="An order is actively being tracked. Click to view live delivery."
+                >
+                  <span>🛵 TRACK ACTIVE DELIVERY</span>
+                  <IconArrowRight size={18} color="#ffffff" />
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  style={S.proceedToPayCTA}
+                  onClick={() => setShowPaymentModal(true)}
+                  disabled={placingOrder || cartItemsList.length === 0}
+                >
+                  <span>{placingOrder ? "DISPATCHING..." : "PAY VIA AUDIT'X WALLET"}</span>
+                  <IconArrowRight size={18} color="#ffffff" />
+                </button>
+              )}
             </div>
           </div>
         </main>
@@ -1644,6 +1757,57 @@ export default function OrderingAppPage() {
         /* ── CATALOG BROWSE VIEW (STORE WITH SMART CART BAR) ── */
         <main style={S.catalogMain}>
           <div style={S.catalogContainer}>
+            {/* Top Ongoing Order Alert in Catalog */}
+            {hasOngoingOrder && (
+              <div
+                style={{
+                  background: "linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%)",
+                  border: "1.5px solid #f59e0b",
+                  borderRadius: 12,
+                  padding: "10px 14px",
+                  marginBottom: 12,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 10,
+                  boxShadow: "0 2px 8px rgba(245, 158, 11, 0.15)",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                  <span style={{ fontSize: 20 }}>🛵</span>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 12.5, fontWeight: 800, color: "#92400e" }}>
+                      Order #{ongoingTrackedOrder.orderNumber || ongoingTrackedOrder.id} is Live &amp; Tracked
+                    </div>
+                    <div style={{ fontSize: 11, color: "#b45309" }}>
+                      Express delivery underway • New order checkout unlocks automatically once delivered!
+                    </div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const ordId = ongoingTrackedOrder.orderNumber || ongoingTrackedOrder.id || ongoingTrackedOrder.orderId;
+                    router.push(`/track/${ordId}`);
+                  }}
+                  style={{
+                    background: "#d97706",
+                    color: "#ffffff",
+                    border: "none",
+                    borderRadius: 7,
+                    padding: "6px 12px",
+                    fontSize: 11,
+                    fontWeight: 800,
+                    cursor: "pointer",
+                    whiteSpace: "nowrap",
+                    flexShrink: 0,
+                  }}
+                >
+                  Track Live →
+                </button>
+              </div>
+            )}
+
             {activeBottomTab === "home" && (
               <>
                 {/* Search Bar */}
@@ -2628,14 +2792,43 @@ export default function OrderingAppPage() {
                     </div>
                   </div>
 
-                  <button
-                    type="button"
-                    style={S.floatingViewCartCTA}
-                    onClick={() => setIsCheckoutView(true)}
-                  >
-                    <span>View Cart & Checkout</span>
-                    <IconArrowRight size={16} color="#ffffff" />
-                  </button>
+                  {hasOngoingOrder ? (
+                    <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                      <button
+                        type="button"
+                        style={{
+                          ...S.floatingViewCartCTA,
+                          background: "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)",
+                          padding: "7px 10px",
+                          fontSize: 11,
+                        }}
+                        onClick={() => {
+                          const ordId = ongoingTrackedOrder.orderNumber || ongoingTrackedOrder.id || ongoingTrackedOrder.orderId;
+                          router.push(`/track/${ordId}`);
+                        }}
+                        title="Delivery ongoing. Click to track."
+                      >
+                        <span>🛵 Track Live</span>
+                      </button>
+                      <button
+                        type="button"
+                        style={{ ...S.floatingViewCartCTA, padding: "7px 12px" }}
+                        onClick={() => setIsCheckoutView(true)}
+                      >
+                        <span>Cart ({totalItems})</span>
+                        <IconArrowRight size={14} color="#ffffff" />
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      style={S.floatingViewCartCTA}
+                      onClick={() => setIsCheckoutView(true)}
+                    >
+                      <span>View Cart & Checkout</span>
+                      <IconArrowRight size={16} color="#ffffff" />
+                    </button>
+                  )}
                 </div>
               </div>
             )}
@@ -3361,19 +3554,52 @@ export default function OrderingAppPage() {
             </div>
 
             <div style={S.modalFooterCTA}>
-              <button
-                type="button"
-                style={S.confirmPayBtn}
-                onClick={handleFinalOrderPlacement}
-                disabled={placingOrder}
-              >
-                <span>
-                  {placingOrder
-                    ? "Dispatching to OD Picker..."
-                    : `Pay ₹${grandTotal} via ${selectedPaymentMethod === "wallet" ? "Audit'X Demo Wallet" : "Cash on Delivery"}`}
-                </span>
-                <IconArrowRight size={18} color="#ffffff" />
-              </button>
+              {hasOngoingOrder ? (
+                <div style={{ width: "100%", textAlign: "center" }}>
+                  <div
+                    style={{
+                      background: "#fef3c7",
+                      border: "1px solid #f59e0b",
+                      borderRadius: 8,
+                      padding: "8px 12px",
+                      marginBottom: 8,
+                      color: "#92400e",
+                      fontSize: 11.5,
+                      fontWeight: 700,
+                    }}
+                  >
+                    ⚠️ Order #{ongoingTrackedOrder.orderNumber || ongoingTrackedOrder.id} is actively in transit. New orders cannot be placed at the same time.
+                  </div>
+                  <button
+                    type="button"
+                    style={{
+                      ...S.confirmPayBtn,
+                      background: "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)",
+                    }}
+                    onClick={() => {
+                      setShowPaymentModal(false);
+                      const ordId = ongoingTrackedOrder.orderNumber || ongoingTrackedOrder.id || ongoingTrackedOrder.orderId;
+                      router.push(`/track/${ordId}`);
+                    }}
+                  >
+                    <span>🛵 TRACK ACTIVE ORDER →</span>
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  style={S.confirmPayBtn}
+                  onClick={handleFinalOrderPlacement}
+                  disabled={placingOrder}
+                >
+                  <span>
+                    {placingOrder
+                      ? "Dispatching to OD Picker..."
+                      : `Pay ₹${grandTotal} via ${selectedPaymentMethod === "wallet" ? "Audit'X Demo Wallet" : "Cash on Delivery"}`}
+                  </span>
+                  <IconArrowRight size={18} color="#ffffff" />
+                </button>
+              )}
             </div>
           </div>
         </div>

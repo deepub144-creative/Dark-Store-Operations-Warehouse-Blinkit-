@@ -12,6 +12,32 @@ export async function POST(req) {
       return NextResponse.json({ error: "Cart is empty" }, { status: 400 });
     }
 
+    // STRICT CONCURRENT ORDER LOCK: If an order is already actively in transit, prevent ordering another item
+    if (adminDb) {
+      try {
+        const phone = customerPhone || "9000000000";
+        const ongoingSnap = await adminDb
+          .collection("orders")
+          .where("customerPhone", "==", phone)
+          .where("status", "in", ["pending", "placed", "ASSIGNED", "picking", "picked", "staged", "dispatched", "en_route"])
+          .limit(1)
+          .get();
+
+        if (!ongoingSnap.empty) {
+          const ongoing = ongoingSnap.docs[0].data();
+          return NextResponse.json(
+            {
+              error: `Order #${ongoing.orderId || ongoing.id} is actively being tracked. You cannot place a new order until delivery is completed.`,
+              activeOrderId: ongoing.orderId || ongoing.id,
+            },
+            { status: 409 }
+          );
+        }
+      } catch (err) {
+        console.warn("API active order check note:", err?.message);
+      }
+    }
+
     const items = cart.map(({ sku, qty }) => {
       const catItem = CATALOG.find((c) => c.sku === sku) || {};
       return {
