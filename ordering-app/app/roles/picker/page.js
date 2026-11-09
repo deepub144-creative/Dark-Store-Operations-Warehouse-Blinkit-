@@ -26,6 +26,8 @@ import { CATALOG } from "@/lib/items";
 import AuditxLogo from "@/components/AuditxLogo";
 import AndroidPhoneShell from "@/components/AndroidPhoneShell";
 import GoogleAuthButton from "@/components/GoogleAuthButton";
+import StaffAppLoginScreen from "@/components/StaffAppLoginScreen";
+import SmDutyQrScannerModal from "@/components/SmDutyQrScannerModal";
 import {
   IconAnimPicker,
   IconAnimPutaway,
@@ -110,10 +112,31 @@ export const WAREHOUSE_OPERATIONS = [
 ];
 
 export default function OdPickerApp() {
-  const [isOnline, setIsOnline] = useState(true);
+  const [isPickerLoggedIn, setIsPickerLoggedIn] = useState(false);
+  const [showDutyQrModal, setShowDutyQrModal] = useState(false);
+  const [isOnline, setIsOnline] = useState(false);
   const [loginSeconds, setLoginSeconds] = useState(1); // Starts at 0m 1s live tracking
   const [unassignedOrders, setUnassignedOrders] = useState([]);
   const [activeOrder, setActiveOrder] = useState(null);
+
+  // Restore authenticated session from localStorage if present
+  useEffect(() => {
+    try {
+      if (typeof window !== "undefined" && localStorage.getItem("auditx_picker_authenticated") === "true") {
+        setIsPickerLoggedIn(true);
+      }
+    } catch (e) {}
+  }, []);
+
+  function handleToggleDuty() {
+    if (!isOnline) {
+      setShowDutyQrModal(true);
+    } else {
+      setIsOnline(false);
+      setActionSuccess("Shift paused • OD Picker is now OFFLINE");
+      setTimeout(() => setActionSuccess(""), 2500);
+    }
+  }
 
   // Live Login Hours / Active Shift Timer for OD Picker Thrupthi K S
   useEffect(() => {
@@ -763,73 +786,174 @@ export default function OdPickerApp() {
       homeRoute="/picker"
       navBg="#ffffff"
     >
-      <div style={S.container}>
-        {actionSuccess && <div style={S.toast}>{actionSuccess}</div>}
+      {!isPickerLoggedIn ? (
+        <StaffAppLoginScreen
+          roleCode="PICKER"
+          roleName="OD Picker Lead"
+          staffName="Thrupthi K S"
+          authorizedPhone="6362435746"
+          avatar="📦"
+          logo="/thrupthi-logo.png"
+          deviceId="DEV-PCK-6362"
+          onLoginSuccess={() => {
+            setIsPickerLoggedIn(true);
+            try {
+              localStorage.setItem("auditx_picker_authenticated", "true");
+              localStorage.setItem("auditx_picker_phone", "6362435746");
+            } catch (e) {}
+            setActionSuccess("✅ Logged in as Thrupthi K S! Tap 'Turn Duty ON' to start shift.");
+            setTimeout(() => setActionSuccess(""), 3500);
+          }}
+        />
+      ) : (
+        <div style={S.container}>
+          {showDutyQrModal && (
+            <SmDutyQrScannerModal
+              roleName="OD Picker"
+              staffName="Thrupthi K S"
+              onClose={() => setShowDutyQrModal(false)}
+              onSuccess={(scannedPayload) => {
+                setShowDutyQrModal(false);
+                setIsOnline(true);
+                broadcastEvent("PICKER_DUTY_ACTIVATED", {
+                  pickerName: "Thrupthi K S",
+                  phone: "6362435746",
+                  payload: scannedPayload,
+                  time: new Date().toISOString(),
+                });
+                setActionSuccess("🟢 Duty Activated! Shift started for Thrupthi K S.");
+                setTimeout(() => setActionSuccess(""), 3500);
+              }}
+            />
+          )}
 
-        {/* ── 1. TOP HEADER (MATCHING ORDERING PAGE THEME) ── */}
-        <header style={S.topHeader}>
-          <div style={S.headerContainer}>
-            <div style={S.headerNavRow}>
-              <div style={S.logoArea}>
-                <AuditxLogo height={32} href="/" />
-                <div style={S.brandTag}>
-                  <span style={S.storeBadge}>Tiptur Hub KA - 44</span>
+          {actionSuccess && <div style={S.toast}>{actionSuccess}</div>}
+
+          {/* ── 1. TOP HEADER (MATCHING ORDERING PAGE THEME) ── */}
+          <header style={S.topHeader}>
+            <div style={S.headerContainer}>
+              <div style={S.headerNavRow}>
+                <div style={S.logoArea}>
+                  <AuditxLogo height={32} href="/" />
+                  <div style={S.brandTag}>
+                    <span style={S.storeBadge}>Tiptur Hub KA - 44</span>
+                  </div>
                 </div>
-              </div>
 
-              <div style={S.headerActions}>
-                <GoogleAuthButton
-                  context="picker"
-                  roleCode="PICKER"
-                  theme="light"
-                  size="small"
-                  label="Google"
-                  fullWidth={false}
-                />
-                {/* Profile Pill */}
-                <div style={S.profileBtn} title="OD Picker Lead - Thrupthi K S">
-                  <img
-                    src="/thrupthi-logo.png"
-                    alt="Thrupthi K S - OD Picker Lead Logo"
+                <div style={S.headerActions}>
+                  {/* Profile Pill */}
+                  <div style={S.profileBtn} title="OD Picker Lead - Thrupthi K S">
+                    <img
+                      src="/thrupthi-logo.png"
+                      alt="Thrupthi K S - OD Picker Lead Logo"
+                      style={{
+                        width: 24,
+                        height: 24,
+                        borderRadius: "50%",
+                        objectFit: "cover",
+                        border: "1.5px solid #0c831f",
+                      }}
+                    />
+                    <span style={S.profileBtnName}>Thrupthi K S</span>
+                  </div>
+
+                  <button
+                    style={{ ...S.dutyBtn, background: isOnline ? "#0c831f" : "#dc2626" }}
+                    onClick={handleToggleDuty}
+                  >
+                    {isOnline ? "🟢 ON DUTY" : "🔴 OFFLINE"}
+                  </button>
+
+                  <button
+                    type="button"
                     style={{
-                      width: 24,
-                      height: 24,
-                      borderRadius: "50%",
-                      objectFit: "cover",
-                      border: "1.5px solid #0c831f",
+                      background: "#f1f5f9",
+                      border: "1px solid #cbd5e1",
+                      borderRadius: 6,
+                      padding: "4px 6px",
+                      fontSize: 10,
+                      fontWeight: 700,
+                      color: "#64748b",
+                      cursor: "pointer",
                     }}
-                  />
-                  <span style={S.profileBtnName}>Thrupthi K S</span>
-                </div>
-
-                <button
-                  style={{ ...S.dutyBtn, background: isOnline ? "#0c831f" : "#dc2626" }}
-                  onClick={() => setIsOnline(!isOnline)}
-                >
-                  {isOnline ? "🟢 ON DUTY" : "🔴 OFFLINE"}
-                </button>
-              </div>
-            </div>
-
-            {/* Sub-bar: Live Login Hours & OD Picker SLA Bar */}
-            <div style={S.etaAddressBar}>
-              <div style={S.etaAddressLeft}>
-                <div style={S.etaBadgeRow}>
-                  <div style={S.lightningPill}>
-                    ⏱️
-                  </div>
-                  <div style={S.etaTitle}>
-                    Live Tracking: <span style={S.etaMinutes}>{formatLiveTrackingTime(loginSeconds)}</span> • Login Hours: <span style={S.etaMinutes}>{formatCumulativeShiftHours(loginSeconds)}</span>
-                  </div>
-                </div>
-                <div style={S.addressSnippetRow}>
-                  <span>📍 Warehouse Bay • Zebra TC52 #04 • SLA Target: 2 Mins</span>
+                    title="Exit Shift Session"
+                    onClick={() => {
+                      setIsPickerLoggedIn(false);
+                      setIsOnline(false);
+                      try {
+                        localStorage.removeItem("auditx_picker_authenticated");
+                      } catch (e) {}
+                    }}
+                  >
+                    Exit
+                  </button>
                 </div>
               </div>
-              <span style={S.roleBadgeTag}>OD PICKER LEAD</span>
+
+              {/* Sub-bar: Live Login Hours & OD Picker SLA Bar */}
+              <div style={S.etaAddressBar}>
+                <div style={S.etaAddressLeft}>
+                  <div style={S.etaBadgeRow}>
+                    <div style={S.lightningPill}>
+                      ⏱️
+                    </div>
+                    <div style={S.etaTitle}>
+                      Live Tracking: <span style={S.etaMinutes}>{formatLiveTrackingTime(loginSeconds)}</span> • Login Hours: <span style={S.etaMinutes}>{formatCumulativeShiftHours(loginSeconds)}</span>
+                    </div>
+                  </div>
+                  <div style={S.addressSnippetRow}>
+                    <span>📍 Warehouse Bay • Zebra TC52 #04 • SLA Target: 2 Mins</span>
+                  </div>
+                </div>
+                <span style={S.roleBadgeTag}>OD PICKER LEAD</span>
+              </div>
             </div>
-          </div>
-        </header>
+          </header>
+
+          {/* OFFLINE SHIFT PROMPT BANNER */}
+          {!isOnline && (
+            <div
+              style={{
+                background: "linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%)",
+                border: "1.5px solid #ef4444",
+                borderRadius: 12,
+                padding: "10px 14px",
+                margin: "10px 12px 0",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 8,
+                boxShadow: "0 2px 10px rgba(239, 68, 68, 0.12)",
+              }}
+            >
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 800, color: "#b91c1c" }}>
+                  🔴 SHIFT OFFLINE • DUTY OFF
+                </div>
+                <div style={{ fontSize: 11, color: "#7f1d1d", marginTop: 2 }}>
+                  Scan SM Dashboard QR to start shift & receive picking tasks
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleToggleDuty}
+                style={{
+                  background: "#0c831f",
+                  color: "#ffffff",
+                  border: "none",
+                  padding: "8px 13px",
+                  borderRadius: 8,
+                  fontSize: 11.5,
+                  fontWeight: 800,
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                  boxShadow: "0 2px 8px rgba(12, 131, 31, 0.3)",
+                }}
+              >
+                Turn Duty ON ⚡
+              </button>
+            </div>
+          )}
 
         {/* MAIN BODY — WHITE THEME */}
         <main style={S.main}>
@@ -2046,6 +2170,7 @@ export default function OdPickerApp() {
           />
         )}
       </div>
+      )}
     </AndroidPhoneShell>
   );
 }

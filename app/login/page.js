@@ -8,30 +8,94 @@ import { STAFF, staffByPhone } from "@/lib/roles";
 import AuditxLogo from "@/components/AuditxLogo";
 import GoogleAuthButton from "@/components/GoogleAuthButton";
 
+// FIXED REGISTERED DARK STORE PERSONNEL FOR TIPTUR HUB KA44
+export const AUTHORIZED_STAFF_NUMBERS = [
+  {
+    phone: "8431453058",
+    name: "Bhaskar N S",
+    roleCode: "SM",
+    roleName: "Store Manager",
+    route: "/dashboard",
+    avatar: "👑",
+    badgeColor: "#f59e0b",
+    desk: "Command Tower KA44",
+  },
+  {
+    phone: "6364150847",
+    name: "Deepu B",
+    roleCode: "ASM",
+    roleName: "Assistant Store Manager",
+    route: "/roles/asm",
+    avatar: "⚡",
+    badgeColor: "#0284c7",
+    desk: "Aisle Verification Tab",
+  },
+  {
+    phone: "8971720997",
+    name: "A B Harshitha",
+    roleCode: "MD",
+    roleName: "Managing Director",
+    route: "/roles/md",
+    avatar: "🛡️",
+    badgeColor: "#8b5cf6",
+    desk: "Executive Ops Command",
+  },
+  {
+    phone: "6362435746",
+    name: "Thrupthi K S",
+    roleCode: "PICKER",
+    roleName: "OD Picker Lead",
+    route: "/picker",
+    avatar: "📦",
+    badgeColor: "#10b981",
+    desk: "Zebra In-Store Scanner #04",
+  },
+  {
+    phone: "8088553237",
+    name: "Sinchana B R",
+    roleCode: "DELIVERY",
+    roleName: "Order Captain Delivery",
+    route: "/rider",
+    avatar: "🛵",
+    badgeColor: "#f97316",
+    desk: "Tiptur Fleet Phone #08",
+  },
+];
+
 export default function LoginPage() {
   const router = useRouter();
-  const [loginMode, setLoginMode] = useState("manager"); // 'manager' (OTP) | 'staff_google' (Google)
-  const [phone, setPhone] = useState("9845012345");
+  const [loginMode, setLoginMode] = useState("staff_otp"); // 'staff_otp' (Fixed numbers OTP) | 'customer' (Customer Ordering)
+  const [phone, setPhone] = useState("8431453058"); // Default: SM Bhaskar N S
   const [otp, setOtp] = useState("");
   const [step, setStep] = useState("phone"); // 'phone' | 'otp'
   const [generatedOtp, setGeneratedOtp] = useState("4444");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [matchedStaff, setMatchedStaff] = useState(AUTHORIZED_STAFF_NUMBERS[0]);
 
-  // SEND OTP FOR DARK STORE MANAGERS
-  function sendManagerOtp() {
+  // SEND OTP — STRICT VALIDATION: ONLY THE 5 FIXED STAFF NUMBERS ALLOWED
+  function sendStaffOtp() {
     const cleanPhone = phone.replace(/\D/g, "");
     if (cleanPhone.length !== 10) {
-      setError("Please enter a valid 10-digit registered manager mobile number");
+      setError("Please enter a valid 10-digit mobile number");
       return;
     }
 
+    const foundAuth = AUTHORIZED_STAFF_NUMBERS.find((s) => s.phone === cleanPhone);
+    if (!foundAuth) {
+      setError(
+        `❌ Access Denied: +91 ${cleanPhone} is not registered. Only authorized Dark Store staff can log in (SM: 8431453058, ASM: 6364150847, MD: 8971720997, Picker: 6362435746, Rider: 8088553237).`
+      );
+      return;
+    }
+
+    setMatchedStaff(foundAuth);
     setError("");
     setLoading(true);
-    const mockOtp = Math.floor(1000 + Math.random() * 9000).toString();
+    const mockOtp = "4444";
     setGeneratedOtp(mockOtp);
 
-    // Call live SMS API if configured
+    // Call live SMS API
     fetch("/api/auth/send-otp", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -41,52 +105,72 @@ export default function LoginPage() {
     setTimeout(() => {
       setStep("otp");
       setLoading(false);
-    }, 450);
+    }, 400);
   }
 
-  // VERIFY OTP FOR DARK STORE MANAGERS & LAUNCH DASHBOARD
-  function verifyManagerOtp() {
+  // VERIFY OTP & ROUTE DIRECTLY TO DEDICATED ROLE VIEW
+  function verifyStaffOtp() {
     if (otp.length < 4) {
       setError("Please enter the 4-digit verification code");
+      return;
+    }
+
+    const cleanPhone = phone.replace(/\D/g, "");
+    const foundAuth = AUTHORIZED_STAFF_NUMBERS.find((s) => s.phone === cleanPhone);
+
+    if (!foundAuth) {
+      setError("❌ Authorization failed: Mobile number not registered.");
       return;
     }
 
     setError("");
     setLoading(true);
 
-    const cleanPhone = phone.replace(/\D/g, "");
-    const foundStaff = staffByPhone(cleanPhone) || STAFF[0]; // Defaults to Bhaskar N S (SM)
+    const fullStaffDoc = staffByPhone(cleanPhone) || STAFF.find((s) => s.roleCode === foundAuth.roleCode) || STAFF[0];
 
     try {
-      localStorage.setItem("auditx_staff", JSON.stringify(foundStaff));
+      localStorage.setItem("auditx_staff", JSON.stringify(fullStaffDoc));
       localStorage.setItem(
-        "auditx_manager_session",
+        "auditx_staff_session",
         JSON.stringify({
-          managerName: foundStaff.name,
-          roleCode: foundStaff.roleCode,
+          name: foundAuth.name,
+          roleCode: foundAuth.roleCode,
           phone: cleanPhone,
           verifiedAt: new Date().toISOString(),
-          loginMethod: "Darkstore Manager OTP",
+          loginMethod: "Dark Store Staff OTP",
         })
       );
+
+      if (foundAuth.roleCode === "PICKER") {
+        localStorage.setItem("auditx_picker_authenticated", "true");
+        localStorage.setItem("auditx_picker_phone", cleanPhone);
+      } else if (foundAuth.roleCode === "DELIVERY") {
+        localStorage.setItem("auditx_rider_authenticated", "true");
+        localStorage.setItem("auditx_rider_phone", cleanPhone);
+      } else {
+        localStorage.setItem(
+          "auditx_manager_session",
+          JSON.stringify({
+            managerName: foundAuth.name,
+            roleCode: foundAuth.roleCode,
+            phone: cleanPhone,
+            verifiedAt: new Date().toISOString(),
+          })
+        );
+      }
     } catch (e) {
       console.warn("Storage error:", e);
     }
 
     setTimeout(() => {
       setLoading(false);
-      if (foundStaff.roleCode === "ASM") {
-        router.push("/roles/asm");
-      } else if (foundStaff.roleCode === "MD") {
-        router.push("/roles/md");
-      } else {
-        router.push("/dashboard");
-      }
+      router.push(foundAuth.route);
     }, 400);
   }
 
-  function handlePresetManager(staffMember) {
-    setPhone(staffMember.phone);
+  function handleSelectStaff(item) {
+    setPhone(item.phone);
+    setMatchedStaff(item);
     setError("");
   }
 
@@ -108,61 +192,108 @@ export default function LoginPage() {
         <div style={S.modeTabs}>
           <button
             type="button"
-            style={{ ...S.modeTab, ...(loginMode === "manager" ? S.modeTabActive : {}) }}
+            style={{ ...S.modeTab, ...(loginMode === "staff_otp" ? S.modeTabActive : {}) }}
             onClick={() => {
-              setLoginMode("manager");
+              setLoginMode("staff_otp");
               setStep("phone");
               setError("");
             }}
           >
-            🏢 Darkstore Managers (OTP)
+            🏢 Dark Store Personnel (OTP Only)
           </button>
           <button
             type="button"
-            style={{ ...S.modeTab, ...(loginMode === "staff_google" ? S.modeTabActive : {}) }}
+            style={{ ...S.modeTab, ...(loginMode === "customer" ? S.modeTabActive : {}) }}
             onClick={() => {
-              setLoginMode("staff_google");
-              setStep("phone");
+              setLoginMode("customer");
               setError("");
             }}
           >
-            🛒 Field Staff & Customers (Google)
+            🛒 Customer Ordering
           </button>
         </div>
 
         {error && <div style={S.errorBox}>{error}</div>}
 
         {/* ═══════════════════════════════════════════════════════════
-            TAB 1: DARKSTORE MANAGERS DASHBOARD LOGIN VIA OTP
+            TAB 1: DARK STORE PERSONNEL OTP LOGIN (FIXED NUMBERS ONLY)
             ═══════════════════════════════════════════════════════════ */}
-        {loginMode === "manager" && (
+        {loginMode === "staff_otp" && (
           <div>
             {step === "phone" ? (
               <div>
                 <div style={S.sectionHeadingRow}>
-                  <h3 style={S.sectionTitle}>Manager Dashboard Login</h3>
-                  <span style={S.otpPill}>SMS OTP</span>
+                  <h3 style={S.sectionTitle}>Personnel Shift Login (OTP)</h3>
+                  <span style={S.otpPill}>Fixed Numbers Only</span>
                 </div>
                 <p style={S.sectionSub}>
-                  Enter your registered dark store manager phone number to receive a secure login OTP for the operations dashboard.
+                  Select your role or enter your 10-digit registered number. Login is strictly restricted to the 5 designated Tiptur store team members.
                 </p>
 
+                {/* 1-Click Role Presets */}
+                <div style={S.presetList}>
+                  {AUTHORIZED_STAFF_NUMBERS.map((staffItem) => {
+                    const isSelected = phone === staffItem.phone;
+                    return (
+                      <button
+                        key={staffItem.phone}
+                        type="button"
+                        style={{
+                          ...S.presetBtn,
+                          borderColor: isSelected ? staffItem.badgeColor : "#334155",
+                          background: isSelected ? "rgba(245, 158, 11, 0.12)" : "#1e293b",
+                        }}
+                        onClick={() => handleSelectStaff(staffItem)}
+                      >
+                        <span style={{ fontSize: 18 }}>{staffItem.avatar}</span>
+                        <div style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <span style={{ fontWeight: 800, fontSize: 13, color: "#f8fafc" }}>
+                              {staffItem.name}
+                            </span>
+                            <span
+                              style={{
+                                fontSize: 9.5,
+                                fontWeight: 900,
+                                padding: "1px 6px",
+                                borderRadius: 4,
+                                color: "#0f172a",
+                                background: staffItem.badgeColor,
+                              }}
+                            >
+                              {staffItem.roleCode}
+                            </span>
+                          </div>
+                          <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>
+                            +91 <b style={{ color: "#f8fafc" }}>{staffItem.phone}</b> • {staffItem.desk}
+                          </div>
+                        </div>
+                        {isSelected && (
+                          <span style={{ fontSize: 11, color: "#10b981", fontWeight: 800 }}>Selected ✓</span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+
                 {/* Mobile Input Row */}
-                <div style={S.formGroup}>
-                  <label style={S.label}>Manager Mobile Number</label>
+                <div style={{ ...S.formGroup, marginTop: 14 }}>
+                  <label style={S.label}>Enter Registered Mobile Number</label>
                   <div style={S.phoneRow}>
                     <span style={S.prefix}>🇮🇳 +91</span>
                     <input
                       type="tel"
                       maxLength={10}
-                      placeholder="10-digit mobile"
+                      placeholder="Enter 10-digit registered number"
                       value={phone}
                       onChange={(e) => {
-                        setPhone(e.target.value.replace(/\D/g, ""));
+                        const val = e.target.value.replace(/\D/g, "");
+                        setPhone(val);
                         setError("");
+                        const match = AUTHORIZED_STAFF_NUMBERS.find((s) => s.phone === val);
+                        if (match) setMatchedStaff(match);
                       }}
                       style={S.phoneInput}
-                      autoFocus
                     />
                   </div>
                 </div>
@@ -170,53 +301,26 @@ export default function LoginPage() {
                 <button
                   type="button"
                   style={S.primaryBtn}
-                  onClick={sendManagerOtp}
+                  onClick={sendStaffOtp}
                   disabled={loading || phone.replace(/\D/g, "").length !== 10}
                 >
-                  <span>{loading ? "Sending Code..." : "Send Manager Login OTP →"}</span>
+                  <span>{loading ? "Sending Code..." : "Send Verification OTP →"}</span>
                 </button>
-
-                {/* Preset Manager Shortcuts */}
-                <div style={{ marginTop: 18 }}>
-                  <div style={S.presetLabel}>OR SELECT REGISTERED DARKSTORE MANAGER:</div>
-                  <div style={S.presetList}>
-                    {STAFF.slice(0, 3).map((manager) => (
-                      <button
-                        key={manager.id}
-                        type="button"
-                        style={{
-                          ...S.presetBtn,
-                          borderColor: phone === manager.phone ? "#10b981" : "#334155",
-                          background: phone === manager.phone ? "rgba(16, 185, 129, 0.12)" : "#1e293b",
-                        }}
-                        onClick={() => handlePresetManager(manager)}
-                      >
-                        <span style={{ fontSize: 16 }}>
-                          {manager.roleCode === "SM" ? "👑" : manager.roleCode === "ASM" ? "⚡" : "🛡️"}
-                        </span>
-                        <div style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
-                          <div style={{ fontWeight: 700, fontSize: 13, color: "#f8fafc" }}>
-                            {manager.name} ({manager.roleCode})
-                          </div>
-                          <div style={{ fontSize: 11, color: "#94a3b8" }}>
-                            +91 {manager.phone} • {manager.desk}
-                          </div>
-                        </div>
-                        {phone === manager.phone && (
-                          <span style={{ fontSize: 11, color: "#10b981", fontWeight: 800 }}>Selected ✓</span>
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                </div>
               </div>
             ) : (
               /* STEP 2: VERIFY OTP */
               <div>
                 <div style={S.otpBanner}>
-                  <div>📲 SMS OTP sent to <b>+91 {phone}</b></div>
+                  <div>
+                    📲 SMS OTP sent to <b>+91 {phone}</b>
+                  </div>
+                  {matchedStaff && (
+                    <div style={{ fontSize: 11, color: "#cbd5e1", marginTop: 3 }}>
+                      Role: <b>{matchedStaff.name} ({matchedStaff.roleName})</b>
+                    </div>
+                  )}
                   <div style={S.mockOtpHint}>
-                    <span>⚡ Instant Demo OTP: <b>{generatedOtp}</b></span>
+                    <span>⚡ Demo Instant OTP: <b>{generatedOtp}</b></span>
                     <button
                       type="button"
                       style={S.autofillBtn}
@@ -246,10 +350,14 @@ export default function LoginPage() {
                 <button
                   type="button"
                   style={S.primaryBtn}
-                  onClick={verifyManagerOtp}
+                  onClick={verifyStaffOtp}
                   disabled={loading || otp.length < 4}
                 >
-                  <span>{loading ? "Verifying..." : "Verify & Launch Manager Dashboard →"}</span>
+                  <span>
+                    {loading
+                      ? "Verifying..."
+                      : `Verify & Open ${matchedStaff ? matchedStaff.roleName : "Terminal"} →`}
+                  </span>
                 </button>
 
                 <button
@@ -261,7 +369,7 @@ export default function LoginPage() {
                     setError("");
                   }}
                 >
-                  ← Change Manager Phone Number
+                  ← Change Mobile Number
                 </button>
               </div>
             )}
@@ -269,82 +377,45 @@ export default function LoginPage() {
         )}
 
         {/* ═══════════════════════════════════════════════════════════
-            TAB 2: FIELD STAFF (PICKER & RIDER) & CUSTOMERS (GOOGLE)
+            TAB 2: CUSTOMER ORDERING APP
             ═══════════════════════════════════════════════════════════ */}
-        {loginMode === "staff_google" && (
+        {loginMode === "customer" && (
           <div>
             <div style={S.sectionHeadingRow}>
-              <h3 style={S.sectionTitle}>Google Sign-In Options</h3>
-              <span style={S.googlePill}>Official OAuth</span>
+              <h3 style={S.sectionTitle}>Customer Ordering App</h3>
+              <span style={S.googlePill}>10-Min Delivery</span>
             </div>
             <p style={S.sectionSub}>
-              Select your role. Sign in using your official Google Account — your verified Gmail name connects automatically.
+              Browse dark store catalog items, select your delivery address in Tiptur, and track your 10-minute delivery in real-time.
             </p>
 
-            {/* Role Options with Sleek Small Bar Buttons */}
-            <div style={{ display: "flex", flexDirection: "column", gap: 14, marginTop: 14 }}>
-              {/* 1. CUSTOMER ORDERING */}
-              <div style={S.roleCard}>
-                <div style={S.roleHeader}>
-                  <span style={{ fontSize: 18 }}>🛒</span>
-                  <div>
-                    <div style={S.roleName}>Customer Ordering App</div>
-                    <div style={S.roleDesc}>Browse Tiptur catalog & 10-minute delivery</div>
-                  </div>
-                </div>
-                <div style={{ marginTop: 8 }}>
-                  <GoogleAuthButton
-                    context="ordering"
-                    roleCode="CUSTOMER"
-                    variant="small-bar"
-                    size="medium"
-                    label="Sign in as Customer"
-                    theme="light"
-                  />
-                </div>
-              </div>
+            <div style={{ marginTop: 16 }}>
+              <GoogleAuthButton
+                context="ordering"
+                roleCode="CUSTOMER"
+                variant="small-bar"
+                size="medium"
+                label="Sign in to Ordering App with Google"
+                theme="light"
+              />
+            </div>
 
-              {/* 2. OD PICKER TERMINAL */}
-              <div style={S.roleCard}>
-                <div style={S.roleHeader}>
-                  <span style={{ fontSize: 18 }}>📦</span>
-                  <div>
-                    <div style={S.roleName}>OD Picker Terminal (2:00 SLA)</div>
-                    <div style={S.roleDesc}>Aisle bin picklist, staging racks & QR verification</div>
-                  </div>
-                </div>
-                <div style={{ marginTop: 8 }}>
-                  <GoogleAuthButton
-                    context="picker"
-                    roleCode="PICKER"
-                    variant="small-bar"
-                    size="medium"
-                    label="Sign in as OD Picker"
-                    theme="light"
-                  />
-                </div>
-              </div>
-
-              {/* 3. ORDER CAPTAIN RIDER APP */}
-              <div style={S.roleCard}>
-                <div style={S.roleHeader}>
-                  <span style={{ fontSize: 18 }}>🛵</span>
-                  <div>
-                    <div style={S.roleName}>Order Captain Rider App (8:00 SLA)</div>
-                    <div style={S.roleDesc}>GPS route simulation & doorstep handover scan</div>
-                  </div>
-                </div>
-                <div style={{ marginTop: 8 }}>
-                  <GoogleAuthButton
-                    context="rider"
-                    roleCode="DELIVERY"
-                    variant="small-bar"
-                    size="medium"
-                    label="Sign in as Delivery Rider"
-                    theme="light"
-                  />
-                </div>
-              </div>
+            <div style={{ marginTop: 14, textAlign: "center" }}>
+              <a
+                href="/ordering"
+                style={{
+                  display: "inline-block",
+                  padding: "10px 18px",
+                  borderRadius: 20,
+                  background: "#0c831f",
+                  color: "#ffffff",
+                  fontSize: 13,
+                  fontWeight: 800,
+                  textDecoration: "none",
+                }}
+              >
+                Open Customer Ordering App Directly →
+              </a>
             </div>
           </div>
         )}
@@ -436,6 +507,7 @@ const S = {
     fontSize: 12.5,
     marginBottom: 14,
     textAlign: "center",
+    lineHeight: "1.4",
   },
   sectionHeadingRow: {
     display: "flex",
@@ -452,178 +524,154 @@ const S = {
   otpPill: {
     fontSize: 10,
     fontWeight: 800,
-    background: "rgba(16, 185, 129, 0.15)",
-    color: "#10b981",
-    padding: "3px 8px",
-    borderRadius: 6,
-    border: "1px solid #10b981",
+    background: "#059669",
+    color: "#ffffff",
+    padding: "2px 8px",
+    borderRadius: 10,
   },
   googlePill: {
     fontSize: 10,
     fontWeight: 800,
-    background: "rgba(56, 189, 248, 0.15)",
-    color: "#38bdf8",
-    padding: "3px 8px",
-    borderRadius: 6,
-    border: "1px solid #38bdf8",
+    background: "#0284c7",
+    color: "#ffffff",
+    padding: "2px 8px",
+    borderRadius: 10,
   },
   sectionSub: {
     fontSize: 12,
     color: "#94a3b8",
-    margin: "0 0 14px 0",
-    lineHeight: 1.4,
+    margin: "0 0 14px",
+    lineHeight: "1.45",
+  },
+  presetList: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 8,
+    marginBottom: 8,
+  },
+  presetBtn: {
+    display: "flex",
+    alignItems: "center",
+    gap: 12,
+    padding: "9px 12px",
+    borderRadius: 10,
+    border: "1.5px solid #334155",
+    cursor: "pointer",
+    transition: "all 0.15s ease",
+    textAlign: "left",
   },
   formGroup: {
-    marginBottom: 14,
+    marginBottom: 16,
   },
   label: {
     display: "block",
-    fontSize: 11.5,
+    fontSize: 12,
     fontWeight: 700,
     color: "#cbd5e1",
     marginBottom: 6,
-    textTransform: "uppercase",
-    letterSpacing: "0.04em",
   },
   phoneRow: {
     display: "flex",
     alignItems: "center",
-    background: "#1e293b",
-    border: "1px solid #334155",
+    background: "#080c14",
+    border: "1.5px solid #334155",
     borderRadius: 10,
     overflow: "hidden",
   },
   prefix: {
-    padding: "11px 14px",
-    color: "#94a3b8",
+    padding: "11px 12px",
+    background: "#1e293b",
+    color: "#e2e8f0",
+    fontSize: 13,
     fontWeight: 700,
-    fontSize: 13.5,
-    background: "#0f172a",
     borderRight: "1px solid #334155",
   },
   phoneInput: {
     flex: 1,
     background: "transparent",
     border: "none",
-    color: "#ffffff",
+    color: "#f8fafc",
     padding: "11px 14px",
-    fontSize: 15,
-    letterSpacing: 1,
+    fontSize: 14,
+    fontWeight: 700,
+    letterSpacing: "0.5px",
     outline: "none",
   },
   primaryBtn: {
     width: "100%",
-    background: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
+    background: "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)",
+    color: "#0f172a",
     border: "none",
-    color: "#ffffff",
     padding: "12px 16px",
     borderRadius: 10,
     fontSize: 13.5,
     fontWeight: 800,
     cursor: "pointer",
-    boxShadow: "0 4px 14px rgba(16, 185, 129, 0.3)",
-    transition: "transform 0.1s ease",
-  },
-  presetLabel: {
-    fontSize: 10.5,
-    fontWeight: 800,
-    color: "#64748b",
-    marginBottom: 8,
-    letterSpacing: "0.06em",
-  },
-  presetList: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 7,
-  },
-  presetBtn: {
-    border: "1px solid #334155",
-    borderRadius: 10,
-    padding: "9px 12px",
     display: "flex",
     alignItems: "center",
-    gap: 10,
-    cursor: "pointer",
-    transition: "all 0.15s ease",
+    justifyContent: "center",
+    gap: 8,
+    boxShadow: "0 4px 14px rgba(245, 158, 11, 0.35)",
   },
   otpBanner: {
-    background: "#1e293b",
+    background: "rgba(16, 185, 129, 0.12)",
+    border: "1px solid #10b981",
+    color: "#a7f3d0",
     borderRadius: 10,
     padding: "12px 14px",
     marginBottom: 16,
     fontSize: 12.5,
-    color: "#cbd5e1",
-    textAlign: "center",
-    border: "1px solid #334155",
   },
   mockOtpHint: {
     marginTop: 8,
     display: "flex",
     alignItems: "center",
-    justifyContent: "center",
-    gap: 10,
+    justifyContent: "space-between",
+    background: "rgba(0,0,0,0.25)",
+    padding: "6px 10px",
+    borderRadius: 6,
+    color: "#fef08a",
     fontSize: 12,
-    color: "#10b981",
   },
   autofillBtn: {
-    background: "#10b981",
-    color: "#ffffff",
+    background: "#f59e0b",
+    color: "#0f172a",
     border: "none",
     padding: "3px 8px",
-    borderRadius: 6,
+    borderRadius: 4,
     fontSize: 11,
-    fontWeight: 700,
+    fontWeight: 800,
     cursor: "pointer",
   },
   otpInput: {
     width: "100%",
-    background: "#1e293b",
-    border: "1.5px solid #10b981",
-    color: "#ffffff",
-    padding: "12px",
+    background: "#080c14",
+    border: "1.5px solid #334155",
     borderRadius: 10,
-    fontSize: 20,
+    color: "#f8fafc",
+    padding: "12px 14px",
+    fontSize: 18,
     fontWeight: 800,
+    letterSpacing: "6px",
     textAlign: "center",
-    letterSpacing: 8,
-    boxSizing: "border-box",
     outline: "none",
+    boxSizing: "border-box",
   },
   backBtn: {
     width: "100%",
+    marginTop: 10,
     background: "transparent",
-    border: "none",
+    border: "1px solid #334155",
     color: "#94a3b8",
-    padding: "10px",
+    padding: "9px 12px",
+    borderRadius: 10,
     fontSize: 12,
     fontWeight: 600,
     cursor: "pointer",
-    marginTop: 8,
-  },
-  roleCard: {
-    background: "#1e293b",
-    borderRadius: 12,
-    padding: "12px 14px",
-    border: "1px solid #334155",
-  },
-  roleHeader: {
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-    marginBottom: 6,
-  },
-  roleName: {
-    fontSize: 13.5,
-    fontWeight: 700,
-    color: "#f8fafc",
-  },
-  roleDesc: {
-    fontSize: 11,
-    color: "#94a3b8",
   },
   footerRow: {
-    marginTop: 20,
-    paddingTop: 12,
+    marginTop: 22,
+    paddingTop: 14,
     borderTop: "1px solid #1e293b",
     textAlign: "center",
     fontSize: 11,

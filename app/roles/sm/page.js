@@ -339,7 +339,7 @@ export default function StoreManagerApp() {
               Fixed Shift Duty QR Code • Tiptur HUB KA44
             </h3>
             <p style={{ margin: 0, color: "#94a3b8", fontSize: 12 }}>
-              Both OD Picker <b>Thrupthi K S</b> and Rider <b>Sinchana B R</b> scan this QR code to turn Duty ON.
+              Both OD Picker <b>Thrupthi K S</b> (+91 6362435746) and Rider <b>Sinchana B R</b> (+91 8088553237) scan this QR code to turn Duty ON.
             </p>
             <div style={{ marginTop: 4, color: "#cbd5e1", fontSize: 11, fontFamily: "monospace" }}>
               Payload: <b style={{ color: "#38bdf8" }}>AUDITX-DUTY-TIPTUR-KA44-STATION</b>

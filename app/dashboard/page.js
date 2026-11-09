@@ -300,6 +300,14 @@ export default function WarehouseDashboardPage() {
         setOrders((prev) => sanitizeOrders([data.payload, ...prev.filter((o) => o.id !== data.payload.id)]));
       } else if (data.type === "ORDER_STAGED" || data.type === "ORDER_DISPATCHED" || data.type === "ORDER_DELIVERED") {
         setOrders(getAllLiveOrders());
+      } else if (data.type === "PICKER_DUTY_ACTIVATED") {
+        playSuccessChime();
+        setActionSuccess(`🟢 OD Picker Thrupthi K S scanned SM Station QR & turned Duty ON!`);
+        setTimeout(() => setActionSuccess(""), 4000);
+      } else if (data.type === "RIDER_DUTY_ACTIVATED") {
+        playSuccessChime();
+        setActionSuccess(`🟢 Order Captain Sinchana B R scanned SM Station QR & turned Duty ON!`);
+        setTimeout(() => setActionSuccess(""), 4000);
       }
     });
 
@@ -950,6 +958,111 @@ export default function WarehouseDashboardPage() {
 
         {/* ── 2. MAIN WORKSPACE CONTENT ── */}
         <main style={S.mainContent}>
+          {/* FIXED DUTY QR CODE STATION BANNER (FOR PICKER & RIDER TO SCAN) */}
+          <div
+            style={{
+              background: "linear-gradient(135deg, #1e293b 0%, #0f172a 100%)",
+              border: "1.5px solid #f59e0b",
+              borderRadius: 14,
+              padding: "16px 20px",
+              marginBottom: 16,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              flexWrap: "wrap",
+              gap: 16,
+              boxShadow: "0 4px 20px rgba(0, 0, 0, 0.25)",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+              <div
+                style={{
+                  background: "#ffffff",
+                  padding: 6,
+                  borderRadius: 10,
+                  display: "inline-flex",
+                  boxShadow: "0 2px 10px rgba(0,0,0,0.3)",
+                }}
+              >
+                <img
+                  src="/duty-qr.png"
+                  alt="Fixed Duty QR Code - Tiptur Hub KA44"
+                  style={{ width: 88, height: 88, objectFit: "contain", borderRadius: 6 }}
+                />
+              </div>
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span
+                    style={{
+                      background: "#f59e0b",
+                      color: "#0f172a",
+                      fontSize: 10,
+                      fontWeight: 900,
+                      padding: "2px 8px",
+                      borderRadius: 4,
+                      letterSpacing: "0.5px",
+                    }}
+                  >
+                    SM DUTY SCANNER STATION
+                  </span>
+                  <span style={{ color: "#10b981", fontSize: 12, fontWeight: 700 }}>
+                    ● Active for Shift Check-In
+                  </span>
+                </div>
+                <h3 style={{ margin: "4px 0", color: "#ffffff", fontSize: 15, fontWeight: 800 }}>
+                  Fixed Shift Duty QR Code • Tiptur HUB KA44
+                </h3>
+                <p style={{ margin: 0, color: "#94a3b8", fontSize: 12 }}>
+                  Both OD Picker <b>Thrupthi K S</b> (+91 6362435746) and Rider <b>Sinchana B R</b> (+91 8088553237) scan this QR code to turn Duty ON.
+                </p>
+                <div style={{ marginTop: 4, color: "#cbd5e1", fontSize: 11, fontFamily: "monospace" }}>
+                  Payload: <b style={{ color: "#38bdf8" }}>AUDITX-DUTY-TIPTUR-KA44-STATION</b>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+              <a
+                href="/picker"
+                target="_blank"
+                rel="noreferrer"
+                style={{
+                  background: "#0c831f",
+                  color: "#ffffff",
+                  padding: "8px 14px",
+                  borderRadius: 8,
+                  fontSize: 12,
+                  fontWeight: 800,
+                  textDecoration: "none",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                }}
+              >
+                📦 Open OD Picker App
+              </a>
+              <a
+                href="/rider"
+                target="_blank"
+                rel="noreferrer"
+                style={{
+                  background: "#f97316",
+                  color: "#ffffff",
+                  padding: "8px 14px",
+                  borderRadius: 8,
+                  fontSize: 12,
+                  fontWeight: 800,
+                  textDecoration: "none",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                }}
+              >
+                🛵 Open Rider App
+              </a>
+            </div>
+          </div>
+
           {/* TAB 1: OPS OVERVIEW */}
           {activeTab === "overview" && (
             <div>

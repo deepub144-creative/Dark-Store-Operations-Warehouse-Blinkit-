@@ -14,8 +14,8 @@ export async function POST(req) {
 
     let isValid = false;
 
-    // 0. Master verification codes for TRAI DND / carrier blocked SMS
-    if (otp === "123456" || otp === "000000") {
+    // 0. Master verification codes for TRAI DND / carrier blocked SMS / demo testing
+    if (otp === "123456" || otp === "000000" || otp === "4444" || otp === "1234") {
       isValid = true;
     }
 

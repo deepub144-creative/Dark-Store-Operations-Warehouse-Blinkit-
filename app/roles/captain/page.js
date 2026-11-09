@@ -12,6 +12,9 @@ import AuditxLogo from "@/components/AuditxLogo";
 import AndroidPhoneShell from "@/components/AndroidPhoneShell";
 import GoogleAuthButton from "@/components/GoogleAuthButton";
 import DeliveredSheet from "@/components/ui/DeliveredSheet";
+import StaffAppLoginScreen from "@/components/StaffAppLoginScreen";
+import SmDutyQrScannerModal from "@/components/SmDutyQrScannerModal";
+import { saveLiveOrder } from "@/lib/realtimeSync";
 import {
   IconRealisticScooter,
   IconRealisticSliderArrow,
@@ -25,13 +28,60 @@ import {
 } from "@/components/RealIcons";
 
 export default function DeliveryCaptainApp() {
-  const [isCheckedIn, setIsCheckedIn] = useState(true);
+  const [isRiderLoggedIn, setIsRiderLoggedIn] = useState(false);
+  const [showDutyQrModal, setShowDutyQrModal] = useState(false);
+  const [isCheckedIn, setIsCheckedIn] = useState(false);
   const [geoLoc, setGeoLoc] = useState({ lat: 13.2584, lng: 76.4787, status: "GPS Live - Tiptur HUB KA44" });
   const [incomingAssignedOrders, setIncomingAssignedOrders] = useState([]);
   const [stagedOrders, setStagedOrders] = useState([]);
   const [activeOrder, setActiveOrder] = useState(null);
   const [activeStep, setActiveStep] = useState("awaiting_orders"); // awaiting_orders | rack_verification | en_route | customer_handover | delivered
   const [elapsedSec, setElapsedSec] = useState(0);
+
+  // Restore session on mount
+  useEffect(() => {
+    try {
+      if (typeof window !== "undefined" && localStorage.getItem("auditx_rider_authenticated") === "true") {
+        setIsRiderLoggedIn(true);
+      }
+    } catch (e) {}
+  }, []);
+
+  function handleToggleDuty() {
+    if (!isCheckedIn) {
+      setShowDutyQrModal(true);
+    } else {
+      setIsCheckedIn(false);
+      setActionSuccess("Shift paused • Order Captain is now OFFLINE");
+      setTimeout(() => setActionSuccess(""), 2500);
+    }
+  }
+
+  function handleSimulateIncomingStagedOrder() {
+    playSuccessChime();
+    const demoOrder = {
+      id: `ORD-TIP-${Math.floor(100000 + Math.random() * 900000)}`,
+      orderNumber: `${Math.floor(1000 + Math.random() * 9000)}`,
+      customerName: "Ramesh Gowda",
+      customerPhone: "9845099887",
+      customerAddress: "Kalpataru College Road, Tiptur - 572201",
+      status: "staged",
+      stage: "Staged in Rack D5",
+      assignedRack: "D5",
+      rackQr: "RACK-D5",
+      stagedAt: new Date().toISOString(),
+      pickTimeSec: 68,
+      totalAmount: 320,
+      items: [
+        { skuId: "CADBURY-SILK-01", name: "Cadbury Dairy Milk Silk Chocolate (150g)", qty: 2, price: 175, binLocation: "Aisle C1 - S1 - 001" },
+        { skuId: "FRAME-A4-WOOD", name: "Classic Wooden Deep Box Art Frame", qty: 1, price: 349, binLocation: "Aisle F1 - R1 - 002" },
+      ],
+    };
+    saveLiveOrder(demoOrder);
+    broadcastEvent("ORDER_STAGED", demoOrder);
+    setActionSuccess("📦 Demo Order staged in Rack D5! Alert sent to Sinchana B R.");
+    setTimeout(() => setActionSuccess(""), 3500);
+  }
   
   // 6-Minute Rider Countdown (6:00 mins = 360 seconds) + Auto-reducing ETA like Ordering Tracking Page
   const CAPTAIN_SLA_SECONDS = 360;
@@ -412,109 +462,165 @@ export default function DeliveryCaptainApp() {
       navBg="#ffffff"
     >
       <AuditxAnimatedStyles />
-      <div style={S.container}>
-        {/* ── FULL-SCREEN ORDER DELIVERED CELEBRATION SHEET OVERLAY ── */}
-        {showDeliveredSheet && (
-          <DeliveredSheet
-            orderId={activeOrder?.orderNumber || activeOrder?.id}
-            elapsedSeconds={elapsedSec}
-            slaSeconds={CAPTAIN_SLA_SECONDS}
-            onDone={() => setShowDeliveredSheet(false)}
-          />
-        )}
+      {!isRiderLoggedIn ? (
+        <StaffAppLoginScreen
+          roleCode="DELIVERY"
+          roleName="Order Captain Delivery"
+          staffName="Sinchana B R"
+          authorizedPhone="8088553237"
+          avatar="🛵"
+          logo="/sinchana-logo.png"
+          deviceId="DEV-CPT-8088"
+          onLoginSuccess={() => {
+            setIsRiderLoggedIn(true);
+            try {
+              localStorage.setItem("auditx_rider_authenticated", "true");
+              localStorage.setItem("auditx_rider_phone", "8088553237");
+            } catch (e) {}
+            setActionSuccess("✅ Logged in as Sinchana B R! Tap 'Turn Duty ON' to start shift.");
+            setTimeout(() => setActionSuccess(""), 3500);
+          }}
+        />
+      ) : (
+        <div style={S.container}>
+          {showDutyQrModal && (
+            <SmDutyQrScannerModal
+              roleName="Order Captain"
+              staffName="Sinchana B R"
+              onClose={() => setShowDutyQrModal(false)}
+              onSuccess={(scannedPayload) => {
+                setShowDutyQrModal(false);
+                setIsCheckedIn(true);
+                broadcastEvent("RIDER_DUTY_ACTIVATED", {
+                  riderName: "Sinchana B R",
+                  phone: "8088553237",
+                  payload: scannedPayload,
+                  time: new Date().toISOString(),
+                });
+                setActionSuccess("🟢 Duty Activated! Delivery shift started for Sinchana B R.");
+                setTimeout(() => setActionSuccess(""), 3500);
+              }}
+            />
+          )}
 
-        {actionSuccess && <div style={S.toast}>{actionSuccess}</div>}
+          {/* ── FULL-SCREEN ORDER DELIVERED CELEBRATION SHEET OVERLAY ── */}
+          {showDeliveredSheet && (
+            <DeliveredSheet
+              orderId={activeOrder?.orderNumber || activeOrder?.id}
+              elapsedSeconds={elapsedSec}
+              slaSeconds={CAPTAIN_SLA_SECONDS}
+              onDone={() => setShowDeliveredSheet(false)}
+            />
+          )}
 
-        {/* ── 1. TOP HEADER (MATCHING ORDERING PAGE THEME) ── */}
-        <header style={S.topHeader}>
-          <div style={S.headerContainer}>
-            <div style={S.headerNavRow}>
-              <div style={S.logoArea}>
-                <AuditxLogo height={32} href="/" />
-                <div style={S.brandTag}>
-                  <span style={S.storeBadge}>Tiptur Hub KA - 44</span>
+          {actionSuccess && <div style={S.toast}>{actionSuccess}</div>}
+
+          {/* ── 1. TOP HEADER (MATCHING ORDERING PAGE THEME) ── */}
+          <header style={S.topHeader}>
+            <div style={S.headerContainer}>
+              <div style={S.headerNavRow}>
+                <div style={S.logoArea}>
+                  <AuditxLogo height={32} href="/" />
+                  <div style={S.brandTag}>
+                    <span style={S.storeBadge}>Tiptur Hub KA - 44</span>
+                  </div>
+                </div>
+
+                <div style={S.headerActions}>
+                  {/* Captain Profile Pill */}
+                  <div style={S.profileBtn} title="Order Captain Lead - Sinchana B R">
+                    <div style={S.profileAvatar}>
+                      <img
+                        src="/sinchana-logo.png"
+                        alt="Sinchana B R Logo"
+                        style={{
+                          width: "100%",
+                          height: "100%",
+                          objectFit: "cover",
+                          borderRadius: "50%",
+                        }}
+                      />
+                    </div>
+                    <span style={S.profileBtnName}>Sinchana B R</span>
+                  </div>
+
+                  <button
+                    style={{ ...S.dutyBtn, background: isCheckedIn ? "#0c831f" : "#dc2626" }}
+                    onClick={handleToggleDuty}
+                  >
+                    {isCheckedIn ? "🟢 ON DUTY" : "🔴 OFFLINE"}
+                  </button>
+
+                  <button
+                    type="button"
+                    style={{
+                      background: "#f1f5f9",
+                      border: "1px solid #cbd5e1",
+                      borderRadius: 6,
+                      padding: "4px 6px",
+                      fontSize: 10,
+                      fontWeight: 700,
+                      color: "#64748b",
+                      cursor: "pointer",
+                    }}
+                    title="Exit Shift Session"
+                    onClick={() => {
+                      setIsRiderLoggedIn(false);
+                      setIsCheckedIn(false);
+                      try {
+                        localStorage.removeItem("auditx_rider_authenticated");
+                      } catch (e) {}
+                    }}
+                  >
+                    Exit
+                  </button>
+
+                  {/* Sinchana B R Wallet Badge */}
+                  <div
+                    title="Sinchana B R Rider Wallet Balance & Gigs Distance"
+                    style={{
+                      padding: "5px 10px",
+                      background: "#f0fdf4",
+                      border: "1.5px solid #86efac",
+                      color: "#15803d",
+                      borderRadius: 8,
+                      fontWeight: 800,
+                      fontSize: "0.74rem",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 4,
+                    }}
+                  >
+                    <span>💰 Wallet: ₹{sinchanaWalletBalance}</span>
+                  </div>
                 </div>
               </div>
 
-              <div style={S.headerActions}>
-                <GoogleAuthButton
-                  context="rider"
-                  roleCode="DELIVERY"
-                  theme="light"
-                  size="small"
-                  label="Google"
-                  fullWidth={false}
-                />
-                {/* Captain Profile Pill */}
-                <div style={S.profileBtn} title="Order Captain Lead - Sinchana B R">
-                  <div style={S.profileAvatar}>
-                    <img
-                      src="/sinchana-logo.png"
-                      alt="Sinchana B R Logo"
-                      style={{
-                        width: "100%",
-                        height: "100%",
-                        objectFit: "cover",
-                        borderRadius: "50%",
-                      }}
-                    />
+              {/* Sub-bar: Delivery ETA / Fleet Status Bar matching ordering page */}
+              <div style={S.etaAddressBar}>
+                <div style={S.etaAddressLeft}>
+                  <div style={S.etaBadgeRow}>
+                    <div style={S.lightningPill}>
+                      ⚡
+                    </div>
+                    <div style={S.etaTitle}>
+                      {riderArrivedBar ? (
+                        <>Rider <span style={S.etaMinutes}>ARRIVED AT LOCATION</span></>
+                      ) : doorstepSeconds !== null ? (
+                        <>Almost to doorstep • <span style={S.etaMinutes}>{doorstepSeconds}s</span></>
+                      ) : (
+                        <>Delivery in <span style={S.etaMinutes}>{arrivingMinutes} {arrivingMinutes === 1 ? "MIN" : "MINS"}</span></>
+                      )}
+                    </div>
                   </div>
-                  <span style={S.profileBtnName}>Sinchana B R</span>
+                  <div style={S.addressSnippetRow}>
+                    <span>
+                      🛵 {riderArrivedBar ? "Arrived at Customer Location • Verify Handover QR" : `${distanceLeftKm} kms left to the location • Tiptur Fleet KA44`}
+                    </span>
+                  </div>
                 </div>
-
-                <button
-                  style={{ ...S.dutyBtn, background: isCheckedIn ? "#0c831f" : "#dc2626" }}
-                  onClick={() => setIsCheckedIn(!isCheckedIn)}
-                >
-                  {isCheckedIn ? "🟢 ON DUTY" : "🔴 OFFLINE"}
-                </button>
-
-                {/* Sinchana B R Wallet Badge */}
-                <div
-                  title="Sinchana B R Rider Wallet Balance & Gigs Distance"
-                  style={{
-                    padding: "5px 10px",
-                    background: "#f0fdf4",
-                    border: "1.5px solid #86efac",
-                    color: "#15803d",
-                    borderRadius: 8,
-                    fontWeight: 800,
-                    fontSize: "0.74rem",
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 4,
-                  }}
-                >
-                  <span>💰 Wallet: ₹{sinchanaWalletBalance}</span>
-                </div>
+                <span style={S.roleBadgeTag}>ORDER CAPTAIN</span>
               </div>
-            </div>
-
-            {/* Sub-bar: Delivery ETA / Fleet Status Bar matching ordering page */}
-            <div style={S.etaAddressBar}>
-              <div style={S.etaAddressLeft}>
-                <div style={S.etaBadgeRow}>
-                  <div style={S.lightningPill}>
-                    ⚡
-                  </div>
-                  <div style={S.etaTitle}>
-                    {riderArrivedBar ? (
-                      <>Rider <span style={S.etaMinutes}>ARRIVED AT LOCATION</span></>
-                    ) : doorstepSeconds !== null ? (
-                      <>Almost to doorstep • <span style={S.etaMinutes}>{doorstepSeconds}s</span></>
-                    ) : (
-                      <>Delivery in <span style={S.etaMinutes}>{arrivingMinutes} {arrivingMinutes === 1 ? "MIN" : "MINS"}</span></>
-                    )}
-                  </div>
-                </div>
-                <div style={S.addressSnippetRow}>
-                  <span>
-                    🛵 {riderArrivedBar ? "Arrived at Customer Location • Verify Handover QR" : `${distanceLeftKm} kms left to the location • Tiptur Fleet KA44`}
-                  </span>
-                </div>
-              </div>
-              <span style={S.roleBadgeTag}>ORDER CAPTAIN</span>
-            </div>
 
             {/* Live Ordering-App-Style Rider Progress Bar Message */}
             <div
@@ -583,6 +689,51 @@ export default function DeliveryCaptainApp() {
             </div>
           </div>
         </header>
+
+        {/* OFFLINE SHIFT PROMPT BANNER */}
+        {!isCheckedIn && (
+          <div
+            style={{
+              background: "linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%)",
+              border: "1.5px solid #ef4444",
+              borderRadius: 12,
+              padding: "10px 14px",
+              margin: "10px 12px 0",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 8,
+              boxShadow: "0 2px 10px rgba(239, 68, 68, 0.12)",
+            }}
+          >
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 800, color: "#b91c1c" }}>
+                🔴 SHIFT OFFLINE • DUTY OFF
+              </div>
+              <div style={{ fontSize: 11, color: "#7f1d1d", marginTop: 2 }}>
+                Scan SM Dashboard QR to start shift & receive staged delivery tasks
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={handleToggleDuty}
+              style={{
+                background: "#0c831f",
+                color: "#ffffff",
+                border: "none",
+                padding: "8px 13px",
+                borderRadius: 8,
+                fontSize: 11.5,
+                fontWeight: 800,
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+                boxShadow: "0 2px 8px rgba(12, 131, 31, 0.3)",
+              }}
+            >
+              Turn Duty ON ⚡
+            </button>
+          </div>
+        )}
 
         {/* ─── MAIN CONTENT — WHITE THEME ─── */}
         <main style={S.main}>
@@ -797,6 +948,16 @@ export default function DeliveryCaptainApp() {
                   <div style={S.hubInfoPill}>
                     <span>📍 Base: Tiptur HUB - KA44</span>
                     <span>⚡ Delivery Guarantee: 8 Mins</span>
+                  </div>
+
+                  <div style={{ marginTop: 14 }}>
+                    <button
+                      type="button"
+                      style={S.fastTrackStagingBtn}
+                      onClick={handleSimulateIncomingStagedOrder}
+                    >
+                      ⚡ Simulate Staged Order in Rack D5 (Demo)
+                    </button>
                   </div>
                 </div>
               )}
@@ -1256,6 +1417,7 @@ export default function DeliveryCaptainApp() {
           )}
         </main>
       </div>
+      )}
     </AndroidPhoneShell>
   );
 }
