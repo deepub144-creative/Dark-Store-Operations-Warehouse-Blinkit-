@@ -23,6 +23,9 @@ import { CATALOG } from "@/lib/items";
 const STORE_MANAGER_CATALOG = CATALOG.filter(
   (item) => item.category === "Frames" || item.category === "Chocolates"
 );
+
+// Dashboard Command Tower Management: ONLY SM, ASM, MD (OD Picker & Rider roles excluded)
+const DASHBOARD_MANAGERS = STAFF.filter((s) => ["SM", "ASM", "MD"].includes(s.roleCode));
 import { seedAllDemoData } from "@/lib/seedData";
 import {
   playNotificationChime,
@@ -132,15 +135,25 @@ export default function WarehouseDashboardPage() {
 
   const router = useRouter();
 
-  // Load initial staff
+  // Load initial staff (Only SM, ASM, or MD for Dashboard)
   useEffect(() => {
     const raw = localStorage.getItem("auditx_staff");
+    const defaultSM = DASHBOARD_MANAGERS.find((s) => s.id === "bhaskar") || DASHBOARD_MANAGERS[0];
     if (!raw) {
-      const defaultSM = STAFF.find((s) => s.id === "bhaskar") || STAFF[0];
       localStorage.setItem("auditx_staff", JSON.stringify(defaultSM));
       setStaff(defaultSM);
     } else {
-      setStaff(JSON.parse(raw));
+      try {
+        const parsed = JSON.parse(raw);
+        if (parsed.id === "thrupthi" || parsed.id === "sinchana" || !DASHBOARD_MANAGERS.some((m) => m.id === parsed.id)) {
+          localStorage.setItem("auditx_staff", JSON.stringify(defaultSM));
+          setStaff(defaultSM);
+        } else {
+          setStaff(parsed);
+        }
+      } catch (e) {
+        setStaff(defaultSM);
+      }
     }
   }, []);
 
@@ -843,12 +856,12 @@ export default function WarehouseDashboardPage() {
               style={S.switchSelect}
               value={staff.id}
               onChange={(e) => {
-                const target = STAFF.find((s) => s.id === e.target.value);
+                const target = DASHBOARD_MANAGERS.find((s) => s.id === e.target.value);
                 if (target) switchStaff(target);
               }}
             >
               <option disabled>Switch Profile:</option>
-              {STAFF.map((s) => (
+              {DASHBOARD_MANAGERS.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.avatar} {s.name} ({s.designation})
                 </option>
@@ -864,8 +877,12 @@ export default function WarehouseDashboardPage() {
             fullWidth={false}
             onSuccess={(authData) => {
               if (authData.staff) {
-                setStaff(authData.staff);
-                setActionSuccess(`Google Account Connected: ${authData.name}`);
+                if (DASHBOARD_MANAGERS.some((m) => m.id === authData.staff.id)) {
+                  setStaff(authData.staff);
+                  setActionSuccess(`Google Account Connected: ${authData.name}`);
+                } else {
+                  setActionSuccess(`Connected ${authData.name}. Operating in Dashboard as ${staff?.name || "Bhaskar N S"}.`);
+                }
                 setTimeout(() => setActionSuccess(""), 3000);
               }
             }}
