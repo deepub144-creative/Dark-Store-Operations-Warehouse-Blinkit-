@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { STAFF } from "@/lib/roles";
 
-export const GOOGLE_CLIENT_ID = "213600552444-52bq8aebai2ce0jpsal97bkf45ka7go2.apps.googleusercontent.com";
+export const GOOGLE_CLIENT_ID = "925739101724-pjo6hpncuvgt62ovuqg3splvd3711m0e.apps.googleusercontent.com";
 
 // Helper to decode Google JWT token
 export function parseGoogleJwt(token) {

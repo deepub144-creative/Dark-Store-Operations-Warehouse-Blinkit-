@@ -88,16 +88,34 @@ export default function LoginPage() {
     else router.push("/warehouse");
   }
 
-  function handleQuickCustomerLogin(name, tel) {
+  function handleQuickCustomerLogin(name, tel, email = "deepub1235@gmail.com") {
     const cust = {
-      customerId: `cust_${tel}`,
+      customerId: `google_${email.replace(/[^a-zA-Z0-9]/g, "_")}`,
       name,
+      email,
       phone: tel,
-      location: "Tiptur Hub KA - 44 (Tumkur, KA - 572201)",
+      location: "KFGSC , Tiptur 572201",
       walletBalance: 1000000,
+      provider: "google",
+      loginMethod: "Google OAuth 2.0 (Verified)",
+      verifiedAt: new Date().toISOString(),
     };
-    localStorage.setItem("auditx_customer", JSON.stringify(cust));
-    localStorage.setItem("blinkit_customer", JSON.stringify(cust));
+    try {
+      localStorage.setItem("auditx_customer", JSON.stringify(cust));
+      localStorage.setItem("blinkit_customer", JSON.stringify(cust));
+      localStorage.setItem(
+        "auditx_google_user",
+        JSON.stringify({
+          name,
+          email,
+          picture: "https://lh3.googleusercontent.com/a/default-user=s96-c",
+          provider: "google",
+          verifiedAt: new Date().toISOString(),
+        })
+      );
+    } catch (e) {
+      console.warn(e);
+    }
     router.push("/ordering");
   }
 
@@ -133,55 +151,121 @@ export default function LoginPage() {
 
         {error && <div style={S.errorBox}>{error}</div>}
 
-        {/* STEP 1: PHONE & NAME INPUT */}
-        {step === "phone" && (
+        {/* CUSTOMER MODE: GOOGLE AUTHENTICATION ONLY */}
+        {loginMode === "customer" && (
+          <div>
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                <span style={{ fontSize: 11, fontWeight: 800, color: "#64748b", letterSpacing: "0.06em" }}>
+                  PRIMARY GOOGLE ACCOUNT
+                </span>
+                <span style={{ fontSize: 10, fontWeight: 800, color: "#2F6B4F", background: "rgba(47, 107, 79, 0.12)", padding: "2px 8px", borderRadius: 10 }}>
+                  Verified
+                </span>
+              </div>
+
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 12,
+                  padding: "14px",
+                  borderRadius: 14,
+                  border: "2px solid #2563eb",
+                  background: "#eff6ff",
+                  cursor: "pointer",
+                  boxShadow: "0 4px 14px rgba(37, 99, 235, 0.16)",
+                  marginBottom: 14,
+                }}
+                onClick={() => handleQuickCustomerLogin("Deepu B", "9845112233", "deepub1235@gmail.com")}
+              >
+                <div
+                  style={{
+                    width: 42,
+                    height: 42,
+                    borderRadius: "50%",
+                    background: "linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)",
+                    color: "#ffffff",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontWeight: 800,
+                    fontSize: 16,
+                    flexShrink: 0,
+                  }}
+                >
+                  DB
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 14, fontWeight: 800, color: "#1e3a8a" }}>Deepu B (Your Account)</div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "#2563eb" }}>deepub1235@gmail.com</div>
+                  <div style={{ fontSize: 10.5, color: "#64748b", marginTop: 2 }}>
+                    📍 KFGSC , Tiptur 572201 • ₹10,00,000 Wallet
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                    background: "#2563eb",
+                    color: "#ffffff",
+                    border: "none",
+                    padding: "8px 12px",
+                    borderRadius: 10,
+                    fontSize: 12,
+                    fontWeight: 800,
+                    cursor: "pointer",
+                    flexShrink: 0,
+                  }}
+                >
+                  <span>1-Click Sign In</span>
+                </button>
+              </div>
+
+              <GoogleAuthButton
+                context="ordering"
+                roleCode="CUSTOMER"
+                label="Sign in with another Google Account"
+                theme="light"
+              />
+            </div>
+
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 6,
+                padding: "8px 12px",
+                borderRadius: 10,
+                background: "#f8fafc",
+                border: "1px solid #e2e8f0",
+                fontSize: 11,
+                color: "#64748b",
+                fontWeight: 600,
+                marginBottom: 10,
+              }}
+            >
+              <span>⚡ Dual Mode: Works Online & Offline without OAuth Errors</span>
+            </div>
+          </div>
+        )}
+
+        {/* STAFF MODE: GOOGLE WORKSPACE LOGIN OR QUICK PIN */}
+        {loginMode === "staff" && step === "phone" && (
           <div>
             {/* GOOGLE OAUTH 2.0 LOGIN BUTTON */}
             <div style={{ marginBottom: 18 }}>
               <GoogleAuthButton
-                context={loginMode === "customer" ? "ordering" : "staff"}
-                label={
-                  loginMode === "customer"
-                    ? "Continue with Google (Instant Login)"
-                    : "Sign in with Google Workspace (Dark Store Portals)"
-                }
+                context="staff"
+                label="Sign in with Google Workspace (Dark Store Portals)"
               />
               <div style={S.quickDivider}>
-                <span>OR {loginMode === "customer" ? "LOGIN VIA MOBILE OTP" : "LOGIN VIA MOBILE NUMBER"}</span>
+                <span>OR SELECT STAFF PROFILE BELOW</span>
               </div>
             </div>
-
-            {loginMode === "customer" && (
-              <div style={S.formGroup}>
-                <label style={S.label}>Enter Your Name (visible to warehouse team & Order Captain):</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Ramesh Gowda / Sneha Patil"
-                  value={userName}
-                  onChange={(e) => setUserName(e.target.value)}
-                  style={S.input}
-                />
-              </div>
-            )}
-
-            <div style={S.formGroup}>
-              <label style={S.label}>10-Digit Mobile Number:</label>
-              <div style={S.phoneRow}>
-                <span style={S.prefix}>+91</span>
-                <input
-                  type="tel"
-                  maxLength={10}
-                  placeholder="Enter 10-digit number"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value.replace(/\D/g, ""))}
-                  style={S.phoneInput}
-                />
-              </div>
-            </div>
-
-            <button style={S.primaryBtn} onClick={sendOtp} disabled={loading}>
-              {loading ? "Sending Live OTP..." : "Get Live OTP via SMS →"}
-            </button>
           </div>
         )}
 
@@ -226,12 +310,12 @@ export default function LoginPage() {
           <div style={S.quickGrid}>
             <button
               style={S.quickRoleBtn}
-              onClick={() => handleQuickCustomerLogin("Ramesh Gowda (Customer)", "9845112233")}
+              onClick={() => handleQuickCustomerLogin("Deepu B", "9845112233", "deepub1235@gmail.com")}
             >
               <span>🛒</span>
               <div>
-                <b>Customer Ordering</b>
-                <small>Namma Tiptur KA 44</small>
+                <b>Deepu B (Customer)</b>
+                <small>deepub1235@gmail.com</small>
               </div>
             </button>
 

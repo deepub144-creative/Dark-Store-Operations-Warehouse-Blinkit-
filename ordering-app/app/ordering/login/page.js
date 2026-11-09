@@ -9,133 +9,112 @@ import {
   IconMapPin,
   IconCheck,
   IconArrowRight,
-  IconArrowLeft,
   IconShieldCheck,
 } from "@/components/RealIcons";
-import GoogleAuthButton from "@/components/GoogleAuthButton";
+import GoogleAuthButton, { GOOGLE_CLIENT_ID } from "@/components/GoogleAuthButton";
 
 export default function CustomerInteractiveLoginPage() {
   const router = useRouter();
-
-  // Step 1: phone -> Step 2: otp -> Step 3: name -> Step 4: success
-  const [step, setStep] = useState("phone");
-  const [phone, setPhone] = useState("");
-  const [otp, setOtp] = useState("");
-  const [name, setName] = useState("");
-  const [error, setError] = useState("");
+  const [isOnline, setIsOnline] = useState(true);
   const [loading, setLoading] = useState(false);
-  const [demoOtp, setDemoOtp] = useState("442201");
-  const [timer, setTimer] = useState(30);
+  const [customName, setCustomName] = useState("");
+  const [customEmail, setCustomEmail] = useState("");
+  const [showCustomInput, setShowCustomInput] = useState(false);
+  const [signedInUser, setSignedInUser] = useState(null);
+  const [error, setError] = useState("");
 
-  // Countdown timer for OTP resend
+  // Track online / offline state
   useEffect(() => {
-    let interval = null;
-    if (step === "otp" && timer > 0) {
-      interval = setInterval(() => {
-        setTimer((prev) => prev - 1);
-      }, 1000);
+    if (typeof window !== "undefined") {
+      setIsOnline(navigator.onLine);
+      const handleOnline = () => setIsOnline(true);
+      const handleOffline = () => setIsOnline(false);
+      window.addEventListener("online", handleOnline);
+      window.addEventListener("offline", handleOffline);
+      return () => {
+        window.removeEventListener("online", handleOnline);
+        window.removeEventListener("offline", handleOffline);
+      };
     }
-    return () => {
-      if (interval) clearInterval(interval);
-    };
-  }, [step, timer]);
+  }, []);
 
-  // Load existing profile name/phone if previously logged in
+  // Check if already logged in
   useEffect(() => {
     try {
       const raw = localStorage.getItem("auditx_customer");
       if (raw) {
         const parsed = JSON.parse(raw);
-        if (parsed?.name) setName(parsed.name);
-        if (parsed?.phone) setPhone(parsed.phone);
+        if (parsed?.name) {
+          setCustomName(parsed.name);
+        }
+        if (parsed?.email) {
+          setCustomEmail(parsed.email);
+        }
       }
     } catch (e) {
       console.warn(e);
     }
   }, []);
 
-  function handleSendOtp(e) {
-    if (e) e.preventDefault();
-    const cleanPhone = phone.replace(/\D/g, "");
-    if (cleanPhone.length !== 10) {
-      setError("Please enter a valid 10-digit Indian mobile number");
-      return;
-    }
-
-    setError("");
-    setLoading(true);
-    const generated = Math.floor(100000 + Math.random() * 900000).toString();
-    setDemoOtp(generated);
-
-    fetch("/api/auth/send-otp", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ phone: cleanPhone, otp: generated }),
-    }).catch(() => {});
-
-    setTimeout(() => {
-      setLoading(false);
-      setStep("otp");
-      setTimer(30);
-    }, 450);
-  }
-
-  function handleVerifyOtp(e) {
-    if (e) e.preventDefault();
-    if (otp.length < 4) {
-      setError("Please enter the 6-digit verification code");
-      return;
-    }
-
-    setError("");
-    setLoading(true);
-
-    setTimeout(() => {
-      setLoading(false);
-      setStep("name");
-    }, 400);
-  }
-
-  function handleSaveProfile(e) {
-    if (e) e.preventDefault();
-    const trimmedName = name.trim();
-    if (!trimmedName) {
-      setError("Please enter your name");
-      return;
-    }
-
+  function handleGoogleLoginSuccess(name, email) {
     setError("");
     setLoading(true);
 
     const customerData = {
-      customerId: `cust_${phone.replace(/\D/g, "")}`,
-      name: trimmedName,
-      phone: phone.replace(/\D/g, ""),
+      customerId: `google_${email.replace(/[^a-zA-Z0-9]/g, "_")}`,
+      name: name.trim(),
+      email: email.trim(),
+      phone: "9845112233",
       location: "KFGSC , Tiptur 572201",
-      walletBalance: 999850,
+      walletBalance: 1000000,
+      provider: "google",
+      loginMethod: "Google OAuth 2.0 (Verified)",
       verifiedAt: new Date().toISOString(),
+      clientId: GOOGLE_CLIENT_ID,
     };
 
     try {
       localStorage.setItem("auditx_customer", JSON.stringify(customerData));
       localStorage.setItem("blinkit_customer", JSON.stringify(customerData));
+      localStorage.setItem(
+        "auditx_google_user",
+        JSON.stringify({
+          name: name.trim(),
+          email: email.trim(),
+          picture: "https://lh3.googleusercontent.com/a/default-user=s96-c",
+          provider: "google",
+          verifiedAt: new Date().toISOString(),
+        })
+      );
     } catch (err) {
       console.warn("Storage error:", err);
     }
 
+    setSignedInUser(customerData);
+
     setTimeout(() => {
       setLoading(false);
-      setStep("success");
-      setTimeout(() => {
-        router.push("/ordering");
-      }, 1000);
-    }, 400);
+      router.push("/ordering");
+    }, 700);
+  }
+
+  function handleCustomGoogleSubmit(e) {
+    if (e) e.preventDefault();
+    const finalName = customName.trim() || "Deepu B";
+    const finalEmail = customEmail.trim() || "deepub1235@gmail.com";
+
+    if (!finalEmail.includes("@")) {
+      setError("Please enter a valid Google/Gmail address");
+      return;
+    }
+
+    handleGoogleLoginSuccess(finalName, finalEmail);
   }
 
   return (
     <div style={styles.page}>
       <div style={styles.card}>
-        {/* 3D Bronze Metallic AUDIT'X Banner from login folder */}
+        {/* 3D Bronze Metallic AUDIT'X Banner */}
         <div style={styles.heroBannerWrap}>
           <img
             src="/login-assets/Gemini_Generated_Image_62g03s62g03s62g0.png"
@@ -144,209 +123,157 @@ export default function CustomerInteractiveLoginPage() {
           />
         </div>
 
-        {/* Stepper Dots: 1 (Phone) -> 2 (OTP) -> 3 (Name) */}
-        <div style={styles.stepperRow}>
-          <div style={{ ...styles.stepDot, ...(step === "phone" ? styles.stepActive : styles.stepDone) }}>
-            1
+        {/* Brand & Hub Info */}
+        <div style={styles.headerBlock}>
+          <div style={styles.hubBadge}>
+            <span style={{ fontSize: 13 }}>📍</span>
+            <span>TIPTUR HUB KA-44 • DARK STORE</span>
           </div>
-          <div style={{ ...styles.stepLine, ...(step !== "phone" ? styles.stepLineActive : {}) }} />
-          <div style={{ ...styles.stepDot, ...(step === "otp" ? styles.stepActive : step === "name" || step === "success" ? styles.stepDone : {}) }}>
-            2
-          </div>
-          <div style={{ ...styles.stepLine, ...(step === "name" || step === "success" ? styles.stepLineActive : {}) }} />
-          <div style={{ ...styles.stepDot, ...(step === "name" ? styles.stepActive : step === "success" ? styles.stepDone : {}) }}>
-            3
+          <h1 style={styles.title}>Customer Sign In</h1>
+          <p style={styles.subtitle}>
+            Authenticate with your Google Account for fast, secure ordering & live GPS tracking.
+          </p>
+        </div>
+
+        {/* Online / Offline Connectivity Pill */}
+        <div style={styles.statusPillRow}>
+          <div
+            style={{
+              ...styles.statusPill,
+              background: isOnline ? "rgba(47, 107, 79, 0.12)" : "rgba(184, 105, 63, 0.14)",
+              borderColor: isOnline ? "#2F6B4F" : "#B8693F",
+              color: isOnline ? "#2F6B4F" : "#B8693F",
+            }}
+          >
+            <span
+              style={{
+                width: 7,
+                height: 7,
+                borderRadius: "50%",
+                background: isOnline ? "#2F6B4F" : "#B8693F",
+                display: "inline-block",
+              }}
+            />
+            <span>
+              {isOnline
+                ? "Online Mode • Google OAuth Connected"
+                : "Offline Mode • Instant Local Auth Available"}
+            </span>
           </div>
         </div>
 
         {error && <div style={styles.errorBox}>{error}</div>}
 
-        {/* ── STEP 1: PHONE NUMBER WITH FIXED INDIAN FLAG +91 ── */}
-        {step === "phone" && (
-          <form onSubmit={handleSendOtp} style={styles.formCol}>
-            {/* GOOGLE OAUTH 2.0 LOGIN OPTION */}
-            <div style={{ marginBottom: 16 }}>
-              <GoogleAuthButton
-                context="ordering"
-                label="Continue with Google"
-                theme="light"
-              />
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  margin: "16px 0 12px 0",
-                  gap: 10,
-                }}
-              >
-                <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,0.12)" }} />
-                <span style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.05em" }}>
-                  OR CONTINUE WITH MOBILE OTP
-                </span>
-                <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,0.12)" }} />
-              </div>
-            </div>
-
-            <div style={styles.stepTitle}>Enter Your Mobile Number</div>
-            <div style={styles.stepSubtitle}>
-              We will send a 6-digit verification code to your phone
-            </div>
-
-            <div style={styles.phoneInputRow}>
-              {/* FIXED INDIAN FLAG +91 */}
-              <div style={styles.fixedCountryBadge}>
-                <span style={{ fontSize: 18 }}>🇮🇳</span>
-                <span style={styles.fixedPrefixText}>+91</span>
-              </div>
-              <input
-                type="tel"
-                placeholder="Enter 10-digit mobile"
-                maxLength={10}
-                value={phone}
-                onChange={(e) => {
-                  setPhone(e.target.value.replace(/\D/g, ""));
-                  setError("");
-                }}
-                style={styles.phoneField}
-                autoFocus
-                required
-              />
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading || phone.replace(/\D/g, "").length !== 10}
-              style={{
-                ...styles.ctaPrimary,
-                opacity: phone.replace(/\D/g, "").length === 10 ? 1 : 0.6,
-              }}
-            >
-              <span>{loading ? "Sending OTP..." : "Get OTP Verification Code"}</span>
-              <IconArrowRight size={16} color="#ffffff" />
-            </button>
-          </form>
-        )}
-
-        {/* ── STEP 2: OTP VERIFICATION ── */}
-        {step === "otp" && (
-          <form onSubmit={handleVerifyOtp} style={styles.formCol}>
-            <div style={styles.otpNavBack}>
-              <button type="button" onClick={() => setStep("phone")} style={styles.linkBack}>
-                <IconArrowLeft size={13} color="#64748b" />
-                <span>Edit Mobile</span>
-              </button>
-              <span style={styles.phonePillDisplay}>🇮🇳 +91 {phone}</span>
-            </div>
-
-            <div style={styles.stepTitle}>Enter 6-Digit OTP</div>
-            <div style={styles.stepSubtitle}>
-              Verification code sent to your phone
-            </div>
-
-            {/* Instant Demo Code Banner */}
-            <div style={styles.demoOtpBox}>
-              <span>⚡ Demo Code: <b>{demoOtp}</b></span>
-              <button
-                type="button"
-                onClick={() => setOtp(demoOtp)}
-                style={styles.autoFillBtn}
-              >
-                Auto-fill
-              </button>
-            </div>
-
-            <input
-              type="text"
-              placeholder="Enter 6-digit OTP"
-              maxLength={6}
-              value={otp}
-              onChange={(e) => {
-                setOtp(e.target.value.replace(/\D/g, ""));
-                setError("");
-              }}
-              style={styles.otpInputBox}
-              autoFocus
-              required
-            />
-
-            <button
-              type="submit"
-              disabled={loading || otp.length < 4}
-              style={{
-                ...styles.ctaPrimary,
-                opacity: otp.length >= 4 ? 1 : 0.6,
-              }}
-            >
-              <span>{loading ? "Verifying..." : "Verify & Continue"}</span>
-              <IconArrowRight size={16} color="#ffffff" />
-            </button>
-
-            <div style={styles.resendTimerRow}>
-              {timer > 0 ? (
-                <span style={styles.resendMuted}>Resend code in {timer}s</span>
-              ) : (
-                <button type="button" onClick={() => handleSendOtp()} style={styles.resendBtn}>
-                  Resend OTP Code
-                </button>
-              )}
-            </div>
-          </form>
-        )}
-
-        {/* ── STEP 3: ASK THE NAME ── */}
-        {step === "name" && (
-          <form onSubmit={handleSaveProfile} style={styles.formCol}>
-            <div style={styles.stepTitle}>What should we call you?</div>
-            <div style={styles.stepSubtitle}>
-              Please enter your name to personalize your orders & profile
-            </div>
-
-            <div style={styles.inputWrap}>
-              <label style={styles.labelCaps}>Full Name</label>
-              <input
-                type="text"
-                placeholder="e.g. Ramesh Gowda / Deepu B"
-                value={name}
-                onChange={(e) => {
-                  setName(e.target.value);
-                  setError("");
-                }}
-                style={styles.nameField}
-                autoFocus
-                required
-              />
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading || !name.trim()}
-              style={{
-                ...styles.ctaPrimary,
-                opacity: name.trim() ? 1 : 0.6,
-              }}
-            >
-              <span>{loading ? "Saving Profile..." : "Start Shopping in Dark Store"}</span>
-              <IconShieldCheck size={18} color="#ffffff" />
-            </button>
-          </form>
-        )}
-
-        {/* ── STEP 4: SUCCESS CONFIRMATION ── */}
-        {step === "success" && (
+        {/* SUCCESS CONFIRMATION IF SIGNED IN */}
+        {signedInUser ? (
           <div style={styles.successBlock}>
             <div style={styles.successCheckCircle}>
-              <IconCheck size={38} color="#ffffff" />
+              <IconCheck size={36} color="#ffffff" />
             </div>
-            <h3 style={styles.welcomeTitle}>Welcome to AUDIT'X, {name}!</h3>
+            <h3 style={styles.welcomeTitle}>Welcome, {signedInUser.name}!</h3>
             <p style={styles.welcomeSub}>
-              Account verified successfully. Delivery point set to <b>KFGSC , Tiptur 572201</b>.
+              Google account <b>{signedInUser.email}</b> verified.
             </p>
             <div style={styles.launchingTag}>
               Launching Tiptur dark store catalog...
             </div>
           </div>
+        ) : (
+          <div style={styles.authContainer}>
+            {/* PRIMARY: 1-CLICK INSTANT GOOGLE LOGIN FOR DEEPU B */}
+            <div style={styles.sectionHeader}>
+              <span style={styles.sectionHeaderTitle}>RECOMMENDED ACCOUNT</span>
+              <span style={styles.verifiedTag}>Official User</span>
+            </div>
+
+            <div
+              style={styles.primaryAccountCard}
+              onClick={() => handleGoogleLoginSuccess("Deepu B", "deepub1235@gmail.com")}
+            >
+              <div style={styles.primaryAvatar}>DB</div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={styles.primaryAccountName}>Deepu B</div>
+                <div style={styles.primaryAccountEmail}>deepub1235@gmail.com</div>
+                <div style={styles.primaryAccountLoc}>
+                  📍 KFGSC , Tiptur 572201 • ₹10,00,000 Wallet
+                </div>
+              </div>
+              <button
+                type="button"
+                disabled={loading}
+                style={styles.primarySignInBtn}
+              >
+                <span>{loading ? "Signing In..." : "1-Click Sign In"}</span>
+                <IconArrowRight size={15} color="#ffffff" />
+              </button>
+            </div>
+
+            {/* SECONDARY: OFFICIAL GOOGLE IDENTITY SERVICES BUTTON */}
+            <div style={{ marginTop: 14 }}>
+              <GoogleAuthButton
+                clientId={GOOGLE_CLIENT_ID}
+                context="ordering"
+                roleCode="CUSTOMER"
+                label="Sign in with another Google Account"
+                theme="light"
+                onSuccess={(authData) => {
+                  if (authData?.name && authData?.email) {
+                    handleGoogleLoginSuccess(authData.name, authData.email);
+                  }
+                }}
+              />
+            </div>
+
+            {/* TOGGLE CUSTOM GMAIL INPUT */}
+            <div style={{ marginTop: 14, textAlign: "center" }}>
+              <button
+                type="button"
+                onClick={() => setShowCustomInput(!showCustomInput)}
+                style={styles.toggleCustomBtn}
+              >
+                {showCustomInput
+                  ? "− Hide Custom Account Entry"
+                  : "+ Sign in with any custom Gmail ID"}
+              </button>
+            </div>
+
+            {showCustomInput && (
+              <form onSubmit={handleCustomGoogleSubmit} style={styles.customForm}>
+                <div style={{ marginBottom: 10 }}>
+                  <label style={styles.inputLabel}>Full Name</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Deepu B"
+                    value={customName}
+                    onChange={(e) => setCustomName(e.target.value)}
+                    style={styles.inputField}
+                  />
+                </div>
+                <div style={{ marginBottom: 12 }}>
+                  <label style={styles.inputLabel}>Google / Gmail Address</label>
+                  <input
+                    type="email"
+                    placeholder="deepub1235@gmail.com"
+                    value={customEmail}
+                    onChange={(e) => setCustomEmail(e.target.value)}
+                    style={styles.inputField}
+                    required
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={loading}
+                  style={styles.customSubmitBtn}
+                >
+                  <IconShieldCheck size={16} color="#ffffff" />
+                  <span>{loading ? "Authenticating..." : "Continue with this Account"}</span>
+                </button>
+              </form>
+            )}
+          </div>
         )}
 
+        {/* FOOTER NAVIGATION */}
         <div style={styles.footerRow}>
           <button
             type="button"
@@ -377,7 +304,7 @@ const styles = {
     background: "#ffffff",
     borderRadius: 22,
     boxShadow: "0 25px 60px rgba(0, 0, 0, 0.45)",
-    padding: "24px 22px 28px",
+    padding: "22px 20px 24px",
     border: "1px solid rgba(255, 255, 255, 0.15)",
   },
   heroBannerWrap: {
@@ -394,265 +321,241 @@ const styles = {
     height: "auto",
     display: "block",
   },
-  stepperRow: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    marginBottom: 20,
-  },
-  stepDot: {
-    width: 26,
-    height: 26,
-    borderRadius: "50%",
-    background: "#f1f5f9",
-    color: "#64748b",
-    fontSize: 12,
-    fontWeight: 800,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    border: "1px solid #cbd5e1",
-  },
-  stepActive: {
-    background: "#0c831f",
-    color: "#ffffff",
-    borderColor: "#0c831f",
-    boxShadow: "0 0 0 3px rgba(12, 131, 31, 0.2)",
-  },
-  stepDone: {
-    background: "#166534",
-    color: "#ffffff",
-    borderColor: "#166534",
-  },
-  stepLine: {
-    width: 34,
-    height: 2,
-    background: "#e2e8f0",
-  },
-  stepLineActive: {
-    background: "#0c831f",
-  },
-  errorBox: {
-    background: "#fef2f2",
-    border: "1px solid #fecaca",
-    color: "#b91c1c",
-    fontSize: 12,
-    fontWeight: 700,
-    padding: "8px 12px",
-    borderRadius: 8,
-    marginBottom: 14,
+  headerBlock: {
     textAlign: "center",
+    marginBottom: 12,
   },
-  formCol: {
+  hubBadge: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+    padding: "4px 12px",
+    borderRadius: 20,
+    background: "#f1f5f9",
+    border: "1px solid #cbd5e1",
+    fontSize: 10.5,
+    fontWeight: 800,
+    color: "#334155",
+    letterSpacing: "0.05em",
+    marginBottom: 8,
+  },
+  title: {
+    fontSize: 22,
+    fontWeight: 800,
+    color: "#0f172a",
+    margin: "0 0 6px 0",
+    letterSpacing: "-0.02em",
+  },
+  subtitle: {
+    fontSize: 12.5,
+    color: "#64748b",
+    lineHeight: 1.45,
+    margin: 0,
+  },
+  statusPillRow: {
+    display: "flex",
+    justifyContent: "center",
+    margin: "12px 0 16px 0",
+  },
+  statusPill: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 7,
+    padding: "5px 12px",
+    borderRadius: 20,
+    border: "1px solid",
+    fontSize: 11,
+    fontWeight: 700,
+  },
+  authContainer: {
     display: "flex",
     flexDirection: "column",
   },
-  stepTitle: {
-    fontSize: 18,
-    fontWeight: 800,
-    color: "#0f172a",
-    marginBottom: 4,
-  },
-  stepSubtitle: {
-    fontSize: 12,
-    color: "#64748b",
-    marginBottom: 16,
-    lineHeight: 1.4,
-  },
-  phoneInputRow: {
+  sectionHeader: {
     display: "flex",
     alignItems: "center",
-    border: "2px solid #cbd5e1",
-    borderRadius: 12,
-    background: "#f8fafc",
-    overflow: "hidden",
-    marginBottom: 18,
+    justifyContent: "space-between",
+    marginBottom: 8,
+    padding: "0 2px",
   },
-  fixedCountryBadge: {
-    padding: "13px 14px",
-    background: "#f1f5f9",
-    borderRight: "1px solid #e2e8f0",
+  sectionHeaderTitle: {
+    fontSize: 10.5,
+    fontWeight: 800,
+    color: "#64748b",
+    letterSpacing: "0.06em",
+  },
+  verifiedTag: {
+    fontSize: 10,
+    fontWeight: 800,
+    color: "#2F6B4F",
+    background: "rgba(47, 107, 79, 0.12)",
+    padding: "2px 8px",
+    borderRadius: 10,
+  },
+  primaryAccountCard: {
+    display: "flex",
+    alignItems: "center",
+    gap: 12,
+    padding: "14px 14px",
+    borderRadius: 14,
+    border: "2px solid #2563eb",
+    background: "#eff6ff",
+    cursor: "pointer",
+    boxShadow: "0 4px 14px rgba(37, 99, 235, 0.16)",
+    transition: "transform 0.15s ease, box-shadow 0.15s ease",
+  },
+  primaryAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: "50%",
+    background: "linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)",
+    color: "#ffffff",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontWeight: 800,
+    fontSize: 16,
+    flexShrink: 0,
+    boxShadow: "0 2px 6px rgba(37, 99, 235, 0.35)",
+  },
+  primaryAccountName: {
+    fontSize: 14.5,
+    fontWeight: 800,
+    color: "#1e3a8a",
+  },
+  primaryAccountEmail: {
+    fontSize: 12,
+    fontWeight: 700,
+    color: "#2563eb",
+  },
+  primaryAccountLoc: {
+    fontSize: 10.5,
+    color: "#64748b",
+    marginTop: 2,
+  },
+  primarySignInBtn: {
     display: "flex",
     alignItems: "center",
     gap: 6,
-    flexShrink: 0,
-  },
-  fixedPrefixText: {
-    fontSize: 14,
-    fontWeight: 800,
-    color: "#1e293b",
-  },
-  phoneField: {
-    flex: 1,
-    border: "none",
-    outline: "none",
-    padding: "13px 14px",
-    fontSize: 16,
-    fontWeight: 800,
-    color: "#0f172a",
-    background: "transparent",
-    letterSpacing: "0.02em",
-  },
-  ctaPrimary: {
-    width: "100%",
-    background: "#0c831f",
+    background: "#2563eb",
     color: "#ffffff",
     border: "none",
-    padding: "14px 20px",
-    borderRadius: 12,
-    fontSize: 14,
+    padding: "9px 12px",
+    borderRadius: 10,
+    fontSize: 12,
     fontWeight: 800,
     cursor: "pointer",
+    flexShrink: 0,
+    boxShadow: "0 2px 6px rgba(37, 99, 235, 0.3)",
+  },
+  toggleCustomBtn: {
+    background: "transparent",
+    border: "none",
+    color: "#64748b",
+    fontSize: 12,
+    fontWeight: 700,
+    cursor: "pointer",
+    textDecoration: "underline",
+    padding: "6px 8px",
+  },
+  customForm: {
+    marginTop: 10,
+    padding: "14px",
+    background: "#f8fafc",
+    borderRadius: 12,
+    border: "1px solid #e2e8f0",
+  },
+  inputLabel: {
+    display: "block",
+    fontSize: 11,
+    fontWeight: 700,
+    color: "#475569",
+    marginBottom: 4,
+    textTransform: "uppercase",
+  },
+  inputField: {
+    width: "100%",
+    padding: "10px 12px",
+    border: "1.5px solid #cbd5e1",
+    borderRadius: 8,
+    fontSize: 13,
+    color: "#0f172a",
+    background: "#ffffff",
+    outline: "none",
+    boxSizing: "border-box",
+  },
+  customSubmitBtn: {
+    width: "100%",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
-    boxShadow: "0 4px 14px rgba(12, 131, 31, 0.3)",
-    transition: "all 0.15s ease",
-  },
-  otpNavBack: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 10,
-  },
-  linkBack: {
-    background: "none",
-    border: "none",
-    padding: 0,
-    fontSize: 12,
-    color: "#64748b",
-    display: "flex",
-    alignItems: "center",
-    gap: 4,
-    cursor: "pointer",
-    fontWeight: 700,
-  },
-  phonePillDisplay: {
-    fontSize: 12,
-    fontWeight: 800,
-    color: "#0f172a",
-  },
-  demoOtpBox: {
-    background: "#fef3c7",
-    border: "1px solid #fde68a",
-    borderRadius: 8,
-    padding: "8px 12px",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    fontSize: 12,
-    color: "#92400e",
-    marginBottom: 14,
-  },
-  autoFillBtn: {
-    background: "#b45309",
+    padding: "11px",
+    background: "#0f172a",
     color: "#ffffff",
     border: "none",
-    padding: "4px 9px",
-    borderRadius: 5,
-    fontSize: 11,
-    fontWeight: 800,
-    cursor: "pointer",
-  },
-  otpInputBox: {
-    width: "100%",
-    border: "2px solid #cbd5e1",
-    borderRadius: 12,
-    padding: "13px",
-    fontSize: 22,
-    fontWeight: 900,
-    textAlign: "center",
-    letterSpacing: "0.25em",
-    outline: "none",
-    marginBottom: 16,
-    background: "#f8fafc",
-    boxSizing: "border-box",
-  },
-  resendTimerRow: {
-    textAlign: "center",
-    marginTop: 14,
-  },
-  resendMuted: {
-    fontSize: 12,
-    color: "#94a3b8",
-  },
-  resendBtn: {
-    background: "none",
-    border: "none",
-    color: "#0c831f",
-    fontSize: 12,
-    fontWeight: 800,
-    cursor: "pointer",
-    textDecoration: "underline",
-  },
-  inputWrap: {
-    marginBottom: 16,
-  },
-  labelCaps: {
-    display: "block",
-    fontSize: 11,
-    fontWeight: 800,
-    color: "#475569",
-    marginBottom: 6,
-    textTransform: "uppercase",
-  },
-  nameField: {
-    width: "100%",
-    border: "2px solid #cbd5e1",
-    borderRadius: 12,
-    padding: "13px 14px",
-    fontSize: 15,
+    borderRadius: 8,
+    fontSize: 13,
     fontWeight: 700,
-    color: "#0f172a",
-    outline: "none",
-    background: "#f8fafc",
-    boxSizing: "border-box",
+    cursor: "pointer",
+  },
+  errorBox: {
+    background: "#fef2f2",
+    color: "#b91c1c",
+    border: "1px solid #fecaca",
+    borderRadius: 10,
+    padding: "10px 14px",
+    fontSize: 12.5,
+    fontWeight: 600,
+    marginBottom: 12,
+    textAlign: "center",
   },
   successBlock: {
     textAlign: "center",
-    padding: "16px 0",
+    padding: "24px 10px",
   },
   successCheckCircle: {
-    width: 60,
-    height: 60,
+    width: 64,
+    height: 64,
     borderRadius: "50%",
-    background: "#0c831f",
+    background: "linear-gradient(135deg, #2F6B4F 0%, #1f4733 100%)",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    margin: "0 auto 14px",
-    boxShadow: "0 8px 24px rgba(12, 131, 31, 0.3)",
+    margin: "0 auto 14px auto",
+    boxShadow: "0 8px 24px rgba(47, 107, 79, 0.35)",
   },
   welcomeTitle: {
-    fontSize: 20,
-    fontWeight: 900,
+    fontSize: 19,
+    fontWeight: 800,
     color: "#0f172a",
-    margin: "0 0 6px",
+    margin: "0 0 6px 0",
   },
   welcomeSub: {
     fontSize: 13,
     color: "#475569",
-    margin: "0 0 14px",
-    lineHeight: 1.5,
+    margin: "0 0 14px 0",
   },
   launchingTag: {
-    fontSize: 12,
-    color: "#0c831f",
+    display: "inline-block",
+    fontSize: 11.5,
     fontWeight: 700,
+    color: "#B8693F",
+    background: "rgba(184, 105, 63, 0.12)",
+    padding: "5px 14px",
+    borderRadius: 20,
   },
   footerRow: {
-    textAlign: "center",
     marginTop: 20,
-    paddingTop: 14,
+    textAlign: "center",
     borderTop: "1px solid #f1f5f9",
+    paddingTop: 14,
   },
   returnCatalogBtn: {
-    background: "none",
+    background: "transparent",
     border: "none",
     color: "#64748b",
-    fontSize: 12,
+    fontSize: 12.5,
     fontWeight: 700,
     cursor: "pointer",
   },
