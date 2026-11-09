@@ -326,7 +326,7 @@ export default function OrderingAppPage() {
     } catch (e) {}
   }, []);
   const [orderingStage, setOrderingStage] = useState("idle"); // 'idle' | 'picking' | 'packed_assigning' | 'rider_assigned' | 'almost_doorstep' | 'rider_arrived' | 'delivered'
-  const [deliveryCountdownSec, setDeliveryCountdownSec] = useState(480); // 8 minutes = 480 seconds
+  const [deliveryCountdownSec, setDeliveryCountdownSec] = useState(600); // 10 minutes = 600 seconds total SLA (2m OD Picker + 8m Rider)
   const [customFloatingTitle, setCustomFloatingTitle] = useState("");
   const [customFloatingSub, setCustomFloatingSub] = useState("");
   const [customFloatingBadge, setCustomFloatingBadge] = useState("");
@@ -480,7 +480,7 @@ export default function OrderingAppPage() {
             setOrderingStage((prev) =>
               prev === "idle" || prev === "picking" ? "rider_assigned" : prev
             );
-            setDeliveryCountdownSec((prev) => (prev > 360 ? 360 : prev));
+            setDeliveryCountdownSec((prev) => (prev > 480 ? 480 : prev));
           } else {
             setActiveDeliveryOrder(active);
             setOrderingStage((prev) => (prev === "idle" ? "picking" : prev));
@@ -551,22 +551,22 @@ export default function OrderingAppPage() {
           playNotificationChime();
           triggerToast("📦 Order is packed! We will assign the rider captain soon...");
 
-          // 2. Auto update to Delivery Captain Sinchana B R, reduce 2 mins (6 mins remaining)
+          // 2. Auto update to Delivery Captain Sinchana B R, reduce 2 mins (8 mins remaining live running)
           setTimeout(() => {
             setOrderingStage("rider_assigned");
-            setDeliveryCountdownSec(360);
+            setDeliveryCountdownSec(480);
             setCustomFloatingTitle("Hi, I'm Sinchana B R, your delivery captain! 🛵");
             setCustomFloatingSub("Out for Delivery • On the way to your doorstep");
-            setCustomFloatingBadge("⚡ 6 mins");
+            setCustomFloatingBadge("");
             playNotificationChime();
-            triggerToast("Hi, I'm Sinchana B R, your delivery captain! 🛵 Arriving in 6 mins");
+            triggerToast("Hi, I'm Sinchana B R, your delivery captain! 🛵 Arriving in 8 mins");
           }, 2500);
         } else if (data.type === "FAST_DELIVERY_STARTED") {
           setOrderingStage("rider_assigned");
-          setDeliveryCountdownSec(360);
+          setDeliveryCountdownSec(480);
           setCustomFloatingTitle("Hi, I'm Sinchana B R, your delivery captain! 🛵");
           setCustomFloatingSub("Out for Delivery • On the way to your doorstep");
-          setCustomFloatingBadge("⚡ 6 mins");
+          setCustomFloatingBadge("");
         }
         if (data.type === "ORDER_DELIVERED") {
           setOrderingStage("delivered");
@@ -986,7 +986,7 @@ export default function OrderingAppPage() {
           : "Cash on Delivery",
       storeId: "TIPTUR-HUB-KA44",
       storeName: "Tiptur HUB - KA44",
-      estimatedDeliveryMins: 8,
+      estimatedDeliveryMins: 10,
       createdAt: new Date().toISOString(),
       qrCode: `AUDITX-ORD-${orderId}-CUSTOMER-QR`,
       items: cartItemsList.map((item) => ({
@@ -1043,12 +1043,12 @@ export default function OrderingAppPage() {
 
     setActiveDeliveryOrder(createdOrder);
     setOrderingStage("picking");
-    setDeliveryCountdownSec(480);
-    setCustomFloatingTitle("Order Placed • In-Store Picking (8 mins)");
-    setCustomFloatingSub("Assigned to OD Picker Lead: Thrupthi K S (Warehouse Staging)");
-    setCustomFloatingBadge("⏱️ 8:00");
+    setDeliveryCountdownSec(600);
+    setCustomFloatingTitle("Order Placed • Arriving in 10 minutes");
+    setCustomFloatingSub("Assigned to OD Picker: Thrupthi K S (Warehouse Staging)");
+    setCustomFloatingBadge("");
 
-    triggerToast(`Order #${orderId} Placed Successfully! Delivery in 8 mins!`);
+    triggerToast(`Order #${orderId} Placed! Arriving in 10 minutes!`);
 
     // 3. Clear cart and trigger premium OrderPlacedSheet celebration overlay
     const currentItemCount = totalItems;
@@ -1656,88 +1656,37 @@ export default function OrderingAppPage() {
         /* ── CATALOG BROWSE VIEW (STORE WITH SMART CART BAR) ── */
         <main style={S.catalogMain}>
           <div style={S.catalogContainer}>
-            {/* Store Closed Interactive Notice Banner */}
+            {/* Store Closed Notice Banner */}
             {!isStoreOpen && (
               <div
                 style={{
                   background: "linear-gradient(135deg, #fff1f3 0%, #ffe4e6 100%)",
                   border: "1.5px solid #fecdd3",
-                  borderRadius: 14,
-                  padding: "12px 14px",
+                  borderRadius: 12,
+                  padding: "10px 14px",
                   marginBottom: 12,
-                  boxShadow: "0 2px 10px rgba(225, 29, 72, 0.08)",
+                  boxShadow: "0 2px 8px rgba(225, 29, 72, 0.08)",
                 }}
               >
-                <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
-                  <span style={{ fontSize: 24, flexShrink: 0 }}>🏪</span>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                      <span
-                        style={{
-                          background: "#e11d48",
-                          color: "#fff",
-                          fontSize: 10,
-                          fontWeight: 800,
-                          padding: "2px 6px",
-                          borderRadius: 6,
-                          letterSpacing: 0.5,
-                        }}
-                      >
-                        STORE CLOSED
-                      </span>
-                      <span style={{ fontSize: 13, fontWeight: 800, color: "#9f1239" }}>
-                        Store is closed right now • Ordering opening soon!
-                      </span>
-                    </div>
-                    <p style={{ margin: "4px 0 8px", fontSize: 11.5, color: "#475569", lineHeight: 1.4 }}>
-                      You can search &amp; view all products, explore Namma Tiptur, and review your past orders. Orders will resume shortly!
-                    </p>
-                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                      <button
-                        type="button"
-                        style={{
-                          background: "#ffffff",
-                          border: "1.5px solid #f43f5e",
-                          color: "#e11d48",
-                          fontSize: 11,
-                          fontWeight: 700,
-                          padding: "6px 12px",
-                          borderRadius: 8,
-                          cursor: "pointer",
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: 5,
-                        }}
-                        onClick={() => {
-                          if (customer?.name) {
-                            setShowProfileModal(true);
-                          } else {
-                            setActiveBottomTab("order_again");
-                          }
-                        }}
-                      >
-                        <span>📦 Explore Past Orders</span>
-                      </button>
-                      <button
-                        type="button"
-                        style={{
-                          background: "#0c831f",
-                          border: "none",
-                          color: "#ffffff",
-                          fontSize: 11,
-                          fontWeight: 700,
-                          padding: "6px 12px",
-                          borderRadius: 8,
-                          cursor: "pointer",
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: 5,
-                        }}
-                        onClick={() => setActiveBottomTab("explore_tiptur")}
-                      >
-                        <span>🌴 Explore Namma Tiptur</span>
-                      </button>
-                    </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontSize: 20 }}>🏪</span>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <span
+                      style={{
+                        background: "#e11d48",
+                        color: "#fff",
+                        fontSize: 10,
+                        fontWeight: 800,
+                        padding: "2px 6px",
+                        borderRadius: 6,
+                        letterSpacing: 0.5,
+                      }}
+                    >
+                      STORE CLOSED
+                    </span>
+                    <span style={{ fontSize: 13, fontWeight: 800, color: "#9f1239" }}>
+                      Store is closed right now • Ordering opening soon!
+                    </span>
                   </div>
                 </div>
               </div>
@@ -2171,7 +2120,7 @@ export default function OrderingAppPage() {
               </div>
               <div style={S.reorderBadgePill}>
                 <IconClock size={13} color="#0c831f" />
-                <span>Fast 8-Min Reorder</span>
+                <span>Fast 10-Min Reorder</span>
               </div>
             </div>
 
@@ -2931,7 +2880,7 @@ export default function OrderingAppPage() {
                         {totalItems} {totalItems === 1 ? "ITEM" : "ITEMS"} • ₹{grandTotal}
                       </div>
                       <div style={S.floatingSavings}>
-                        {!isStoreOpen ? "Store closed • Saved for when store opens" : `Delivery in 8 mins to ${selectedAddress.type}`}
+                        {!isStoreOpen ? "Store closed • Saved for when store opens" : `Delivery in 10 mins to ${selectedAddress.type}`}
                       </div>
                     </div>
                   </div>
@@ -3088,7 +3037,7 @@ export default function OrderingAppPage() {
                       : orderingStage === "rider_assigned"
                       ? "Hi, I'm Sinchana B R, your delivery captain! 🛵"
                       : orderingStage === "picking"
-                      ? "Order Placed • In-Store Picking (8 mins)"
+                      ? "Order Placed • Arriving in 10 minutes"
                       : "Out for Delivery")}
                 </span>
                 <span
@@ -3107,12 +3056,12 @@ export default function OrderingAppPage() {
                       : orderingStage === "rider_arrived"
                       ? "🛵 At Doorstep"
                       : orderingStage === "almost_doorstep"
-                      ? "⚡ Reaching Now"
+                      ? `⚡ ${deliveryCountdownSec}s`
                       : orderingStage === "packed_assigning"
                       ? "📦 Packed"
-                      : orderingStage === "picking"
+                      : orderingStage === "picking" || orderingStage === "rider_assigned"
                       ? `⏱️ ${Math.floor(deliveryCountdownSec / 60)}:${deliveryCountdownSec % 60 < 10 ? "0" : ""}${deliveryCountdownSec % 60}`
-                      : `⚡ ${Math.max(1, Math.ceil(deliveryCountdownSec / 60))} mins`)}
+                      : `⏱️ ${Math.floor(deliveryCountdownSec / 60)}:${deliveryCountdownSec % 60 < 10 ? "0" : ""}${deliveryCountdownSec % 60}`)}
                 </span>
               </div>
               <div
@@ -3887,7 +3836,7 @@ export default function OrderingAppPage() {
                   KFGSC , Tiptur 572201
                 </p>
                 <p style={{ margin: "5px 0 0", color: "#0c831f", fontSize: 11, fontWeight: 700 }}>
-                  ⚡ Guaranteed 8-10 minute express dark store delivery point
+                  ⚡ Guaranteed 10-minute express dark store delivery point (2m Pick + 8m Rider)
                 </p>
               </div>
             </div>
@@ -4448,7 +4397,7 @@ export default function OrderingAppPage() {
                     >
                       <option value="Missing Item">Missing Item in Delivery Bag</option>
                       <option value="Damaged Goods">Damaged / Melted Packaging</option>
-                      <option value="Delivery Delay / SLA Exceeded">Delivery Delay / 8-Min SLA Exceeded</option>
+                      <option value="Delivery Delay / SLA Exceeded">Delivery Delay / 10-Min SLA Exceeded</option>
                       <option value="Wrong Item Received">Wrong Item Received</option>
                       <option value="Billing / Wallet Issue">Billing / Wallet Issue</option>
                       <option value="Quality Issue">Quality / Freshness Issue</option>
@@ -4539,7 +4488,7 @@ export default function OrderingAppPage() {
                       <span style={{ fontSize: 36, display: "block", marginBottom: 8 }}>🎉</span>
                       <div style={{ fontWeight: 800, fontSize: 14, color: "#0f172a" }}>No Complaints on Record</div>
                       <div style={{ fontSize: 12, marginTop: 4 }}>
-                        All orders delivered seamlessly under 8-minute SLA!
+                        All orders delivered seamlessly under 10-minute SLA!
                       </div>
                     </div>
                   ) : (

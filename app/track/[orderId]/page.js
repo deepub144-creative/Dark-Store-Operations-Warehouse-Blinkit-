@@ -52,15 +52,19 @@ export default function TrackOrderPage() {
   }, []);
 
   // Tracking stages:
-  // "packing" (initial 2-min OD Picker phase)
-  // -> "one_minute" (after OD Picker handover to rider, reduce to 1 minute)
-  // -> "almost_doorstep" (2-min / 1-min countdown over -> "Almost to your doorstep • 15 seconds")
-  // -> "rider_arrived" ("Rider arrived to your location" in bar until user shows Handover QR Code to rider)
+  // "packing" (initial 2-min OD Picker phase within 10-min total SLA)
+  // -> "packed_assigning" (immediate notification upon OD Picker handover)
+  // -> "en_route" (8-min Rider Captain live countdown)
+  // -> "almost_doorstep" (final 15-second arrival alert)
+  // -> "rider_arrived" (Rider arrived to location at doorstep)
   // -> "delivered" ("Rate the Rider & Item")
   const [trackingStage, setTrackingStage] = useState("packing");
-  const [oneMinCountdownSec, setOneMinCountdownSec] = useState(60);
-  const [doorstepCountdownSec, setDoorstepCountdownSec] = useState(15);
+  const [arrivingMinutes, setArrivingMinutes] = useState(10);
   const [pickerWindowSec, setPickerWindowSec] = useState(120);
+  const [riderCountdownSec, setRiderCountdownSec] = useState(480);
+  const [doorstepCountdownSec, setDoorstepCountdownSec] = useState(15);
+  const [cancelSecondsLeft, setCancelSecondsLeft] = useState(60);
+  const [isCancelled, setIsCancelled] = useState(false);
 
   // Rider & Item Rating State (shown after doorstep delivery)
   const [riderRating, setRiderRating] = useState(5);
@@ -88,11 +92,11 @@ export default function TrackOrderPage() {
         match.status === "dispatched" ||
         match.handoverToRiderCompleted
       ) {
-        // After OD Picker task handover to rider -> reduce time to 1 minute!
-        setArrivingMinutes(1);
-        setRiderProgress((prev) => Math.max(prev, 75));
+        // After OD Picker task handover to rider -> 8-minute delivery SLA
+        setArrivingMinutes(8);
+        setRiderProgress((prev) => Math.max(prev, 65));
         setTrackingStage((prev) =>
-          prev === "packing" ? "one_minute" : prev
+          prev === "packing" ? "en_route" : prev
         );
       } else if (match.remainingMins) {
         setArrivingMinutes(match.remainingMins);
@@ -134,22 +138,25 @@ export default function TrackOrderPage() {
         (!payloadOrderId || payloadOrderId === orderId)
       ) {
         // 1. Immediate notification upon handover slider completion
+        setTrackingStage("packed_assigning");
         triggerToast("📦 Order is packed! We will assign the rider captain soon...");
         playNotificationChime();
 
-        // 2. Auto update to Delivery Captain Sinchana B R, reduce 2 mins (6 mins remaining)
+        // 2. Auto update to Delivery Captain Sinchana B R, reduce 2 mins (8 mins remaining live running)
         setTimeout(() => {
-          setArrivingMinutes(6);
+          setArrivingMinutes(8);
+          setRiderCountdownSec(480);
           setTrackingStage((prev) => (prev === "delivered" ? "delivered" : "en_route"));
           setRiderProgress(65);
-          triggerToast("Hi, I'm Sinchana B R, your delivery captain! 🛵 Arriving in 6 mins");
+          triggerToast("Hi, I'm Sinchana B R, your delivery captain! 🛵 Arriving in 8 mins");
           playNotificationChime();
         }, 2500);
       } else if (
         (data.type === "ORDER_PICKED" || data.type === "FAST_DELIVERY_STARTED") &&
         (!payloadOrderId || payloadOrderId === orderId)
       ) {
-        setArrivingMinutes(6);
+        setArrivingMinutes(8);
+        setRiderCountdownSec(480);
         setTrackingStage((prev) => (prev === "delivered" ? "delivered" : "en_route"));
         setRiderProgress(65);
       }
@@ -168,20 +175,19 @@ export default function TrackOrderPage() {
     };
   }, [orderId]);
 
-  // "Arriving in 10 minutes" auto-reducing without counting background exact seconds timeline
-  const [arrivingMinutes, setArrivingMinutes] = useState(6);
-  const [cancelSecondsLeft, setCancelSecondsLeft] = useState(60);
-  const [isCancelled, setIsCancelled] = useState(false);
-
-  // 2-minute OD Picker fixed window: once 2-min picker window finishes (or OD Picker hands over), transition to 1-min -> 15s doorstep -> rider arrived
+  // 2-minute OD Picker window timer (during "packing" phase)
   useEffect(() => {
     if (trackingStage !== "packing") return;
     const timer = setInterval(() => {
       setPickerWindowSec((prev) => {
         if (prev <= 1) {
-          setArrivingMinutes(1);
-          setOneMinCountdownSec(60);
-          setTrackingStage("one_minute");
+          // If 2 mins elapse without picker manual slider, auto-advance to packed_assigning
+          setTrackingStage("packed_assigning");
+          setTimeout(() => {
+            setArrivingMinutes(8);
+            setRiderCountdownSec(480);
+            setTrackingStage("en_route");
+          }, 2500);
           return 0;
         }
         return prev - 1;
@@ -190,19 +196,28 @@ export default function TrackOrderPage() {
     return () => clearInterval(timer);
   }, [trackingStage]);
 
-  // 1-Minute post-handover countdown -> transitions to "Almost to your doorstep • 15 seconds"
+  // 8-Minute Rider countdown timer while en_route
   useEffect(() => {
-    if (trackingStage !== "one_minute") return;
+    if (trackingStage !== "en_route") return;
     const timer = setInterval(() => {
-      setOneMinCountdownSec((prev) => {
+      setRiderCountdownSec((prev) => {
         if (prev <= 1) {
+          setTrackingStage("rider_arrived");
+          setRiderProgress(100);
+          playSuccessChime();
+          triggerToast("🛵 Rider arrived at your doorstep! Please submit the rating form to complete delivery.");
+          return 0;
+        }
+        const next = prev - 1;
+        setArrivingMinutes(Math.max(1, Math.ceil(next / 60)));
+        if (next === 15) {
           setDoorstepCountdownSec(15);
           setTrackingStage("almost_doorstep");
           setRiderProgress(92);
           playNotificationChime();
-          return 0;
+          triggerToast("⚡ Almost to your doorstep! Sinchana B R is reaching now.");
         }
-        return prev - 1;
+        return next;
       });
     }, 1000);
     return () => clearInterval(timer);
@@ -228,16 +243,6 @@ export default function TrackOrderPage() {
       });
     }, 1000);
     return () => clearInterval(timer);
-  }, [trackingStage]);
-
-  // Auto reduce arrival minutes naturally while in initial packing state
-  useEffect(() => {
-    if (trackingStage !== "packing") return;
-    const interval = setInterval(() => {
-      setArrivingMinutes((prev) => (prev > 1 ? prev - 1 : 1));
-      setRiderProgress((prev) => (prev < 70 ? prev + 5 : prev));
-    }, 20000);
-    return () => clearInterval(interval);
   }, [trackingStage]);
 
   // 60-second cancellation window timer
@@ -466,14 +471,15 @@ export default function TrackOrderPage() {
   if (isDelivered) phaseText = "Order delivered";
   else if (trackingStage === "rider_arrived") phaseText = "Delivery partner at your doorstep";
   else if (trackingStage === "almost_doorstep") phaseText = "Reaching your doorstep";
-  else if (trackingStage === "one_minute" || isStaged || activeOrder.status === "picked")
+  else if (trackingStage === "packed_assigning") phaseText = "Order is packed!";
+  else if (trackingStage === "en_route" || isStaged || activeOrder.status === "picked" || isDispatched)
     phaseText = "Order on the way";
 
   let arrivalTitle = `Arriving in ${arrivingMinutes} ${arrivingMinutes === 1 ? "minute" : "minutes"}`;
-  if (trackingStage === "one_minute") {
-    arrivalTitle = "Arriving in 1 minute";
+  if (trackingStage === "packed_assigning") {
+    arrivalTitle = "We will assign the rider captain soon...";
   } else if (trackingStage === "almost_doorstep") {
-    arrivalTitle = "Almost to your doorstep";
+    arrivalTitle = `Almost to your doorstep • ${doorstepCountdownSec}s`;
   } else if (trackingStage === "rider_arrived") {
     arrivalTitle = "Rider arrived to your location";
   }
@@ -485,7 +491,7 @@ export default function TrackOrderPage() {
       ? { x: 592, y: 248 }
       : trackingStage === "almost_doorstep"
       ? { x: 552, y: 252 }
-      : trackingStage === "one_minute" || isDispatched
+      : trackingStage === "en_route" || isDispatched || isStaged
       ? { x: 470, y: 238 }
       : { x: 336, y: 189 };
 
@@ -720,9 +726,17 @@ export default function TrackOrderPage() {
 
             {/* Status / Message Bubble */}
             <div style={S.partnerMessageBubble}>
-              {isDispatched
-                ? "I've picked up your order from Tiptur HUB and am on the way!"
-                : "I've reached the store and will pick up your order soon"}
+              {isDelivered
+                ? "I've delivered your order safely to your doorstep. Thank you!"
+                : trackingStage === "rider_arrived"
+                ? "I have arrived at your doorstep with your order bag!"
+                : trackingStage === "almost_doorstep"
+                ? "Almost at your gate! Please be ready to receive your order."
+                : trackingStage === "en_route" || isDispatched
+                ? "Hi, I'm Sinchana B R, your delivery captain! 🛵 Out for delivery to your doorstep."
+                : trackingStage === "packed_assigning"
+                ? "Order is packed! Sinchana B R will be assigned shortly."
+                : "Thrupthi K S is packing your order under 2-min SLA at Tiptur HUB"}
             </div>
 
             {/* Tipping & Happiness Section */}

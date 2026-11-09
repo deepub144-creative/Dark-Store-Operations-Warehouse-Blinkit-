@@ -642,16 +642,16 @@ export default function OdPickerApp() {
         stage: "Picked by Thrupthi K S",
         pickerId: "thrupthi",
         pickerName: "Thrupthi K S",
-        remainingMins: 3,
-        estimatedDeliveryMins: 3,
+        remainingMins: 8,
+        estimatedDeliveryMins: 8,
       });
       broadcastEvent("ORDER_PICKED", {
         orderId: activeOrder.id,
         pickerName: "Thrupthi K S",
-        remainingMins: 3,
+        remainingMins: 8,
       });
     }
-    setActionSuccess("⚡ All Items Marked Picked by Thrupthi K S! Overall delivery time reduced to 3 mins!");
+    setActionSuccess("⚡ All Items Marked Picked by Thrupthi K S! Ready for handover to Rider Sinchana B R (8-min SLA).");
     setTimeout(() => setActionSuccess(""), 2500);
   }
 
@@ -708,7 +708,7 @@ export default function OdPickerApp() {
       setPickedItemsMap(newPickedMap);
     }
 
-    // If all items are now picked, reduce delivery time to 3 mins & update live order
+    // If all items are now picked, reduce delivery time to 8 mins & update live order
     const orderItems = activeOrder?.items || [];
     const totalCount = orderItems.length;
     const pickedCount = Object.keys(newPickedMap).length;
@@ -719,16 +719,16 @@ export default function OdPickerApp() {
           stage: "Picked by Thrupthi K S",
           pickerId: "thrupthi",
           pickerName: "Thrupthi K S",
-          remainingMins: 3,
-          estimatedDeliveryMins: 3,
+          remainingMins: 8,
+          estimatedDeliveryMins: 8,
         });
         broadcastEvent("ORDER_PICKED", {
           orderId: activeOrder.id,
           pickerName: "Thrupthi K S",
-          remainingMins: 3,
+          remainingMins: 8,
         });
       }
-      setActionSuccess(`🎉 All items picked by Thrupthi K S! Reduced delivery time to 3 mins. Ready for Rack ${assignedRack.id}.`);
+      setActionSuccess(`🎉 All items picked by Thrupthi K S! Reduced delivery time to 8 mins. Ready for Rack ${assignedRack.id}.`);
     }
 
     setPhoneCameraModal(null);
@@ -777,9 +777,9 @@ export default function OdPickerApp() {
       pickerName: "Thrupthi K S",
       stagedAt: new Date().toISOString(),
       pickTimeSec: finalSec,
-      remainingMins: 1,
-      estimatedDeliveryMins: 1,
-      riderEtaMins: 6,
+      remainingMins: 8,
+      estimatedDeliveryMins: 8,
+      riderEtaMins: 8,
       handoverToRiderCompleted: true,
       qrCode: `AUDITX-HANDOVER-${currentOrder.id}-${currentRack.id}`,
     });
@@ -789,8 +789,8 @@ export default function OdPickerApp() {
       assignedRack: currentRack.id,
       pickerName: "Thrupthi K S",
       captainName: "Sinchana B R",
-      remainingMins: 1,
-      riderEtaMins: 6,
+      remainingMins: 8,
+      riderEtaMins: 8,
     });
 
     broadcastEvent("PICKER_HANDOVER_COMPLETED", {
@@ -798,8 +798,8 @@ export default function OdPickerApp() {
       assignedRack: currentRack.id,
       pickerName: "Thrupthi K S",
       captainName: "Sinchana B R",
-      remainingMins: 1,
-      riderEtaMins: 6,
+      remainingMins: 8,
+      riderEtaMins: 8,
     });
 
     // 3. Fire-and-forget Firestore update without blocking local state reset
@@ -1662,7 +1662,7 @@ export default function OdPickerApp() {
               <div style={S.successIcon}>🎉</div>
               <h2 style={S.completeTitle}>Rack {assignedRack.id} Handover to Rider Complete!</h2>
               <p style={S.completeSub}>
-                Order #{activeOrder?.orderNumber || activeOrder?.id} barcode for <b>Rack {assignedRack.id}</b> has been handed over to Rider Captain <b>Sinchana B R</b>. Ordering app ETA reduced to 1 min!
+                Order #{activeOrder?.orderNumber || activeOrder?.id} barcode for <b>Rack {assignedRack.id}</b> has been handed over to Rider Captain <b>Sinchana B R</b>. Ordering app ETA reduced to 8 mins!
               </p>
 
               <div style={S.summaryPills}>

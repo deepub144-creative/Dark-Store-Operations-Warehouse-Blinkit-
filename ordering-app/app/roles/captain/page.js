@@ -115,10 +115,10 @@ export default function DeliveryCaptainApp() {
     setTimeout(() => setActionSuccess(""), 3500);
   }
   
-  // 6-Minute Rider Countdown (6:00 mins = 360 seconds) + Auto-reducing ETA like Ordering Tracking Page
-  const CAPTAIN_SLA_SECONDS = 360;
+  // 8-Minute Rider Countdown (8:00 mins = 480 seconds) + Auto-reducing ETA like Ordering Tracking Page
+  const CAPTAIN_SLA_SECONDS = 480;
   const [remainingSec, setRemainingSec] = useState(CAPTAIN_SLA_SECONDS);
-  const [arrivingMinutes, setArrivingMinutes] = useState(6);
+  const [arrivingMinutes, setArrivingMinutes] = useState(8);
   const [distanceLeftKm, setDistanceLeftKm] = useState(1.5);
   const [doorstepSeconds, setDoorstepSeconds] = useState(null); // 15 -> 0 when almost at doorstep
   const [riderArrivedBar, setRiderArrivedBar] = useState(false);
@@ -243,12 +243,19 @@ export default function DeliveryCaptainApp() {
     };
   }, [activeOrder, isCheckedIn]);
 
-  // 6-Minute Normal Countdown & Auto-Reducing Bar (like Ordering App Tracking Page)
+  // 8-Minute Normal Countdown & Auto-Reducing Bar (like Ordering App Tracking Page)
   useEffect(() => {
     if (activeOrder && activeStep === "en_route") {
       timerRef.current = setInterval(() => {
         setElapsedSec((prev) => prev + 1);
-        setRemainingSec((prev) => (prev > 0 ? prev - 1 : 0));
+        setRemainingSec((prev) => {
+          const next = prev > 0 ? prev - 1 : 0;
+          setArrivingMinutes(Math.max(1, Math.ceil(next / 60)));
+          if (next === 15) {
+            setDoorstepSeconds(15);
+          }
+          return next;
+        });
       }, 1000);
 
       // Simulate moving across Tiptur landmarks & reducing 1.5 km distance
@@ -275,22 +282,6 @@ export default function DeliveryCaptainApp() {
       if (transitRef.current) clearInterval(transitRef.current);
     };
   }, [activeOrder, activeStep]);
-
-  // Auto-reduce arrivingMinutes naturally (6 -> 5 -> 4 -> 3 -> 2 -> 1 -> 15s -> Arrived) like Ordering App Tracking Page
-  useEffect(() => {
-    if (!activeOrder || activeStep !== "en_route") return;
-    if (riderArrivedBar || doorstepSeconds !== null) return;
-
-    const autoReduceTimer = setInterval(() => {
-      setArrivingMinutes((prev) => {
-        if (prev > 1) return prev - 1;
-        setDoorstepSeconds(15);
-        return 1;
-      });
-    }, arrivingMinutes <= 2 ? 12000 : 18000);
-
-    return () => clearInterval(autoReduceTimer);
-  }, [activeOrder, activeStep, arrivingMinutes, doorstepSeconds, riderArrivedBar]);
 
   // 15-second doorstep final countdown -> Rider arrived to location
   useEffect(() => {
@@ -378,9 +369,9 @@ export default function DeliveryCaptainApp() {
           captainName: "Sinchana B R",
           captainPhone: "8088553237",
           captainMessage: "Hi I am Sinchana B R, your order captain on the way coming soon!",
-          remainingMins: 1,
-          estimatedDeliveryMins: 1,
-          riderEtaMins: 6,
+          remainingMins: 8,
+          estimatedDeliveryMins: 8,
+          riderEtaMins: 8,
           distanceKm: 1.5,
           dispatchedAt: new Date().toISOString(),
         });
@@ -391,7 +382,7 @@ export default function DeliveryCaptainApp() {
 
     setActiveOrder(dispatchedOrder);
     setRemainingSec(CAPTAIN_SLA_SECONDS);
-    setArrivingMinutes(6);
+    setArrivingMinutes(8);
     setDistanceLeftKm(1.5);
     setDoorstepSeconds(null);
     setRiderArrivedBar(false);
@@ -399,7 +390,7 @@ export default function DeliveryCaptainApp() {
     setTransitProgress(0);
     setCurrentWaypointIdx(0);
     setActiveStep("en_route");
-    setActionSuccess("🚀 Pickup confirmed from Rack! 6-Minute express delivery started.");
+    setActionSuccess("🚀 Pickup confirmed from Rack! 8-Minute express delivery started.");
     setTimeout(() => setActionSuccess(""), 3500);
   }
 
@@ -873,10 +864,10 @@ export default function DeliveryCaptainApp() {
             </div>
           )}
 
-          {/* STEP 3: EN ROUTE - 6-MINUTE AUTO-REDUCING LIVE TRACKER ACROSS NAMMA TIPTUR */}
+          {/* STEP 3: EN ROUTE - 8-MINUTE AUTO-REDUCING LIVE TRACKER ACROSS NAMMA TIPTUR */}
           {activeStep === "en_route" && activeOrder && (
             <div>
-              {/* 6-Minute Auto-Reducing Countdown SLA Card */}
+              {/* 8-Minute Auto-Reducing Countdown SLA Card */}
               <div style={S.slaCountdownCard}>
                 <div style={S.slaClockRow}>
                   <div>
@@ -889,7 +880,7 @@ export default function DeliveryCaptainApp() {
                         : `${distanceLeftKm} KMS LEFT • TAKING ${arrivingMinutes} ${arrivingMinutes === 1 ? "MINUTE" : "MINUTES"}`}
                     </div>
                     <div style={S.slaSubtitle}>
-                      Auto-reducing 6-Min Rider Countdown (Like Ordering App Tracking Page)
+                      Auto-reducing 8-Min Rider Countdown (Like Ordering App Tracking Page)
                     </div>
                   </div>
                   <div style={S.slaDigits}>

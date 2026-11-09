@@ -212,7 +212,7 @@ export default function DedicatedWarehouseRoute() {
                 <span style={styles.addressSnippetText}>KFGSC , Tiptur 572201</span>
               </div>
             </div>
-            <span style={styles.expressTag}>⚡ 8-Min Express SLA</span>
+            <span style={styles.expressTag}>⚡ 10-Min SLA (2m Pick + 8m Rider)</span>
           </div>
         </div>
       </header>
@@ -223,7 +223,7 @@ export default function DedicatedWarehouseRoute() {
         <div style={styles.heroCard}>
           <div style={styles.heroBadgeRow}>
             <span style={styles.heroHubBadge}>Tiptur HUB KA44 Dark Store</span>
-            <span style={styles.slaBadge}>⚡ 8-Min Express SLA</span>
+            <span style={styles.slaBadge}>⚡ 10-Min SLA (2m Pick + 8m Rider)</span>
             <span style={styles.activeOrdersBadge}>
               {pendingOrders.length + pickingOrders.length + stagedOrders.length + dispatchedOrders.length} Live Orders
             </span>
