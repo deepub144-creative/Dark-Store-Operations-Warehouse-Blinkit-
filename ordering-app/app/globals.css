@@ -585,3 +585,229 @@ header, nav {
     transform: none !important;
   }
 }
+
+/* ============================================================
+   AUDIT'X TOP BARS SPECIFICATION (Audit'X_top_bars.html)
+   Matches exact layout for Picker, Captain, and Customer ordering
+   ============================================================ */
+:root {
+  --page: #f4f5f7;
+  --card: #fff;
+  --text: #1f2937;
+  --mute: #6b7280;
+  --line: #e5e7eb;
+  --g: #0c831f;
+  --gbg: #eaf7ec;
+  --gline: #bfe5c6;
+  --y: #f8cb46;
+  --ybg: #fff8dc;
+  --ytx: #6b5200;
+  --r: #e11d48;
+  --rbg: #fff1f3;
+  --rline: #fecdd3;
+  --on: #1f9d55;
+  --off: #d92b2b;
+  --ctl: #f3f4f6;
+}
+
+.bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: nowrap;
+  gap: 10px;
+  background: var(--card);
+  border-bottom: 1px solid var(--line);
+  box-shadow: 0 1px 3px rgba(0,0,0,.06);
+  padding: 6px 10px;
+  min-height: 44px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  width: 100%;
+  box-sizing: border-box;
+}
+.bar::-webkit-scrollbar {
+  display: none;
+}
+.grp {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+.logo {
+  height: 20px;
+  width: auto;
+  display: block;
+}
+.c {
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  border-radius: 4px;
+  border: 1px solid var(--line);
+  background: var(--ctl);
+  color: var(--text);
+  font: 700 12px/1 system-ui, -apple-system, sans-serif;
+  white-space: nowrap;
+  cursor: default;
+  text-decoration: none;
+}
+button.c {
+  cursor: pointer;
+  font-family: inherit;
+}
+.c svg {
+  width: 15px;
+  height: 15px;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.hub {
+  background: var(--ybg);
+  border-color: var(--y);
+  color: var(--ytx);
+}
+.open {
+  background: var(--gbg);
+  border-color: var(--gline);
+  color: var(--g);
+}
+.open i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--g);
+  display: block;
+}
+.user {
+  background: var(--gbg);
+  border-color: var(--gline);
+  color: var(--g);
+  padding: 0 10px 0 4px;
+}
+.av {
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  flex: none;
+  object-fit: cover;
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  font-size: 12px;
+}
+.av.ncc {
+  border: 2px solid var(--g);
+  background: #fff;
+}
+.av.sv {
+  background: #000;
+  border: 2px solid #d4a017;
+  color: #d4a017;
+  font: italic 700 13px Georgia, serif;
+}
+.av.dd {
+  background: var(--g);
+  color: #fff;
+}
+.exit {
+  color: var(--mute);
+  background: transparent;
+}
+.exit:hover {
+  background: var(--line);
+}
+.wallet {
+  background: var(--gbg);
+  border-color: var(--gline);
+  color: var(--g);
+}
+.cart {
+  background: var(--g);
+  border-color: var(--g);
+  color: #fff;
+}
+.cart b {
+  min-width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  background: #fff;
+  color: var(--g);
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  padding: 0 4px;
+  margin-left: 2px;
+}
+.support {
+  background: var(--rbg);
+  border-color: var(--rline);
+  color: var(--r);
+}
+.duty {
+  position: relative;
+  flex: none;
+  width: 104px;
+  height: 30px;
+  border: 0;
+  border-radius: 15px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.25);
+  background: var(--off);
+  color: #fff;
+  font: 800 11px/1 system-ui, sans-serif;
+  letter-spacing: .4px;
+  cursor: pointer;
+  padding: 0 8px 0 30px;
+  transition: background .25s, padding .25s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.duty .knob {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #fff;
+  display: grid;
+  place-items: center;
+  transition: transform .25s;
+}
+.duty .knob::after {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--off);
+  transition: background .25s;
+}
+.duty[aria-checked="true"] {
+  background: var(--on);
+  padding: 0 30px 0 8px;
+}
+.duty[aria-checked="true"] .knob {
+  transform: translateX(74px);
+}
+.duty[aria-checked="true"] .knob::after {
+  background: var(--on);
+}
+.duty:focus-visible, .c:focus-visible {
+  outline: 3px solid #222;
+  outline-offset: 2px;
+}
+@media (max-width: 640px) {
+  .bar {
+    padding: 6px 8px;
+    gap: 6px;
+  }
+}
+

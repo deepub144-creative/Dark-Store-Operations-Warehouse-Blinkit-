@@ -11,6 +11,7 @@ import AuditxMiniAssistant from "@/components/AuditxMiniAssistant";
 import GoogleAuthButton from "@/components/GoogleAuthButton";
 import OrderPlacedSheet from "@/components/ui/OrderPlacedSheet";
 import DeliveryReceiptModal from "@/components/DeliveryReceiptModal";
+import AuditxSuiteTopBar from "@/components/AuditxSuiteTopBar";
 import {
   IconLightning,
   IconRealisticScooter,
@@ -1121,128 +1122,35 @@ export default function OrderingAppPage() {
           />
         )}
 
-        {/* ── 1. TOP HEADER (DELIVERY & ADDRESS BAR) ── */}
-        <header style={S.topHeader}>
+        {/* ── 1. TOP HEADER (AUDIT'X SUITE TOP BAR DESIGN SPEC) ── */}
+        <AuditxSuiteTopBar
+          variant="ordering"
+          hubText="Tiptur Hub · KA-44"
+          isStoreOpen={isStoreOpen}
+          userName={customer?.name ? customer.name.split(" ")[0].toUpperCase() : "DEEPU"}
+          userInitial={customer?.name ? customer.name.charAt(0).toUpperCase() : "D"}
+          onUserClick={() => {
+            if (customer?.name) {
+              setShowProfileModal(true);
+            } else {
+              router.push("/ordering/login");
+            }
+          }}
+          cartCount={totalItems}
+          onCartClick={() => setIsCheckoutView(!isCheckoutView)}
+          supportCount={customerComplaints.length}
+          onSupportClick={() => {
+            if (activeDeliveryOrder) {
+              setComplaintOrderId(activeDeliveryOrder.orderNumber || activeDeliveryOrder.id || activeDeliveryOrder.orderId);
+            }
+            setShowComplaintModal(true);
+          }}
+        />
+
+        {/* Blinkit Delivery ETA & Address Selector Bar */}
+        <header style={{ ...S.topHeader, paddingTop: 4, paddingBottom: 4 }}>
           <div style={S.headerContainer}>
-            <div style={S.headerNavRow}>
-              <div style={S.logoArea}>
-                <AuditxLogo height={32} href="/" />
-                <div style={S.brandTag}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                    <span style={S.storeBadge}>Tiptur Hub KA - 44</span>
-                    <span
-                      style={{
-                        fontSize: 10,
-                        fontWeight: 900,
-                        padding: "2px 7px",
-                        borderRadius: 12,
-                        background: isStoreOpen ? "#dcfce7" : "#fee2e2",
-                        color: isStoreOpen ? "#15803d" : "#b91c1c",
-                        border: isStoreOpen ? "1px solid #86efac" : "1px solid #fca5a5",
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: 4,
-                      }}
-                      title={isStoreOpen ? "Store is currently open for orders" : "Store is closed by Store Manager Bhaskar N S"}
-                    >
-                      <span
-                        style={{
-                          width: 6,
-                          height: 6,
-                          borderRadius: "50%",
-                          background: isStoreOpen ? "#16a34a" : "#dc2626",
-                        }}
-                      />
-                      {isStoreOpen ? "OPEN" : "CLOSED"}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-            <div style={S.headerActions}>
-              {/* User Profile Button */}
-              <button
-                type="button"
-                style={S.profileBtn}
-                onClick={() => {
-                  if (customer?.name) {
-                    setShowProfileModal(true);
-                  } else {
-                    router.push("/ordering/login");
-                  }
-                }}
-                title={customer?.name ? `Logged in: ${customer.name}` : "Click to Login / Register"}
-              >
-                <div style={S.profileAvatar}>
-                  {customer?.name ? (
-                    customer.name.charAt(0).toUpperCase()
-                  ) : (
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-                      <circle cx="12" cy="7" r="4" />
-                    </svg>
-                  )}
-                </div>
-                <span style={S.profileBtnName}>
-                  {customer?.name ? customer.name.split(" ")[0] : "Login"}
-                </span>
-              </button>
-
-              <button
-                style={S.viewToggleBtn}
-                onClick={() => setIsCheckoutView(!isCheckoutView)}
-                title="Toggle Catalog or Checkout Screen"
-              >
-                {isCheckoutView ? "Browse Catalog" : `Cart (${totalItems})`}
-              </button>
-
-              {/* Support & Complaints Button */}
-              <button
-                type="button"
-                id="customer-support-complaint-btn"
-                onClick={() => {
-                  if (activeDeliveryOrder) {
-                    setComplaintOrderId(activeDeliveryOrder.orderNumber || activeDeliveryOrder.id || activeDeliveryOrder.orderId);
-                  }
-                  setShowComplaintModal(true);
-                }}
-                title="Customer Helpdesk & Complaints - SM & ASM Live Resolution"
-                style={{
-                  padding: "5px 9px",
-                  background: "#fff1f2",
-                  border: "1px solid #fecdd3",
-                  color: "#e11d48",
-                  borderRadius: 16,
-                  fontSize: 11,
-                  fontWeight: 800,
-                  cursor: "pointer",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 4,
-                  boxShadow: "0 2px 5px rgba(225, 29, 72, 0.12)",
-                }}
-              >
-                <span>⚠️ Support</span>
-                {customerComplaints.length > 0 && (
-                  <span
-                    style={{
-                      background: "#e11d48",
-                      color: "#fff",
-                      borderRadius: 10,
-                      padding: "1px 5px",
-                      fontSize: 10,
-                      fontWeight: 900,
-                    }}
-                  >
-                    {customerComplaints.length}
-                  </span>
-                )}
-              </button>
-            </div>
-          </div>
-
-          {/* Blinkit Delivery ETA & Address Selector Bar */}
-          <div style={S.etaAddressBar} onClick={() => setShowAddressModal(true)}>
+            <div style={S.etaAddressBar} onClick={() => setShowAddressModal(true)}>
             <div style={S.etaAddressLeft}>
               <div style={S.etaBadgeRow}>
                 <div style={S.lightningPill}>

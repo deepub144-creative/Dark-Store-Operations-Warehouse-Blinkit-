@@ -29,6 +29,7 @@ import GoogleAuthButton from "@/components/GoogleAuthButton";
 import StaffAppLoginScreen from "@/components/StaffAppLoginScreen";
 import SmDutyQrScannerModal from "@/components/SmDutyQrScannerModal";
 import DutyToggleSwitch from "@/components/DutyToggleSwitch";
+import AuditxSuiteTopBar from "@/components/AuditxSuiteTopBar";
 import {
   IconAnimPicker,
   IconAnimPutaway,
@@ -879,79 +880,38 @@ export default function OdPickerApp() {
         <div style={S.container}>
           {actionSuccess && <div style={S.toast}>{actionSuccess}</div>}
 
-          {/* ── 1. TOP HEADER (MATCHING ORDERING PAGE THEME) ── */}
-          <header style={S.topHeader}>
+          {/* ── 1. TOP HEADER (AUDIT'X SUITE TOP BAR DESIGN SPEC) ── */}
+          <AuditxSuiteTopBar
+            variant="picker"
+            hubText="Tiptur Hub · KA-44"
+            isDutyOn={isOnline}
+            onDutyToggle={handleToggleDuty}
+            onExit={() => {
+              setIsPickerLoggedIn(false);
+              setIsOnline(false);
+              try {
+                localStorage.removeItem("auditx_picker_authenticated");
+                localStorage.setItem("auditx_device_thrupthi", "LOGGED_OUT");
+              } catch (e) {}
+              broadcastEvent("STAFF_STATUS_CHANGED", {
+                staffId: "thrupthi",
+                staffName: "Thrupthi K S",
+                roleCode: "PICKER",
+                status: "offline",
+                deviceStatus: "LOGGED_OUT",
+                deviceName: "MOTOROLA",
+                deviceId: "MOTOROLA",
+                time: new Date().toISOString(),
+              });
+            }}
+            walletAmount={28}
+            userName="Thrupthi K S"
+            userAvatarSrc="/thrupthi-logo.png"
+          />
+
+          {/* Sub-bar: Live Login Hours & OD Picker SLA Bar */}
+          <header style={{ ...S.topHeader, paddingTop: 4, paddingBottom: 4 }}>
             <div style={S.headerContainer}>
-              <div style={S.headerNavRow}>
-                <div style={S.logoArea}>
-                  <AuditxLogo height={32} href="/" />
-                  <div style={S.brandTag}>
-                    <span style={S.storeBadge}>Tiptur Hub KA - 44</span>
-                  </div>
-                </div>
-
-                <div style={S.headerActions}>
-                  {/* Profile Pill */}
-                  <div style={S.profileBtn} title="OD Picker Lead - Thrupthi K S">
-                    <img
-                      src="/thrupthi-logo.png"
-                      alt="Thrupthi K S - OD Picker Lead Logo"
-                      style={{
-                        width: 24,
-                        height: 24,
-                        borderRadius: "50%",
-                        objectFit: "cover",
-                        border: "1.5px solid #0c831f",
-                      }}
-                    />
-                    <span style={S.profileBtnName}>Thrupthi K S</span>
-                  </div>
-
-                  <DutyToggleSwitch
-                    isOn={isOnline}
-                    onToggle={handleToggleDuty}
-                    size="compact"
-                    ariaLabel="OD Picker Duty Status"
-                  />
-
-                  <button
-                    type="button"
-                    style={{
-                      background: "#f1f5f9",
-                      border: "1px solid #cbd5e1",
-                      borderRadius: 6,
-                      padding: "4px 6px",
-                      fontSize: 10,
-                      fontWeight: 700,
-                      color: "#64748b",
-                      cursor: "pointer",
-                    }}
-                    title="Exit Shift Session"
-                    onClick={() => {
-                      setIsPickerLoggedIn(false);
-                      setIsOnline(false);
-                      try {
-                        localStorage.removeItem("auditx_picker_authenticated");
-                        localStorage.setItem("auditx_device_thrupthi", "LOGGED_OUT");
-                      } catch (e) {}
-                      broadcastEvent("STAFF_STATUS_CHANGED", {
-                        staffId: "thrupthi",
-                        staffName: "Thrupthi K S",
-                        roleCode: "PICKER",
-                        status: "offline",
-                        deviceStatus: "LOGGED_OUT",
-                        deviceName: "MOTOROLA",
-                        deviceId: "MOTOROLA",
-                        time: new Date().toISOString(),
-                      });
-                    }}
-                  >
-                    Exit
-                  </button>
-                </div>
-              </div>
-
-              {/* Sub-bar: Live Login Hours & OD Picker SLA Bar */}
               <div style={S.etaAddressBar}>
                 <div style={S.etaAddressLeft}>
                   <div style={S.etaBadgeRow}>

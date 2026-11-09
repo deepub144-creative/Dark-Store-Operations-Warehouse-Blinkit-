@@ -14,6 +14,7 @@ import GoogleAuthButton from "@/components/GoogleAuthButton";
 import DeliveredSheet from "@/components/ui/DeliveredSheet";
 import StaffAppLoginScreen from "@/components/StaffAppLoginScreen";
 import DutyToggleSwitch from "@/components/DutyToggleSwitch";
+import AuditxSuiteTopBar from "@/components/AuditxSuiteTopBar";
 import { saveLiveOrder } from "@/lib/realtimeSync";
 import {
   IconRealisticScooter,
@@ -545,99 +546,38 @@ export default function DeliveryCaptainApp() {
 
           {actionSuccess && <div style={S.toast}>{actionSuccess}</div>}
 
-          {/* ── 1. TOP HEADER (MATCHING ORDERING PAGE THEME) ── */}
-          <header style={S.topHeader}>
+          {/* ── 1. TOP HEADER (AUDIT'X SUITE TOP BAR DESIGN SPEC) ── */}
+          <AuditxSuiteTopBar
+            variant="rider"
+            hubText="Tiptur Hub · KA-44"
+            isDutyOn={isCheckedIn}
+            onDutyToggle={handleToggleDuty}
+            onExit={() => {
+              setIsRiderLoggedIn(false);
+              setIsCheckedIn(false);
+              try {
+                localStorage.removeItem("auditx_rider_authenticated");
+                localStorage.setItem("auditx_device_sinchana", "LOGGED_OUT");
+              } catch (e) {}
+              broadcastEvent("STAFF_STATUS_CHANGED", {
+                staffId: "sinchana",
+                staffName: "Sinchana B R",
+                roleCode: "DELIVERY",
+                status: "offline",
+                deviceStatus: "LOGGED_OUT",
+                deviceName: "OPPO",
+                deviceId: "OPPO",
+                time: new Date().toISOString(),
+              });
+            }}
+            walletAmount={sinchanaWalletBalance || 28}
+            userName="Sinchana B R"
+            userInitial="S"
+          />
+
+          {/* Sub-bar: Delivery ETA / Fleet Status Bar matching ordering page */}
+          <header style={{ ...S.topHeader, paddingTop: 4, paddingBottom: 4 }}>
             <div style={S.headerContainer}>
-              <div style={S.headerNavRow}>
-                <div style={S.logoArea}>
-                  <AuditxLogo height={32} href="/" />
-                  <div style={S.brandTag}>
-                    <span style={S.storeBadge}>Tiptur Hub KA - 44</span>
-                  </div>
-                </div>
-
-                <div style={S.headerActions}>
-                  {/* Captain Profile Pill */}
-                  <div style={S.profileBtn} title="Order Captain Lead - Sinchana B R">
-                    <div style={S.profileAvatar}>
-                      <img
-                        src="/sinchana-logo.png"
-                        alt="Sinchana B R Logo"
-                        style={{
-                          width: "100%",
-                          height: "100%",
-                          objectFit: "cover",
-                          borderRadius: "50%",
-                        }}
-                      />
-                    </div>
-                    <span style={S.profileBtnName}>Sinchana B R</span>
-                  </div>
-
-                  <DutyToggleSwitch
-                    isOn={isCheckedIn}
-                    onToggle={handleToggleDuty}
-                    size="compact"
-                    ariaLabel="Delivery Captain Duty Status"
-                  />
-
-                  <button
-                    type="button"
-                    style={{
-                      background: "#f1f5f9",
-                      border: "1px solid #cbd5e1",
-                      borderRadius: 6,
-                      padding: "4px 6px",
-                      fontSize: 10,
-                      fontWeight: 700,
-                      color: "#64748b",
-                      cursor: "pointer",
-                    }}
-                    title="Exit Shift Session"
-                    onClick={() => {
-                      setIsRiderLoggedIn(false);
-                      setIsCheckedIn(false);
-                      try {
-                        localStorage.removeItem("auditx_rider_authenticated");
-                        localStorage.setItem("auditx_device_sinchana", "LOGGED_OUT");
-                      } catch (e) {}
-                      broadcastEvent("STAFF_STATUS_CHANGED", {
-                        staffId: "sinchana",
-                        staffName: "Sinchana B R",
-                        roleCode: "DELIVERY",
-                        status: "offline",
-                        deviceStatus: "LOGGED_OUT",
-                        deviceName: "OPPO",
-                        deviceId: "OPPO",
-                        time: new Date().toISOString(),
-                      });
-                    }}
-                  >
-                    Exit
-                  </button>
-
-                  {/* Sinchana B R Wallet Badge */}
-                  <div
-                    title="Sinchana B R Rider Wallet Balance & Gigs Distance"
-                    style={{
-                      padding: "5px 10px",
-                      background: "#f0fdf4",
-                      border: "1.5px solid #86efac",
-                      color: "#15803d",
-                      borderRadius: 8,
-                      fontWeight: 800,
-                      fontSize: "0.74rem",
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 4,
-                    }}
-                  >
-                    <span>💰 Wallet: ₹{sinchanaWalletBalance}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Sub-bar: Delivery ETA / Fleet Status Bar matching ordering page */}
               <div style={S.etaAddressBar}>
                 <div style={S.etaAddressLeft}>
                   <div style={S.etaBadgeRow}>
