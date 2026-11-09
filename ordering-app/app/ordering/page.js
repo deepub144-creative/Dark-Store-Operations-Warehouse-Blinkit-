@@ -324,8 +324,11 @@ export default function OrderingAppPage() {
       if (Array.isArray(raw)) setPastOrders(raw);
     } catch (e) {}
   }, []);
-  const [orderingStage, setOrderingStage] = useState("idle"); // 'idle' | 'packing' | 'one_minute' | 'almost_doorstep' | 'rider_arrived' | 'delivered'
-  const [orderingOneMinSec, setOrderingOneMinSec] = useState(60);
+  const [orderingStage, setOrderingStage] = useState("idle"); // 'idle' | 'picking' | 'packed_assigning' | 'rider_assigned' | 'almost_doorstep' | 'rider_arrived' | 'delivered'
+  const [deliveryCountdownSec, setDeliveryCountdownSec] = useState(480); // 8 minutes = 480 seconds
+  const [customFloatingTitle, setCustomFloatingTitle] = useState("");
+  const [customFloatingSub, setCustomFloatingSub] = useState("");
+  const [customFloatingBadge, setCustomFloatingBadge] = useState("");
   const [orderingDoorstepSec, setOrderingDoorstepSec] = useState(15);
   const [showRateOrderModal, setShowRateOrderModal] = useState(false);
   const [riderStars, setRiderStars] = useState(5);
@@ -474,11 +477,12 @@ export default function OrderingAppPage() {
           ) {
             setActiveDeliveryOrder(active);
             setOrderingStage((prev) =>
-              prev === "idle" || prev === "packing" ? "one_minute" : prev
+              prev === "idle" || prev === "picking" ? "rider_assigned" : prev
             );
+            setDeliveryCountdownSec((prev) => (prev > 360 ? 360 : prev));
           } else {
             setActiveDeliveryOrder(active);
-            setOrderingStage((prev) => (prev === "idle" ? "packing" : prev));
+            setOrderingStage((prev) => (prev === "idle" ? "picking" : prev));
           }
         } else {
           setActiveDeliveryOrder(null);
@@ -536,13 +540,32 @@ export default function OrderingAppPage() {
         checkActiveDelivery();
         if (
           data.type === "ORDER_STAGED" ||
-          data.type === "PICKER_HANDOVER_COMPLETED" ||
-          data.type === "FAST_DELIVERY_STARTED"
+          data.type === "PICKER_HANDOVER_COMPLETED"
         ) {
-          setOrderingOneMinSec(60);
-          setOrderingStage("one_minute");
+          // 1. Immediate message upon OD Picker handover slider completion
+          setOrderingStage("packed_assigning");
+          setCustomFloatingTitle("Order is packed!");
+          setCustomFloatingSub("We will assign the rider captain soon...");
+          setCustomFloatingBadge("📦 Packed");
           playNotificationChime();
-          triggerToast("⚡ Your order is on the way! Arriving in 1 minute.");
+          triggerToast("📦 Order is packed! We will assign the rider captain soon...");
+
+          // 2. Auto update to Delivery Captain Sinchana B R, reduce 2 mins (6 mins remaining)
+          setTimeout(() => {
+            setOrderingStage("rider_assigned");
+            setDeliveryCountdownSec(360);
+            setCustomFloatingTitle("Hi, I'm Sinchana B R, your delivery captain! 🛵");
+            setCustomFloatingSub("Out for Delivery • On the way to your doorstep");
+            setCustomFloatingBadge("⚡ 6 mins");
+            playNotificationChime();
+            triggerToast("Hi, I'm Sinchana B R, your delivery captain! 🛵 Arriving in 6 mins");
+          }, 2500);
+        } else if (data.type === "FAST_DELIVERY_STARTED") {
+          setOrderingStage("rider_assigned");
+          setDeliveryCountdownSec(360);
+          setCustomFloatingTitle("Hi, I'm Sinchana B R, your delivery captain! 🛵");
+          setCustomFloatingSub("Out for Delivery • On the way to your doorstep");
+          setCustomFloatingBadge("⚡ 6 mins");
         }
         if (data.type === "ORDER_DELIVERED") {
           setOrderingStage("delivered");
@@ -593,38 +616,31 @@ export default function OrderingAppPage() {
     };
   }, []);
 
-  // Ordering App Post-Handover Countdown Progression: 1 min -> Almost to your doorstep 15s -> Rider arrived to your location
+  // Synchronized SLA Countdown Progression: 8m pick -> 6m rider transit -> 15s doorstep -> Rider arrived
   useEffect(() => {
-    if (orderingStage === "one_minute") {
-      const t = setInterval(() => {
-        setOrderingOneMinSec((prev) => {
-          if (prev <= 1) {
-            setOrderingDoorstepSec(15);
-            setOrderingStage("almost_doorstep");
-            playNotificationChime();
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-      return () => clearInterval(t);
-    }
-    if (orderingStage === "almost_doorstep") {
-      const t = setInterval(() => {
-        setOrderingDoorstepSec((prev) => {
-          if (prev <= 1) {
-            setOrderingStage("rider_arrived");
-            playSuccessChime();
-            triggerToast("🛵 Rider arrived at your doorstep! Please rate your delivery.");
-            setShowRateOrderModal(true);
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-      return () => clearInterval(t);
-    }
-  }, [orderingStage]);
+    if (orderingStage === "idle" || orderingStage === "delivered" || !activeDeliveryOrder) return;
+
+    const t = setInterval(() => {
+      setDeliveryCountdownSec((prev) => {
+        if (prev <= 1) {
+          setOrderingStage("rider_arrived");
+          playSuccessChime();
+          triggerToast("🛵 Rider arrived at your doorstep! Please rate your delivery.");
+          setShowRateOrderModal(true);
+          return 0;
+        }
+        const next = prev - 1;
+        if (next === 15 && orderingStage !== "almost_doorstep") {
+          setOrderingStage("almost_doorstep");
+          playNotificationChime();
+          triggerToast("⚡ Almost to your doorstep! Sinchana B R is reaching now.");
+        }
+        return next;
+      });
+    }, 1000);
+
+    return () => clearInterval(t);
+  }, [orderingStage, activeDeliveryOrder]);
 
   function handleSubmitOrderingRating(e) {
     if (e) e.preventDefault();
@@ -1023,6 +1039,13 @@ export default function OrderingAppPage() {
       localStorage.setItem("blinkit_customer", JSON.stringify(updated));
       setCustomer(updated);
     }
+
+    setActiveDeliveryOrder(createdOrder);
+    setOrderingStage("picking");
+    setDeliveryCountdownSec(480);
+    setCustomFloatingTitle("Order Placed • In-Store Picking (8 mins)");
+    setCustomFloatingSub("Assigned to OD Picker Lead: Thrupthi K S (Warehouse Staging)");
+    setCustomFloatingBadge("⏱️ 8:00");
 
     triggerToast(`Order #${orderId} Placed Successfully! Delivery in 8 mins!`);
 
@@ -3091,15 +3114,20 @@ export default function OrderingAppPage() {
                     letterSpacing: "-0.2px",
                   }}
                 >
-                  {activeDeliveryOrder.status === "delivered" || orderingStage === "delivered"
-                    ? "Rate Rider & Ordered Items"
-                    : orderingStage === "rider_arrived"
-                    ? "Rider arrived to your location"
-                    : orderingStage === "almost_doorstep"
-                    ? "Almost to your doorstep"
-                    : orderingStage === "one_minute"
-                    ? "Arriving in 1 minute"
-                    : "Order arriving soon"}
+                  {customFloatingTitle ||
+                    (activeDeliveryOrder.status === "delivered" || orderingStage === "delivered"
+                      ? "Rate Rider & Ordered Items"
+                      : orderingStage === "rider_arrived"
+                      ? "Rider arrived to your location"
+                      : orderingStage === "almost_doorstep"
+                      ? "Almost to your doorstep"
+                      : orderingStage === "packed_assigning"
+                      ? "Order is packed!"
+                      : orderingStage === "rider_assigned"
+                      ? "Hi, I'm Sinchana B R, your delivery captain! 🛵"
+                      : orderingStage === "picking"
+                      ? "Order Placed • In-Store Picking (8 mins)"
+                      : "Out for Delivery")}
                 </span>
                 <span
                   style={{
@@ -3111,15 +3139,18 @@ export default function OrderingAppPage() {
                     borderRadius: 4,
                   }}
                 >
-                  {activeDeliveryOrder.status === "delivered" || orderingStage === "delivered"
-                    ? "⭐ Doorstep Complete"
-                    : orderingStage === "rider_arrived"
-                    ? "🛵 At Doorstep"
-                    : orderingStage === "almost_doorstep"
-                    ? "⚡ Reaching Now"
-                    : orderingStage === "one_minute"
-                    ? "⚡ 1 min"
-                    : "⚡ 6 mins"}
+                  {customFloatingBadge ||
+                    (activeDeliveryOrder.status === "delivered" || orderingStage === "delivered"
+                      ? "⭐ Doorstep Complete"
+                      : orderingStage === "rider_arrived"
+                      ? "🛵 At Doorstep"
+                      : orderingStage === "almost_doorstep"
+                      ? "⚡ Reaching Now"
+                      : orderingStage === "packed_assigning"
+                      ? "📦 Packed"
+                      : orderingStage === "picking"
+                      ? `⏱️ ${Math.floor(deliveryCountdownSec / 60)}:${deliveryCountdownSec % 60 < 10 ? "0" : ""}${deliveryCountdownSec % 60}`
+                      : `⚡ ${Math.max(1, Math.ceil(deliveryCountdownSec / 60))} mins`)}
                 </span>
               </div>
               <div
@@ -3132,11 +3163,20 @@ export default function OrderingAppPage() {
                   textOverflow: "ellipsis",
                 }}
               >
-                {activeDeliveryOrder.status === "delivered" || orderingStage === "delivered"
-                  ? "Delivered • Tap to rate rider & items"
-                  : orderingStage === "rider_arrived"
-                  ? "Rider Sinchana B R is at your doorstep with your bag"
-                  : "Your order is on the way to your doorstep"}
+                {customFloatingSub ||
+                  (activeDeliveryOrder.status === "delivered" || orderingStage === "delivered"
+                    ? "Delivered • Tap to rate rider & items"
+                    : orderingStage === "rider_arrived"
+                    ? "Rider Sinchana B R is at your doorstep with your bag"
+                    : orderingStage === "almost_doorstep"
+                    ? "Sinchana B R is reaching your gate in seconds"
+                    : orderingStage === "packed_assigning"
+                    ? "We will assign the rider captain soon..."
+                    : orderingStage === "rider_assigned"
+                    ? "Picked from Warehouse Staging • Out for Delivery"
+                    : orderingStage === "picking"
+                    ? "Assigned to OD Picker Lead: Thrupthi K S (Warehouse Staging)"
+                    : "Your order is on the way to your doorstep")}
               </div>
             </div>
           </div>

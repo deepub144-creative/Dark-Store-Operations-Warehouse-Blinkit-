@@ -205,8 +205,8 @@ export default function GoogleAuthButton({
       } else {
         if (effectiveRole === "PICKER" || context === "picker") router.push("/picker");
         else if (effectiveRole === "DELIVERY" || context === "rider") router.push("/rider");
-        else if (effectiveRole === "ASM") router.push("/roles/asm");
-        else if (effectiveRole === "MD") router.push("/roles/md");
+        else if (effectiveRole === "ASM") router.push("/dashboard?role=asm");
+        else if (effectiveRole === "MD") router.push("/dashboard?role=md");
         else if (context === "dashboard") router.push("/dashboard");
         else router.push("/warehouse");
       }

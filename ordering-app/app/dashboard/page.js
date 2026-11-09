@@ -36,6 +36,7 @@ import {
 import ErdDfdViewer from "@/components/ErdDfdViewer";
 import AuditxLogo from "@/components/AuditxLogo";
 import StoreToggleSwitch from "@/components/StoreToggleSwitch";
+import DutyToggleSwitch from "@/components/DutyToggleSwitch";
 import DailyOperationsExportButton from "@/components/DailyOperationsExportButton";
 import ManagingDirectorApp from "@/app/roles/md/page";
 import AssistantStoreManagerApp from "@/app/roles/asm/page";
@@ -493,6 +494,34 @@ export default function WarehouseDashboardPage() {
     }
     setActionSuccess(`Switched personnel profile to ${member.name} (${member.designation})`);
     setTimeout(() => setActionSuccess(""), 3000);
+  }
+
+  function handleToggleDuty(staffId) {
+    const isCurrentOn = deviceFleet[staffId] === "LOGGED_IN";
+    const nextStatus = isCurrentOn ? "LOGGED_OUT" : "LOGGED_IN";
+    const staffName = staffId === "thrupthi" ? "Thrupthi K S" : "Sinchana B R";
+    const deviceName = staffId === "thrupthi" ? "MOTOROLA Terminal" : "OPPO Smartphone";
+
+    setDeviceFleet((prev) => ({ ...prev, [staffId]: nextStatus }));
+    try {
+      localStorage.setItem(`auditx_device_${staffId}`, nextStatus);
+    } catch (e) {}
+
+    playNotificationChime();
+    broadcastEvent("STAFF_STATUS_CHANGED", {
+      staffId,
+      deviceStatus: nextStatus,
+      staffName,
+      deviceName,
+      timestamp: Date.now(),
+    });
+
+    setActionSuccess(
+      nextStatus === "LOGGED_IN"
+        ? `🟢 ${staffName} (${deviceName}) turned ON DUTY!`
+        : `🔴 ${staffName} (${deviceName}) turned OFF DUTY!`
+    );
+    setTimeout(() => setActionSuccess(""), 4000);
   }
 
   function logout() {
@@ -1124,19 +1153,12 @@ export default function WarehouseDashboardPage() {
                   </div>
 
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span
-                      style={{
-                        fontSize: 10.5,
-                        fontWeight: 900,
-                        padding: "3px 8px",
-                        borderRadius: 6,
-                        background: deviceFleet.thrupthi === "LOGGED_IN" ? "#065f46" : "#7f1d1d",
-                        color: deviceFleet.thrupthi === "LOGGED_IN" ? "#6ee7b7" : "#fca5a5",
-                        letterSpacing: "0.5px",
-                      }}
-                    >
-                      {deviceFleet.thrupthi === "LOGGED_IN" ? "🟢 ON DUTY" : "🔴 OFF DUTY"}
-                    </span>
+                    <DutyToggleSwitch
+                      isOn={deviceFleet.thrupthi === "LOGGED_IN"}
+                      onToggle={() => handleToggleDuty("thrupthi")}
+                      ariaLabel="Thrupthi K S Duty status"
+                      size="compact"
+                    />
                   </div>
                 </div>
 
@@ -1228,19 +1250,12 @@ export default function WarehouseDashboardPage() {
                   </div>
 
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span
-                      style={{
-                        fontSize: 10.5,
-                        fontWeight: 900,
-                        padding: "3px 8px",
-                        borderRadius: 6,
-                        background: deviceFleet.sinchana === "LOGGED_IN" ? "#065f46" : "#7f1d1d",
-                        color: deviceFleet.sinchana === "LOGGED_IN" ? "#6ee7b7" : "#fca5a5",
-                        letterSpacing: "0.5px",
-                      }}
-                    >
-                      {deviceFleet.sinchana === "LOGGED_IN" ? "🟢 ON DUTY" : "🔴 OFF DUTY"}
-                    </span>
+                    <DutyToggleSwitch
+                      isOn={deviceFleet.sinchana === "LOGGED_IN"}
+                      onToggle={() => handleToggleDuty("sinchana")}
+                      ariaLabel="Sinchana B R Duty status"
+                      size="compact"
+                    />
                   </div>
                 </div>
 
@@ -2219,18 +2234,14 @@ export default function WarehouseDashboardPage() {
                         </td>
                         <td style={S.td}>
                           {p.id === "thrupthi" || p.id === "sinchana" ? (
-                            <span
-                              style={{
-                                fontSize: 11,
-                                fontWeight: 800,
-                                padding: "3px 8px",
-                                borderRadius: 6,
-                                background: deviceFleet[p.id] === "LOGGED_IN" ? "#dcfce7" : "#fee2e2",
-                                color: deviceFleet[p.id] === "LOGGED_IN" ? "#15803d" : "#b91c1c",
-                              }}
-                            >
-                              {deviceFleet[p.id] === "LOGGED_IN" ? "🟢 ON DUTY" : "🔴 OFF DUTY"}
-                            </span>
+                            <div style={{ display: "inline-block" }}>
+                              <DutyToggleSwitch
+                                isOn={deviceFleet[p.id] === "LOGGED_IN"}
+                                onToggle={() => handleToggleDuty(p.id)}
+                                ariaLabel={`${p.name} Duty status`}
+                                size="compact"
+                              />
+                            </div>
                           ) : (
                             <span style={S.onlineBadge}>● {p.online ? "ONLINE" : "OFFLINE"}</span>
                           )}

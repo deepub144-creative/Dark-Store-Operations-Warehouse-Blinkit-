@@ -130,18 +130,28 @@ export default function TrackOrderPage() {
       const payloadOrderId = data.orderId || data.payload?.orderId || data.payload?.id;
       if (
         (data.type === "ORDER_STAGED" ||
-          data.type === "PICKER_HANDOVER_COMPLETED" ||
-          data.type === "ORDER_PICKED" ||
-          data.type === "FAST_DELIVERY_STARTED") &&
+          data.type === "PICKER_HANDOVER_COMPLETED") &&
         (!payloadOrderId || payloadOrderId === orderId)
       ) {
-        // OD Picker completed task & handed over to rider -> reduce time to 1 minute!
-        setArrivingMinutes(1);
-        setOneMinCountdownSec(60);
-        setTrackingStage((prev) => (prev === "delivered" ? "delivered" : "one_minute"));
-        setRiderProgress(78);
-        triggerToast("⚡ OD Picker Handover Complete! Delivery time reduced to 1 minute!");
+        // 1. Immediate notification upon handover slider completion
+        triggerToast("📦 Order is packed! We will assign the rider captain soon...");
         playNotificationChime();
+
+        // 2. Auto update to Delivery Captain Sinchana B R, reduce 2 mins (6 mins remaining)
+        setTimeout(() => {
+          setArrivingMinutes(6);
+          setTrackingStage((prev) => (prev === "delivered" ? "delivered" : "en_route"));
+          setRiderProgress(65);
+          triggerToast("Hi, I'm Sinchana B R, your delivery captain! 🛵 Arriving in 6 mins");
+          playNotificationChime();
+        }, 2500);
+      } else if (
+        (data.type === "ORDER_PICKED" || data.type === "FAST_DELIVERY_STARTED") &&
+        (!payloadOrderId || payloadOrderId === orderId)
+      ) {
+        setArrivingMinutes(6);
+        setTrackingStage((prev) => (prev === "delivered" ? "delivered" : "en_route"));
+        setRiderProgress(65);
       }
       if (data.type === "ORDER_DELIVERED" && (!payloadOrderId || payloadOrderId === orderId)) {
         setOrder((prev) => ({ ...(prev || {}), ...(data.payload || {}), status: "delivered", stage: "Delivered" }));
