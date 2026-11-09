@@ -740,13 +740,15 @@ button.c {
   background: var(--gbg);
   border-color: var(--gline);
   color: var(--g);
-  padding: 0 8px;
+  padding: 0 6px;
+  gap: 4px;
 }
 .cart {
   background: var(--g);
   border-color: var(--g);
   color: #fff;
-  padding: 0 8px;
+  padding: 0 6px;
+  gap: 4px;
 }
 .cart b {
   min-width: 16px;
@@ -758,13 +760,14 @@ button.c {
   place-items: center;
   font-size: 11px;
   padding: 0 4px;
-  margin-left: 2px;
+  margin-left: 1px;
 }
 .support {
   background: var(--rbg);
   border-color: var(--rline);
   color: var(--r);
-  padding: 0 8px;
+  padding: 0 6px;
+  gap: 4px;
 }
 .duty {
   position: relative;

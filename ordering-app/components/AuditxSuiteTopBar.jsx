@@ -13,7 +13,7 @@ import AuditxLogo from "./AuditxLogo";
  */
 export default function AuditxSuiteTopBar({
   variant = "ordering", // "picker" | "rider" | "ordering"
-  hubText = "Tiptur Hub · KA-44",
+  hubText = "KA-44 Hub",
   isStoreOpen = true,
   isDutyOn = true,
   onDutyToggle,
@@ -122,7 +122,7 @@ export default function AuditxSuiteTopBar({
                 <svg>
                   <use href="#ax-wal" />
                 </svg>
-                <span>Wallet ₹<span>{walletAmount}</span></span>
+                <span>₹<span>{walletAmount}</span></span>
               </div>
             </>
           )}
@@ -171,7 +171,7 @@ export default function AuditxSuiteTopBar({
                 <svg>
                   <use href="#ax-wal" />
                 </svg>
-                <span>Wallet ₹<span>{walletAmount}</span></span>
+                <span>₹<span>{walletAmount}</span></span>
               </div>
             </>
           )}
@@ -197,7 +197,6 @@ export default function AuditxSuiteTopBar({
                 <svg>
                   <use href="#ax-crt" />
                 </svg>
-                <span>Cart</span>
                 <b>{cartCount}</b>
               </button>
               <button
@@ -209,7 +208,6 @@ export default function AuditxSuiteTopBar({
                 <svg>
                   <use href="#ax-sup" />
                 </svg>
-                <span>Support</span>
                 {supportCount > 0 && (
                   <span
                     style={{
