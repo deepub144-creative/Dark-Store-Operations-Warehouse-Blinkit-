@@ -33,6 +33,7 @@ import {
 import ErdDfdViewer from "@/components/ErdDfdViewer";
 import AuditxLogo from "@/components/AuditxLogo";
 import GoogleAuthButton from "@/components/GoogleAuthButton";
+import StoreToggleSwitch from "@/components/StoreToggleSwitch";
 import {
   IconRealisticScooter,
   IconRealisticPickerTrolley,
@@ -469,7 +470,7 @@ export default function WarehouseDashboardPage() {
 
     if (nextPaused) {
       playOrderAlarm();
-      setActionSuccess(`🛑 STORE CLOSED by ${staff?.name || "Bhaskar N S"}! Ordering app now displays: "Oops! Your Store is now closed , opening soon"`);
+      setActionSuccess(`🛑 STORE CLOSED by ${staff?.name || "Bhaskar N S"}. Ordering app paused.`);
     } else {
       playSuccessChime();
       setActionSuccess(`🟢 STORE OPENED by ${staff?.name || "Bhaskar N S"}! Ordering app is now open for customer orders.`);
@@ -810,52 +811,13 @@ export default function WarehouseDashboardPage() {
 
             <AuditxLogo height={32} href="/" />
             <span style={S.storeBadge}>TIPTUR-HUB-KA44</span>
-            <button
-              type="button"
-              id="dashboard-store-toggle-btn"
-              onClick={toggleStorePause}
-              style={{
-                ...S.pauseBadge,
-                background: isStorePaused ? "#dc2626" : "#059669",
-                cursor: "pointer",
-                border: "1px solid rgba(255,255,255,0.3)",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 8,
-                padding: "6px 14px",
-                borderRadius: 20,
-                color: "#ffffff",
-                fontWeight: 800,
-                fontSize: 12,
-                boxShadow: isStorePaused ? "0 0 14px rgba(220,38,38,0.55)" : "0 0 14px rgba(5,150,105,0.45)",
-                transition: "all 0.2s ease",
-              }}
-              title={isStorePaused ? "Click to OPEN store (Allows customer orders)" : "Click to CLOSE store (Shows 'Oops! Your Store is now closed , opening soon')"}
-            >
-              <span
-                style={{
-                  width: 10,
-                  height: 10,
-                  borderRadius: "50%",
-                  background: "#ffffff",
-                  display: "inline-block",
-                  boxShadow: "0 0 6px #ffffff",
-                }}
-              />
-              <span>{isStorePaused ? "🛑 STORE CLOSED (Click to Open)" : "🟢 STORE OPEN (Click to Close)"}</span>
-              <span
-                style={{
-                  fontSize: 10,
-                  padding: "2px 7px",
-                  borderRadius: 10,
-                  background: "rgba(0,0,0,0.25)",
-                  color: "#fff",
-                  fontWeight: 900,
-                }}
-              >
-                TOGGLE
-              </span>
-            </button>
+            <StoreToggleSwitch
+              isOpen={!isStorePaused}
+              onToggle={toggleStorePause}
+              width={190}
+              height={40}
+              ariaLabel="Dark store open or closed"
+            />
           </div>
           <div style={S.subText}>
             ⚡ Blinkit Dark Store Operations Command Tower • Tiptur HUB - KA44, Tumkur District - 572201 • 10-Min Delivery SLA
@@ -1080,17 +1042,10 @@ export default function WarehouseDashboardPage() {
                   </span>
                 </div>
                 <h3 style={{ margin: "2px 0 4px", color: "#ffffff", fontSize: 16, fontWeight: 800 }}>
-                  Store Staff Terminal Fleet (MOTOROLA &amp; OPPO)
+                  Staff Terminals
                 </h3>
-                <p style={{ margin: 0, color: "#94a3b8", fontSize: 12 }}>
-                  Live handheld terminal tracking for OD Picker Lead and Delivery Captain at Tiptur Hub KA44 — tracks active SKU picking, stock units available, and delivery progress directly on this dashboard.
-                </p>
               </div>
 
-              <div style={{ display: "flex", alignItems: "center", gap: 8, background: "rgba(15, 23, 42, 0.6)", border: "1px solid #334155", padding: "6px 12px", borderRadius: 8 }}>
-                <span style={{ fontSize: 11, color: "#94a3b8", fontWeight: 700 }}>Store Stock Monitored:</span>
-                <span style={{ fontSize: 12, color: "#4ade80", fontWeight: 900 }}>{totalDarkStoreUnits} Units Avail</span>
-              </div>
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 14 }}>
@@ -1123,7 +1078,7 @@ export default function WarehouseDashboardPage() {
                         </span>
                       </div>
                       <div style={{ fontSize: 11, color: "#94a3b8", fontWeight: 600 }}>
-                        OD Picker Lead • Moto G84 5G
+                        OD Picker
                       </div>
                     </div>
                   </div>
@@ -1142,23 +1097,19 @@ export default function WarehouseDashboardPage() {
                     >
                       {deviceFleet.thrupthi === "LOGGED_IN" ? "🟢 ON DUTY" : "🔴 OFF DUTY"}
                     </span>
-                    <span style={{ fontSize: 10.5, color: "#64748b", fontWeight: 700 }}>
-                      🔋 98%
-                    </span>
                   </div>
                 </div>
 
                 {/* Live Operation Status Box */}
                 {deviceFleet.thrupthi === "LOGGED_OUT" ? (
                   <div style={{ background: "rgba(239, 68, 68, 0.08)", border: "1px dashed rgba(239, 68, 68, 0.35)", borderRadius: 8, padding: "10px 12px" }}>
-                    <div style={{ fontSize: 12, fontWeight: 800, color: "#f87171" }}>🔴 Staff Offline • Duty Turned OFF</div>
-                    <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>Terminal in standby mode. Not receiving live picking orders.</div>
+                    <div style={{ fontSize: 12, fontWeight: 800, color: "#f87171" }}>🔴 Off Duty</div>
                   </div>
                 ) : activePickOrder ? (
                   <div style={{ background: "rgba(16, 185, 129, 0.09)", border: "1px solid rgba(16, 185, 129, 0.35)", borderRadius: 8, padding: "10px 12px" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
                       <span style={{ fontSize: 11, fontWeight: 900, color: "#34d399", textTransform: "uppercase", letterSpacing: "0.5px" }}>
-                        ⚡ Live Operation: Picking Item
+                        ⚡ Picking
                       </span>
                       <span style={{ fontSize: 10, background: "#065f46", color: "#a7f3d0", padding: "1px 6px", borderRadius: 4, fontWeight: 800 }}>
                         Order #{activePickOrder.orderNumber || activePickOrder.id}
@@ -1177,44 +1128,29 @@ export default function WarehouseDashboardPage() {
                   <div style={{ background: "rgba(56, 189, 248, 0.09)", border: "1px solid rgba(56, 189, 248, 0.35)", borderRadius: 8, padding: "10px 12px" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
                       <span style={{ fontSize: 11, fontWeight: 900, color: "#38bdf8", textTransform: "uppercase" }}>
-                        📦 Live Operation: Staged in Bay
+                        📦 Staged in Rack
                       </span>
                       <span style={{ fontSize: 10, background: "#0c4a6e", color: "#bae6fd", padding: "1px 6px", borderRadius: 4, fontWeight: 800 }}>
                         Order #{activeStagedOrder.orderNumber || activeStagedOrder.id}
                       </span>
                     </div>
                     <div style={{ fontSize: 12, fontWeight: 800, color: "#ffffff" }}>
-                      Ready for Handover to Sinchana B R (OPPO)
-                    </div>
-                    <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>
-                      Bagged &amp; verified in Dispatch Bay KA44 • 0 SKU variance
+                      Waiting for Sinchana B R pickup
                     </div>
                   </div>
                 ) : (
                   <div style={{ background: "rgba(30, 41, 59, 0.7)", border: "1px solid #334155", borderRadius: 8, padding: "10px 12px" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
                       <span style={{ fontSize: 11, fontWeight: 900, color: "#94a3b8", textTransform: "uppercase" }}>
-                        ⚡ Live Operation: Standby at Packing Station
+                        Standby
                       </span>
                       <span style={{ fontSize: 10, background: "#1e293b", color: "#38bdf8", padding: "1px 6px", borderRadius: 4, fontWeight: 800 }}>
                         Ready for Orders
                       </span>
                     </div>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: "#e2e8f0" }}>
-                      Dark Store Inventory Monitored: <b style={{ color: "#4ade80" }}>{totalDarkStoreUnits} Units</b> across 10 SKUs
-                    </div>
-                    <div style={{ fontSize: 10.5, color: "#64748b", marginTop: 3 }}>
-                      🍫 Chocolates: 5 units fixed | 🖼️ Frames: 1 unit single • {pickerLiveOp?.summary || "Putaway 48 units copra verified"}
-                    </div>
                   </div>
                 )}
 
-                {/* Bottom Micro Metrics */}
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 10, color: "#64748b", borderTop: "1px solid #1e293b", paddingTop: 8 }}>
-                  <span>⚡ SLA: &lt; 2:00 Min Pick</span>
-                  <span>🎯 Accuracy: 100% (0 Variance)</span>
-                  <span>📶 Hub KA44 Wi-Fi</span>
-                </div>
               </div>
 
               {/* Sinchana B R - OPPO Reno 11 Pro */}
@@ -1246,7 +1182,7 @@ export default function WarehouseDashboardPage() {
                         </span>
                       </div>
                       <div style={{ fontSize: 11, color: "#94a3b8", fontWeight: 600 }}>
-                        Delivery Captain • Reno 11 Pro
+                        Delivery Captain
                       </div>
                     </div>
                   </div>
@@ -1265,23 +1201,19 @@ export default function WarehouseDashboardPage() {
                     >
                       {deviceFleet.sinchana === "LOGGED_IN" ? "🟢 ON DUTY" : "🔴 OFF DUTY"}
                     </span>
-                    <span style={{ fontSize: 10.5, color: "#64748b", fontWeight: 700 }}>
-                      🔋 92%
-                    </span>
                   </div>
                 </div>
 
                 {/* Live Operation Status Box */}
                 {deviceFleet.sinchana === "LOGGED_OUT" ? (
                   <div style={{ background: "rgba(239, 68, 68, 0.08)", border: "1px dashed rgba(239, 68, 68, 0.35)", borderRadius: 8, padding: "10px 12px" }}>
-                    <div style={{ fontSize: 12, fontWeight: 800, color: "#f87171" }}>🔴 Staff Offline • Duty Turned OFF</div>
-                    <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>Rider in standby mode. Not receiving delivery dispatches.</div>
+                    <div style={{ fontSize: 12, fontWeight: 800, color: "#f87171" }}>🔴 Off Duty</div>
                   </div>
                 ) : activeDeliveryOrder ? (
                   <div style={{ background: "rgba(245, 158, 11, 0.09)", border: "1px solid rgba(245, 158, 11, 0.35)", borderRadius: 8, padding: "10px 12px" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
                       <span style={{ fontSize: 11, fontWeight: 900, color: isRiderAtDoorstep ? "#34d399" : "#fbbf24", textTransform: "uppercase", letterSpacing: "0.5px" }}>
-                        {isRiderAtDoorstep ? "🚪 Live Operation: At Doorstep" : "🛵 Live Operation: Out for Delivery"}
+                        {isRiderAtDoorstep ? "🚪 At Doorstep" : "🛵 Out for Delivery"}
                       </span>
                       <span style={{ fontSize: 10, background: "#78350f", color: "#fef3c7", padding: "1px 6px", borderRadius: 4, fontWeight: 800 }}>
                         Order #{activeDeliveryOrder.orderNumber || activeDeliveryOrder.id}
@@ -1294,52 +1226,34 @@ export default function WarehouseDashboardPage() {
                       <div>Units: <strong style={{ color: "#facc15" }}>{totalDispatchedUnits} Unit(s) in Bag</strong></div>
                       <div>Destination: <strong style={{ color: "#38bdf8" }}>{activeDeliveryOrder.address || activeDeliveryOrder.customerAddress || "MG Road, Tiptur"}</strong></div>
                     </div>
-                    <div style={{ fontSize: 10.5, color: isRiderAtDoorstep ? "#86efac" : "#fbbf24", marginTop: 4, fontWeight: 700 }}>
-                      {isRiderAtDoorstep ? "⭐ Customer Rating Form auto-appeared to complete delivery" : "⚡ Speed 8.2 mins Dark Store SLA • En route to customer"}
-                    </div>
                   </div>
                 ) : activeStagedOrder ? (
                   <div style={{ background: "rgba(56, 189, 248, 0.09)", border: "1px solid rgba(56, 189, 248, 0.35)", borderRadius: 8, padding: "10px 12px" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
                       <span style={{ fontSize: 11, fontWeight: 900, color: "#38bdf8", textTransform: "uppercase" }}>
-                        ⚡ Live Operation: Staged in Bay KA44
+                        📦 Pickup Ready
                       </span>
                       <span style={{ fontSize: 10, background: "#0c4a6e", color: "#bae6fd", padding: "1px 6px", borderRadius: 4, fontWeight: 800 }}>
                         Order #{activeStagedOrder.orderNumber || activeStagedOrder.id}
                       </span>
                     </div>
                     <div style={{ fontSize: 12, fontWeight: 800, color: "#ffffff" }}>
-                      Bagging {activeStagedOrder.items?.reduce((s,i) => s + (i.qty||1), 0) || 1} Units for Immediate Dispatch
-                    </div>
-                    <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>
-                      Staged by Thrupthi K S • Ready to deliver to customer
+                      Rack {activeStagedOrder.assignedRack || "-"} • {activeStagedOrder.items?.reduce((s,i) => s + (i.qty||1), 0) || 1} Units
                     </div>
                   </div>
                 ) : (
                   <div style={{ background: "rgba(30, 41, 59, 0.7)", border: "1px solid #334155", borderRadius: 8, padding: "10px 12px" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
                       <span style={{ fontSize: 11, fontWeight: 900, color: "#94a3b8", textTransform: "uppercase" }}>
-                        🛵 Live Operation: Standby at Tiptur Hub KA44
+                        Standby
                       </span>
                       <span style={{ fontSize: 10, background: "#1e293b", color: "#f59e0b", padding: "1px 6px", borderRadius: 4, fontWeight: 800 }}>
-                        Fleet Ready
+                        Ready for Orders
                       </span>
-                    </div>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: "#e2e8f0" }}>
-                      Delivery Station: <b style={{ color: "#f59e0b" }}>KA44 Dispatch Bay (Zone F0)</b>
-                    </div>
-                    <div style={{ fontSize: 10.5, color: "#64748b", marginTop: 3 }}>
-                      {riderLiveOp?.summary || "Last delivery completed to BH Road (8.4 mins SLA achieved) • 0 active trips"}
                     </div>
                   </div>
                 )}
 
-                {/* Bottom Micro Metrics */}
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 10, color: "#64748b", borderTop: "1px solid #1e293b", paddingTop: 8 }}>
-                  <span>⚡ Avg Trip: 8.2 mins</span>
-                  <span>⭐ Rating: 5.0 (Sinchana B R)</span>
-                  <span>📍 GPS: KA44 Active</span>
-                </div>
               </div>
             </div>
           </div>
@@ -1418,29 +1332,18 @@ export default function WarehouseDashboardPage() {
                   <div style={S.controlSub}>
                     Authorized Operator: <b>{staff.name}</b> ({staff.designation}) • Customer Ordering App:{" "}
                     <b style={{ color: isStorePaused ? "#ef4444" : "#10b981", fontSize: 13 }}>
-                      {isStorePaused
-                        ? "🛑 STORE CLOSED (Shows 'Oops! Your Store is now closed , opening soon')"
-                        : "🟢 STORE OPEN (Customers can order Chocolates & Frames)"}
+                      {isStorePaused ? "🛑 STORE CLOSED" : "🟢 STORE OPEN"}
                     </b>
                   </div>
                 </div>
                 <div style={S.controlBtns}>
-                  <button
-                    onClick={toggleStorePause}
-                    style={{
-                      ...S.actionBtn,
-                      background: isStorePaused ? "#059669" : "#dc2626",
-                      color: "#ffffff",
-                      fontWeight: 800,
-                      cursor: "pointer",
-                      boxShadow: isStorePaused ? "0 4px 14px rgba(5,150,105,0.4)" : "0 4px 14px rgba(220,38,38,0.4)",
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 8,
-                    }}
-                  >
-                    <span>{isStorePaused ? "🟢 OPEN STORE (Allow Customer Orders)" : "🛑 CLOSE STORE (Show 'Oops! Store Closed')"}</span>
-                  </button>
+                  <StoreToggleSwitch
+                    isOpen={!isStorePaused}
+                    onToggle={toggleStorePause}
+                    width={210}
+                    height={44}
+                    ariaLabel="Dark store open or closed"
+                  />
                   <button style={S.actionBtnOutline} onClick={handleCreateSimulatedOrder}>
                     ⚡ Simulate Test Order
                   </button>
@@ -2118,22 +2021,13 @@ export default function WarehouseDashboardPage() {
                   💾 Save &amp; Persist Inventory
                 </button>
 
-                <button
-                  type="button"
-                  style={{
-                    ...S.saveInventoryBtn,
-                    background: isStorePaused ? "#dc2626" : "#059669",
-                    borderColor: isStorePaused ? "#b91c1c" : "#047857",
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 6,
-                    fontWeight: 900,
-                  }}
-                  onClick={toggleStorePause}
-                  title="Toggle Store Open or Closed for Ordering App"
-                >
-                  <span>{isStorePaused ? "🛑 Store Closed (Click to Open)" : "🟢 Store Open (Click to Close)"}</span>
-                </button>
+                <StoreToggleSwitch
+                  isOpen={!isStorePaused}
+                  onToggle={toggleStorePause}
+                  width={190}
+                  height={40}
+                  ariaLabel="Dark store open or closed"
+                />
               </div>
 
               {/* Inventory Grid with All Ordering Images & Unit Editor */}
@@ -2379,22 +2273,17 @@ export default function WarehouseDashboardPage() {
                       </div>
                       <div style={S.toggleSub}>
                         {isStorePaused
-                          ? "Ordering app displays: 'Oops! Your Store is now closed , opening soon' and blocks orders."
-                          : "Ordering app allows customers to browse frames & chocolates and place live express orders."}
+                          ? "Ordering app shows: Store closed • Opening soon due to excess demand surge."
+                          : "Customers can browse and place live express orders."}
                       </div>
                     </div>
-                    <button
-                      style={{
-                        ...S.toggleBtn,
-                        background: isStorePaused ? "#dc2626" : "#059669",
-                        minWidth: 150,
-                        cursor: "pointer",
-                        fontWeight: 900,
-                      }}
-                      onClick={toggleStorePause}
-                    >
-                      {isStorePaused ? "🟢 CLICK TO OPEN" : "🛑 CLICK TO CLOSE"}
-                    </button>
+                    <StoreToggleSwitch
+                      isOpen={!isStorePaused}
+                      onToggle={toggleStorePause}
+                      width={190}
+                      height={40}
+                      ariaLabel="Dark store open or closed"
+                    />
                   </div>
                 </div>
               </div>

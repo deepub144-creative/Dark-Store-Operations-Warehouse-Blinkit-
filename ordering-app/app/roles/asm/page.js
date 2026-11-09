@@ -8,6 +8,7 @@ import SharedScanner from "@/components/SharedScanner";
 import { playNotificationChime, playSuccessChime, playScanSuccess } from "@/lib/soundSystem";
 import { subscribeToEvents, broadcastEvent } from "@/lib/realtimeSync";
 import AuditxLogo from "@/components/AuditxLogo";
+import LiveOrderPipeline from "@/components/LiveOrderPipeline";
 
 // Official Dark Store Catalog for ASM: Strictly matching Ordering App & SM Dashboard (Frames = 1 unit, Chocolates = 5 units)
 const ASM_OFFICIAL_CATALOG = CATALOG.filter(
@@ -200,6 +201,10 @@ export default function AssistantStoreManagerApp() {
           </div>
         </div>
       </header>
+
+      <div style={{ padding: "0 16px" }}>
+        <LiveOrderPipeline title="SM Live Order Tracking" />
+      </div>
 
       {/* Navigation Tabs */}
       <div style={S.tabBar}>

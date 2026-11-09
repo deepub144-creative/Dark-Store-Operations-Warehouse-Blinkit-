@@ -13,6 +13,7 @@ import AndroidPhoneShell from "@/components/AndroidPhoneShell";
 import GoogleAuthButton from "@/components/GoogleAuthButton";
 import DeliveredSheet from "@/components/ui/DeliveredSheet";
 import StaffAppLoginScreen from "@/components/StaffAppLoginScreen";
+import DutyToggleSwitch from "@/components/DutyToggleSwitch";
 import { saveLiveOrder } from "@/lib/realtimeSync";
 import {
   IconRealisticScooter,
@@ -41,6 +42,9 @@ export default function DeliveryCaptainApp() {
     try {
       if (typeof window !== "undefined" && localStorage.getItem("auditx_rider_authenticated") === "true") {
         setIsRiderLoggedIn(true);
+        if (localStorage.getItem("auditx_device_sinchana") === "LOGGED_IN") {
+          setIsCheckedIn(true);
+        }
       }
     } catch (e) {}
   }, []);
@@ -207,8 +211,22 @@ export default function DeliveryCaptainApp() {
         setActiveOrder(null);
         setActiveStep("awaiting_orders");
         stopOrderAlarm();
-      } else if ((readyDocs.length > 0 || inPrep.length > 0) && !activeOrder) {
-        playOrderAlarm();
+      } else if (isCheckedIn && !activeOrder) {
+        // ⚡ Instant auto-assign after picker handover: resume own trip, else take oldest staged bag
+        const resumeTrip = liveOrders.find(
+          (d) => (d.status === "dispatched" || d.status === "en_route") && (!d.captainId || d.captainId === "sinchana")
+        );
+        const oldestStaged = [...readyDocs].sort(
+          (a, b) => new Date(a.stagedAt || 0) - new Date(b.stagedAt || 0)
+        )[0];
+        if (resumeTrip) {
+          setActiveOrder(resumeTrip);
+          setActiveStep("en_route");
+        } else if (oldestStaged) {
+          playOrderAlarm();
+          setTimeout(() => stopOrderAlarm(), 1800);
+          handleSelectStagedOrder(oldestStaged);
+        }
       }
     });
 
@@ -229,7 +247,7 @@ export default function DeliveryCaptainApp() {
       unsubBus();
       stopOrderAlarm();
     };
-  }, [activeOrder]);
+  }, [activeOrder, isCheckedIn]);
 
   // 6-Minute Normal Countdown & Auto-Reducing Bar (like Ordering App Tracking Page)
   useEffect(() => {
@@ -569,12 +587,12 @@ export default function DeliveryCaptainApp() {
                     <span style={S.profileBtnName}>Sinchana B R</span>
                   </div>
 
-                  <button
-                    style={{ ...S.dutyBtn, background: isCheckedIn ? "#0c831f" : "#dc2626" }}
-                    onClick={handleToggleDuty}
-                  >
-                    {isCheckedIn ? "🟢 ON DUTY" : "🔴 OFF DUTY"}
-                  </button>
+                  <DutyToggleSwitch
+                    isOn={isCheckedIn}
+                    onToggle={handleToggleDuty}
+                    size="compact"
+                    ariaLabel="Delivery Captain Duty Status"
+                  />
 
                   <button
                     type="button"
@@ -1063,7 +1081,7 @@ export default function DeliveryCaptainApp() {
               </div>
 
               <button style={S.quickPickupBtn} onClick={handleConfirmPickupAndStartDelivery}>
-                Confirm Pickup &amp; Start 6-Min Delivery (1.5 kms left) →
+                Confirm Pickup &amp; Start Delivery →
               </button>
             </div>
           )}

@@ -28,6 +28,7 @@ import AndroidPhoneShell from "@/components/AndroidPhoneShell";
 import GoogleAuthButton from "@/components/GoogleAuthButton";
 import StaffAppLoginScreen from "@/components/StaffAppLoginScreen";
 import SmDutyQrScannerModal from "@/components/SmDutyQrScannerModal";
+import DutyToggleSwitch from "@/components/DutyToggleSwitch";
 import {
   IconAnimPicker,
   IconAnimPutaway,
@@ -117,12 +118,19 @@ export default function OdPickerApp() {
   const [loginSeconds, setLoginSeconds] = useState(1); // Starts at 0m 1s live tracking
   const [unassignedOrders, setUnassignedOrders] = useState([]);
   const [activeOrder, setActiveOrder] = useState(null);
+  const activeOrderRef = useRef(null);
+  useEffect(() => {
+    activeOrderRef.current = activeOrder;
+  }, [activeOrder]);
 
   // Restore authenticated session from localStorage if present
   useEffect(() => {
     try {
       if (typeof window !== "undefined" && localStorage.getItem("auditx_picker_authenticated") === "true") {
         setIsPickerLoggedIn(true);
+        if (localStorage.getItem("auditx_device_thrupthi") === "LOGGED_IN") {
+          setIsOnline(true);
+        }
       }
     } catch (e) {}
   }, []);
@@ -249,16 +257,32 @@ export default function OdPickerApp() {
 
     const unsub = subscribeToLiveOrders((liveOrders) => {
       if (!isOnline) return;
-      const pendingDocs = (liveOrders || []).filter((d) => d.status === "pending" || d.status === "ASSIGNED");
+      const list = liveOrders || [];
+      const pendingDocs = list.filter((d) => d.status === "pending" || d.status === "ASSIGNED");
       setUnassignedOrders(pendingDocs);
 
-      if (!liveOrders || liveOrders.length === 0) {
+      if (list.length === 0) {
         setUnassignedOrders([]);
         setActiveOrder(null);
+        activeOrderRef.current = null;
         setActiveStep("accept");
         stopOrderAlarm();
-      } else if (pendingDocs.length > 0 && !activeOrder) {
-        playOrderAlarm();
+        return;
+      }
+
+      // ⚡ Instant auto-assign: resume own in-progress pick, else take the oldest pending order
+      if (!activeOrderRef.current) {
+        const resume = list.find((d) => d.status === "picking" && (!d.pickerId || d.pickerId === "thrupthi"));
+        const oldestPending = [...pendingDocs].sort(
+          (a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0)
+        )[0];
+        const next = resume || oldestPending;
+        if (next) {
+          activeOrderRef.current = next;
+          playOrderAlarm();
+          setTimeout(() => stopOrderAlarm(), 1800);
+          handleAcceptOrder(next);
+        }
       }
     });
 
@@ -886,12 +910,12 @@ export default function OdPickerApp() {
                     <span style={S.profileBtnName}>Thrupthi K S</span>
                   </div>
 
-                  <button
-                    style={{ ...S.dutyBtn, background: isOnline ? "#0c831f" : "#dc2626" }}
-                    onClick={handleToggleDuty}
-                  >
-                    {isOnline ? "🟢 ON DUTY" : "🔴 OFF DUTY"}
-                  </button>
+                  <DutyToggleSwitch
+                    isOn={isOnline}
+                    onToggle={handleToggleDuty}
+                    size="compact"
+                    ariaLabel="OD Picker Duty Status"
+                  />
 
                   <button
                     type="button"

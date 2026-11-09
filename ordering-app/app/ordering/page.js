@@ -315,6 +315,14 @@ export default function OrderingAppPage() {
   const [bgVideoIdx, setBgVideoIdx] = useState(0);
   const [showComingSoonModal, setShowComingSoonModal] = useState(false);
   const [activeDeliveryOrder, setActiveDeliveryOrder] = useState(null);
+  const [dismissDeliveryBar, setDismissDeliveryBar] = useState(false);
+  const [pastOrders, setPastOrders] = useState([]);
+  useEffect(() => {
+    try {
+      const raw = JSON.parse(localStorage.getItem("auditx_customer_past_orders") || "[]");
+      if (Array.isArray(raw)) setPastOrders(raw);
+    } catch (e) {}
+  }, []);
   const [orderingStage, setOrderingStage] = useState("idle"); // 'idle' | 'packing' | 'one_minute' | 'almost_doorstep' | 'rider_arrived' | 'delivered'
   const [orderingOneMinSec, setOrderingOneMinSec] = useState(60);
   const [orderingDoorstepSec, setOrderingDoorstepSec] = useState(15);
@@ -442,8 +450,6 @@ export default function OrderingAppPage() {
           const last = JSON.parse(lastRaw);
           const live = liveOrders.find((o) => (o.id || o.orderId) === (last.id || last.orderId));
           active = live || null;
-        } else if (liveOrders && liveOrders.length > 0) {
-          active = liveOrders[0];
         }
         if (active && active.status !== "cancelled") {
           if (active.status === "delivered" && active.customerRatingSubmitted) {
@@ -765,6 +771,31 @@ export default function OrderingAppPage() {
     }
   }
 
+  function handleReorderAll(pastOrder) {
+    if (!isStoreOpen) {
+      triggerToast("🛑 Store is closed • Opening soon due to high demand");
+      return;
+    }
+    const next = {};
+    let skipped = 0;
+    (pastOrder?.items || []).forEach((it) => {
+      const item = CATALOG.find((c) => c.sku === it.sku);
+      if (!item || item.soldOut || item.inStock === false || item.comingSoon || oosList.includes(it.sku)) {
+        skipped += 1;
+        return;
+      }
+      next[it.sku] = (next[it.sku] || 0) + (it.qty || 1);
+    });
+    if (Object.keys(next).length === 0) {
+      triggerToast("These items are currently unavailable.");
+      return;
+    }
+    setCart(next);
+    playSuccessChime();
+    setIsCheckoutView(true);
+    triggerToast(skipped > 0 ? `Items added to cart (${skipped} unavailable skipped)` : "All items added to cart!");
+  }
+
   function toggleInstruction(id) {
     setSelectedInstructions((prev) =>
       prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]
@@ -835,7 +866,7 @@ export default function OrderingAppPage() {
   const grandTotal = Math.max(0, itemSubtotal - couponSavings + deliveryFee + handlingFee);
   const totalSavings = productDiscount + couponSavings + 25;
 
-  // ── ONGOING ORDER TRACKING LOCK (Cannot order another item while an order is actively being tracked) ──
+  // ── ONGOING ORDER TRACKING LOCK (only this customer's own undelivered order) ──
   const ongoingTrackedOrder = useMemo(() => {
     if (activeDeliveryOrder) {
       const st = (activeDeliveryOrder.status || "").toLowerCase();
@@ -843,16 +874,6 @@ export default function OrderingAppPage() {
         return activeDeliveryOrder;
       }
     }
-    try {
-      const liveOrders = getAllLiveOrders();
-      if (Array.isArray(liveOrders)) {
-        const ongoing = liveOrders.find((o) => {
-          const st = (o.status || "").toLowerCase();
-          return st !== "delivered" && st !== "cancelled";
-        });
-        if (ongoing) return ongoing;
-      }
-    } catch (e) {}
     return null;
   }, [activeDeliveryOrder]);
 
@@ -966,9 +987,27 @@ export default function OrderingAppPage() {
     saveLiveOrder(createdOrder);
     try {
       localStorage.setItem("auditx_customer_last_order", JSON.stringify(createdOrder));
+      const prevPast = JSON.parse(localStorage.getItem("auditx_customer_past_orders") || "[]");
+      const pastEntry = {
+        id: createdOrder.id || createdOrder.orderId || orderId,
+        orderNumber: createdOrder.orderNumber || orderId,
+        placedAt: new Date().toISOString(),
+        total: grandTotal,
+        items: cartItemsList.map((item) => ({
+          sku: item.sku,
+          name: item.name,
+          qty: item.qty,
+          price: item.price,
+          image: item.image,
+        })),
+      };
+      const nextPast = [pastEntry, ...(Array.isArray(prevPast) ? prevPast : [])].slice(0, 20);
+      localStorage.setItem("auditx_customer_past_orders", JSON.stringify(nextPast));
+      setPastOrders(nextPast);
     } catch (e) {
       console.warn(e);
     }
+    setDismissDeliveryBar(false);
     playNotificationChime();
 
     // 2. Update wallet locally
@@ -1236,18 +1275,18 @@ export default function OrderingAppPage() {
 
             {/* Exact User Requested Copy */}
             <h1 style={S.closedHeading}>
-              Oops! Your Store is now closed , opening soon
+              Store is closed • Opening soon!
             </h1>
 
             <p style={S.closedSubHeading}>
-              Store Manager <b>Bhaskar N S</b> has temporarily closed <b>Tiptur HUB KA-44</b> for inventory restocking &amp; order reconciliation. We will be back online shortly!
+              Due to excess demand surge, Tiptur Hub KA-44 has paused new orders for a short while. We&apos;ll be back shortly.
             </p>
 
             {/* Real-time Status Banner */}
             <div style={S.closedStatusBanner}>
               <span style={S.closedStatusDot} />
               <span>
-                <b>CURRENT STATUS:</b> CLOSED by Bhaskar N S (Store Manager)
+                <b>HIGH DEMAND SURGE</b> • Orders paused temporarily
               </span>
             </div>
 
@@ -1260,7 +1299,7 @@ export default function OrderingAppPage() {
                     Your cart with {totalItems} {totalItems === 1 ? "item" : "items"} (₹{grandTotal}) is safely saved!
                   </div>
                   <div style={{ fontSize: 11.5, color: "#64748b", marginTop: 2 }}>
-                    Your selected Chocolates &amp; Frames are kept ready for instant checkout once Bhaskar N S re-opens the store.
+                    Your cart is saved and ready for checkout once the store reopens.
                   </div>
                 </div>
               </div>
@@ -1280,39 +1319,13 @@ export default function OrderingAppPage() {
                 <button
                   type="button"
                   style={S.viewDeliveryBtn}
-                  onClick={() => router.push(`/delivery?orderId=${activeDeliveryOrder.id || activeDeliveryOrder.orderId}`)}
+                  onClick={() => router.push(`/track/${activeDeliveryOrder.orderNumber || activeDeliveryOrder.id || activeDeliveryOrder.orderId}`)}
                 >
                   <span>🛵 Track Ongoing Delivery</span>
                 </button>
               )}
             </div>
 
-            {/* Store Information Cards */}
-            <div style={S.closedInfoGrid}>
-              <div style={S.closedInfoCard}>
-                <div style={S.closedInfoIcon}>⚡</div>
-                <div>
-                  <div style={S.closedInfoTitle}>8-Min Express Delivery SLA</div>
-                  <div style={S.closedInfoDesc}>Ultra-fast delivery to KFGSC &amp; Namma Tiptur when store is open.</div>
-                </div>
-              </div>
-
-              <div style={S.closedInfoCard}>
-                <div style={S.closedInfoIcon}>📍</div>
-                <div>
-                  <div style={S.closedInfoTitle}>Tiptur Hub KA-44 Dark Store</div>
-                  <div style={S.closedInfoDesc}>Near APMC Market Yard • Tumkur District - 572201</div>
-                </div>
-              </div>
-
-              <div style={S.closedInfoCard}>
-                <div style={S.closedInfoIcon}>🍫</div>
-                <div>
-                  <div style={S.closedInfoTitle}>Fresh Warehouse Inventory</div>
-                  <div style={S.closedInfoDesc}>Frames (1 unit single) &amp; Chocolates (5 units fixed) ready.</div>
-                </div>
-              </div>
-            </div>
           </div>
         </main>
       ) : isCheckoutView ? (
@@ -2186,6 +2199,7 @@ export default function OrderingAppPage() {
             </div>
 
             {/* Clean, Elegant Empty State */}
+            {pastOrders.length === 0 ? (
             <div style={{
               background: "#ffffff",
               border: "1px solid #e2e8f0",
@@ -2244,6 +2258,101 @@ export default function OrderingAppPage() {
                 <IconArrowRight size={15} color="#ffffff" />
               </button>
             </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 16 }}>
+                {pastOrders.map((po) => {
+                  const itemCount = (po.items || []).reduce((s, it) => s + (it.qty || 1), 0);
+                  return (
+                    <div
+                      key={po.id || po.orderNumber}
+                      style={{
+                        background: "#ffffff",
+                        border: "1px solid #e2e8f0",
+                        borderRadius: 14,
+                        padding: 14,
+                        boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
+                      }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontWeight: 800, fontSize: 13.5, color: "#0f172a" }}>
+                            Order #{po.orderNumber || po.id}
+                          </div>
+                          <div style={{ fontSize: 11.5, color: "#64748b", marginTop: 2 }}>
+                            {po.placedAt ? new Date(po.placedAt).toLocaleString() : ""} • {itemCount} {itemCount === 1 ? "item" : "items"}
+                          </div>
+                        </div>
+                        <div style={{ fontWeight: 900, fontSize: 14, color: "#0f172a", flexShrink: 0 }}>₹{po.total}</div>
+                      </div>
+
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
+                        {(po.items || []).map((it) => (
+                          <div
+                            key={it.sku}
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 8,
+                              background: "#f8fafc",
+                              border: "1px solid #e2e8f0",
+                              borderRadius: 10,
+                              padding: "6px 10px 6px 6px",
+                              maxWidth: "100%",
+                            }}
+                          >
+                            {it.image && (
+                              <img
+                                src={it.image}
+                                alt={it.name}
+                                style={{ width: 34, height: 34, objectFit: "cover", borderRadius: 8, flexShrink: 0 }}
+                              />
+                            )}
+                            <div style={{ minWidth: 0 }}>
+                              <div
+                                style={{
+                                  fontSize: 12,
+                                  fontWeight: 700,
+                                  color: "#0f172a",
+                                  maxWidth: 150,
+                                  whiteSpace: "nowrap",
+                                  overflow: "hidden",
+                                  textOverflow: "ellipsis",
+                                }}
+                              >
+                                {it.name}
+                              </div>
+                              <div style={{ fontSize: 11, color: "#64748b" }}>
+                                Qty {it.qty} • ₹{it.price}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => handleReorderAll(po)}
+                        style={{
+                          marginTop: 12,
+                          width: "100%",
+                          padding: "11px 16px",
+                          borderRadius: 10,
+                          border: "none",
+                          background: "#0c831f",
+                          color: "#ffffff",
+                          fontWeight: 800,
+                          fontSize: 13.5,
+                          cursor: "pointer",
+                          boxShadow: "0 4px 14px rgba(12, 131, 31, 0.25)",
+                        }}
+                      >
+                        🛒 Reorder All Items
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
 
@@ -2844,7 +2953,13 @@ export default function OrderingAppPage() {
       )}
 
       {/* ── LIVE FLOATING DELIVERY / HANDOVER / RATING STATUS BAR (DISAPPEARS ONCE RATED) ── */}
-      {activeDeliveryOrder && !rateCompleted && !activeDeliveryOrder.customerRatingSubmitted && !isCheckoutView && (
+      {activeDeliveryOrder &&
+        !rateCompleted &&
+        !dismissDeliveryBar &&
+        !activeDeliveryOrder.customerRatingSubmitted &&
+        activeDeliveryOrder.status !== "delivered" &&
+        orderingStage !== "delivered" &&
+        !isCheckoutView && (
         <div
           id="active-order-floating-bar"
           style={{
@@ -3046,6 +3161,34 @@ export default function OrderingAppPage() {
                 </button>
               </>
             )}
+            <button
+              type="button"
+              aria-label="Dismiss delivery status bar"
+              title="Close"
+              onClick={(e) => {
+                e.stopPropagation();
+                setDismissDeliveryBar(true);
+              }}
+              style={{
+                width: 26,
+                height: 26,
+                borderRadius: "50%",
+                border: "1px solid rgba(255,255,255,0.35)",
+                background: "rgba(255,255,255,0.12)",
+                color: "#ffffff",
+                fontSize: 13,
+                fontWeight: 900,
+                lineHeight: 1,
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
+                padding: 0,
+              }}
+            >
+              ✕
+            </button>
           </div>
         </div>
       )}

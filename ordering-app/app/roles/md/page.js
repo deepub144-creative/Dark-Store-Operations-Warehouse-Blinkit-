@@ -6,6 +6,7 @@ import { db } from "@/lib/firebaseClient";
 import { playNotificationChime } from "@/lib/soundSystem";
 import { subscribeToEvents, getAllLiveComplaints } from "@/lib/realtimeSync";
 import AuditxLogo from "@/components/AuditxLogo";
+import LiveOrderPipeline from "@/components/LiveOrderPipeline";
 
 export default function ManagingDirectorApp() {
   const [complaints, setComplaints] = useState([]);
@@ -129,6 +130,10 @@ export default function ManagingDirectorApp() {
           </div>
         </div>
       </header>
+
+      <div style={{ padding: "0 16px" }}>
+        <LiveOrderPipeline title="MD Live Order Tracking" />
+      </div>
 
       {/* Primary KPI Strip */}
       <div style={S.kpiStrip}>

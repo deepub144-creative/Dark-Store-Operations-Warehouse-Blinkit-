@@ -20,6 +20,7 @@ import {
   INITIAL_ITEM_DUMP,
 } from "@/lib/seedData";
 import AuditxLogo from "@/components/AuditxLogo";
+import LiveOrderPipeline from "@/components/LiveOrderPipeline";
 
 export default function StoreManagerApp() {
   const [activeTab, setActiveTab] = useState("complaints"); // complaints | queues | expiry | auditing | putaway | itemDump
@@ -283,6 +284,10 @@ export default function StoreManagerApp() {
           </div>
         </div>
       </header>
+
+      <div style={{ padding: "0 16px" }}>
+        <LiveOrderPipeline title="SM Live Order Tracking" />
+      </div>
 
       {/* FIXED DUTY QR CODE STATION BANNER (FOR PICKER & RIDER TO SCAN) */}
       <div
