@@ -802,6 +802,7 @@ export default function OdPickerApp() {
     playSuccessChime();
     setUnassignedOrders((prev) => prev.filter((o) => o.id !== activeOrder.id));
     setActiveOrder(null);
+    activeOrderRef.current = null;
     setActiveStep("accept");
     setPickedItemsMap({});
     setBarcodeScannedMap({});
@@ -1132,67 +1133,6 @@ export default function OdPickerApp() {
                           }}
                         />
                         <span>Awaiting Order Dispatch • Searching Live Tasks...</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Active Dark Store Inventory Reference (Frames 1 unit, Chocolates 5 units) */}
-                  <div
-                    style={{
-                      background: "#ffffff",
-                      border: "1px solid #e2e8f0",
-                      borderRadius: 14,
-                      padding: "14px 16px",
-                      marginTop: 14,
-                      boxShadow: "0 2px 10px rgba(0,0,0,0.04)",
-                    }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-                      <span style={{ fontSize: 11, fontWeight: 900, color: "#0c831f", textTransform: "uppercase", letterSpacing: "0.5px" }}>
-                        Active Dark Store Inventory
-                      </span>
-                      <span style={{ fontSize: 10, fontWeight: 800, background: "#dcfce7", color: "#15803d", padding: "2px 8px", borderRadius: 4 }}>
-                        SLA: 2-MIN PICK
-                      </span>
-                    </div>
-
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                      <div
-                        style={{
-                          background: "#f8fafc",
-                          border: "1px solid #e2e8f0",
-                          borderRadius: 10,
-                          padding: 10,
-                          display: "flex",
-                          flexDirection: "column",
-                          gap: 4,
-                        }}
-                      >
-                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                          <span style={{ fontSize: 18 }}>🍫</span>
-                          <span style={{ fontSize: 12, fontWeight: 800, color: "#0f172a" }}>Chocolates</span>
-                        </div>
-                        <span style={{ fontSize: 11, fontWeight: 800, color: "#0c831f" }}>5 Units Fixed</span>
-                        <span style={{ fontSize: 10, color: "#64748b" }}>Cadbury, Amul, Beats &amp; more</span>
-                      </div>
-
-                      <div
-                        style={{
-                          background: "#f8fafc",
-                          border: "1px solid #e2e8f0",
-                          borderRadius: 10,
-                          padding: 10,
-                          display: "flex",
-                          flexDirection: "column",
-                          gap: 4,
-                        }}
-                      >
-                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                          <span style={{ fontSize: 18 }}>🖼️</span>
-                          <span style={{ fontSize: 12, fontWeight: 800, color: "#0f172a" }}>Wall Frames</span>
-                        </div>
-                        <span style={{ fontSize: 11, fontWeight: 800, color: "#2563eb" }}>1 Unit Single</span>
-                        <span style={{ fontSize: 10, color: "#64748b" }}>A4, Deep Box, Wood Art &amp; more</span>
                       </div>
                     </div>
                   </div>
@@ -1700,23 +1640,14 @@ export default function OdPickerApp() {
                 </div>
               </div>
 
-              {/* ─── HANDOVER SLIDER (DIRECTLY VISIBLE & USABLE) ─── */}
+              {/* ─── HANDOVER SLIDER ─── */}
               <div style={S.slideDownContainer}>
-                <div style={S.slideNotice}>
-                  👉 <b>HANDOVER SLIDER:</b> Slide the green bar below to complete bag handover to Captain Sinchana B R:
-                </div>
                 <SlideButton
                   text={`SLIDE TO HANDOVER BAG (RACK ${assignedRack.id})`}
                   color="#0c831f"
                   icon={<IconRealisticDeliveryBag size={24} color="#ffffff" />}
                   onSlideComplete={handleConfirmRackStaging}
                 />
-                <button
-                  style={{ ...S.quickStagingBtn, marginTop: 10, cursor: "pointer" }}
-                  onClick={handleConfirmRackStaging}
-                >
-                  ⚡ Quick 1-Tap Handover to Rack {assignedRack.id}
-                </button>
               </div>
             </div>
           )}

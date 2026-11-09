@@ -316,10 +316,7 @@ export default function DeliveryCaptainApp() {
 
   function handleSelectStagedOrder(order) {
     stopOrderAlarm();
-    setActiveOrder(order);
-    setActiveStep("rack_verification");
-    setActionSuccess(`Order #${order.orderNumber || order.id} selected. Proceed to Rack ${order.assignedRack || "D5"}.`);
-    setTimeout(() => setActionSuccess(""), 3000);
+    handleConfirmPickupAndStartDelivery(order);
   }
 
   function handleScanRackOrPickerTerminal(code) {
@@ -334,13 +331,14 @@ export default function DeliveryCaptainApp() {
     setTimeout(() => setActionSuccess(""), 2500);
   }
 
-  async function handleConfirmPickupAndStartDelivery() {
-    if (!activeOrder) return;
+  async function handleConfirmPickupAndStartDelivery(orderParam) {
+    const targetOrder = orderParam || activeOrder;
+    if (!targetOrder) return;
     stopOrderAlarm();
     playSuccessChime();
 
     const dispatchedOrder = {
-      ...activeOrder,
+      ...targetOrder,
       status: "dispatched",
       stage: "Out for Delivery",
       captainId: "sinchana",
@@ -354,7 +352,7 @@ export default function DeliveryCaptainApp() {
       dispatchedAt: new Date().toISOString(),
     };
 
-    updateLiveOrder(activeOrder.id, {
+    updateLiveOrder(targetOrder.id, {
       status: "dispatched",
       stage: "Out for Delivery",
       captainId: "sinchana",
@@ -369,8 +367,8 @@ export default function DeliveryCaptainApp() {
     });
 
     broadcastEvent("FAST_DELIVERY_STARTED", {
-      orderId: activeOrder.id,
-      orderNumber: activeOrder.orderNumber || activeOrder.id,
+      orderId: targetOrder.id,
+      orderNumber: targetOrder.orderNumber || targetOrder.id,
       captainName: "Sinchana B R",
       remainingMins: 1,
       riderEtaMins: 6,
@@ -379,7 +377,7 @@ export default function DeliveryCaptainApp() {
 
     if (db) {
       try {
-        await updateDoc(doc(db, "orders", activeOrder.id), {
+        await updateDoc(doc(db, "orders", targetOrder.id), {
           status: "dispatched",
           stage: "Out for Delivery",
           captainId: "sinchana",
@@ -397,6 +395,7 @@ export default function DeliveryCaptainApp() {
       }
     }
 
+    setActiveOrder(dispatchedOrder);
     setRemainingSec(CAPTAIN_SLA_SECONDS);
     setArrivingMinutes(6);
     setDistanceLeftKm(1.5);
@@ -406,7 +405,7 @@ export default function DeliveryCaptainApp() {
     setTransitProgress(0);
     setCurrentWaypointIdx(0);
     setActiveStep("en_route");
-    setActionSuccess("🚀 Pickup confirmed from Rack! 1.5 kms left • 6-Minute auto-reducing countdown started.");
+    setActionSuccess("🚀 Pickup confirmed from Rack! 6-Minute express delivery started.");
     setTimeout(() => setActionSuccess(""), 3500);
   }
 
@@ -872,16 +871,12 @@ export default function DeliveryCaptainApp() {
 
                           <div style={{ marginTop: 14 }}>
                             <SlideButton
-                              text={`SLIDE TO SELECT RACK ${rackId} & PROCEED`}
+                              text={`SLIDE TO CONFIRM PICKUP & START 6-MIN DELIVERY (RACK ${rackId})`}
                               color="#0c831f"
                               icon={<IconRealisticScooter size={26} color="#ffffff" />}
-                              onSlideComplete={() => handleSelectStagedOrder(ord)}
+                              onSlideComplete={() => handleConfirmPickupAndStartDelivery(ord)}
                             />
                           </div>
-
-                          <button style={S.quickSelectBtn} onClick={() => handleSelectStagedOrder(ord)}>
-                            ⚡ Select Order #{ord.orderNumber || ord.id} (Rack {rackId})
-                          </button>
                         </div>
                       );
                     })}
@@ -949,80 +944,6 @@ export default function DeliveryCaptainApp() {
                   </div>
                 </div>
               )}
-            </div>
-          )}
-
-          {/* STEP 2: RACK VERIFICATION & TERMINAL SCAN */}
-          {activeStep === "rack_verification" && activeOrder && (
-            <div style={S.verificationCard}>
-              {/* Rack Display */}
-              <div style={S.rackNoticeHeader}>
-                <div style={S.stepTitle}>Step 1: Locate Order in Warehouse Staging</div>
-                <div style={S.bigRackCallout}>
-                  <span>GO TO STAGING RACK:</span>
-                  <b>RACK {activeOrder.assignedRack || "D5"}</b>
-                </div>
-              </div>
-
-              {/* Order Details */}
-              <div style={S.orderDetailBox}>
-                <div style={S.detailRow}>
-                  <span>Order Number:</span>
-                  <b>#{activeOrder.orderNumber || activeOrder.id}</b>
-                </div>
-                <div style={S.detailRow}>
-                  <span>Customer:</span>
-                  <b>{activeOrder.customerName || "Customer"}</b>
-                </div>
-                <div style={S.detailRow}>
-                  <span>Delivery Address:</span>
-                  <b>{activeOrder.customerAddress || "Tiptur, Karnataka - 572201"}</b>
-                </div>
-                <div style={S.detailRow}>
-                  <span>Total Items:</span>
-                  <b>{(activeOrder.items || []).reduce((s, it) => s + (it.qty || 1), 0)} pcs</b>
-                </div>
-              </div>
-
-              {/* Scanner to scan rack QR / Picker Terminal */}
-              <div style={S.scannerSection}>
-                <div style={S.scanInstruction}>
-                  📷 Step 2: Scan Rack {activeOrder.assignedRack || "D5"} QR or OD Picker Terminal to confirm:
-                </div>
-                <SharedScanner
-                  title={`Scan Rack ${activeOrder.assignedRack || "D5"} QR Code`}
-                  onScan={handleScanRackOrPickerTerminal}
-                  onScanSuccess={handleScanRackOrPickerTerminal}
-                  expectedCode={activeOrder.rackQr || activeOrder.qrCode}
-                />
-              </div>
-
-              {/* Delivery Route Preview */}
-              <div style={S.routePreviewCard}>
-                <div style={S.routePreviewHeader}>
-                  <span style={{ fontSize: 14 }}>📍</span>
-                  <span style={S.routePreviewTitle}>Assigned Express Route: Madihalli Hub → KFGSC Tiptur (3 min • 1.7 km)</span>
-                </div>
-                <img
-                  src="/tiptur-gps-route.jpg"
-                  alt="Delivery Route: Madihalli to KFGSC Tiptur"
-                  style={S.routePreviewImg}
-                />
-              </div>
-
-              {/* Slide to confirm pickup */}
-              <div style={{ marginTop: 16 }}>
-                <SlideButton
-                  text="SLIDE TO CONFIRM PICKUP & START 6-MIN DELIVERY"
-                  color="#0c831f"
-                  icon={<IconRealisticDeliveryBag size={24} color="#ffffff" />}
-                  onSlideComplete={handleConfirmPickupAndStartDelivery}
-                />
-              </div>
-
-              <button style={S.quickPickupBtn} onClick={handleConfirmPickupAndStartDelivery}>
-                Confirm Pickup &amp; Start Delivery →
-              </button>
             </div>
           )}
 
