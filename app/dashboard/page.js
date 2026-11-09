@@ -118,6 +118,8 @@ export default function WarehouseDashboardPage() {
     thrupthi: "LOGGED_IN",
     sinchana: "LOGGED_IN",
   });
+  const [pickerLiveOp, setPickerLiveOp] = useState(null);
+  const [riderLiveOp, setRiderLiveOp] = useState(null);
 
   useEffect(() => {
     try {
@@ -334,6 +336,48 @@ export default function WarehouseDashboardPage() {
         playSuccessChime();
         setActionSuccess(`🟢 Order Captain Sinchana B R scanned SM Station QR & turned Duty ON!`);
         setTimeout(() => setActionSuccess(""), 4000);
+      } else if (data.type === "AISLE_RACK_SCANNED_BY_PICKER" && data.payload) {
+        setPickerLiveOp({
+          type: "AISLE_SCANNED",
+          summary: `Scanned Aisle/Rack: ${data.payload.rackId || "F0-A1-001"}`,
+          time: new Date().toLocaleTimeString(),
+        });
+      } else if (data.type === "ORDER_PICKED" && data.payload) {
+        setPickerLiveOp({
+          type: "ITEM_PICKED",
+          summary: `Picked & Verified item for Order #${data.payload.orderId || ""}`,
+          time: new Date().toLocaleTimeString(),
+        });
+      } else if ((data.type === "ORDER_STAGED" || data.type === "PICKER_HANDOVER_COMPLETED") && data.payload) {
+        setPickerLiveOp({
+          type: "STAGED",
+          summary: `Order #${data.payload.orderId || ""} staged at bay & handed over to Sinchana`,
+          time: new Date().toLocaleTimeString(),
+        });
+      } else if ((data.type === "PUTAWAY_COMPLETED" || data.type === "INVENTORY_AUDIT_COMPLETED") && data.payload) {
+        setPickerLiveOp({
+          type: "AUDIT",
+          summary: data.payload.summary || "Putaway / Inventory Audit completed",
+          time: new Date().toLocaleTimeString(),
+        });
+      } else if ((data.type === "FAST_DELIVERY_STARTED" || data.type === "ORDER_DISPATCHED") && data.payload) {
+        setRiderLiveOp({
+          type: "DISPATCHED",
+          summary: `Out for Delivery • Order #${data.payload.orderNumber || data.payload.orderId || ""}`,
+          time: new Date().toLocaleTimeString(),
+        });
+      } else if (data.type === "ORDER_DELIVERED" && data.payload) {
+        setRiderLiveOp({
+          type: "DELIVERED",
+          summary: `Delivered Order #${data.payload.orderNumber || data.payload.orderId || ""} at Doorstep`,
+          time: new Date().toLocaleTimeString(),
+        });
+      } else if (data.type === "ORDER_RATED" && data.payload) {
+        setRiderLiveOp({
+          type: "RATED",
+          summary: `Customer rated Sinchana B R (${data.payload.riderRating || 5} ⭐)`,
+          time: new Date().toLocaleTimeString(),
+        });
       }
     });
 
@@ -729,6 +773,26 @@ export default function WarehouseDashboardPage() {
     return matchesCategory && matchesSearch;
   });
 
+  // Live Active Operations for Staff Terminal Fleet (MOTOROLA & OPPO)
+  const activePickOrder = pickingOrders[0] || orders.find((o) => o.status === "placed" || o.status === "picking" || o.stage === "Picking");
+  const activeStagedOrder = stagedOrders[0] || orders.find((o) => o.status === "staged" || o.stage === "Almost Ready");
+  const firstPickItem = activePickOrder?.items?.[0] || null;
+  const pickItemSku = firstPickItem?.skuId || firstPickItem?.sku || "";
+  const matchedCatalogItem = STORE_MANAGER_CATALOG.find(
+    (c) => c.sku === pickItemSku || c.name?.toLowerCase() === firstPickItem?.name?.toLowerCase()
+  );
+  const pickItemStockUnits = pickItemSku
+    ? (inventoryStockMap[pickItemSku] ?? (matchedCatalogItem?.category === "Frames" ? 1 : 5))
+    : 5;
+  const totalDarkStoreUnits = STORE_MANAGER_CATALOG.reduce((acc, it) => {
+    return acc + (inventoryStockMap[it.sku] ?? (it.category === "Frames" ? 1 : 5));
+  }, 0);
+
+  const activeDeliveryOrder = inTransitOrders[0] || orders.find((o) => o.status === "dispatched" || o.stage === "Out for Delivery" || o.stage === "Rider on the way" || (o.handoverToRiderCompleted && o.status !== "delivered"));
+  const dispatchedItems = activeDeliveryOrder?.items || [];
+  const totalDispatchedUnits = dispatchedItems.reduce((acc, it) => acc + (it.qty || 1), 0);
+  const isRiderAtDoorstep = activeDeliveryOrder?.stage === "rider_arrived" || activeDeliveryOrder?.status === "rider_arrived";
+
   return (
     <div style={S.wrap}>
       {/* ── TOP HEADER / MANAGEMENT BAR ── */}
@@ -992,131 +1056,289 @@ export default function WarehouseDashboardPage() {
               borderRadius: 14,
               padding: "16px 20px",
               marginBottom: 16,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              flexWrap: "wrap",
-              gap: 16,
               boxShadow: "0 4px 20px rgba(0, 0, 0, 0.25)",
             }}
           >
-            <div>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                <span
-                  style={{
-                    background: "#0c831f",
-                    color: "#ffffff",
-                    fontSize: 10,
-                    fontWeight: 900,
-                    padding: "2px 8px",
-                    borderRadius: 4,
-                    letterSpacing: "0.5px",
-                  }}
-                >
-                  LIVE TERMINAL TRACKER
-                </span>
-                <span style={{ color: "#38bdf8", fontSize: 12, fontWeight: 700 }}>
-                  ● Real-Time Device Status
-                </span>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 10, marginBottom: 12 }}>
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                  <span
+                    style={{
+                      background: "#0c831f",
+                      color: "#ffffff",
+                      fontSize: 10,
+                      fontWeight: 900,
+                      padding: "2px 8px",
+                      borderRadius: 4,
+                      letterSpacing: "0.5px",
+                    }}
+                  >
+                    LIVE TERMINAL TRACKER
+                  </span>
+                  <span style={{ color: "#38bdf8", fontSize: 12, fontWeight: 700 }}>
+                    ● Real-Time Staff Operations
+                  </span>
+                </div>
+                <h3 style={{ margin: "2px 0 4px", color: "#ffffff", fontSize: 16, fontWeight: 800 }}>
+                  Store Staff Terminal Fleet (MOTOROLA &amp; OPPO)
+                </h3>
+                <p style={{ margin: 0, color: "#94a3b8", fontSize: 12 }}>
+                  Live handheld terminal tracking for OD Picker Lead and Delivery Captain at Tiptur Hub KA44 — tracks active SKU picking, stock units available, and delivery progress directly on this dashboard.
+                </p>
               </div>
-              <h3 style={{ margin: "2px 0 4px", color: "#ffffff", fontSize: 16, fontWeight: 800 }}>
-                Store Staff Terminal Fleet (MOTOROLA &amp; OPPO)
-              </h3>
-              <p style={{ margin: 0, color: "#94a3b8", fontSize: 12 }}>
-                Live handheld terminal tracking for OD Picker Lead and Delivery Captain at Tiptur Hub KA44.
-              </p>
+
+              <div style={{ display: "flex", alignItems: "center", gap: 8, background: "rgba(15, 23, 42, 0.6)", border: "1px solid #334155", padding: "6px 12px", borderRadius: 8 }}>
+                <span style={{ fontSize: 11, color: "#94a3b8", fontWeight: 700 }}>Store Stock Monitored:</span>
+                <span style={{ fontSize: 12, color: "#4ade80", fontWeight: 900 }}>{totalDarkStoreUnits} Units Avail</span>
+              </div>
             </div>
 
-            <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-              {/* Thrupthi K S - MOTOROLA */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 14 }}>
+              {/* Thrupthi K S - MOTOROLA Moto G84 5G */}
               <div
                 style={{
                   background: "#0f172a",
                   border: deviceFleet.thrupthi === "LOGGED_IN" ? "1.5px solid #10b981" : "1.5px solid #ef4444",
-                  borderRadius: 10,
-                  padding: "10px 14px",
+                  borderRadius: 12,
+                  padding: "14px 16px",
                   display: "flex",
-                  alignItems: "center",
+                  flexDirection: "column",
                   gap: 10,
+                  boxShadow: deviceFleet.thrupthi === "LOGGED_IN" ? "0 4px 16px rgba(16, 185, 129, 0.12)" : "none",
                 }}
               >
-                <img
-                  src="/thrupthi-logo.png"
-                  alt="Thrupthi K S"
-                  style={{ width: 34, height: 34, borderRadius: "50%", objectFit: "cover", border: "1.5px solid #10b981" }}
-                />
-                <div>
-                  <div style={{ fontSize: 12, fontWeight: 800, color: "#ffffff" }}>
-                    Thrupthi K S • <b style={{ color: "#38bdf8" }}>MOTOROLA</b>
+                {/* Top Staff & Hardware Bar */}
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <img
+                      src="/thrupthi-logo.png"
+                      alt="Thrupthi K S"
+                      style={{ width: 38, height: 38, borderRadius: "50%", objectFit: "cover", border: "2px solid #10b981" }}
+                    />
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 900, color: "#ffffff", display: "flex", alignItems: "center", gap: 6 }}>
+                        <span>Thrupthi K S</span>
+                        <span style={{ fontSize: 10.5, background: "rgba(56, 189, 248, 0.15)", color: "#38bdf8", padding: "1px 6px", borderRadius: 4, fontWeight: 800 }}>
+                          MOTOROLA
+                        </span>
+                      </div>
+                      <div style={{ fontSize: 11, color: "#94a3b8", fontWeight: 600 }}>
+                        OD Picker Lead • Moto G84 5G
+                      </div>
+                    </div>
                   </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
+
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <span
                       style={{
-                        fontSize: 10,
+                        fontSize: 10.5,
                         fontWeight: 900,
-                        padding: "1px 6px",
-                        borderRadius: 4,
+                        padding: "3px 8px",
+                        borderRadius: 6,
                         background: deviceFleet.thrupthi === "LOGGED_IN" ? "#065f46" : "#7f1d1d",
                         color: deviceFleet.thrupthi === "LOGGED_IN" ? "#6ee7b7" : "#fca5a5",
+                        letterSpacing: "0.5px",
                       }}
                     >
                       {deviceFleet.thrupthi === "LOGGED_IN" ? "🟢 ON DUTY" : "🔴 OFF DUTY"}
                     </span>
-                    <a
-                      href="/picker"
-                      target="_blank"
-                      rel="noreferrer"
-                      style={{ fontSize: 10.5, color: "#38bdf8", textDecoration: "underline", fontWeight: 700 }}
-                    >
-                      Open Terminal →
-                    </a>
+                    <span style={{ fontSize: 10.5, color: "#64748b", fontWeight: 700 }}>
+                      🔋 98%
+                    </span>
                   </div>
+                </div>
+
+                {/* Live Operation Status Box */}
+                {deviceFleet.thrupthi === "LOGGED_OUT" ? (
+                  <div style={{ background: "rgba(239, 68, 68, 0.08)", border: "1px dashed rgba(239, 68, 68, 0.35)", borderRadius: 8, padding: "10px 12px" }}>
+                    <div style={{ fontSize: 12, fontWeight: 800, color: "#f87171" }}>🔴 Staff Offline • Duty Turned OFF</div>
+                    <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>Terminal in standby mode. Not receiving live picking orders.</div>
+                  </div>
+                ) : activePickOrder ? (
+                  <div style={{ background: "rgba(16, 185, 129, 0.09)", border: "1px solid rgba(16, 185, 129, 0.35)", borderRadius: 8, padding: "10px 12px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                      <span style={{ fontSize: 11, fontWeight: 900, color: "#34d399", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                        ⚡ Live Operation: Picking Item
+                      </span>
+                      <span style={{ fontSize: 10, background: "#065f46", color: "#a7f3d0", padding: "1px 6px", borderRadius: 4, fontWeight: 800 }}>
+                        Order #{activePickOrder.orderNumber || activePickOrder.id}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: 12.5, fontWeight: 800, color: "#ffffff", marginBottom: 4 }}>
+                      📦 {firstPickItem?.name || "Tiptur Special Copra"}
+                    </div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 10, fontSize: 11, color: "#cbd5e1" }}>
+                      <div>To Pick: <strong style={{ color: "#facc15" }}>{firstPickItem?.qty || 1} Unit(s)</strong></div>
+                      <div>Dark Store Stock: <strong style={{ color: "#4ade80" }}>{pickItemStockUnits} Units Avail</strong></div>
+                      <div>Aisle: <strong style={{ color: "#38bdf8" }}>{firstPickItem?.aisle || "F0 - A1 - 001"}</strong></div>
+                    </div>
+                  </div>
+                ) : activeStagedOrder ? (
+                  <div style={{ background: "rgba(56, 189, 248, 0.09)", border: "1px solid rgba(56, 189, 248, 0.35)", borderRadius: 8, padding: "10px 12px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                      <span style={{ fontSize: 11, fontWeight: 900, color: "#38bdf8", textTransform: "uppercase" }}>
+                        📦 Live Operation: Staged in Bay
+                      </span>
+                      <span style={{ fontSize: 10, background: "#0c4a6e", color: "#bae6fd", padding: "1px 6px", borderRadius: 4, fontWeight: 800 }}>
+                        Order #{activeStagedOrder.orderNumber || activeStagedOrder.id}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: 12, fontWeight: 800, color: "#ffffff" }}>
+                      Ready for Handover to Sinchana B R (OPPO)
+                    </div>
+                    <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>
+                      Bagged &amp; verified in Dispatch Bay KA44 • 0 SKU variance
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ background: "rgba(30, 41, 59, 0.7)", border: "1px solid #334155", borderRadius: 8, padding: "10px 12px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                      <span style={{ fontSize: 11, fontWeight: 900, color: "#94a3b8", textTransform: "uppercase" }}>
+                        ⚡ Live Operation: Standby at Packing Station
+                      </span>
+                      <span style={{ fontSize: 10, background: "#1e293b", color: "#38bdf8", padding: "1px 6px", borderRadius: 4, fontWeight: 800 }}>
+                        Ready for Orders
+                      </span>
+                    </div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: "#e2e8f0" }}>
+                      Dark Store Inventory Monitored: <b style={{ color: "#4ade80" }}>{totalDarkStoreUnits} Units</b> across 10 SKUs
+                    </div>
+                    <div style={{ fontSize: 10.5, color: "#64748b", marginTop: 3 }}>
+                      🍫 Chocolates: 5 units fixed | 🖼️ Frames: 1 unit single • {pickerLiveOp?.summary || "Putaway 48 units copra verified"}
+                    </div>
+                  </div>
+                )}
+
+                {/* Bottom Micro Metrics */}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 10, color: "#64748b", borderTop: "1px solid #1e293b", paddingTop: 8 }}>
+                  <span>⚡ SLA: &lt; 2:00 Min Pick</span>
+                  <span>🎯 Accuracy: 100% (0 Variance)</span>
+                  <span>📶 Hub KA44 Wi-Fi</span>
                 </div>
               </div>
 
-              {/* Sinchana B R - OPPO */}
+              {/* Sinchana B R - OPPO Reno 11 Pro */}
               <div
                 style={{
                   background: "#0f172a",
                   border: deviceFleet.sinchana === "LOGGED_IN" ? "1.5px solid #10b981" : "1.5px solid #ef4444",
-                  borderRadius: 10,
-                  padding: "10px 14px",
+                  borderRadius: 12,
+                  padding: "14px 16px",
                   display: "flex",
-                  alignItems: "center",
+                  flexDirection: "column",
                   gap: 10,
+                  boxShadow: deviceFleet.sinchana === "LOGGED_IN" ? "0 4px 16px rgba(245, 158, 11, 0.12)" : "none",
                 }}
               >
-                <img
-                  src="/sinchana-logo.png"
-                  alt="Sinchana B R"
-                  style={{ width: 34, height: 34, borderRadius: "50%", objectFit: "cover", border: "1.5px solid #ca8a04" }}
-                />
-                <div>
-                  <div style={{ fontSize: 12, fontWeight: 800, color: "#ffffff" }}>
-                    Sinchana B R • <b style={{ color: "#f59e0b" }}>OPPO</b>
+                {/* Top Staff & Hardware Bar */}
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <img
+                      src="/sinchana-logo.png"
+                      alt="Sinchana B R"
+                      style={{ width: 38, height: 38, borderRadius: "50%", objectFit: "cover", border: "2px solid #ca8a04" }}
+                    />
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 900, color: "#ffffff", display: "flex", alignItems: "center", gap: 6 }}>
+                        <span>Sinchana B R</span>
+                        <span style={{ fontSize: 10.5, background: "rgba(245, 158, 11, 0.15)", color: "#f59e0b", padding: "1px 6px", borderRadius: 4, fontWeight: 800 }}>
+                          OPPO
+                        </span>
+                      </div>
+                      <div style={{ fontSize: 11, color: "#94a3b8", fontWeight: 600 }}>
+                        Delivery Captain • Reno 11 Pro
+                      </div>
+                    </div>
                   </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
+
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <span
                       style={{
-                        fontSize: 10,
+                        fontSize: 10.5,
                         fontWeight: 900,
-                        padding: "1px 6px",
-                        borderRadius: 4,
+                        padding: "3px 8px",
+                        borderRadius: 6,
                         background: deviceFleet.sinchana === "LOGGED_IN" ? "#065f46" : "#7f1d1d",
                         color: deviceFleet.sinchana === "LOGGED_IN" ? "#6ee7b7" : "#fca5a5",
+                        letterSpacing: "0.5px",
                       }}
                     >
                       {deviceFleet.sinchana === "LOGGED_IN" ? "🟢 ON DUTY" : "🔴 OFF DUTY"}
                     </span>
-                    <a
-                      href="/rider"
-                      target="_blank"
-                      rel="noreferrer"
-                      style={{ fontSize: 10.5, color: "#f59e0b", textDecoration: "underline", fontWeight: 700 }}
-                    >
-                      Open Terminal →
-                    </a>
+                    <span style={{ fontSize: 10.5, color: "#64748b", fontWeight: 700 }}>
+                      🔋 92%
+                    </span>
                   </div>
+                </div>
+
+                {/* Live Operation Status Box */}
+                {deviceFleet.sinchana === "LOGGED_OUT" ? (
+                  <div style={{ background: "rgba(239, 68, 68, 0.08)", border: "1px dashed rgba(239, 68, 68, 0.35)", borderRadius: 8, padding: "10px 12px" }}>
+                    <div style={{ fontSize: 12, fontWeight: 800, color: "#f87171" }}>🔴 Staff Offline • Duty Turned OFF</div>
+                    <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>Rider in standby mode. Not receiving delivery dispatches.</div>
+                  </div>
+                ) : activeDeliveryOrder ? (
+                  <div style={{ background: "rgba(245, 158, 11, 0.09)", border: "1px solid rgba(245, 158, 11, 0.35)", borderRadius: 8, padding: "10px 12px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                      <span style={{ fontSize: 11, fontWeight: 900, color: isRiderAtDoorstep ? "#34d399" : "#fbbf24", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                        {isRiderAtDoorstep ? "🚪 Live Operation: At Doorstep" : "🛵 Live Operation: Out for Delivery"}
+                      </span>
+                      <span style={{ fontSize: 10, background: "#78350f", color: "#fef3c7", padding: "1px 6px", borderRadius: 4, fontWeight: 800 }}>
+                        Order #{activeDeliveryOrder.orderNumber || activeDeliveryOrder.id}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: 12.5, fontWeight: 800, color: "#ffffff", marginBottom: 4 }}>
+                      🎒 Carrying: {dispatchedItems.map((i) => `${i.name} (x${i.qty || 1})`).join(", ") || "1 item"}
+                    </div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 10, fontSize: 11, color: "#cbd5e1" }}>
+                      <div>Units: <strong style={{ color: "#facc15" }}>{totalDispatchedUnits} Unit(s) in Bag</strong></div>
+                      <div>Destination: <strong style={{ color: "#38bdf8" }}>{activeDeliveryOrder.address || activeDeliveryOrder.customerAddress || "MG Road, Tiptur"}</strong></div>
+                    </div>
+                    <div style={{ fontSize: 10.5, color: isRiderAtDoorstep ? "#86efac" : "#fbbf24", marginTop: 4, fontWeight: 700 }}>
+                      {isRiderAtDoorstep ? "⭐ Customer Rating Form auto-appeared to complete delivery" : "⚡ Speed 8.2 mins Dark Store SLA • En route to customer"}
+                    </div>
+                  </div>
+                ) : activeStagedOrder ? (
+                  <div style={{ background: "rgba(56, 189, 248, 0.09)", border: "1px solid rgba(56, 189, 248, 0.35)", borderRadius: 8, padding: "10px 12px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                      <span style={{ fontSize: 11, fontWeight: 900, color: "#38bdf8", textTransform: "uppercase" }}>
+                        ⚡ Live Operation: Staged in Bay KA44
+                      </span>
+                      <span style={{ fontSize: 10, background: "#0c4a6e", color: "#bae6fd", padding: "1px 6px", borderRadius: 4, fontWeight: 800 }}>
+                        Order #{activeStagedOrder.orderNumber || activeStagedOrder.id}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: 12, fontWeight: 800, color: "#ffffff" }}>
+                      Bagging {activeStagedOrder.items?.reduce((s,i) => s + (i.qty||1), 0) || 1} Units for Immediate Dispatch
+                    </div>
+                    <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>
+                      Staged by Thrupthi K S • Ready to deliver to customer
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ background: "rgba(30, 41, 59, 0.7)", border: "1px solid #334155", borderRadius: 8, padding: "10px 12px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                      <span style={{ fontSize: 11, fontWeight: 900, color: "#94a3b8", textTransform: "uppercase" }}>
+                        🛵 Live Operation: Standby at Tiptur Hub KA44
+                      </span>
+                      <span style={{ fontSize: 10, background: "#1e293b", color: "#f59e0b", padding: "1px 6px", borderRadius: 4, fontWeight: 800 }}>
+                        Fleet Ready
+                      </span>
+                    </div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: "#e2e8f0" }}>
+                      Delivery Station: <b style={{ color: "#f59e0b" }}>KA44 Dispatch Bay (Zone F0)</b>
+                    </div>
+                    <div style={{ fontSize: 10.5, color: "#64748b", marginTop: 3 }}>
+                      {riderLiveOp?.summary || "Last delivery completed to BH Road (8.4 mins SLA achieved) • 0 active trips"}
+                    </div>
+                  </div>
+                )}
+
+                {/* Bottom Micro Metrics */}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 10, color: "#64748b", borderTop: "1px solid #1e293b", paddingTop: 8 }}>
+                  <span>⚡ Avg Trip: 8.2 mins</span>
+                  <span>⭐ Rating: 5.0 (Sinchana B R)</span>
+                  <span>📍 GPS: KA44 Active</span>
                 </div>
               </div>
             </div>
