@@ -761,7 +761,7 @@ export default function OrderingAppPage() {
 
   function updateQty(sku, delta) {
     if (!isStoreOpen && delta > 0) {
-      triggerToast("🛑 Oops! Your Store is now closed , opening soon");
+      triggerToast("🛑 Store is closed right now, ordering soon!");
       return;
     }
     const item = CATALOG.find((c) => c.sku === sku);
@@ -793,7 +793,7 @@ export default function OrderingAppPage() {
 
   function handleReorderAll(pastOrder) {
     if (!isStoreOpen) {
-      triggerToast("🛑 Store is closed • Opening soon due to high demand");
+      triggerToast("🛑 Store is closed right now, ordering soon!");
       return;
     }
     const next = {};
@@ -933,7 +933,7 @@ export default function OrderingAppPage() {
       return;
     }
     if (!isStoreOpen) {
-      triggerToast("🛑 Oops! Your Store is now closed , opening soon");
+      triggerToast("🛑 Store is closed right now, ordering soon!");
       setPlacingOrder(false);
       return;
     }
@@ -1193,76 +1193,9 @@ export default function OrderingAppPage() {
       </header>
 
       {/* ═══════════════════════════════════════════════════════════
-          MAIN VIEW: STORE CLOSED SCREEN OR CHECKOUT OR CATALOG
+          MAIN VIEW: CHECKOUT OR CATALOG (WITH STORE CLOSED BANNER)
           ═══════════════════════════════════════════════════════════ */}
-      {!isStoreOpen ? (
-        /* ── DEDICATED STORE CLOSED SCREEN (BHASKAR N S TOGGLED OFF) ── */
-        <main style={S.storeClosedMain}>
-          <div style={S.storeClosedCard}>
-            {/* Friendly Shutter / Store Closed Illustration */}
-            <div style={S.closedIllustrationWrap}>
-              <div style={S.closedIconCircle}>
-                <span style={{ fontSize: 48 }}>🏪</span>
-                <span style={S.closedLockBadge}>🔒</span>
-              </div>
-            </div>
-
-            {/* Exact User Requested Copy */}
-            <h1 style={S.closedHeading}>
-              Store is closed • Opening soon!
-            </h1>
-
-            <p style={S.closedSubHeading}>
-              Due to excess demand surge, Tiptur Hub KA-44 has paused new orders for a short while. We&apos;ll be back shortly.
-            </p>
-
-            {/* Real-time Status Banner */}
-            <div style={S.closedStatusBanner}>
-              <span style={S.closedStatusDot} />
-              <span>
-                <b>HIGH DEMAND SURGE</b> • Orders paused temporarily
-              </span>
-            </div>
-
-            {/* Saved Cart Notification */}
-            {totalItems > 0 && (
-              <div style={S.closedCartNotice}>
-                <span style={{ fontSize: 24, flexShrink: 0 }}>🛒</span>
-                <div>
-                  <div style={{ fontWeight: 800, color: "#0f172a", fontSize: 13.5 }}>
-                    Your cart with {totalItems} {totalItems === 1 ? "item" : "items"} (₹{grandTotal}) is safely saved!
-                  </div>
-                  <div style={{ fontSize: 11.5, color: "#64748b", marginTop: 2 }}>
-                    Your cart is saved and ready for checkout once the store reopens.
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Action Buttons */}
-            <div style={S.closedActionsRow}>
-              <button
-                type="button"
-                id="check-store-status-btn"
-                style={S.checkStatusBtn}
-                onClick={handleCheckStoreStatus}
-              >
-                <span>🔄 Check Store Status</span>
-              </button>
-              {activeDeliveryOrder && (
-                <button
-                  type="button"
-                  style={S.viewDeliveryBtn}
-                  onClick={() => router.push(`/track/${activeDeliveryOrder.orderNumber || activeDeliveryOrder.id || activeDeliveryOrder.orderId}`)}
-                >
-                  <span>🛵 Track Ongoing Delivery</span>
-                </button>
-              )}
-            </div>
-
-          </div>
-        </main>
-      ) : isCheckoutView ? (
+      {isCheckoutView ? (
         /* ── DEDICATED BLINKIT CART & CHECKOUT PAGE (EXACT ASCII WIREFRAME) ── */
         <main style={S.checkoutMain}>
           <div style={S.checkoutContainer}>
@@ -1693,6 +1626,19 @@ export default function OrderingAppPage() {
                   <span>🛵 TRACK ACTIVE DELIVERY</span>
                   <IconArrowRight size={18} color="#ffffff" />
                 </button>
+              ) : !isStoreOpen ? (
+                <button
+                  type="button"
+                  style={{
+                    ...S.proceedToPayCTA,
+                    background: "#e11d48",
+                  }}
+                  onClick={() => {
+                    triggerToast("🛑 Store is closed right now, ordering soon!");
+                  }}
+                >
+                  <span>STORE CLOSED • ORDERING SOON</span>
+                </button>
               ) : (
                 <button
                   type="button"
@@ -1711,6 +1657,92 @@ export default function OrderingAppPage() {
         /* ── CATALOG BROWSE VIEW (STORE WITH SMART CART BAR) ── */
         <main style={S.catalogMain}>
           <div style={S.catalogContainer}>
+            {/* Store Closed Interactive Notice Banner */}
+            {!isStoreOpen && (
+              <div
+                style={{
+                  background: "linear-gradient(135deg, #fff1f3 0%, #ffe4e6 100%)",
+                  border: "1.5px solid #fecdd3",
+                  borderRadius: 14,
+                  padding: "12px 14px",
+                  marginBottom: 12,
+                  boxShadow: "0 2px 10px rgba(225, 29, 72, 0.08)",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+                  <span style={{ fontSize: 24, flexShrink: 0 }}>🏪</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                      <span
+                        style={{
+                          background: "#e11d48",
+                          color: "#fff",
+                          fontSize: 10,
+                          fontWeight: 800,
+                          padding: "2px 6px",
+                          borderRadius: 6,
+                          letterSpacing: 0.5,
+                        }}
+                      >
+                        STORE CLOSED
+                      </span>
+                      <span style={{ fontSize: 13, fontWeight: 800, color: "#9f1239" }}>
+                        Store is closed right now • Ordering opening soon!
+                      </span>
+                    </div>
+                    <p style={{ margin: "4px 0 8px", fontSize: 11.5, color: "#475569", lineHeight: 1.4 }}>
+                      You can search &amp; view all products, explore Namma Tiptur, and review your past orders. Orders will resume shortly!
+                    </p>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      <button
+                        type="button"
+                        style={{
+                          background: "#ffffff",
+                          border: "1.5px solid #f43f5e",
+                          color: "#e11d48",
+                          fontSize: 11,
+                          fontWeight: 700,
+                          padding: "6px 12px",
+                          borderRadius: 8,
+                          cursor: "pointer",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 5,
+                        }}
+                        onClick={() => {
+                          if (customer?.name) {
+                            setShowProfileModal(true);
+                          } else {
+                            setActiveBottomTab("order_again");
+                          }
+                        }}
+                      >
+                        <span>📦 Explore Past Orders</span>
+                      </button>
+                      <button
+                        type="button"
+                        style={{
+                          background: "#0c831f",
+                          border: "none",
+                          color: "#ffffff",
+                          fontSize: 11,
+                          fontWeight: 700,
+                          padding: "6px 12px",
+                          borderRadius: 8,
+                          cursor: "pointer",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 5,
+                        }}
+                        onClick={() => setActiveBottomTab("explore_tiptur")}
+                      >
+                        <span>🌴 Explore Namma Tiptur</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
             {/* Top Ongoing Order Alert in Catalog */}
             {hasOngoingOrder && (
               <div
@@ -2082,7 +2114,13 @@ export default function OrderingAppPage() {
                               <button
                                 type="button"
                                 style={S.productAddBtn}
-                                onClick={() => updateQty(item.sku, 1)}
+                                onClick={() => {
+                                  if (!isStoreOpen) {
+                                    triggerToast("🛑 Store is closed right now, ordering soon!");
+                                    return;
+                                  }
+                                  updateQty(item.sku, 1);
+                                }}
                               >
                                 ADD
                               </button>
@@ -2099,7 +2137,13 @@ export default function OrderingAppPage() {
                                 <button
                                   type="button"
                                   style={S.stepperSmallBtn}
-                                  onClick={() => updateQty(item.sku, 1)}
+                                  onClick={() => {
+                                    if (!isStoreOpen) {
+                                      triggerToast("🛑 Store is closed right now, ordering soon!");
+                                      return;
+                                    }
+                                    updateQty(item.sku, 1);
+                                  }}
                                 >
                                   +
                                 </button>
@@ -2875,8 +2919,8 @@ export default function OrderingAppPage() {
           </div>
         )}
 
-            {/* Floating Quick Cart Bar (Visible only when user clicks and adds items and store is open) */}
-            {isStoreOpen && totalItems > 0 && activeBottomTab !== "explore_tiptur" && (
+            {/* Floating Quick Cart Bar (Visible only when user clicks and adds items) */}
+            {totalItems > 0 && activeBottomTab !== "explore_tiptur" && (
               <div style={S.catalogFloatingCartBar}>
                 <div style={S.floatingCartInner}>
                   <div style={S.floatingCartLeft}>
@@ -2888,7 +2932,7 @@ export default function OrderingAppPage() {
                         {totalItems} {totalItems === 1 ? "ITEM" : "ITEMS"} • ₹{grandTotal}
                       </div>
                       <div style={S.floatingSavings}>
-                        Delivery in 8 mins to {selectedAddress.type}
+                        {!isStoreOpen ? "Store closed • Saved for when store opens" : `Delivery in 8 mins to ${selectedAddress.type}`}
                       </div>
                     </div>
                   </div>
@@ -2920,6 +2964,17 @@ export default function OrderingAppPage() {
                         <IconArrowRight size={14} color="#ffffff" />
                       </button>
                     </div>
+                  ) : !isStoreOpen ? (
+                    <button
+                      type="button"
+                      style={{
+                        ...S.floatingViewCartCTA,
+                        background: "#e11d48",
+                      }}
+                      onClick={() => triggerToast("🛑 Store is closed right now, ordering soon!")}
+                    >
+                      <span>STORE CLOSED</span>
+                    </button>
                   ) : (
                     <button
                       type="button"
