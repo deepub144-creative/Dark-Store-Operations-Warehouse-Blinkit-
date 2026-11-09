@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { collection, onSnapshot, doc, updateDoc, addDoc } from "firebase/firestore";
 import { db } from "@/lib/firebaseClient";
 import { CATALOG } from "@/lib/items";
@@ -21,6 +22,15 @@ const ASM_OFFICIAL_CATALOG = CATALOG.filter(
 }));
 
 export default function AssistantStoreManagerApp({ embedded = false }) {
+  const router = useRouter();
+
+  // Dump standalone /roles/asm link into /dashboard?role=asm
+  useEffect(() => {
+    if (!embedded && typeof window !== "undefined") {
+      router.replace("/dashboard?role=asm");
+    }
+  }, [embedded, router]);
+
   const [activeTab, setActiveTab] = useState("itemHelp"); // itemHelp | soloAudit | putawayBay
   const [catalogItems, setCatalogItems] = useState(ASM_OFFICIAL_CATALOG);
   const [searchQuery, setSearchQuery] = useState("");
@@ -217,51 +227,16 @@ export default function AssistantStoreManagerApp({ embedded = false }) {
             </div>
           </div>
 
-          <div style={{ display: "flex", gap: 8 }}>
-            <a href="/roles/asm" target="_blank" style={S.quickLinkPill}>
-              🔗 Open Fullscreen ASM Portal ↗
-            </a>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <span style={{ ...S.quickLinkPill, background: "#ecfdf5", color: "#065f46", border: "1px solid #a7f3d0", fontWeight: 700 }}>
+              ⚡ ASM Floor & Audit Workspace (Live)
+            </span>
           </div>
         </div>
       ) : (
-        <header style={S.header}>
-          <div style={S.brandCol}>
-            <div style={S.brandRow}>
-              <AuditxLogo height={30} href="/" />
-              <span style={S.hubBadge}>TIPTUR HUB - KA44</span>
-            </div>
-            <div style={S.operatorSub}>
-              Assistant Store Manager (ASM) Floor &amp; Audit Portal • Namma Tiptur - 572201
-            </div>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
-              <a href="/dashboard" style={S.quickLinkPill}>📊 Command Tower</a>
-              <a href="/roles/sm" style={S.quickLinkPill}>👔 SM: Bhasker N S</a>
-              <a href="/roles/md" style={S.quickLinkPill}>👑 MD: A B Harshitha</a>
-              <a href="/picker" style={S.quickLinkPill}>📦 Picker: Thrupthi</a>
-              <a href="/rider" style={S.quickLinkPill}>🛵 Rider: Sinchana</a>
-              <a href="/warehouse" style={S.quickLinkPill}>🏬 Staging Racks</a>
-            </div>
-          </div>
-
-          <div style={S.profileBox}>
-            <img
-              src="/asm-logo.png"
-              alt="Deepu B - D Logo"
-              style={{
-                width: 44,
-                height: 44,
-                borderRadius: "50%",
-                objectFit: "cover",
-                border: "2px solid #10b981",
-                boxShadow: "0 2px 8px rgba(16, 185, 129, 0.35)",
-              }}
-            />
-            <div>
-              <div style={S.profileName}>Deepu B</div>
-              <div style={S.profileRole}>Assistant Store Manager (ASM)</div>
-            </div>
-          </div>
-        </header>
+        <div style={{ padding: 40, textAlign: "center", color: "#64748b" }}>
+          Redirecting to Dashboard ASM Workspace...
+        </div>
       )}
 
       <div style={{ padding: "0 16px" }}>

@@ -8,22 +8,21 @@ export default function RolesLayout({ children }) {
   const router = useRouter();
 
   // Determine active role from pathname
-  let activeRole = "sm";
+  let activeRole = "dashboard";
   if (pathname.includes("/roles/asm")) activeRole = "asm";
   else if (pathname.includes("/roles/md")) activeRole = "md";
   else if (pathname.includes("/roles/picker")) activeRole = "picker";
   else if (pathname.includes("/roles/captain")) activeRole = "captain";
-  else if (pathname.includes("/roles/sm")) activeRole = "sm";
 
   function handleRoleSelect(roleId) {
     const routeMap = {
-      sm: "/roles/sm",
-      asm: "/roles/asm",
-      md: "/roles/md",
-      picker: "/roles/picker",
-      captain: "/roles/captain",
+      sm: "/dashboard?role=sm",
+      asm: "/dashboard?role=asm",
+      md: "/dashboard?role=md",
+      picker: "/picker",
+      captain: "/rider",
     };
-    router.push(routeMap[roleId] || "/roles/sm");
+    router.push(routeMap[roleId] || "/dashboard");
   }
 
   return (

@@ -9,6 +9,25 @@ const nextConfig = {
       },
     ],
   },
+  async redirects() {
+    return [
+      {
+        source: '/roles/sm',
+        destination: '/dashboard?role=sm',
+        permanent: false,
+      },
+      {
+        source: '/roles/md',
+        destination: '/dashboard?role=md',
+        permanent: false,
+      },
+      {
+        source: '/roles/asm',
+        destination: '/dashboard?role=asm',
+        permanent: false,
+      },
+    ];
+  },
   async rewrites() {
     return [
       {

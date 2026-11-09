@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { collection, onSnapshot, query, where, doc, updateDoc } from "firebase/firestore";
 import { db } from "@/lib/firebaseClient";
 import { playNotificationChime } from "@/lib/soundSystem";
@@ -9,6 +10,15 @@ import AuditxLogo from "@/components/AuditxLogo";
 import LiveOrderPipeline from "@/components/LiveOrderPipeline";
 
 export default function ManagingDirectorApp({ embedded = false }) {
+  const router = useRouter();
+
+  // Dump standalone /roles/md link into /dashboard?role=md
+  useEffect(() => {
+    if (!embedded && typeof window !== "undefined") {
+      router.replace("/dashboard?role=md");
+    }
+  }, [embedded, router]);
+
   const [complaints, setComplaints] = useState([]);
   const [activeTab, setActiveTab] = useState("scaleMargin"); // scaleMargin | hubSla | capexGrowth
   const [actionSuccess, setActionSuccess] = useState("");
@@ -149,52 +159,16 @@ export default function ManagingDirectorApp({ embedded = false }) {
             </div>
           </div>
 
-          <div style={{ display: "flex", gap: 8 }}>
-            <a href="/roles/md" target="_blank" style={S.quickLinkPill}>
-              🔗 Open Fullscreen MD Portal ↗
-            </a>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <span style={{ ...S.quickLinkPill, background: "#f0fdf4", color: "#166534", border: "1px solid #bbf7d0", fontWeight: 700 }}>
+              🛡️ MD Executive Workspace (Live)
+            </span>
           </div>
         </div>
       ) : (
-        <header style={S.header}>
-          <div style={S.brandCol}>
-            <div style={S.brandRow}>
-              <AuditxLogo height={32} href="/" />
-              <span style={S.hubBadge}>TIPTUR HUB - KA44</span>
-              <span style={S.execBadge}>EXECUTIVE BOARD</span>
-            </div>
-            <div style={S.subTitle}>
-              Managing Director Strategic Command Tower • Scale, Margin &amp; Zero-Complaint Governance
-            </div>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
-              <a href="/dashboard" style={S.quickLinkPill}>📊 Command Tower</a>
-              <a href="/roles/sm" style={S.quickLinkPill}>👔 SM: Bhasker N S</a>
-              <a href="/roles/asm" style={S.quickLinkPill}>🛠️ ASM: Deepu B</a>
-              <a href="/picker" style={S.quickLinkPill}>📦 Picker: Thrupthi</a>
-              <a href="/rider" style={S.quickLinkPill}>🛵 Rider: Sinchana</a>
-              <a href="/warehouse" style={S.quickLinkPill}>🏬 Staging Racks</a>
-            </div>
-          </div>
-
-          <div style={S.profileBox}>
-            <img
-              src="/md-logo.png"
-              alt="A B Harshitha - H Logo"
-              style={{
-                width: 44,
-                height: 44,
-                borderRadius: "50%",
-                objectFit: "cover",
-                border: "2px solid #38bdf8",
-                boxShadow: "0 2px 8px rgba(56, 189, 248, 0.35)",
-              }}
-            />
-            <div>
-              <div style={S.profileName}>A B Harshitha</div>
-              <div style={S.profileRole}>Managing Director (MD)</div>
-            </div>
-          </div>
-        </header>
+        <div style={{ padding: 40, textAlign: "center", color: "#64748b" }}>
+          Redirecting to Dashboard MD Workspace...
+        </div>
       )}
 
       <div style={{ padding: "0 16px" }}>

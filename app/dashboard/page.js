@@ -138,10 +138,39 @@ export default function WarehouseDashboardPage() {
 
   const router = useRouter();
 
-  // Load initial staff (Only SM, ASM, or MD for Dashboard)
+  // Load initial staff (Only SM, ASM, or MD for Dashboard Command Tower)
   useEffect(() => {
-    const raw = localStorage.getItem("auditx_staff");
     const defaultSM = DASHBOARD_MANAGERS.find((s) => s.id === "bhaskar") || DASHBOARD_MANAGERS[0];
+    
+    // Check if role was requested via URL query (e.g. /dashboard?role=md or ?role=asm)
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const reqRole = (params.get("role") || params.get("profile") || "").toLowerCase();
+      if (reqRole === "md" || reqRole === "harshitha") {
+        const target = DASHBOARD_MANAGERS.find((s) => s.roleCode === "MD" || s.id === "harshitha");
+        if (target) {
+          localStorage.setItem("auditx_staff", JSON.stringify(target));
+          setStaff(target);
+          return;
+        }
+      } else if (reqRole === "asm" || reqRole === "deepu") {
+        const target = DASHBOARD_MANAGERS.find((s) => s.roleCode === "ASM" || s.id === "deepu");
+        if (target) {
+          localStorage.setItem("auditx_staff", JSON.stringify(target));
+          setStaff(target);
+          return;
+        }
+      } else if (reqRole === "sm" || reqRole === "bhaskar") {
+        const target = DASHBOARD_MANAGERS.find((s) => s.roleCode === "SM" || s.id === "bhaskar");
+        if (target) {
+          localStorage.setItem("auditx_staff", JSON.stringify(target));
+          setStaff(target);
+          return;
+        }
+      }
+    }
+
+    const raw = localStorage.getItem("auditx_staff");
     if (!raw) {
       localStorage.setItem("auditx_staff", JSON.stringify(defaultSM));
       setStaff(defaultSM);
@@ -458,6 +487,11 @@ export default function WarehouseDashboardPage() {
     playNotificationChime();
     localStorage.setItem("auditx_staff", JSON.stringify(member));
     setStaff(member);
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.searchParams.set("role", member.roleCode.toLowerCase());
+      window.history.replaceState({}, "", url.toString());
+    }
     setActionSuccess(`Switched personnel profile to ${member.name} (${member.designation})`);
     setTimeout(() => setActionSuccess(""), 3000);
   }

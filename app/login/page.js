@@ -25,7 +25,7 @@ export const AUTHORIZED_STAFF_NUMBERS = [
     name: "Deepu B",
     roleCode: "ASM",
     roleName: "Assistant Store Manager",
-    route: "/roles/asm",
+    route: "/dashboard?role=asm",
     avatar: "⚡",
     badgeColor: "#0284c7",
     desk: "Assistant Store Manager",
@@ -35,7 +35,7 @@ export const AUTHORIZED_STAFF_NUMBERS = [
     name: "A B Harshitha",
     roleCode: "MD",
     roleName: "Managing Director",
-    route: "/roles/md",
+    route: "/dashboard?role=md",
     avatar: "🛡️",
     badgeColor: "#8b5cf6",
     desk: "Executive Ops Command",
@@ -327,11 +327,11 @@ export default function LoginPage() {
                     </div>
                     <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
                       {[
-                        { label: "ASM Verification", code: "ASM", route: "/roles/asm", icon: "⚡" },
+                        { label: "ASM Verification", code: "ASM", route: "/dashboard?role=asm", icon: "⚡" },
                         { label: "OD Picker (MOTOROLA)", code: "PICKER", route: "/picker", icon: "📦" },
                         { label: "Rider (OPPO)", code: "DELIVERY", route: "/rider", icon: "🛵" },
                         { label: "SM Dashboard", code: "SM", route: "/dashboard", icon: "👑" },
-                        { label: "MD Control", code: "MD", route: "/roles/md", icon: "🛡️" },
+                        { label: "MD Control", code: "MD", route: "/dashboard?role=md", icon: "🛡️" },
                       ].map((tgt) => {
                         const isChosen = emergencyTarget?.code === tgt.code;
                         return (

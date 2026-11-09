@@ -590,9 +590,9 @@ export default function DedicatedWarehouseRoute() {
                   <button
                     type="button"
                     style={{ ...styles.fullDashboardLaunchBtn, background: "#ec4899" }}
-                    onClick={() => router.push("/roles/sm")}
+                    onClick={() => router.push("/dashboard?role=sm")}
                   >
-                    Open Dedicated SM Dashboard <IconArrowRight size={14} color="#ffffff" />
+                    Open SM Operations Dashboard <IconArrowRight size={14} color="#ffffff" />
                   </button>
                 </div>
                 <div style={styles.dashboardMetricsGrid}>
@@ -632,9 +632,9 @@ export default function DedicatedWarehouseRoute() {
                   <button
                     type="button"
                     style={{ ...styles.fullDashboardLaunchBtn, background: "#06b6d4" }}
-                    onClick={() => router.push("/roles/asm")}
+                    onClick={() => router.push("/dashboard?role=asm")}
                   >
-                    Open Dedicated ASM Dashboard <IconArrowRight size={14} color="#ffffff" />
+                    Open ASM Floor Dashboard <IconArrowRight size={14} color="#ffffff" />
                   </button>
                 </div>
                 <div style={styles.dashboardMetricsGrid}>
@@ -674,9 +674,9 @@ export default function DedicatedWarehouseRoute() {
                   <button
                     type="button"
                     style={{ ...styles.fullDashboardLaunchBtn, background: "#8b5cf6" }}
-                    onClick={() => router.push("/roles/md")}
+                    onClick={() => router.push("/dashboard?role=md")}
                   >
-                    Open Dedicated MD Dashboard <IconArrowRight size={14} color="#ffffff" />
+                    Open MD Executive Dashboard <IconArrowRight size={14} color="#ffffff" />
                   </button>
                 </div>
                 <div style={styles.dashboardMetricsGrid}>
