@@ -205,7 +205,11 @@ export default function TrackOrderPage() {
           setTrackingStage("rider_arrived");
           setRiderProgress(100);
           playSuccessChime();
-          triggerToast("🛵 Rider arrived to your location! Show Handover QR Code to complete delivery.");
+          triggerToast("🛵 Rider arrived at your doorstep! Please submit the rating form to complete delivery.");
+          setTimeout(() => {
+            const el = document.getElementById("rate-rider-items-section");
+            if (el) el.scrollIntoView({ behavior: "smooth" });
+          }, 300);
           return 0;
         }
         return prev - 1;
@@ -394,14 +398,32 @@ export default function TrackOrderPage() {
     } catch (err) {
       console.warn(err);
     }
+
+    const deliveredOrder = {
+      ...activeOrder,
+      status: "delivered",
+      stage: "Delivered",
+      deliveredAt: new Date().toISOString(),
+      customerRatingSubmitted: true,
+      riderRating,
+      itemRatings,
+    };
+
+    setOrder(deliveredOrder);
+    setTrackingStage("delivered");
+
     updateLiveOrder(activeOrder.id || orderId, {
+      status: "delivered",
+      stage: "Delivered",
+      deliveredAt: new Date().toISOString(),
       customerRatingSubmitted: true,
       riderRating,
       itemRatings,
     });
+    broadcastEvent("ORDER_DELIVERED", deliveredOrder);
     broadcastEvent("ORDER_RATED", ratingPayload);
     setRatingSubmitted(true);
-    triggerToast("⭐ Thank you! Your rating for Rider Sinchana B R & items has been saved!");
+    triggerToast("🎉 Order Delivered & Verified! Thank you for rating Sinchana B R.");
   }
 
   function handleConfirmHandoverFromCustomerQr() {
@@ -805,62 +827,11 @@ export default function TrackOrderPage() {
                 <span style={S.trackBillGrandVal}>₹{grandTotalAmount}</span>
               </div>
             </div>
-
-            {/* Handover QR Code for Sinchana */}
-            <div
-              id="handover-qr-section"
-              style={{
-                ...S.handoverQrBox,
-                ...(trackingStage === "rider_arrived" && !isDelivered
-                  ? {
-                      border: "2.5px solid #0c831f",
-                      background: "#f0fdf4",
-                      boxShadow: "0 8px 24px rgba(12, 131, 31, 0.18)",
-                    }
-                  : {}),
-              }}
-            >
-              <div style={S.qrTitleRow}>
-                <span style={S.qrTitle}>
-                  {trackingStage === "rider_arrived" && !isDelivered
-                    ? "🛵 Rider Arrived! Show Handover QR Now"
-                    : "Delivery Handover QR"}
-                </span>
-                <span style={S.qrScanPill}>
-                  {isDelivered ? "Verified ✓" : trackingStage === "rider_arrived" ? "Rider Waiting at Doorstep" : "Scan upon arrival"}
-                </span>
-              </div>
-              <p style={S.qrSub}>
-                Show this code to your <b>Delivery Partner (Sinchana B R)</b> at doorstep to complete verification:
-              </p>
-              <div
-                style={{
-                  ...S.qrGraphicWrapper,
-                  cursor: !isDelivered ? "pointer" : "default",
-                }}
-                onClick={!isDelivered ? handleConfirmHandoverFromCustomerQr : undefined}
-                title={!isDelivered ? "Tap QR upon doorstep arrival" : "Verified"}
-              >
-                <img
-                  src="/delivery-qr.png"
-                  alt="Delivery Handover QR Code"
-                  style={{
-                    width: 140,
-                    height: 140,
-                    objectFit: "contain",
-                    borderRadius: 8,
-                    background: "#FFFFFF",
-                    display: "block",
-                  }}
-                />
-                <code style={S.qrTextCode}>AUDITX-{activeOrder.orderNumber || orderId}</code>
-              </div>
-            </div>
           </div>
         </section>
 
-        {/* ── 6. RATE THE RIDER & ORDERED ITEMS CARD (APPEARS AFTER DOORSTEP DELIVERY) ── */}
-        {isDelivered && (
+        {/* ── 6. RATE THE RIDER & ORDERED ITEMS CARD (AUTO-APPEARS AT DOORSTEP TO COMPLETE DELIVERY) ── */}
+        {(isDelivered || trackingStage === "rider_arrived" || trackingStage === "almost_doorstep") && (
           <section id="rate-rider-items-section" style={S.cardContainer}>
             <div
               style={{
@@ -920,7 +891,7 @@ export default function TrackOrderPage() {
                           textTransform: "uppercase",
                         }}
                       >
-                        Doorstep Delivery Completed
+                        {isDelivered ? "Doorstep Delivery Completed" : "🛵 Rider at Doorstep • Submit to Complete Delivery"}
                       </span>
                       <h3 style={{ margin: "6px 0 2px", fontSize: 17, fontWeight: 900, color: "#0f172a" }}>
                         Rate the Rider &amp; Ordered Items
@@ -1102,7 +1073,7 @@ export default function TrackOrderPage() {
                       boxShadow: "0 4px 14px rgba(12, 131, 31, 0.3)",
                     }}
                   >
-                    ⭐ Submit Rider &amp; Item Rating
+                    ⭐ Submit Rating &amp; Complete Delivery
                   </button>
                 </form>
               )}
@@ -1180,14 +1151,14 @@ export default function TrackOrderPage() {
                 {isDelivered
                   ? "Order delivered! Tap Rate Now to review your order"
                   : trackingStage === "rider_arrived"
-                  ? "Please show your handover QR code at the doorstep"
+                  ? "Please submit the rating form below to complete delivery"
                   : "Your order is on the way to your doorstep"}
               </div>
             </div>
             <button
               type="button"
               onClick={() => {
-                const targetId = isDelivered ? "rate-rider-items-section" : "handover-qr-section";
+                const targetId = "rate-rider-items-section";
                 const el = document.getElementById(targetId);
                 if (el) el.scrollIntoView({ behavior: "smooth" });
               }}
@@ -1204,7 +1175,7 @@ export default function TrackOrderPage() {
                 flexShrink: 0,
               }}
             >
-              {isDelivered ? "Rate Now" : "Show QR"}
+              {isDelivered ? "Rate Now" : (trackingStage === "rider_arrived" || trackingStage === "almost_doorstep") ? "Rate to Deliver" : "Track"}
             </button>
           </div>
         )}

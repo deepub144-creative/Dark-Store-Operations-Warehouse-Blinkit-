@@ -606,7 +606,8 @@ export default function OrderingAppPage() {
           if (prev <= 1) {
             setOrderingStage("rider_arrived");
             playSuccessChime();
-            triggerToast("🛵 Rider arrived at your doorstep! Delivering your order.");
+            triggerToast("🛵 Rider arrived at your doorstep! Please rate your delivery.");
+            setShowRateOrderModal(true);
             return 0;
           }
           return prev - 1;
@@ -636,17 +637,23 @@ export default function OrderingAppPage() {
     } catch (err) {
       console.warn(err);
     }
-    updateLiveOrder(ordId, {
+    const deliveredOrder = {
+      ...activeDeliveryOrder,
+      status: "delivered",
+      stage: "Delivered",
+      deliveredAt: new Date().toISOString(),
       customerRatingSubmitted: true,
       riderRating: riderStars,
       itemRatings: itemStarsMap,
-    });
+    };
+    updateLiveOrder(ordId, deliveredOrder);
+    broadcastEvent("ORDER_DELIVERED", deliveredOrder);
     broadcastEvent("ORDER_RATED", ratingPayload);
     setRateCompleted(true);
     setShowRateOrderModal(false);
     setActiveDeliveryOrder(null);
     setOrderingStage("idle");
-    triggerToast("⭐ Thank you for rating Rider Sinchana B R and your ordered items!");
+    triggerToast("🎉 Order Delivered & Verified! Thank you for rating Sinchana B R.");
   }
 
   function handleClearAllQueue() {
@@ -2967,7 +2974,7 @@ export default function OrderingAppPage() {
 
           {/* RATE / VIEW & COMPLAINT Buttons */}
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0, marginLeft: 10 }}>
-            {(activeDeliveryOrder.status === "delivered" || orderingStage === "delivered") && !rateCompleted ? (
+            {(activeDeliveryOrder.status === "delivered" || orderingStage === "delivered" || orderingStage === "rider_arrived") && !rateCompleted ? (
               <button
                 type="button"
                 style={{
@@ -2987,7 +2994,7 @@ export default function OrderingAppPage() {
                   setShowRateOrderModal(true);
                 }}
               >
-                ⭐ Rate Now
+                {activeDeliveryOrder.status === "delivered" || orderingStage === "delivered" ? "⭐ Rate Now" : "⭐ Rate to Deliver"}
               </button>
             ) : (
               <>
@@ -3084,7 +3091,7 @@ export default function OrderingAppPage() {
                     textTransform: "uppercase",
                   }}
                 >
-                  Doorstep Handover Verified
+                  {activeDeliveryOrder.status === "delivered" ? "Doorstep Delivery Completed" : "🛵 Rider at Doorstep • Submit to Complete Delivery"}
                 </span>
                 <h3 style={{ margin: "6px 0 2px", fontSize: 17, fontWeight: 900, color: "#0f172a" }}>
                   Rate Rider &amp; Ordered Items
@@ -3250,7 +3257,7 @@ export default function OrderingAppPage() {
                   boxShadow: "0 4px 14px rgba(12, 131, 31, 0.3)",
                 }}
               >
-                ⭐ Submit Rider &amp; Item Rating
+                ⭐ Submit Rating &amp; Complete Delivery
               </button>
             </form>
           </div>
