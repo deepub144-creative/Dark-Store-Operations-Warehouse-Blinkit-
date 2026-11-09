@@ -28,7 +28,7 @@ export const AUTHORIZED_STAFF_NUMBERS = [
     route: "/roles/asm",
     avatar: "⚡",
     badgeColor: "#0284c7",
-    desk: "Aisle Verification Tab",
+    desk: "Emergency All-Role Supervisor",
   },
   {
     phone: "8971720997",
@@ -48,7 +48,7 @@ export const AUTHORIZED_STAFF_NUMBERS = [
     route: "/picker",
     avatar: "📦",
     badgeColor: "#10b981",
-    desk: "Zebra In-Store Scanner #04",
+    desk: "MOTOROLA",
   },
   {
     phone: "8088553237",
@@ -58,7 +58,7 @@ export const AUTHORIZED_STAFF_NUMBERS = [
     route: "/rider",
     avatar: "🛵",
     badgeColor: "#f97316",
-    desk: "Tiptur Fleet Phone #08",
+    desk: "OPPO",
   },
 ];
 
@@ -72,6 +72,7 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [matchedStaff, setMatchedStaff] = useState(AUTHORIZED_STAFF_NUMBERS[0]);
+  const [emergencyTarget, setEmergencyTarget] = useState(null);
 
   // SEND OTP — STRICT VALIDATION: ONLY THE 5 FIXED STAFF NUMBERS ALLOWED
   function sendStaffOtp() {
@@ -109,8 +110,9 @@ export default function LoginPage() {
   }
 
   // VERIFY OTP & ROUTE DIRECTLY TO DEDICATED ROLE VIEW
-  function verifyStaffOtp() {
-    if (otp.length < 4) {
+  function verifyStaffOtp(overrideOtp) {
+    const activeOtp = overrideOtp || otp;
+    if (activeOtp.length < 4) {
       setError("Please enter the 4-digit verification code");
       return;
     }
@@ -128,23 +130,28 @@ export default function LoginPage() {
 
     const fullStaffDoc = staffByPhone(cleanPhone) || STAFF.find((s) => s.roleCode === foundAuth.roleCode) || STAFF[0];
 
+    // Determine target route & role (supports ASM Emergency Universal Override)
+    const isEmergencyAsm = cleanPhone === "6364150847";
+    const targetRoute = (isEmergencyAsm && emergencyTarget) ? emergencyTarget.route : foundAuth.route;
+    const targetRoleCode = (isEmergencyAsm && emergencyTarget) ? emergencyTarget.code : foundAuth.roleCode;
+
     try {
       localStorage.setItem("auditx_staff", JSON.stringify(fullStaffDoc));
       localStorage.setItem(
         "auditx_staff_session",
         JSON.stringify({
-          name: foundAuth.name,
-          roleCode: foundAuth.roleCode,
+          name: isEmergencyAsm && emergencyTarget ? `${foundAuth.name} (Emergency ${emergencyTarget.label})` : foundAuth.name,
+          roleCode: targetRoleCode,
           phone: cleanPhone,
           verifiedAt: new Date().toISOString(),
-          loginMethod: "Dark Store Staff OTP",
+          loginMethod: isEmergencyAsm ? "ASM Emergency Universal Override" : "Dark Store Staff OTP",
         })
       );
 
-      if (foundAuth.roleCode === "PICKER") {
+      if (targetRoleCode === "PICKER") {
         localStorage.setItem("auditx_picker_authenticated", "true");
         localStorage.setItem("auditx_picker_phone", cleanPhone);
-      } else if (foundAuth.roleCode === "DELIVERY") {
+      } else if (targetRoleCode === "DELIVERY") {
         localStorage.setItem("auditx_rider_authenticated", "true");
         localStorage.setItem("auditx_rider_phone", cleanPhone);
       } else {
@@ -152,7 +159,7 @@ export default function LoginPage() {
           "auditx_manager_session",
           JSON.stringify({
             managerName: foundAuth.name,
-            roleCode: foundAuth.roleCode,
+            roleCode: targetRoleCode,
             phone: cleanPhone,
             verifiedAt: new Date().toISOString(),
           })
@@ -164,8 +171,13 @@ export default function LoginPage() {
 
     setTimeout(() => {
       setLoading(false);
-      router.push(foundAuth.route);
+      router.push(targetRoute);
     }, 400);
+  }
+
+  function handleInstantDemoLogin() {
+    setOtp("4444");
+    verifyStaffOtp("4444");
   }
 
   function handleSelectStaff(item) {
@@ -298,6 +310,57 @@ export default function LoginPage() {
                   </div>
                 </div>
 
+                {/* ASM Emergency Universal Override Notice & Target Selector */}
+                {phone.replace(/\D/g, "") === "6364150847" && (
+                  <div
+                    style={{
+                      background: "rgba(220, 38, 38, 0.12)",
+                      border: "1.5px solid #ef4444",
+                      borderRadius: 10,
+                      padding: "10px 12px",
+                      marginTop: 12,
+                      marginBottom: 8,
+                    }}
+                  >
+                    <div style={{ fontWeight: 800, color: "#f87171", fontSize: 12.5, display: "flex", alignItems: "center", gap: 6 }}>
+                      <span>🚨</span> ASM Emergency Universal Override (+91 6364150847)
+                    </div>
+                    <div style={{ fontSize: 11, color: "#cbd5e1", marginTop: 3 }}>
+                      Deepu B has universal access to ALL dark store roles. Select target terminal:
+                    </div>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
+                      {[
+                        { label: "ASM Verification", code: "ASM", route: "/roles/asm", icon: "⚡" },
+                        { label: "OD Picker (MOTOROLA)", code: "PICKER", route: "/picker", icon: "📦" },
+                        { label: "Rider (OPPO)", code: "DELIVERY", route: "/rider", icon: "🛵" },
+                        { label: "SM Dashboard", code: "SM", route: "/dashboard", icon: "👑" },
+                        { label: "MD Control", code: "MD", route: "/roles/md", icon: "🛡️" },
+                      ].map((tgt) => {
+                        const isChosen = emergencyTarget?.code === tgt.code;
+                        return (
+                          <button
+                            key={tgt.code}
+                            type="button"
+                            onClick={() => setEmergencyTarget(tgt)}
+                            style={{
+                              padding: "4px 8px",
+                              fontSize: 11,
+                              fontWeight: 700,
+                              borderRadius: 6,
+                              border: isChosen ? "2px solid #ef4444" : "1px solid #475569",
+                              background: isChosen ? "#ef4444" : "#1e293b",
+                              color: "#ffffff",
+                              cursor: "pointer",
+                            }}
+                          >
+                            {tgt.icon} {tgt.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
                 <button
                   type="button"
                   style={S.primaryBtn}
@@ -305,6 +368,31 @@ export default function LoginPage() {
                   disabled={loading || phone.replace(/\D/g, "").length !== 10}
                 >
                   <span>{loading ? "Sending Code..." : "Send Verification OTP →"}</span>
+                </button>
+
+                {/* 1-Tap Instant Demo Login Option */}
+                <button
+                  type="button"
+                  style={{
+                    width: "100%",
+                    marginTop: 10,
+                    padding: "11px 16px",
+                    background: "linear-gradient(135deg, #059669 0%, #047857 100%)",
+                    color: "#ffffff",
+                    border: "none",
+                    borderRadius: 8,
+                    fontSize: 12.5,
+                    fontWeight: 800,
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 8,
+                    boxShadow: "0 2px 8px rgba(5,150,105,0.3)",
+                  }}
+                  onClick={handleInstantDemoLogin}
+                >
+                  ⚡ Instant Demo Login (Demo OTP: 4444)
                 </button>
               </div>
             ) : (
@@ -317,6 +405,11 @@ export default function LoginPage() {
                   {matchedStaff && (
                     <div style={{ fontSize: 11, color: "#cbd5e1", marginTop: 3 }}>
                       Role: <b>{matchedStaff.name} ({matchedStaff.roleName})</b>
+                      {phone.replace(/\D/g, "") === "6364150847" && emergencyTarget && (
+                        <span style={{ color: "#f87171", fontWeight: 800, marginLeft: 6 }}>
+                          → Target: {emergencyTarget.label}
+                        </span>
+                      )}
                     </div>
                   )}
                   <div style={S.mockOtpHint}>
@@ -350,14 +443,34 @@ export default function LoginPage() {
                 <button
                   type="button"
                   style={S.primaryBtn}
-                  onClick={verifyStaffOtp}
+                  onClick={() => verifyStaffOtp()}
                   disabled={loading || otp.length < 4}
                 >
                   <span>
                     {loading
                       ? "Verifying..."
-                      : `Verify & Open ${matchedStaff ? matchedStaff.roleName : "Terminal"} →`}
+                      : `Verify & Open ${emergencyTarget ? emergencyTarget.label : matchedStaff ? matchedStaff.roleName : "Terminal"} →`}
                   </span>
+                </button>
+
+                {/* Instant Bypass Button in Step 2 */}
+                <button
+                  type="button"
+                  style={{
+                    width: "100%",
+                    marginTop: 8,
+                    padding: "9px 12px",
+                    background: "#0f766e",
+                    color: "#ffffff",
+                    border: "none",
+                    borderRadius: 8,
+                    fontSize: 12,
+                    fontWeight: 700,
+                    cursor: "pointer",
+                  }}
+                  onClick={() => handleInstantDemoLogin()}
+                >
+                  ⚡ Bypass &amp; Login with Demo OTP (4444)
                 </button>
 
                 <button

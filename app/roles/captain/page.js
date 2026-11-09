@@ -455,7 +455,7 @@ export default function DeliveryCaptainApp() {
 
   return (
     <AndroidPhoneShell
-      appName="RIDER DISPATCH • TIPTUR KA44"
+      appName="OPPO • TIPTUR KA44"
       statusBarBg="#ffffff"
       statusBarColor="#0f172a"
       homeRoute="/rider"
@@ -470,14 +470,15 @@ export default function DeliveryCaptainApp() {
           authorizedPhone="8088553237"
           avatar="🛵"
           logo="/sinchana-logo.png"
-          deviceId="DEV-CPT-8088"
-          onLoginSuccess={() => {
+          deviceId="OPPO"
+          onLoginSuccess={(loginData) => {
             setIsRiderLoggedIn(true);
+            const isEmergency = loginData?.isEmergencyOverride;
             try {
               localStorage.setItem("auditx_rider_authenticated", "true");
-              localStorage.setItem("auditx_rider_phone", "8088553237");
+              localStorage.setItem("auditx_rider_phone", loginData?.phone || "8088553237");
             } catch (e) {}
-            setActionSuccess("✅ Logged in as Sinchana B R! Tap 'Turn Duty ON' to start shift.");
+            setActionSuccess(isEmergency ? "🚨 Logged in via ASM Emergency Override (+91 6364150847)!" : "✅ Logged in as Sinchana B R! Tap 'Turn Duty ON' to start shift.");
             setTimeout(() => setActionSuccess(""), 3500);
           }}
         />

@@ -191,7 +191,7 @@ export function buildDeepPersonFollowUp(personKey = "deepu") {
       "3) Database & Margin Analytics: Designed the 8-table relational database schema (STORES, STAFF, SKUS, ORDERS, ORDER_ITEMS, COMPLAINTS, GRN, DAD) and the margin export engine.",
     ].join("\n"),
     thrupthi: [
-      "Thrupthi K S serves as the OD Picker Lead (Role Code: PICKER, Device ID: DEV-PCK-6362) operating inside the warehouse aisles at Tiptur Hub KA-44.",
+      "Thrupthi K S serves as the OD Picker Lead (Role Code: PICKER, Device: MOTOROLA) operating inside the warehouse aisles at Tiptur Hub KA-44.",
       "",
       "Her core responsibilities and module features include:",
       "1) Strict 2-Minute Picking SLA: Receives an instant multi-harmonic audio alert as soon as an order is placed and picks all items within 120 seconds.",
@@ -199,7 +199,7 @@ export function buildDeepPersonFollowUp(personKey = "deepu") {
       "3) Barcode Verification & Rack Handover: Scans each item barcode and stages the packed bag into one of the 9 staging bays (B7, H2, D5, H4, T1, T6, B5, S4, T4) for rider pickup.",
     ].join("\n"),
     sinchana: [
-      "Sinchana B R serves as the Order Captain and Last-Mile Delivery Lead (Role Code: DELIVERY, Device ID: DEV-CPT-8088) for Namma Tiptur Fleet.",
+      "Sinchana B R serves as the Order Captain and Last-Mile Delivery Lead (Role Code: DELIVERY, Device: OPPO) for Namma Tiptur Fleet.",
       "",
       "Her core responsibilities and module features include:",
       "1) Staging Bay QR Pickup: Scans the assigned warehouse rack barcode (B7 through T4) to verify custody of the packed order.",

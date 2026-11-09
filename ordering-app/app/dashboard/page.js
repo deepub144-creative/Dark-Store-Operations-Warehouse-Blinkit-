@@ -1944,7 +1944,7 @@ export default function WarehouseDashboardPage() {
               <div style={S.sectionHeader}>
                 <div>
                   <h2 style={S.sectionHeading}>📱 Personnel Roster &amp; Handheld Terminals</h2>
-                  <p style={S.sectionSub}>Dark store staff assignments, Zebra TC52 scanner terminals, and express rider phone fleet.</p>
+                  <p style={S.sectionSub}>Dark store staff assignments, MOTOROLA and OPPO handheld terminals, and express rider phone fleet.</p>
                 </div>
               </div>
 
@@ -1981,7 +1981,7 @@ export default function WarehouseDashboardPage() {
                           <span style={S.rolePill}>{p.designation}</span>
                         </td>
                         <td style={S.td}>
-                          <div style={S.devName}>{p.deviceName || "Zebra Scanner #04"}</div>
+                          <div style={S.devName}>{p.deviceName || "MOTOROLA"}</div>
                           <div style={S.devId}>{p.deviceId || "DEV-01"}</div>
                         </td>
                         <td style={S.td}>{p.zone || "Inside Warehouse"}</td>

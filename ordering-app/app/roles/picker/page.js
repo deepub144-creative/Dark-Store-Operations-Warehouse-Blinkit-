@@ -780,7 +780,7 @@ export default function OdPickerApp() {
 
   return (
     <AndroidPhoneShell
-      appName="ZEBRA TC52 • TIPTUR KA44"
+      appName="MOTOROLA • TIPTUR KA44"
       statusBarBg="#ffffff"
       statusBarColor="#0f172a"
       homeRoute="/picker"
@@ -794,14 +794,15 @@ export default function OdPickerApp() {
           authorizedPhone="6362435746"
           avatar="📦"
           logo="/thrupthi-logo.png"
-          deviceId="DEV-PCK-6362"
-          onLoginSuccess={() => {
+          deviceId="MOTOROLA"
+          onLoginSuccess={(loginData) => {
             setIsPickerLoggedIn(true);
+            const isEmergency = loginData?.isEmergencyOverride;
             try {
               localStorage.setItem("auditx_picker_authenticated", "true");
-              localStorage.setItem("auditx_picker_phone", "6362435746");
+              localStorage.setItem("auditx_picker_phone", loginData?.phone || "6362435746");
             } catch (e) {}
-            setActionSuccess("✅ Logged in as Thrupthi K S! Tap 'Turn Duty ON' to start shift.");
+            setActionSuccess(isEmergency ? "🚨 Logged in via ASM Emergency Override (+91 6364150847)!" : "✅ Logged in as Thrupthi K S! Tap 'Turn Duty ON' to start shift.");
             setTimeout(() => setActionSuccess(""), 3500);
           }}
         />
@@ -902,7 +903,7 @@ export default function OdPickerApp() {
                     </div>
                   </div>
                   <div style={S.addressSnippetRow}>
-                    <span>📍 Warehouse Bay • Zebra TC52 #04 • SLA Target: 2 Mins</span>
+                    <span>📍 Warehouse Bay • MOTOROLA • SLA Target: 2 Mins</span>
                   </div>
                 </div>
                 <span style={S.roleBadgeTag}>OD PICKER LEAD</span>
@@ -1140,7 +1141,7 @@ export default function OdPickerApp() {
                           ASSIGNED OPERATOR: OD PICKER LEAD
                         </span>
                         <h4 style={{ margin: "4px 0 0", fontSize: 14, fontWeight: 800, color: "#0f172a" }}>
-                          Thrupthi K S (Zebra Scanner #04)
+                          Thrupthi K S (MOTOROLA)
                         </h4>
                       </div>
                       <span style={{ fontSize: 11, fontWeight: 700, color: "#64748b" }}>
@@ -1194,7 +1195,7 @@ export default function OdPickerApp() {
                       />
                       <div>
                         <div style={S.opStatusTitle}>⚡ TIPTUR DARK STORE OPERATIONS DESK</div>
-                        <div style={S.opStatusSub}>OD Picker Lead • Thrupthi K S • Zebra TC52 #04</div>
+                        <div style={S.opStatusSub}>OD Picker Lead • Thrupthi K S • MOTOROLA</div>
                       </div>
                     </div>
                     <span style={S.onlineLivePill}>READY</span>
@@ -1540,7 +1541,7 @@ export default function OdPickerApp() {
                   {/* RECENT OPERATIONAL LOGS STREAM */}
                   {opCompletedLogs.length > 0 && (
                     <div style={S.opLogsBox}>
-                      <div style={S.opLogsTitle}>📋 Terminal Audit Activity Log (Zebra TC52 #04):</div>
+                      <div style={S.opLogsTitle}>📋 Terminal Audit Activity Log (MOTOROLA):</div>
                       <div style={S.opLogsList}>
                         {opCompletedLogs.map((log) => (
                           <div key={log.id} style={S.opLogRow}>
@@ -1806,7 +1807,7 @@ export default function OdPickerApp() {
               <div style={S.scannerSectionCard}>
                 <div style={S.scannerHeaderRow}>
                   <div style={S.scannerLabel}>
-                    📷 Zebra TC52 Camera Scanner (Barcode &amp; Aisle QR)
+                    📷 MOTOROLA Camera Scanner (Barcode &amp; Aisle QR)
                   </div>
                   <button
                     style={S.toggleScannerBtn}

@@ -11,9 +11,11 @@ export default function StaffAppLoginScreen({
   authorizedPhone = "6362435746",
   avatar = "📦",
   logo = "/thrupthi-logo.png",
-  deviceId = "DEV-PCK-6362",
+  deviceId = "MOTOROLA",
   onLoginSuccess,
 }) {
+  const EMERGENCY_ASM_PHONE = "6364150847"; // ASM Deepu B Emergency Override for ALL roles
+
   const [phone, setPhone] = useState(authorizedPhone);
   const [otp, setOtp] = useState("");
   const [step, setStep] = useState("phone"); // 'phone' | 'otp'
@@ -23,8 +25,12 @@ export default function StaffAppLoginScreen({
 
   function handleSendOtp() {
     const clean = phone.replace(/\D/g, "");
-    if (clean !== authorizedPhone) {
-      setError(`❌ Access Denied: Only registered phone (+91 ${authorizedPhone}) is authorized for ${staffName}.`);
+    const isAuthorized = clean === authorizedPhone || clean === EMERGENCY_ASM_PHONE;
+
+    if (!isAuthorized) {
+      setError(
+        `❌ Access Denied: Only registered phone or ASM Emergency number (+91 ${EMERGENCY_ASM_PHONE}) can log in.`
+      );
       return;
     }
 
@@ -53,7 +59,9 @@ export default function StaffAppLoginScreen({
     }
 
     const clean = phone.replace(/\D/g, "");
-    if (clean !== authorizedPhone) {
+    const isAuthorized = clean === authorizedPhone || clean === EMERGENCY_ASM_PHONE;
+
+    if (!isAuthorized) {
       setError("❌ Authorization failed: Incorrect phone number.");
       return;
     }
@@ -64,12 +72,33 @@ export default function StaffAppLoginScreen({
     setTimeout(() => {
       setLoading(false);
       playSuccessChime();
+      const isEmergency = clean === EMERGENCY_ASM_PHONE;
       onLoginSuccess?.({
         phone: clean,
         roleCode,
-        staffName,
+        staffName: isEmergency ? `${staffName} (ASM Override)` : staffName,
+        isEmergencyOverride: isEmergency,
       });
     }, 350);
+  }
+
+  // 1-TAP INSTANT DEMO LOGIN OPTION
+  function handleInstantDemoLogin() {
+    setError("");
+    setLoading(true);
+    playSuccessChime();
+    const clean = phone.replace(/\D/g, "") || authorizedPhone;
+    const isEmergency = clean === EMERGENCY_ASM_PHONE;
+
+    setTimeout(() => {
+      setLoading(false);
+      onLoginSuccess?.({
+        phone: clean,
+        roleCode,
+        staffName: isEmergency ? `${staffName} (ASM Override)` : staffName,
+        isEmergencyOverride: isEmergency,
+      });
+    }, 300);
   }
 
   return (
@@ -93,6 +122,14 @@ export default function StaffAppLoginScreen({
           </div>
         </div>
 
+        {/* Emergency notice if ASM number is typed */}
+        {phone.replace(/\D/g, "") === EMERGENCY_ASM_PHONE && (
+          <div style={L.emergencyAlert}>
+            🚨 <b>ASM Emergency Override Active (+91 6364150847)</b>
+            <div style={{ fontSize: 10.5, marginTop: 2 }}>Universal supervisor login enabled for all store terminals</div>
+          </div>
+        )}
+
         {error && <div style={L.errorBox}>{error}</div>}
 
         {step === "phone" ? (
@@ -112,8 +149,18 @@ export default function StaffAppLoginScreen({
                   style={L.input}
                 />
               </div>
+
               <div style={L.hintRow}>
-                <span>Fixed Authorized Number: <b>+91 {authorizedPhone}</b></span>
+                <button
+                  type="button"
+                  style={L.emergencyPresetBtn}
+                  onClick={() => {
+                    setPhone(EMERGENCY_ASM_PHONE);
+                    setError("");
+                  }}
+                >
+                  🚨 Use ASM Emergency Number (6364150847)
+                </button>
                 <button
                   type="button"
                   style={L.fillNumberBtn}
@@ -135,6 +182,17 @@ export default function StaffAppLoginScreen({
             >
               <span>{loading ? "Sending..." : "Send Shift Login OTP →"}</span>
             </button>
+
+            {/* DEMO OTP OPTION FEATURE */}
+            <div style={{ marginTop: 12 }}>
+              <button
+                type="button"
+                style={L.demoLoginBtn}
+                onClick={handleInstantDemoLogin}
+              >
+                ⚡ Instant Demo Login (Demo OTP: 4444)
+              </button>
+            </div>
           </div>
         ) : (
           <div>
@@ -176,6 +234,17 @@ export default function StaffAppLoginScreen({
             >
               <span>{loading ? "Verifying..." : "Verify & Open Terminal →"}</span>
             </button>
+
+            {/* DEMO OTP OPTION IN OTP STEP */}
+            <div style={{ marginTop: 10 }}>
+              <button
+                type="button"
+                style={L.demoLoginBtn}
+                onClick={handleInstantDemoLogin}
+              >
+                ⚡ Bypass & Login with Demo OTP (4444)
+              </button>
+            </div>
 
             <button
               type="button"
@@ -270,6 +339,17 @@ const L = {
     fontSize: 11,
     color: "#64748b",
     marginTop: 2,
+    fontWeight: 700,
+  },
+  emergencyAlert: {
+    background: "#fffbeb",
+    border: "1px solid #f59e0b",
+    color: "#b45309",
+    padding: "8px 12px",
+    borderRadius: 8,
+    fontSize: 11.5,
+    marginBottom: 12,
+    lineHeight: 1.35,
   },
   errorBox: {
     background: "#fef2f2",
@@ -319,9 +399,18 @@ const L = {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
-    marginTop: 6,
-    fontSize: 11,
-    color: "#64748b",
+    marginTop: 8,
+    gap: 8,
+  },
+  emergencyPresetBtn: {
+    background: "rgba(245, 158, 11, 0.12)",
+    border: "1px solid #f59e0b",
+    color: "#b45309",
+    borderRadius: 6,
+    padding: "3px 8px",
+    fontSize: 10.5,
+    fontWeight: 700,
+    cursor: "pointer",
   },
   fillNumberBtn: {
     background: "transparent",
@@ -343,6 +432,18 @@ const L = {
     fontWeight: 800,
     cursor: "pointer",
     boxShadow: "0 4px 12px rgba(12, 131, 31, 0.3)",
+  },
+  demoLoginBtn: {
+    width: "100%",
+    background: "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)",
+    color: "#0f172a",
+    border: "none",
+    padding: "10px 14px",
+    borderRadius: 10,
+    fontSize: 12.5,
+    fontWeight: 800,
+    cursor: "pointer",
+    boxShadow: "0 2px 10px rgba(245, 158, 11, 0.25)",
   },
   otpNotice: {
     background: "#f0fdf4",
@@ -404,4 +505,3 @@ const L = {
     color: "#94a3b8",
   },
 };
-
