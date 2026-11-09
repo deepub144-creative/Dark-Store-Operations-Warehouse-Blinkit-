@@ -98,6 +98,8 @@ export default function CustomerInteractiveLoginPage() {
                 clientId={GOOGLE_CLIENT_ID}
                 context="ordering"
                 roleCode="CUSTOMER"
+                variant="small-bar"
+                size="medium"
                 label="Sign in with Google"
                 theme="light"
                 onSuccess={(authData) => {

@@ -3525,6 +3525,8 @@ export default function OrderingAppPage() {
                 <GoogleAuthButton
                   context="ordering"
                   roleCode="CUSTOMER"
+                  variant="small-bar"
+                  size="medium"
                   label="Sign in with Google"
                   theme="light"
                   onSuccess={(authData) => {

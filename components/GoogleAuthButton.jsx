@@ -30,9 +30,10 @@ export default function GoogleAuthButton({
   roleCode = null, // 'CUSTOMER' | 'SM' | 'ASM' | 'MD' | 'PICKER' | 'DELIVERY'
   onSuccess = null,
   theme = "light", // 'light' | 'dark'
+  variant = "small-bar", // 'small-bar' | 'pill' | 'standard'
   label = null,
   fullWidth = true,
-  size = "large", // 'small' | 'medium' | 'large'
+  size = "medium", // 'small' | 'medium' | 'large'
   style = {},
 }) {
   const router = useRouter();
@@ -351,29 +352,32 @@ export default function GoogleAuthButton({
         {/* Hidden GSI container where Google SDK attaches official iframe if rendered */}
         <div ref={gsiBtnRef} style={{ display: "none" }} />
 
-        {/* Primary Interactive Google Official Login Trigger Button */}
+        {/* Sleek Small Bar Interactive Google Login Button */}
         <button
           type="button"
           onClick={handleButtonClick}
           disabled={loading}
           style={{
             width: fullWidth ? "100%" : "auto",
+            maxWidth: fullWidth ? 360 : undefined,
+            margin: fullWidth ? "0 auto" : undefined,
+            height: size === "small" ? 34 : size === "medium" ? 42 : 44,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            gap: 12,
-            padding: size === "small" ? "9px 14px" : size === "medium" ? "12px 18px" : "14px 22px",
+            gap: 10,
+            padding: size === "small" ? "0 12px" : "0 18px",
             background: theme === "dark" ? "#1e293b" : "#ffffff",
-            color: theme === "dark" ? "#f8fafc" : "#1f2937",
+            color: theme === "dark" ? "#f8fafc" : "#2A1710",
             border: theme === "dark" ? "1px solid #334155" : "1.5px solid #dadce0",
-            borderRadius: 12,
-            fontSize: size === "small" ? 13 : 15,
-            fontWeight: 700,
+            borderRadius: variant === "small-bar" || variant === "pill" ? 22 : 10,
+            fontSize: size === "small" ? 12 : 13.5,
+            fontWeight: 600,
             cursor: loading ? "wait" : "pointer",
             boxShadow:
               theme === "dark"
-                ? "0 4px 14px rgba(0,0,0,0.3)"
-                : "0 2px 6px rgba(60,64,67,0.12), 0 1px 3px rgba(60,64,67,0.18)",
+                ? "0 2px 8px rgba(0,0,0,0.25)"
+                : "0 1px 3px rgba(60,64,67,0.1), 0 1px 2px rgba(60,64,67,0.06)",
             transition: "all 0.15s ease",
             outline: "none",
             userSelect: "none",
@@ -394,7 +398,7 @@ export default function GoogleAuthButton({
           }}
         >
           {/* Official Multicolor Google G Icon */}
-          <svg width={size === "small" ? 18 : 22} height={size === "small" ? 18 : 22} viewBox="0 0 24 24">
+          <svg width={size === "small" ? 16 : 18} height={size === "small" ? 16 : 18} viewBox="0 0 24 24">
             <path
               fill="#4285F4"
               d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"
@@ -412,7 +416,7 @@ export default function GoogleAuthButton({
               d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"
             />
           </svg>
-          <span>{loading ? "Opening Google Sign-In..." : defaultButtonText}</span>
+          <span>{loading ? "Opening Google..." : defaultButtonText}</span>
         </button>
       </div>
 
