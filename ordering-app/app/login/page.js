@@ -6,7 +6,10 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { STAFF, staffByPhone } from "@/lib/roles";
 import AuditxLogo from "@/components/AuditxLogo";
-import GoogleAuthButton from "@/components/GoogleAuthButton";
+import GoogleAuthButton, {
+  generateRandomGoogleUser,
+  SAMPLE_GOOGLE_ACCOUNTS,
+} from "@/components/GoogleAuthButton";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -157,13 +160,14 @@ export default function LoginPage() {
             <div style={{ marginBottom: 14 }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
                 <span style={{ fontSize: 11, fontWeight: 800, color: "#64748b", letterSpacing: "0.06em" }}>
-                  PRIMARY GOOGLE ACCOUNT
+                  QUICK SIGN IN
                 </span>
                 <span style={{ fontSize: 10, fontWeight: 800, color: "#2F6B4F", background: "rgba(47, 107, 79, 0.12)", padding: "2px 8px", borderRadius: 10 }}>
-                  Verified
+                  Random & Any Account
                 </span>
               </div>
 
+              {/* 🎲 RANDOM GOOGLE SIGN IN */}
               <div
                 style={{
                   display: "flex",
@@ -171,36 +175,39 @@ export default function LoginPage() {
                   gap: 12,
                   padding: "14px",
                   borderRadius: 14,
-                  border: "2px solid #2563eb",
-                  background: "#eff6ff",
+                  border: "2px solid #059669",
+                  background: "linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%)",
                   cursor: "pointer",
-                  boxShadow: "0 4px 14px rgba(37, 99, 235, 0.16)",
-                  marginBottom: 14,
+                  boxShadow: "0 4px 14px rgba(5, 150, 105, 0.16)",
+                  marginBottom: 12,
                 }}
-                onClick={() => handleQuickCustomerLogin("Deepu B", "9845112233", "deepub1235@gmail.com")}
+                onClick={() => {
+                  const rand = generateRandomGoogleUser();
+                  handleQuickCustomerLogin(rand.name, "9845112233", rand.email);
+                }}
               >
                 <div
                   style={{
                     width: 42,
                     height: 42,
                     borderRadius: "50%",
-                    background: "linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)",
+                    background: "#059669",
                     color: "#ffffff",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
-                    fontWeight: 800,
-                    fontSize: 16,
+                    fontSize: 22,
                     flexShrink: 0,
                   }}
                 >
-                  DB
+                  🎲
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 14, fontWeight: 800, color: "#1e3a8a" }}>Deepu B (Your Account)</div>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: "#2563eb" }}>deepub1235@gmail.com</div>
-                  <div style={{ fontSize: 10.5, color: "#64748b", marginTop: 2 }}>
-                    📍 KFGSC , Tiptur 572201 • ₹10,00,000 Wallet
+                  <div style={{ fontSize: 14, fontWeight: 800, color: "#065f46" }}>
+                    Sign in with Random Google Account
+                  </div>
+                  <div style={{ fontSize: 11.5, color: "#047857" }}>
+                    Generates fresh Google credentials on the fly
                   </div>
                 </div>
                 <button
@@ -209,7 +216,7 @@ export default function LoginPage() {
                     display: "flex",
                     alignItems: "center",
                     gap: 6,
-                    background: "#2563eb",
+                    background: "#059669",
                     color: "#ffffff",
                     border: "none",
                     padding: "8px 12px",
@@ -227,7 +234,7 @@ export default function LoginPage() {
               <GoogleAuthButton
                 context="ordering"
                 roleCode="CUSTOMER"
-                label="Sign in with another Google Account"
+                label="Sign in with Google"
                 theme="light"
               />
             </div>
@@ -310,12 +317,15 @@ export default function LoginPage() {
           <div style={S.quickGrid}>
             <button
               style={S.quickRoleBtn}
-              onClick={() => handleQuickCustomerLogin("Deepu B", "9845112233", "deepub1235@gmail.com")}
+              onClick={() => {
+                const rand = generateRandomGoogleUser();
+                handleQuickCustomerLogin(rand.name, "9845112233", rand.email);
+              }}
             >
-              <span>🛒</span>
+              <span>🎲</span>
               <div>
-                <b>Deepu B (Customer)</b>
-                <small>deepub1235@gmail.com</small>
+                <b>Random Customer</b>
+                <small>Instant Google Profile</small>
               </div>
             </button>
 

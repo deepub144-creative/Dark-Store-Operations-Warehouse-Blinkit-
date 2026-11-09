@@ -11,7 +11,11 @@ import {
   IconArrowRight,
   IconShieldCheck,
 } from "@/components/RealIcons";
-import GoogleAuthButton, { GOOGLE_CLIENT_ID } from "@/components/GoogleAuthButton";
+import GoogleAuthButton, {
+  GOOGLE_CLIENT_ID,
+  generateRandomGoogleUser,
+  SAMPLE_GOOGLE_ACCOUNTS,
+} from "@/components/GoogleAuthButton";
 
 export default function CustomerInteractiveLoginPage() {
   const router = useRouter();
@@ -180,41 +184,43 @@ export default function CustomerInteractiveLoginPage() {
           </div>
         ) : (
           <div style={styles.authContainer}>
-            {/* PRIMARY: 1-CLICK INSTANT GOOGLE LOGIN FOR DEEPU B */}
+            {/* 1. PRIMARY: 1-CLICK INSTANT RANDOM GOOGLE ACCOUNT GENERATOR */}
             <div style={styles.sectionHeader}>
-              <span style={styles.sectionHeaderTitle}>RECOMMENDED ACCOUNT</span>
-              <span style={styles.verifiedTag}>Official User</span>
+              <span style={styles.sectionHeaderTitle}>QUICK ACCESS</span>
+              <span style={styles.verifiedTag}>Zero Restrictions</span>
             </div>
 
             <div
-              style={styles.primaryAccountCard}
-              onClick={() => handleGoogleLoginSuccess("Deepu B", "deepub1235@gmail.com")}
+              style={styles.randomAccountCard}
+              onClick={() => {
+                const rand = generateRandomGoogleUser();
+                handleGoogleLoginSuccess(rand.name, rand.email);
+              }}
             >
-              <div style={styles.primaryAvatar}>DB</div>
+              <div style={styles.randomAvatar}>🎲</div>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={styles.primaryAccountName}>Deepu B</div>
-                <div style={styles.primaryAccountEmail}>deepub1235@gmail.com</div>
-                <div style={styles.primaryAccountLoc}>
-                  📍 KFGSC , Tiptur 572201 • ₹10,00,000 Wallet
+                <div style={styles.randomAccountName}>Sign in with Random Google Account</div>
+                <div style={styles.randomAccountSub}>
+                  Generates a fresh verified Google identity instantly (1-Click)
                 </div>
               </div>
               <button
                 type="button"
                 disabled={loading}
-                style={styles.primarySignInBtn}
+                style={styles.randomSignInBtn}
               >
                 <span>{loading ? "Signing In..." : "1-Click Sign In"}</span>
                 <IconArrowRight size={15} color="#ffffff" />
               </button>
             </div>
 
-            {/* SECONDARY: OFFICIAL GOOGLE IDENTITY SERVICES BUTTON */}
+            {/* 2. OFFICIAL GOOGLE IDENTITY SERVICES BUTTON */}
             <div style={{ marginTop: 14 }}>
               <GoogleAuthButton
                 clientId={GOOGLE_CLIENT_ID}
                 context="ordering"
                 roleCode="CUSTOMER"
-                label="Sign in with another Google Account"
+                label="Sign in with Google"
                 theme="light"
                 onSuccess={(authData) => {
                   if (authData?.name && authData?.email) {
@@ -222,6 +228,33 @@ export default function CustomerInteractiveLoginPage() {
                   }
                 }}
               />
+            </div>
+
+            {/* 3. QUICK CHOOSE FROM SAMPLE GOOGLE PROFILES */}
+            <div style={{ marginTop: 16 }}>
+              <div style={styles.sectionHeader}>
+                <span style={styles.sectionHeaderTitle}>OR SELECT A SAMPLE GOOGLE ACCOUNT:</span>
+              </div>
+              <div style={styles.sampleGrid}>
+                {SAMPLE_GOOGLE_ACCOUNTS.map((acc) => (
+                  <button
+                    key={acc.email}
+                    type="button"
+                    disabled={loading}
+                    onClick={() => handleGoogleLoginSuccess(acc.name, acc.email)}
+                    style={styles.sampleCard}
+                  >
+                    <div style={{ ...styles.sampleAvatar, background: acc.color }}>
+                      {acc.avatar}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
+                      <div style={styles.sampleName}>{acc.name}</div>
+                      <div style={styles.sampleEmail}>{acc.email}</div>
+                    </div>
+                    <span style={styles.sampleRoleBadge}>{acc.role}</span>
+                  </button>
+                ))}
+              </div>
             </div>
 
             {/* TOGGLE CUSTOM GMAIL INPUT */}
@@ -392,52 +425,46 @@ const styles = {
     padding: "2px 8px",
     borderRadius: 10,
   },
-  primaryAccountCard: {
+  randomAccountCard: {
     display: "flex",
     alignItems: "center",
     gap: 12,
     padding: "14px 14px",
     borderRadius: 14,
-    border: "2px solid #2563eb",
-    background: "#eff6ff",
+    border: "2px solid #059669",
+    background: "linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%)",
     cursor: "pointer",
-    boxShadow: "0 4px 14px rgba(37, 99, 235, 0.16)",
+    boxShadow: "0 4px 14px rgba(5, 150, 105, 0.18)",
     transition: "transform 0.15s ease, box-shadow 0.15s ease",
   },
-  primaryAvatar: {
+  randomAvatar: {
     width: 44,
     height: 44,
     borderRadius: "50%",
-    background: "linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)",
+    background: "#059669",
     color: "#ffffff",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    fontWeight: 800,
-    fontSize: 16,
+    fontSize: 22,
     flexShrink: 0,
-    boxShadow: "0 2px 6px rgba(37, 99, 235, 0.35)",
+    boxShadow: "0 2px 6px rgba(5, 150, 105, 0.35)",
   },
-  primaryAccountName: {
+  randomAccountName: {
     fontSize: 14.5,
     fontWeight: 800,
-    color: "#1e3a8a",
+    color: "#065f46",
   },
-  primaryAccountEmail: {
-    fontSize: 12,
-    fontWeight: 700,
-    color: "#2563eb",
-  },
-  primaryAccountLoc: {
-    fontSize: 10.5,
-    color: "#64748b",
+  randomAccountSub: {
+    fontSize: 11.5,
+    color: "#047857",
     marginTop: 2,
   },
-  primarySignInBtn: {
+  randomSignInBtn: {
     display: "flex",
     alignItems: "center",
     gap: 6,
-    background: "#2563eb",
+    background: "#059669",
     color: "#ffffff",
     border: "none",
     padding: "9px 12px",
@@ -446,7 +473,55 @@ const styles = {
     fontWeight: 800,
     cursor: "pointer",
     flexShrink: 0,
-    boxShadow: "0 2px 6px rgba(37, 99, 235, 0.3)",
+    boxShadow: "0 2px 6px rgba(5, 150, 105, 0.3)",
+  },
+  sampleGrid: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 8,
+  },
+  sampleCard: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    padding: "9px 12px",
+    borderRadius: 10,
+    border: "1px solid #e2e8f0",
+    background: "#f8fafc",
+    cursor: "pointer",
+    transition: "background 0.15s",
+    width: "100%",
+  },
+  sampleAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: "50%",
+    color: "#ffffff",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontWeight: 800,
+    fontSize: 12,
+    flexShrink: 0,
+  },
+  sampleName: {
+    fontWeight: 700,
+    fontSize: 13,
+    color: "#1e293b",
+  },
+  sampleEmail: {
+    fontSize: 11,
+    color: "#64748b",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+  },
+  sampleRoleBadge: {
+    fontSize: 10,
+    background: "#f1f5f9",
+    color: "#475569",
+    padding: "2px 7px",
+    borderRadius: 8,
+    fontWeight: 700,
   },
   toggleCustomBtn: {
     background: "transparent",

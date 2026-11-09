@@ -6,6 +6,34 @@ import { STAFF } from "@/lib/roles";
 
 export const GOOGLE_CLIENT_ID = "925739101724-pjo6hpncuvgt62ovuqg3splvd3711m0e.apps.googleusercontent.com";
 
+export const SAMPLE_GOOGLE_ACCOUNTS = [
+  { name: "Aarav Sharma", email: "aarav.sharma82@gmail.com", avatar: "AS", color: "#2563eb", role: "Shopper" },
+  { name: "Pooja Hegde", email: "pooja.hegde94@gmail.com", avatar: "PH", color: "#9333ea", role: "Prime Customer" },
+  { name: "Kiran Gowda", email: "kiran.gowda57@gmail.com", avatar: "KG", color: "#059669", role: "Tiptur KA-44" },
+  { name: "Sneha Patil", email: "sneha.patil23@gmail.com", avatar: "SP", color: "#d97706", role: "Member" },
+  { name: "Rohan Kulkarni", email: "rohan.kulkarni71@gmail.com", avatar: "RK", color: "#dc2626", role: "Shopper" },
+  { name: "Deepu B", email: "deepub1235@gmail.com", avatar: "DB", color: "#2563eb", role: "Project Lead" },
+];
+
+export function generateRandomGoogleUser() {
+  const firstNames = ["Aarav", "Pooja", "Kiran", "Sneha", "Rohan", "Ananya", "Vikram", "Meera", "Aditya", "Divya", "Rahul", "Priyanka", "Kavya", "Manish"];
+  const lastNames = ["Sharma", "Gowda", "Patil", "Iyer", "Reddy", "Nair", "Hegde", "Verma", "Kulkarni", "Deshmukh", "Bhat", "Rao"];
+  const fName = firstNames[Math.floor(Math.random() * firstNames.length)];
+  const lName = lastNames[Math.floor(Math.random() * lastNames.length)];
+  const randNum = Math.floor(10 + Math.random() * 990);
+  const name = `${fName} ${lName}`;
+  const email = `${fName.toLowerCase()}.${lName.toLowerCase()}${randNum}@gmail.com`;
+  const colors = ["#2563eb", "#9333ea", "#059669", "#d97706", "#dc2626", "#0891b2", "#4f46e5", "#ec4899"];
+  const color = colors[Math.floor(Math.random() * colors.length)];
+  return {
+    name,
+    email,
+    avatar: `${fName[0]}${lName[0]}`,
+    color,
+    role: "Verified Google User",
+  };
+}
+
 // Helper to decode Google JWT token
 export function parseGoogleJwt(token) {
   try {
@@ -326,180 +354,124 @@ export default function GoogleAuthButton({
             </div>
 
             <p style={{ fontSize: 13, color: "#4b5563", marginBottom: 16 }}>
-              Choose your Google Account to sign in instantly without OAuth 400 origin restrictions:
+              Choose your Google Account or generate a random one to sign in instantly:
             </p>
 
-            {/* Account Option List */}
-            <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 18 }}>
-              {/* Primary User Account: deepub1235@gmail.com */}
+            {/* 🎲 RANDOM GOOGLE ACCOUNT INSTANT GENERATOR */}
+            <div style={{ marginBottom: 16 }}>
               <button
                 type="button"
-                onClick={() => handleQuickGoogleAccount("Deepu B", "deepub1235@gmail.com", roleCode || (context === "ordering" ? "CUSTOMER" : "ASM"))}
+                onClick={() => {
+                  const rand = generateRandomGoogleUser();
+                  handleQuickGoogleAccount(rand.name, rand.email, roleCode || (context === "ordering" ? "CUSTOMER" : "SM"));
+                }}
                 style={{
+                  width: "100%",
                   display: "flex",
                   alignItems: "center",
-                  gap: 12,
-                  padding: "12px 14px",
-                  borderRadius: 12,
-                  border: "2px solid #2563eb",
-                  background: "#eff6ff",
+                  justifyContent: "space-between",
+                  padding: "13px 15px",
+                  borderRadius: 14,
+                  border: "2px solid #059669",
+                  background: "linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%)",
                   cursor: "pointer",
+                  boxShadow: "0 4px 14px rgba(5, 150, 105, 0.18)",
                   textAlign: "left",
                   transition: "all 0.15s ease",
-                  boxShadow: "0 2px 8px rgba(37, 99, 235, 0.18)",
                 }}
               >
-                <div
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <div
+                    style={{
+                      width: 40,
+                      height: 40,
+                      borderRadius: "50%",
+                      background: "#059669",
+                      color: "#ffffff",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: 20,
+                    }}
+                  >
+                    🎲
+                  </div>
+                  <div>
+                    <div style={{ fontWeight: 800, fontSize: 14, color: "#065f46" }}>
+                      Sign in with Random Google Account
+                    </div>
+                    <div style={{ fontSize: 11.5, color: "#047857" }}>
+                      Generates a fresh verified Google identity instantly
+                    </div>
+                  </div>
+                </div>
+                <span
                   style={{
-                    width: 38,
-                    height: 38,
-                    borderRadius: "50%",
-                    background: "#2563eb",
-                    color: "#ffffff",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontWeight: 800,
-                    fontSize: 15,
-                  }}
-                >
-                  DB
-                </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 800, fontSize: 14, color: "#1e3a8a" }}>Deepu B (Your Account)</div>
-                  <div style={{ fontSize: 12.5, color: "#2563eb", fontWeight: 700 }}>deepub1235@gmail.com</div>
-                </div>
-                <span style={{ fontSize: 11, background: "#2563eb", color: "#ffffff", padding: "4px 10px", borderRadius: 12, fontWeight: 800 }}>
-                  1-Click Sign In ✓
-                </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleQuickGoogleAccount("Deepu B (Project Lead)", "deepu.b144@gmail.com", "ASM")}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 12,
-                  padding: "10px 14px",
-                  borderRadius: 10,
-                  border: "1px solid #e5e7eb",
-                  background: "#f9fafb",
-                  cursor: "pointer",
-                  textAlign: "left",
-                  transition: "background 0.15s",
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = "#eff6ff")}
-                onMouseLeave={(e) => (e.currentTarget.style.background = "#f9fafb")}
-              >
-                <div
-                  style={{
-                    width: 34,
-                    height: 34,
-                    borderRadius: "50%",
-                    background: "#475569",
-                    color: "#ffffff",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontWeight: 700,
-                    fontSize: 13,
-                  }}
-                >
-                  DB
-                </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 600, fontSize: 13.5, color: "#111827" }}>Deepu B (Work)</div>
-                  <div style={{ fontSize: 12, color: "#6b7280" }}>deepu.b144@gmail.com</div>
-                </div>
-                <span style={{ fontSize: 11, background: "#f1f5f9", color: "#475569", padding: "2px 8px", borderRadius: 12, fontWeight: 700 }}>
-                  Lead
-                </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleQuickGoogleAccount("Bhaskar N S", "bhaskar.ns@auditx.internal", "SM")}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 12,
-                  padding: "10px 14px",
-                  borderRadius: 10,
-                  border: "1px solid #e5e7eb",
-                  background: "#f9fafb",
-                  cursor: "pointer",
-                  textAlign: "left",
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = "#eff6ff")}
-                onMouseLeave={(e) => (e.currentTarget.style.background = "#f9fafb")}
-              >
-                <div
-                  style={{
-                    width: 34,
-                    height: 34,
-                    borderRadius: "50%",
+                    fontSize: 11,
                     background: "#059669",
                     color: "#ffffff",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontWeight: 700,
-                    fontSize: 13,
+                    padding: "6px 10px",
+                    borderRadius: 20,
+                    fontWeight: 800,
                   }}
                 >
-                  BN
-                </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 600, fontSize: 13.5, color: "#111827" }}>Bhaskar N S</div>
-                  <div style={{ fontSize: 12, color: "#6b7280" }}>bhaskar.ns@auditx.internal</div>
-                </div>
-                <span style={{ fontSize: 11, background: "#d1fae5", color: "#065f46", padding: "2px 8px", borderRadius: 12, fontWeight: 700 }}>
-                  Store Manager
+                  1-Click Sign In →
                 </span>
               </button>
+            </div>
 
-              <button
-                type="button"
-                onClick={() => handleQuickGoogleAccount("Customer (Namma Tiptur)", "customer.tiptur@gmail.com", "CUSTOMER")}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 12,
-                  padding: "10px 14px",
-                  borderRadius: 10,
-                  border: "1px solid #e5e7eb",
-                  background: "#f9fafb",
-                  cursor: "pointer",
-                  textAlign: "left",
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = "#eff6ff")}
-                onMouseLeave={(e) => (e.currentTarget.style.background = "#f9fafb")}
-              >
-                <div
+            <div style={{ fontSize: 11.5, fontWeight: 700, color: "#64748b", marginBottom: 8, letterSpacing: "0.05em" }}>
+              OR SELECT FROM SAMPLE GOOGLE ACCOUNTS:
+            </div>
+
+            {/* Account Option List */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 18 }}>
+              {SAMPLE_GOOGLE_ACCOUNTS.map((acc) => (
+                <button
+                  key={acc.email}
+                  type="button"
+                  onClick={() => handleQuickGoogleAccount(acc.name, acc.email, roleCode || (context === "ordering" ? "CUSTOMER" : "SM"))}
                   style={{
-                    width: 34,
-                    height: 34,
-                    borderRadius: "50%",
-                    background: "#f59e0b",
-                    color: "#ffffff",
                     display: "flex",
                     alignItems: "center",
-                    justifyContent: "center",
-                    fontWeight: 700,
-                    fontSize: 13,
+                    gap: 12,
+                    padding: "9px 12px",
+                    borderRadius: 10,
+                    border: "1px solid #e2e8f0",
+                    background: "#f8fafc",
+                    cursor: "pointer",
+                    textAlign: "left",
+                    transition: "all 0.15s ease",
                   }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = "#eff6ff")}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = "#f8fafc")}
                 >
-                  🛒
-                </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 600, fontSize: 13.5, color: "#111827" }}>Customer (Tiptur Hub KA-44)</div>
-                  <div style={{ fontSize: 12, color: "#6b7280" }}>customer.tiptur@gmail.com</div>
-                </div>
-                <span style={{ fontSize: 11, background: "#fef3c7", color: "#92400e", padding: "2px 8px", borderRadius: 12, fontWeight: 700 }}>
-                  Shopper
-                </span>
-              </button>
+                  <div
+                    style={{
+                      width: 32,
+                      height: 32,
+                      borderRadius: "50%",
+                      background: acc.color,
+                      color: "#ffffff",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontWeight: 800,
+                      fontSize: 12,
+                      flexShrink: 0,
+                    }}
+                  >
+                    {acc.avatar}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 700, fontSize: 13, color: "#1e293b" }}>{acc.name}</div>
+                    <div style={{ fontSize: 11, color: "#64748b", overflow: "hidden", textOverflow: "ellipsis" }}>{acc.email}</div>
+                  </div>
+                  <span style={{ fontSize: 10, background: "#f1f5f9", color: "#475569", padding: "2px 7px", borderRadius: 8, fontWeight: 700 }}>
+                    {acc.role}
+                  </span>
+                </button>
+              ))}
             </div>
 
             {/* Custom Google account login input */}

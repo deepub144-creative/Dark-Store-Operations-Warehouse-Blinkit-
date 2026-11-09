@@ -8,7 +8,10 @@ import { playNotificationChime, playSuccessChime } from "@/lib/soundSystem";
 import { getRandomStagingRack } from "@/lib/roles";
 import AuditxLogo from "@/components/AuditxLogo";
 import AuditxMiniAssistant from "@/components/AuditxMiniAssistant";
-import GoogleAuthButton from "@/components/GoogleAuthButton";
+import GoogleAuthButton, {
+  generateRandomGoogleUser,
+  SAMPLE_GOOGLE_ACCOUNTS,
+} from "@/components/GoogleAuthButton";
 import OrderPlacedSheet from "@/components/ui/OrderPlacedSheet";
 import {
   IconLightning,
@@ -3517,13 +3520,13 @@ export default function OrderingAppPage() {
             )}
 
             <div style={{ padding: "4px 0" }}>
-              {/* PRIMARY: 1-CLICK INSTANT GOOGLE LOGIN FOR DEEPU B */}
+              {/* PRIMARY: 1-CLICK INSTANT RANDOM GOOGLE ACCOUNT */}
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
                 <span style={{ fontSize: 11, fontWeight: 800, color: "#64748b", letterSpacing: "0.06em" }}>
-                  RECOMMENDED GOOGLE ACCOUNT
+                  QUICK SIGN IN
                 </span>
                 <span style={{ fontSize: 10, fontWeight: 800, color: "#2F6B4F", background: "rgba(47, 107, 79, 0.12)", padding: "2px 8px", borderRadius: 10 }}>
-                  1-Click Ready
+                  Zero Blockers
                 </span>
               </div>
 
@@ -3532,19 +3535,20 @@ export default function OrderingAppPage() {
                   display: "flex",
                   alignItems: "center",
                   gap: 12,
-                  padding: "14px",
+                  padding: "13px 14px",
                   borderRadius: 14,
-                  border: "2px solid #2563eb",
-                  background: "#eff6ff",
+                  border: "2px solid #059669",
+                  background: "linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%)",
                   cursor: "pointer",
-                  boxShadow: "0 4px 14px rgba(37, 99, 235, 0.16)",
-                  marginBottom: 14,
+                  boxShadow: "0 4px 14px rgba(5, 150, 105, 0.16)",
+                  marginBottom: 12,
                 }}
                 onClick={() => {
+                  const rand = generateRandomGoogleUser();
                   const custObj = {
-                    customerId: "google_deepub1235_gmail_com",
-                    name: "Deepu B",
-                    email: "deepub1235@gmail.com",
+                    customerId: `google_${rand.email.replace(/[^a-zA-Z0-9]/g, "_")}`,
+                    name: rand.name,
+                    email: rand.email,
                     phone: "9845112233",
                     location: "KFGSC , Tiptur 572201",
                     walletBalance: 1000000,
@@ -3558,8 +3562,8 @@ export default function OrderingAppPage() {
                     localStorage.setItem(
                       "auditx_google_user",
                       JSON.stringify({
-                        name: "Deepu B",
-                        email: "deepub1235@gmail.com",
+                        name: rand.name,
+                        email: rand.email,
                         picture: "https://lh3.googleusercontent.com/a/default-user=s96-c",
                         provider: "google",
                         verifiedAt: new Date().toISOString(),
@@ -3570,31 +3574,31 @@ export default function OrderingAppPage() {
                   }
                   setCustomer(custObj);
                   setShowLoginModal(false);
-                  triggerToast("Signed in as Deepu B (deepub1235@gmail.com)!");
+                  triggerToast(`Signed in as ${rand.name} (${rand.email})!`);
                 }}
               >
                 <div
                   style={{
-                    width: 42,
-                    height: 42,
+                    width: 40,
+                    height: 40,
                     borderRadius: "50%",
-                    background: "linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)",
+                    background: "#059669",
                     color: "#ffffff",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
-                    fontWeight: 800,
-                    fontSize: 16,
+                    fontSize: 20,
                     flexShrink: 0,
                   }}
                 >
-                  DB
+                  🎲
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 14, fontWeight: 800, color: "#1e3a8a" }}>Deepu B</div>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: "#2563eb" }}>deepub1235@gmail.com</div>
-                  <div style={{ fontSize: 10.5, color: "#64748b", marginTop: 2 }}>
-                    📍 KFGSC , Tiptur 572201 • ₹10,00,000 Wallet
+                  <div style={{ fontSize: 14, fontWeight: 800, color: "#065f46" }}>
+                    Sign in with Random Google Account
+                  </div>
+                  <div style={{ fontSize: 11.5, color: "#047857" }}>
+                    Generates a fresh verified Google identity instantly
                   </div>
                 </div>
                 <button
@@ -3603,7 +3607,7 @@ export default function OrderingAppPage() {
                     display: "flex",
                     alignItems: "center",
                     gap: 6,
-                    background: "#2563eb",
+                    background: "#059669",
                     color: "#ffffff",
                     border: "none",
                     padding: "8px 12px",
@@ -3624,7 +3628,7 @@ export default function OrderingAppPage() {
                 <GoogleAuthButton
                   context="ordering"
                   roleCode="CUSTOMER"
-                  label="Sign in with another Google Account"
+                  label="Sign in with Google"
                   theme="light"
                   onSuccess={(authData) => {
                     if (authData?.customer) {
@@ -3634,6 +3638,80 @@ export default function OrderingAppPage() {
                     }
                   }}
                 />
+              </div>
+
+              {/* SAMPLE PROFILES TO PICK */}
+              <div style={{ marginBottom: 10 }}>
+                <div style={{ fontSize: 10.5, fontWeight: 800, color: "#64748b", marginBottom: 6, letterSpacing: "0.05em" }}>
+                  OR SELECT ANY SAMPLE GOOGLE PROFILE:
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                  {SAMPLE_GOOGLE_ACCOUNTS.slice(0, 4).map((acc) => (
+                    <button
+                      key={acc.email}
+                      type="button"
+                      onClick={() => {
+                        const custObj = {
+                          customerId: `google_${acc.email.replace(/[^a-zA-Z0-9]/g, "_")}`,
+                          name: acc.name,
+                          email: acc.email,
+                          phone: "9845112233",
+                          location: "KFGSC , Tiptur 572201",
+                          walletBalance: 1000000,
+                          provider: "google",
+                          loginMethod: "Google OAuth 2.0 (Verified)",
+                          verifiedAt: new Date().toISOString(),
+                        };
+                        try {
+                          localStorage.setItem("auditx_customer", JSON.stringify(custObj));
+                          localStorage.setItem("blinkit_customer", JSON.stringify(custObj));
+                        } catch (e) {
+                          console.warn(e);
+                        }
+                        setCustomer(custObj);
+                        setShowLoginModal(false);
+                        triggerToast(`Signed in as ${acc.name}!`);
+                      }}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        padding: "8px 10px",
+                        borderRadius: 8,
+                        border: "1px solid #e2e8f0",
+                        background: "#f8fafc",
+                        cursor: "pointer",
+                        textAlign: "left",
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: 26,
+                          height: 26,
+                          borderRadius: "50%",
+                          background: acc.color,
+                          color: "#ffffff",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          fontSize: 11,
+                          fontWeight: 800,
+                          flexShrink: 0,
+                        }}
+                      >
+                        {acc.avatar}
+                      </div>
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: "#1e293b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {acc.name}
+                        </div>
+                        <div style={{ fontSize: 10, color: "#64748b" }}>
+                          {acc.role}
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
               </div>
 
               <div
