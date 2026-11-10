@@ -92,12 +92,40 @@ const CUSTOMER_REVIEWS_DATA = [
   },
 ];
 
+// Operations Staff for Command Dashboard Popover & Roster
+const STAFF_OPERATIONS = [
+  { n: "Bhaskar N S", r: "Store Manager (SM)", b: 88, c: "#4f8dff", id: "bhaskar" },
+  { n: "Deepu B", r: "Assistant Store Manager (ASM)", b: 88, c: "#a66bff", id: "deepu" },
+  { n: "A B Harshitha", r: "Managing Director (MD)", b: 89, c: "#e0431a", id: "harshitha" },
+  { n: "Thrupthi K S", r: "OD Picker Lead (Inside Warehouse)", b: 90, c: "#0b9a5a", id: "thrupthi" },
+  { n: "Sinchana B R", r: "Order Captain Delivery Girl", b: 92, c: "#d6264a", id: "sinchana" },
+];
+
+const getInitials = (name) =>
+  name
+    .split(" ")
+    .filter(Boolean)
+    .map((w) => w[0])
+    .slice(0, 2)
+    .join("");
+
+const APP_LOGINS_DATA = {
+  total: 142,
+  unique: 118,
+  fresh: 21,
+  hours: [4, 9, 6, 12, 18, 26, 31, 36],
+  labels: ["6a", "8a", "10a", "12p", "2p", "4p", "6p", "8p"],
+};
+
 export default function WarehouseDashboardPage() {
   const [staff, setStaff] = useState(null);
   const [orders, setOrders] = useState([]);
   const [staffStatus, setStaffStatus] = useState([]);
   const [activeTab, setActiveTab] = useState("overview"); // 'overview' | 'queue' | 'margin' | 'ratings' | 'complaints' | 'inventory' | 'devices' | 'orderCap' | 'erdDfd'
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [showLoginsPopover, setShowLoginsPopover] = useState(false);
+  const [govTab, setGovTab] = useState("queue"); // 'queue' | 'sku'
+  const [themeMode, setThemeMode] = useState("dark"); // 'dark' | 'light'
 
   // Order Cap States
   const [orderCapLimit, setOrderCapLimit] = useState(400);
@@ -879,7 +907,7 @@ export default function WarehouseDashboardPage() {
   const isRiderAtDoorstep = activeDeliveryOrder?.stage === "rider_arrived" || activeDeliveryOrder?.status === "rider_arrived";
 
   return (
-    <div style={S.wrap}>
+    <div style={{ ...S.wrap, background: themeMode === "dark" ? "#0b0f17" : "#F4F5F0" }}>
       {/* ── TOP HEADER / MANAGEMENT BAR ── */}
       <header style={S.header}>
         <div style={S.brandCol}>
@@ -909,6 +937,143 @@ export default function WarehouseDashboardPage() {
         </div>
 
         <div style={S.headerRight}>
+          {/* Active Logged-in Staff Popover Trigger */}
+          <div style={{ position: "relative" }}>
+            <button
+              type="button"
+              style={{
+                position: "relative",
+                width: 38,
+                height: 38,
+                borderRadius: 12,
+                border: "1px solid #334155",
+                background: "#1E293B",
+                display: "grid",
+                placeItems: "center",
+                color: "#cbd5e1",
+                cursor: "pointer",
+              }}
+              onClick={() => setShowLoginsPopover(!showLoginsPopover)}
+              aria-label={`${STAFF_OPERATIONS.length} users logged in`}
+              aria-expanded={showLoginsPopover}
+              title="View on-duty logged in personnel"
+            >
+              <WarehouseGlyph name="login" size={18} stroke="#cbd5e1" />
+              <span
+                style={{
+                  position: "absolute",
+                  top: -6,
+                  right: -6,
+                  minWidth: 20,
+                  height: 20,
+                  padding: "0 5px",
+                  borderRadius: 10,
+                  background: "#0c831f",
+                  color: "#ffffff",
+                  fontSize: 11,
+                  fontWeight: 900,
+                  display: "grid",
+                  placeItems: "center",
+                  border: "2px solid #0F172A",
+                }}
+              >
+                {STAFF_OPERATIONS.length}
+              </span>
+            </button>
+
+            {/* Popover */}
+            {showLoginsPopover && (
+              <div
+                style={{
+                  position: "absolute",
+                  right: 0,
+                  top: 48,
+                  width: 290,
+                  background: "#1E293B",
+                  border: "1px solid #334155",
+                  borderRadius: 16,
+                  padding: 12,
+                  boxShadow: "0 20px 40px -12px rgba(0,0,0,0.6)",
+                  zIndex: 200,
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, paddingBottom: 8, borderBottom: "1px solid #334155" }}>
+                  <h3 style={{ margin: 0, fontSize: 13, fontWeight: 800, color: "#94a3b8" }}>
+                    {STAFF_OPERATIONS.length} users logged in
+                  </h3>
+                  <span style={{ fontSize: 11, fontWeight: 800, color: "#10b981", background: "rgba(16, 185, 129, 0.15)", padding: "2px 6px", borderRadius: 4 }}>
+                    ● LIVE
+                  </span>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  {STAFF_OPERATIONS.map((s) => (
+                    <div
+                      key={s.id}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 10,
+                        padding: "6px 8px",
+                        borderRadius: 8,
+                        background: staff?.id === s.id ? "rgba(16, 185, 129, 0.12)" : "rgba(15, 23, 42, 0.5)",
+                        border: staff?.id === s.id ? "1px solid rgba(16, 185, 129, 0.4)" : "1px solid transparent",
+                      }}
+                    >
+                      <span
+                        style={{
+                          width: 30,
+                          height: 30,
+                          borderRadius: "50%",
+                          background: s.c,
+                          color: "#ffffff",
+                          fontSize: 11,
+                          fontWeight: 900,
+                          display: "grid",
+                          placeItems: "center",
+                          flexShrink: 0,
+                        }}
+                      >
+                        {getInitials(s.n)}
+                      </span>
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div style={{ fontSize: 12.5, fontWeight: 800, color: "#ffffff", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                          {s.n}
+                        </div>
+                        <div style={{ fontSize: 10.5, color: "#94a3b8", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                          {s.r}
+                        </div>
+                      </div>
+                      <span style={{ fontSize: 10, fontWeight: 800, color: "#64748b" }}>
+                        🔋{s.b}%
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Theme Toggle Button */}
+          <button
+            type="button"
+            style={{
+              width: 38,
+              height: 38,
+              borderRadius: 12,
+              border: "1px solid #334155",
+              background: "#1E293B",
+              display: "grid",
+              placeItems: "center",
+              color: "#facc15",
+              cursor: "pointer",
+            }}
+            onClick={() => setThemeMode(themeMode === "dark" ? "light" : "dark")}
+            title={`Toggle Theme (${themeMode === "dark" ? "Light" : "Dark"} Mode)`}
+            aria-label="Toggle theme"
+          >
+            <WarehouseGlyph name={themeMode === "dark" ? "sun" : "moon"} size={18} stroke="#facc15" />
+          </button>
+
           <div style={S.staffSwitcherBlock}>
             <span style={S.switcherLabel}>Personnel:</span>
             <div style={S.activeStaffPill}>
@@ -1400,7 +1565,7 @@ export default function WarehouseDashboardPage() {
         </aside>
 
         {/* ── 2. MAIN WORKSPACE CONTENT ── */}
-        <main style={S.mainContent}>
+        <main style={{ ...S.mainContent, background: themeMode === "dark" ? "#0b0f17" : "#F4F5F0" }}>
           {/* LIVE TERMINAL DEVICE FLEET TRACKER (MOTOROLA & OPPO) */}
           <div
             style={{
@@ -1654,35 +1819,52 @@ export default function WarehouseDashboardPage() {
           {/* TAB 1: OPS OVERVIEW */}
           {activeTab === "overview" && (
             <div>
+              {/* ── 4 KPI CARDS (STORE COMMAND SPEC) ── */}
               <div style={S.statsGrid}>
                 {/* Stat 1: Order Cap */}
                 <div style={S.statCard}>
                   <div>
                     <div style={S.statHeader}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <span style={S.statIcon}>🎯</span>
-                        <span style={S.statTitle}>Order Cap Status</span>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <span
+                          style={{
+                            width: 38,
+                            height: 38,
+                            borderRadius: 12,
+                            background: "linear-gradient(160deg, #ff8a5c, #e0431a)",
+                            display: "grid",
+                            placeItems: "center",
+                            color: "#ffffff",
+                            flexShrink: 0,
+                            boxShadow: "inset 0 1.5px 0 rgba(255,255,255,.4), inset 0 -2px 0 rgba(0,0,0,.14)",
+                          }}
+                        >
+                          <WarehouseGlyph name="target" size={20} stroke="#ffffff" />
+                        </span>
+                        <span style={S.statTitle}>Order cap status</span>
                       </div>
-                      <span style={{ fontSize: 10, fontWeight: 900, background: capacityPercent > 85 ? "#fee2e2" : "#dcfce7", color: capacityPercent > 85 ? "#b91c1c" : "#15803d", padding: "2px 7px", borderRadius: 4 }}>
-                        {capacityPercent}%
-                      </span>
                     </div>
-                    <div style={S.statVal}>{currentOrdersCount} / {orderCapLimit}</div>
-                    <div style={S.statSub}>
-                      Capacity: <strong style={{ color: capacityPercent > 85 ? "#f59e0b" : "#10b981" }}>{capacityPercent}% utilized</strong>
+                    <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 4 }}>
+                      <span style={S.statVal}>{capacityPercent}%</span>
+                      <span style={{ fontSize: 12, fontWeight: 800, padding: "3px 9px", borderRadius: 99, background: capacityPercent > 85 ? "#fee2e2" : "#e5f5e8", color: capacityPercent > 85 ? "#ef4444" : "#0c831f" }}>
+                        {currentOrdersCount} / {orderCapLimit}
+                      </span>
                     </div>
                     <div style={S.progressBarTrack}>
                       <div
                         style={{
                           ...S.progressBarFill,
                           width: `${Math.max(4, capacityPercent)}%`,
-                          background: capacityPercent > 85 ? "#ef4444" : "#10b981",
+                          background: capacityPercent > 85 ? "#ef4444" : "#0c831f",
                         }}
                       />
                     </div>
+                    <div style={S.statSub}>
+                      Capacity: <strong>{capacityPercent}% utilized</strong>
+                    </div>
                   </div>
                   <button style={S.linkInlineBtn} onClick={() => setActiveTab("orderCap")}>
-                    Manage Surge Cap →
+                    Manage surge cap →
                   </button>
                 </div>
 
@@ -1690,30 +1872,40 @@ export default function WarehouseDashboardPage() {
                 <div style={S.statCard}>
                   <div>
                     <div style={S.statHeader}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <span style={S.statIcon}>⚡</span>
-                        <span style={S.statTitle}>Today's Queue</span>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <span
+                          style={{
+                            width: 38,
+                            height: 38,
+                            borderRadius: 12,
+                            background: "linear-gradient(160deg, #ffb23f, #f0740a)",
+                            display: "grid",
+                            placeItems: "center",
+                            color: "#ffffff",
+                            flexShrink: 0,
+                            boxShadow: "inset 0 1.5px 0 rgba(255,255,255,.4), inset 0 -2px 0 rgba(0,0,0,.14)",
+                          }}
+                        >
+                          <WarehouseGlyph name="zap" size={20} stroke="#ffffff" />
+                        </span>
+                        <span style={S.statTitle}>Today’s queue</span>
                       </div>
-                      <span style={{ fontSize: 10, fontWeight: 900, background: "#e0f2fe", color: "#0369a1", padding: "2px 7px", borderRadius: 4 }}>
-                        Live
+                    </div>
+                    <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 4 }}>
+                      <span style={S.statVal}>Live</span>
+                      <span style={{ fontSize: 12, fontWeight: 800, padding: "3px 9px", borderRadius: 99, background: "#e0f2fe", color: "#0369a1" }}>
+                        {orders.length} Live
                       </span>
                     </div>
-                    <div style={S.statVal}>{orders.length} Live</div>
-                    <div style={S.statSub}>
+                    <div style={{ fontSize: 12.5, color: "#64748b", marginTop: 8, fontWeight: 600 }}>
                       Pick: <b>{pickingOrders.length}</b> • Stage: <b>{stagedOrders.length}</b> • Rider: <b>{inTransitOrders.length}</b>
                     </div>
-                    <div style={S.progressBarTrack}>
-                      <div
-                        style={{
-                          ...S.progressBarFill,
-                          width: `${Math.min(100, Math.max(8, orders.length * 12))}%`,
-                          background: "#3b82f6",
-                        }}
-                      />
+                    <div style={S.statSub}>
+                      Orders waiting to be fulfilled
                     </div>
                   </div>
                   <button style={S.linkInlineBtn} onClick={() => setActiveTab("queue")}>
-                    Open Live Queue →
+                    Open live queue →
                   </button>
                 </div>
 
@@ -1721,30 +1913,40 @@ export default function WarehouseDashboardPage() {
                 <div style={S.statCard}>
                   <div>
                     <div style={S.statHeader}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <span style={S.statIcon}>💰</span>
-                        <span style={S.statTitle}>Sales Margin</span>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <span
+                          style={{
+                            width: 38,
+                            height: 38,
+                            borderRadius: 12,
+                            background: "linear-gradient(160deg, #a66bff, #6a2fd8)",
+                            display: "grid",
+                            placeItems: "center",
+                            color: "#ffffff",
+                            flexShrink: 0,
+                            boxShadow: "inset 0 1.5px 0 rgba(255,255,255,.4), inset 0 -2px 0 rgba(0,0,0,.14)",
+                          }}
+                        >
+                          <WarehouseGlyph name="trend" size={20} stroke="#ffffff" />
+                        </span>
+                        <span style={S.statTitle}>Sales margin</span>
                       </div>
-                      <span style={{ fontSize: 10, fontWeight: 900, background: "#dcfce7", color: "#15803d", padding: "2px 7px", borderRadius: 4 }}>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 4 }}>
+                      <span style={S.statVal}>22.4%</span>
+                      <span style={{ fontSize: 12, fontWeight: 800, padding: "3px 9px", borderRadius: 99, background: "#e5f5e8", color: "#0c831f" }}>
                         +0.4%
                       </span>
                     </div>
-                    <div style={S.statVal}>22.4%</div>
-                    <div style={S.statSub}>
-                      Today's GMV: <b>₹68,450</b> • Target: 22.0%
+                    <div style={{ fontSize: 12.5, color: "#64748b", marginTop: 8, fontWeight: 600 }}>
+                      Today’s GMV: <b>₹68,450</b> • Target: 22.0%
                     </div>
-                    <div style={S.progressBarTrack}>
-                      <div
-                        style={{
-                          ...S.progressBarFill,
-                          width: "92%",
-                          background: "#10b981",
-                        }}
-                      />
+                    <div style={S.statSub}>
+                      Above target
                     </div>
                   </div>
                   <button style={S.linkInlineBtn} onClick={() => setActiveTab("margin")}>
-                    View Financials →
+                    View financials →
                   </button>
                 </div>
 
@@ -1752,74 +1954,266 @@ export default function WarehouseDashboardPage() {
                 <div style={S.statCard}>
                   <div>
                     <div style={S.statHeader}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <span style={S.statIcon}>⭐</span>
-                        <span style={S.statTitle}>Customer Rating</span>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <span
+                          style={{
+                            width: 38,
+                            height: 38,
+                            borderRadius: 12,
+                            background: "linear-gradient(160deg, #ffd447, #f2a200)",
+                            display: "grid",
+                            placeItems: "center",
+                            color: "#ffffff",
+                            flexShrink: 0,
+                            boxShadow: "inset 0 1.5px 0 rgba(255,255,255,.4), inset 0 -2px 0 rgba(0,0,0,.14)",
+                          }}
+                        >
+                          <WarehouseGlyph name="star" size={20} stroke="#ffffff" />
+                        </span>
+                        <span style={S.statTitle}>Customer rating</span>
                       </div>
-                      <span style={{ fontSize: 10, fontWeight: 900, background: "#fef3c7", color: "#b45309", padding: "2px 7px", borderRadius: 4 }}>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 4 }}>
+                      <span style={S.statVal}>4.9 ★</span>
+                      <span style={{ fontSize: 12, fontWeight: 800, padding: "3px 9px", borderRadius: 99, background: "#fef3c7", color: "#b45309" }}>
                         98.4%
                       </span>
                     </div>
-                    <div style={S.statVal}>4.9 ★</div>
-                    <div style={S.statSub}>
+                    <div style={{ fontSize: 12.5, color: "#64748b", marginTop: 8, fontWeight: 600 }}>
                       CSAT: <b>98.4%</b> • Complaints: <b>0.08%</b>
                     </div>
-                    <div style={S.progressBarTrack}>
-                      <div
-                        style={{
-                          ...S.progressBarFill,
-                          width: "98.4%",
-                          background: "#f59e0b",
-                        }}
-                      />
+                    <div style={S.statSub}>
+                      No open escalations
                     </div>
                   </div>
                   <button style={S.linkInlineBtn} onClick={() => setActiveTab("ratings")}>
-                    Read Reviews →
+                    Read reviews →
                   </button>
                 </div>
               </div>
 
-              {/* Quick Store Control Bar */}
-              <div style={S.quickControlBar}>
-                <div>
-                  <div style={S.controlTitle}>⚡ STORE EMERGENCY &amp; SURGE GOVERNANCE</div>
-                  <div style={S.controlSub}>
-                    Authorized Operator: <b>{staff.name}</b> ({staff.designation}) • Customer Ordering App:{" "}
-                    <b style={{ color: isStorePaused ? "#ef4444" : "#10b981", fontSize: 13 }}>
-                      {isStorePaused ? "🛑 STORE CLOSED" : "🟢 STORE OPEN"}
-                    </b>
+              {/* ── CUSTOMER APP LOGINS TODAY CARD ── */}
+              <div
+                style={{
+                  background: "#FFFFFF",
+                  border: "1px solid #E2E8F0",
+                  borderRadius: 20,
+                  padding: "18px 22px",
+                  marginBottom: 18,
+                  boxShadow: "0 2px 8px rgba(0,0,0,0.03)",
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+                  <h2 style={{ margin: 0, fontSize: 15, fontWeight: 800, color: "#0F172A", display: "flex", alignItems: "center", gap: 10 }}>
+                    <span
+                      style={{
+                        width: 36,
+                        height: 36,
+                        borderRadius: 12,
+                        background: "linear-gradient(160deg, #2fa7ff, #2557d6)",
+                        display: "grid",
+                        placeItems: "center",
+                        color: "#ffffff",
+                        boxShadow: "inset 0 1.5px 0 rgba(255,255,255,.4), inset 0 -2px 0 rgba(0,0,0,.14)",
+                      }}
+                    >
+                      <WarehouseGlyph name="phone" size={19} stroke="#ffffff" />
+                    </span>
+                    Customer app logins today
+                  </h2>
+                  <button
+                    style={S.smLinkBtn}
+                    onClick={() => setActiveTab("devices")}
+                    title="View device fleet and traffic breakdown"
+                  >
+                    View details →
+                  </button>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: 24, alignItems: "end" }}>
+                  {/* Left 4 stats */}
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
+                    <div>
+                      <div style={{ fontSize: 26, fontWeight: 900, color: "#0F172A" }}>{APP_LOGINS_DATA.total}</div>
+                      <div style={{ fontSize: 12, color: "#64748B", fontWeight: 600 }}>Total logins</div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 26, fontWeight: 900, color: "#0F172A" }}>{APP_LOGINS_DATA.unique}</div>
+                      <div style={{ fontSize: 12, color: "#64748B", fontWeight: 600 }}>Unique customers</div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 26, fontWeight: 900, color: "#0F172A" }}>{APP_LOGINS_DATA.fresh}</div>
+                      <div style={{ fontSize: 12, color: "#64748B", fontWeight: 600 }}>New sign-ups</div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 26, fontWeight: 900, color: "#0c831f" }}>{orders.length || 8}</div>
+                      <div style={{ fontSize: 12, color: "#64748B", fontWeight: 600 }}>Placed an order</div>
+                    </div>
+                  </div>
+
+                  {/* Right 2-hour bar chart from 6 AM to 10 PM */}
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: 8,
+                      height: 84,
+                      alignItems: "flex-end",
+                      background: "#f8fafc",
+                      padding: "8px 12px 4px",
+                      borderRadius: 12,
+                      border: "1px solid #e2e8f0",
+                    }}
+                    aria-label="Logins by 2-hour block, 6 AM to 10 PM"
+                  >
+                    {APP_LOGINS_DATA.hours.map((val, idx) => {
+                      const maxVal = Math.max(...APP_LOGINS_DATA.hours);
+                      const barPct = Math.round((val / maxVal) * 100);
+                      const label = APP_LOGINS_DATA.labels[idx];
+                      return (
+                        <div
+                          key={label}
+                          style={{
+                            flex: 1,
+                            display: "flex",
+                            flexDirection: "column",
+                            alignItems: "center",
+                            justifyContent: "flex-end",
+                            height: "100%",
+                            gap: 4,
+                          }}
+                          title={`${label}: ${val} logins`}
+                        >
+                          <i
+                            style={{
+                              display: "block",
+                              width: "100%",
+                              height: `${barPct}%`,
+                              background: "#0c831f",
+                              borderRadius: "5px 5px 0 0",
+                              minHeight: 4,
+                              transition: "height 0.3s ease",
+                            }}
+                          />
+                          <span style={{ fontSize: 10.5, color: "#64748B", fontWeight: 700 }}>
+                            {label}
+                          </span>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
-                <div style={S.controlBtns}>
-                  <StoreToggleSwitch
-                    isOpen={!isStorePaused}
-                    onToggle={toggleStorePause}
-                    width={185}
-                    height={38}
-                    ariaLabel="Dark store open or closed"
-                  />
-                  <button style={S.controlActionBtn} onClick={handleCreateSimulatedOrder}>
-                    ⚡ Simulate Test Order
-                  </button>
+              </div>
+
+              {/* ── STORE EMERGENCY & SURGE GOVERNANCE CARD ── */}
+              <div
+                style={{
+                  background: "#FFFFFF",
+                  border: "2px solid #E2E8F0",
+                  borderRadius: 20,
+                  padding: "18px 22px",
+                  marginBottom: 18,
+                  boxShadow: "0 2px 8px rgba(0,0,0,0.03)",
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+                  <h2 style={{ margin: 0, fontSize: 16, fontWeight: 900, color: "#0F172A", display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ color: "#e0a100" }}>
+                      <WarehouseGlyph name="zap" size={20} stroke="#e0a100" />
+                    </span>
+                    Store emergency &amp; surge governance
+                  </h2>
+                  <span style={{ fontSize: 12.5, color: "#64748B" }}>
+                    Customer ordering app:{" "}
+                    <b style={{ color: isStorePaused ? "#ef4444" : "#0c831f", fontWeight: 800 }}>
+                      {isStorePaused ? "Store closed" : "Store open"}
+                    </b>
+                  </span>
+                </div>
+
+                <div style={{ fontSize: 13, color: "#64748B", margin: "6px 0 14px" }}>
+                  Authorized operator: <b style={{ color: "#0F172A" }}>Bhaskar N S</b> (Store Manager (SM))
+                </div>
+
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
+                  {/* Status Toggle Button */}
                   <button
+                    type="button"
                     style={{
-                      ...S.controlActionBtn,
-                      background: "#fee2e2",
-                      color: "#b91c1c",
-                      borderColor: "#fca5a5",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 8,
+                      fontWeight: 800,
+                      padding: "9px 16px",
+                      borderRadius: 12,
+                      background: isStorePaused ? "#fde8ec" : "#e5f5e8",
+                      color: isStorePaused ? "#d6264a" : "#0c831f",
+                      border: "none",
+                      cursor: "pointer",
+                      fontSize: 12.5,
+                    }}
+                    onClick={toggleStorePause}
+                    aria-pressed={!isStorePaused}
+                  >
+                    <span
+                      style={{
+                        width: 9,
+                        height: 9,
+                        borderRadius: "50%",
+                        background: "currentColor",
+                      }}
+                    />
+                    {isStorePaused ? "STORE CLOSED" : "STORE OPEN"}
+                  </button>
+
+                  {/* Simulate Test Order Button */}
+                  <button
+                    type="button"
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 8,
+                      fontWeight: 700,
+                      padding: "9px 16px",
+                      borderRadius: 12,
+                      border: "1px solid #E2E8F0",
+                      background: "#FFFFFF",
+                      color: "#1E293B",
+                      cursor: isStorePaused ? "not-allowed" : "pointer",
+                      opacity: isStorePaused ? 0.5 : 1,
+                      fontSize: 12.5,
+                    }}
+                    onClick={handleCreateSimulatedOrder}
+                    disabled={isStorePaused}
+                  >
+                    <WarehouseGlyph name="play" size={16} stroke="#1E293B" />
+                    Simulate test order
+                  </button>
+
+                  {/* Clear Today's Queue Button */}
+                  <button
+                    type="button"
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 8,
+                      fontWeight: 700,
+                      padding: "9px 16px",
+                      borderRadius: 12,
+                      border: "1px solid #fde8ec",
+                      background: "#FFFFFF",
+                      color: "#d6264a",
+                      cursor: orders.length === 0 ? "not-allowed" : "pointer",
+                      opacity: orders.length === 0 ? 0.5 : 1,
+                      fontSize: 12.5,
                     }}
                     onClick={handleClearTodayQueue}
-                    title="Clear today's live orders queue across warehouse, picker, and ordering apps"
+                    disabled={orders.length === 0}
                   >
-                    🗑️ Clear Today's Queue ({orders.length})
+                    <WarehouseGlyph name="trash" size={16} stroke="#d6264a" />
+                    Clear today’s queue ({orders.length})
                   </button>
-                  <button style={S.controlActionBtn} onClick={() => setActiveTab("queue")}>
-                    Today's Queue
-                  </button>
-                  <button style={S.controlActionBtn} onClick={() => setActiveTab("inventory")}>
-                    SKU Units &amp; Stock
-                  </button>
+
+                  {/* Daily Ops Export */}
                   <DailyOperationsExportButton
                     orders={orders}
                     complaints={complaints}
@@ -1827,32 +2221,125 @@ export default function WarehouseDashboardPage() {
                     storeOpen={!isStorePaused}
                   />
                 </div>
+
+                {/* Tabs */}
+                <div
+                  style={{
+                    display: "flex",
+                    gap: 6,
+                    marginTop: 14,
+                    padding: 4,
+                    background: "#F1F5F9",
+                    borderRadius: 14,
+                    width: "fit-content",
+                  }}
+                  role="tablist"
+                >
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={govTab === "queue"}
+                    onClick={() => setGovTab("queue")}
+                    style={{
+                      border: 0,
+                      background: govTab === "queue" ? "#FFFFFF" : "none",
+                      color: govTab === "queue" ? "#0F172A" : "#64748B",
+                      padding: "8px 16px",
+                      borderRadius: 10,
+                      fontWeight: 700,
+                      fontSize: 12.5,
+                      cursor: "pointer",
+                      boxShadow: govTab === "queue" ? "0 1px 3px rgba(0,0,0,.12)" : "none",
+                    }}
+                  >
+                    Today’s queue
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={govTab === "sku"}
+                    onClick={() => setGovTab("sku")}
+                    style={{
+                      border: 0,
+                      background: govTab === "sku" ? "#FFFFFF" : "none",
+                      color: govTab === "sku" ? "#0F172A" : "#64748B",
+                      padding: "8px 16px",
+                      borderRadius: 10,
+                      fontWeight: 700,
+                      fontSize: 12.5,
+                      cursor: "pointer",
+                      boxShadow: govTab === "sku" ? "0 1px 3px rgba(0,0,0,.12)" : "none",
+                    }}
+                  >
+                    SKU units &amp; stock
+                  </button>
+                </div>
+
+                {/* Tab Pane */}
+                <div style={{ marginTop: 12, fontSize: 13.5, color: "#64748B" }}>
+                  {govTab === "queue" ? (
+                    <div>
+                      <b>Today’s queue:</b> {orders.length} live orders. Pick <b>{pickingOrders.length}</b> • Stage <b>{stagedOrders.length}</b> • Rider <b>{inTransitOrders.length}</b>.
+                      <button
+                        style={{ ...S.smLinkBtn, marginLeft: 10 }}
+                        onClick={() => setActiveTab("queue")}
+                      >
+                        Open full queue view →
+                      </button>
+                    </div>
+                  ) : (
+                    <div>
+                      <b>SKU units &amp; stock:</b> 59 SKUs tracked in this store (Frames &amp; Chocolates).
+                      <button
+                        style={{ ...S.smLinkBtn, marginLeft: 10 }}
+                        onClick={() => setActiveTab("inventory")}
+                      >
+                        Manage stock units →
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
 
-              {/* Two Column Grid */}
+              {/* ── TWO-COLUMN GRID: PERSONNEL & QUALITY DESK ── */}
               <div style={S.twoColGrid}>
-                {/* Personnel Roster */}
+                {/* On-Duty Operations Personnel Card */}
                 <div style={S.panel}>
                   <div style={S.panelHeader}>
-                    <div style={S.panelTitle}>👥 On-Duty Operations Personnel ({fullRoster.length})</div>
-                    <button style={S.smLinkBtn} onClick={() => setActiveTab("devices")}>View All →</button>
+                    <h2 style={{ margin: 0, fontSize: 15, fontWeight: 900, color: "#0F172A" }}>
+                      On-duty operations personnel ({STAFF_OPERATIONS.length})
+                    </h2>
+                    <button style={S.smLinkBtn} onClick={() => setActiveTab("devices")}>
+                      View all →
+                    </button>
                   </div>
                   <div style={S.rosterList}>
-                    {fullRoster.map((p) => (
-                      <div key={p.id} style={S.rosterRow}>
+                    {STAFF_OPERATIONS.map((s) => (
+                      <div key={s.id} style={S.rosterRow}>
                         <div style={S.rosterLeft}>
-                          {p.logo ? (
-                            <img src={p.logo} alt="" style={{ width: 32, height: 32, borderRadius: "50%", objectFit: "cover" }} />
-                          ) : (
-                            <span style={S.rosterAvatar}>{p.avatar}</span>
-                          )}
+                          <span
+                            style={{
+                              width: 40,
+                              height: 40,
+                              borderRadius: "50%",
+                              background: s.c,
+                              color: "#FFFFFF",
+                              fontWeight: 900,
+                              fontSize: 14,
+                              display: "grid",
+                              placeItems: "center",
+                              flexShrink: 0,
+                            }}
+                          >
+                            {getInitials(s.n)}
+                          </span>
                           <div>
-                            <div style={S.rosterName}>{p.name}</div>
-                            <div style={S.rosterRole}>{p.designation}</div>
+                            <div style={S.rosterName}>{s.n}</div>
+                            <div style={S.rosterRole}>{s.r}</div>
                           </div>
                         </div>
                         <div style={S.rosterRight}>
-                          <span style={S.batteryTag}>🔋 {p.battery}%</span>
+                          <span style={S.batteryTag}>🔋 {s.b}%</span>
                           <span style={S.onlineTag}>● LIVE</span>
                         </div>
                       </div>
@@ -1860,108 +2347,87 @@ export default function WarehouseDashboardPage() {
                   </div>
                 </div>
 
-                {/* Quality Desk Box */}
+                {/* Quality Desk (0 Open Tickets) Card */}
                 <div style={S.panel}>
                   <div style={S.panelHeader}>
-                    <div style={S.panelTitle}>
-                      {openComplaintsCount === 0 ? "🛡️ Quality Desk (0 Open Tickets)" : `⚠️ Quality Desk (${openComplaintsCount} Open Tickets)`}
-                    </div>
-                    <button style={S.smLinkBtn} onClick={() => setActiveTab("complaints")}>View All →</button>
+                    <h2 style={{ margin: 0, fontSize: 15, fontWeight: 900, color: "#0F172A" }}>
+                      Quality desk (0 open tickets)
+                    </h2>
+                    <button style={S.smLinkBtn} onClick={() => setActiveTab("complaints")}>
+                      View all →
+                    </button>
                   </div>
-                  <div style={S.complaintMiniList}>
-                    {openComplaintsCount === 0 ? (
-                      <div style={S.rosterList}>
-                        <div style={S.rosterRow}>
-                          <div style={S.rosterLeft}>
-                            <span style={{ fontSize: 20 }}>⚡</span>
-                            <div>
-                              <div style={S.rosterName}>10-Minute SLA Compliance</div>
-                              <div style={S.rosterRole}>100% Express Dark Store Target</div>
-                            </div>
-                          </div>
-                          <div style={S.rosterRight}>
-                            <span style={{ ...S.batteryTag, color: "#166534" }}>100% SLA</span>
-                            <span style={S.onlineTag}>● VERIFIED</span>
+                  <div style={S.rosterList}>
+                    {[
+                      {
+                        glyph: "clock",
+                        grad: "linear-gradient(160deg, #4f8dff, #2557d6)",
+                        title: "10-minute SLA compliance",
+                        sub: "100% express dark store target",
+                        badge: "100% SLA",
+                        status: "VERIFIED",
+                      },
+                      {
+                        glyph: "shield",
+                        grad: "linear-gradient(160deg, #2fcf85, #0c9a5a)",
+                        title: "Zero defect fulfillment",
+                        sub: "0 damaged or missing SKUs reported",
+                        badge: "0 DEFECTS",
+                        status: "VERIFIED",
+                      },
+                      {
+                        glyph: "leaf",
+                        grad: "linear-gradient(160deg, #7bd34a, #3f9a1c)",
+                        title: "APMC yard freshness",
+                        sub: "Direct agricultural procurement & in-store check",
+                        badge: "GRADE A",
+                        status: "VERIFIED",
+                      },
+                      {
+                        glyph: "star",
+                        grad: "linear-gradient(160deg, #ffd447, #f2a200)",
+                        title: "Customer satisfaction (CSAT)",
+                        sub: "98.4% positive ratings • Zero negative escalations",
+                        badge: "4.9 ★",
+                        status: "CSAT 98.4%",
+                      },
+                      {
+                        glyph: "crown",
+                        grad: "linear-gradient(160deg, #a66bff, #6a2fd8)",
+                        title: "Store manager governance",
+                        sub: "Authorized instant refund desk active",
+                        badge: "₹0 PENDING",
+                        status: "LIVE",
+                      },
+                    ].map((item, idx) => (
+                      <div key={idx} style={S.rosterRow}>
+                        <div style={S.rosterLeft}>
+                          <span
+                            style={{
+                              width: 38,
+                              height: 38,
+                              borderRadius: 12,
+                              background: item.grad,
+                              display: "grid",
+                              placeItems: "center",
+                              color: "#FFFFFF",
+                              flexShrink: 0,
+                              boxShadow: "inset 0 1.5px 0 rgba(255,255,255,.4), inset 0 -2px 0 rgba(0,0,0,.14)",
+                            }}
+                          >
+                            <WarehouseGlyph name={item.glyph} size={20} stroke="#FFFFFF" />
+                          </span>
+                          <div>
+                            <div style={S.rosterName}>{item.title}</div>
+                            <div style={S.rosterRole}>{item.sub}</div>
                           </div>
                         </div>
-
-                        <div style={S.rosterRow}>
-                          <div style={S.rosterLeft}>
-                            <span style={{ fontSize: 20 }}>🛡️</span>
-                            <div>
-                              <div style={S.rosterName}>Zero Defect Fulfillment</div>
-                              <div style={S.rosterRole}>0 Damaged or Missing SKUs Reported</div>
-                            </div>
-                          </div>
-                          <div style={S.rosterRight}>
-                            <span style={{ ...S.batteryTag, color: "#166534" }}>0 DEFECTS</span>
-                            <span style={S.onlineTag}>● VERIFIED</span>
-                          </div>
-                        </div>
-
-                        <div style={S.rosterRow}>
-                          <div style={S.rosterLeft}>
-                            <span style={{ fontSize: 20 }}>🥗</span>
-                            <div>
-                              <div style={S.rosterName}>APMC Yard Freshness</div>
-                              <div style={S.rosterRole}>Direct Agricultural Procurement &amp; In-Store Check</div>
-                            </div>
-                          </div>
-                          <div style={S.rosterRight}>
-                            <span style={{ ...S.batteryTag, color: "#166534" }}>GRADE A</span>
-                            <span style={S.onlineTag}>● VERIFIED</span>
-                          </div>
-                        </div>
-
-                        <div style={S.rosterRow}>
-                          <div style={S.rosterLeft}>
-                            <span style={{ fontSize: 20 }}>⭐</span>
-                            <div>
-                              <div style={S.rosterName}>Customer Satisfaction (CSAT)</div>
-                              <div style={S.rosterRole}>98.4% Positive Ratings • Zero Negative Escalations</div>
-                            </div>
-                          </div>
-                          <div style={S.rosterRight}>
-                            <span style={{ ...S.batteryTag, color: "#b45309" }}>4.9 ★</span>
-                            <span style={S.onlineTag}>● CSAT 98.4%</span>
-                          </div>
-                        </div>
-
-                        <div style={S.rosterRow}>
-                          <div style={S.rosterLeft}>
-                            <span style={{ fontSize: 20 }}>👑</span>
-                            <div>
-                              <div style={S.rosterName}>Store Manager Governance</div>
-                              <div style={S.rosterRole}>Authorized Instant Refund Desk Active</div>
-                            </div>
-                          </div>
-                          <div style={S.rosterRight}>
-                            <span style={{ ...S.batteryTag, color: "#1e3a8a" }}>₹0 PENDING</span>
-                            <span style={S.onlineTag}>● LIVE</span>
-                          </div>
+                        <div style={S.rosterRight}>
+                          <span style={{ ...S.batteryTag, color: "#166534" }}>{item.badge}</span>
+                          <span style={S.onlineTag}>● {item.status}</span>
                         </div>
                       </div>
-                    ) : (
-                      complaints.filter((c) => c.status !== "RESOLVED").slice(0, 3).map((c) => (
-                        <div key={c.id} style={S.complaintMiniCard}>
-                          <div style={S.cTop}>
-                            <span style={S.cId}>{c.id} • Order #{c.orderId}</span>
-                            <span style={severityStyle(c.severity)}>{c.severity}</span>
-                          </div>
-                          <div style={S.cIssue}>{c.issue}</div>
-                          <div style={S.cFooter}>
-                            <span>Customer: <b>{c.customerName}</b></span>
-                            {c.status !== "RESOLVED" ? (
-                              <button style={S.resolveMiniBtn} onClick={() => resolveComplaint(c.id, c.amount)}>
-                                Refund ₹{c.amount}
-                              </button>
-                            ) : (
-                              <span style={S.resolvedBadge}>✓ RESOLVED</span>
-                            )}
-                          </div>
-                        </div>
-                      ))
-                    )}
+                    ))}
                   </div>
                 </div>
               </div>
@@ -2914,6 +3380,75 @@ function WarehouseGlyph({ name, size = 26, stroke = "#ffffff" }) {
       <>
         <circle cx="12" cy="12" r="4" />
         <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
+      </>
+    ),
+    moon: (
+      <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+    ),
+    target: (
+      <>
+        <circle cx="12" cy="12" r="9" />
+        <circle cx="12" cy="12" r="5" />
+        <circle cx="12" cy="12" r="1" />
+      </>
+    ),
+    trend: (
+      <>
+        <path d="M3 17l6-6 4 4 8-8" />
+        <path d="M15 7h6v6" />
+      </>
+    ),
+    shield: (
+      <>
+        <path d="M12 3l8 3v6c0 4.5-3.2 8-8 9-4.8-1-8-4.5-8-9V6z" />
+        <path d="M9 12l2 2 4-4" />
+      </>
+    ),
+    clock: (
+      <>
+        <circle cx="12" cy="12" r="9" />
+        <path d="M12 7v5l3 2" />
+      </>
+    ),
+    leaf: (
+      <>
+        <path d="M5 19C5 10 10 5 20 4c0 10-5 15-14 15z" />
+        <path d="M5 19c3-5 6-8 10-10" />
+      </>
+    ),
+    crown: (
+      <path d="M3 18h18l-1.5-9-5 4L12 5l-2.5 8-5-4z" />
+    ),
+    play: (
+      <path d="M7 4l13 8-13 8z" />
+    ),
+    trash: (
+      <>
+        <path d="M4 7h16" />
+        <path d="M9 7V4h6v3" />
+        <path d="M6 7l1 13h10l1-13" />
+        <path d="M10 11v6M14 11v6" />
+      </>
+    ),
+    bat: (
+      <>
+        <rect x="2" y="7" width="17" height="10" rx="2.5" />
+        <path d="M22 11v2" />
+        <path d="M6 10.5v3M10 10.5v3" />
+      </>
+    ),
+    login: (
+      <>
+        <path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4" />
+        <path d="M10 8l4 4-4 4" />
+        <path d="M14 12H3" />
+      </>
+    ),
+    phone: (
+      <>
+        <rect x="6" y="2.5" width="12" height="19" rx="3" />
+        <path d="M11 18h2" />
+        <path d="M9.5 7.5l2 2 3.5-3.5" />
       </>
     ),
   };
