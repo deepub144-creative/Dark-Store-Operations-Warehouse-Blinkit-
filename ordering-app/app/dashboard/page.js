@@ -887,18 +887,18 @@ export default function WarehouseDashboardPage() {
               {sidebarOpen ? "◀ Slide Menu" : "▶ Menu Options"}
             </button>
 
-            <AuditxLogo height={32} href="/" />
-            <span style={S.storeBadge}>TIPTUR-HUB-KA44</span>
+            <AuditxLogo height={30} href="/" />
+            <span style={S.storeBadge}>AUDIT'X DARK STORE</span>
             <StoreToggleSwitch
               isOpen={!isStorePaused}
               onToggle={toggleStorePause}
-              width={190}
-              height={40}
+              width={175}
+              height={36}
               ariaLabel="Dark store open or closed"
             />
           </div>
           <div style={S.subText}>
-            ⚡ Blinkit Dark Store Operations Command Tower • Tiptur HUB - KA44, Tumkur District - 572201 • 10-Min Delivery SLA
+            ⚡ Blinkit Dark Store Operations Command Tower • Tumkur District - 572201 • 10-Min Delivery SLA
           </div>
         </div>
 
@@ -964,7 +964,7 @@ export default function WarehouseDashboardPage() {
               <span style={{ fontSize: 13, fontWeight: 900, color: "#10b981", letterSpacing: "0.5px" }}>
                 OPERATIONS DESK
               </span>
-              <span style={S.storePill}>KA44</span>
+              <span style={S.storePill}>572201</span>
             </div>
             <div style={S.sidebarSub}>Namma Tiptur (572201)</div>
           </div>
@@ -1061,18 +1061,20 @@ export default function WarehouseDashboardPage() {
           <div style={S.sidebarShortcuts}>
             <div style={S.navGroupLabel}>QUICK APPS</div>
             <button onClick={() => router.push("/ordering")} style={S.appShortcutBtn}>
-              🛒 Customer App (Audit'X)
+              <span style={{ fontSize: 14 }}>🛒</span>
+              <span>Customer App (Audit'X)</span>
             </button>
             <button onClick={() => router.push("/picker")} style={S.appShortcutBtn}>
-              <img src="/thrupthi-logo.png" alt="Thrupthi" style={S.shortcutAvatar} />
-              OD Picker: Thrupthi K S
+              <img src="/thrupthi-logo.png" alt="" style={S.shortcutAvatar} />
+              <span>OD Picker: Thrupthi K S</span>
             </button>
             <button onClick={() => router.push("/rider")} style={S.appShortcutBtn}>
-              <img src="/sinchana-logo.png" alt="Sinchana" style={S.shortcutAvatar} />
-              Rider: Sinchana B R
+              <img src="/sinchana-logo.png" alt="" style={S.shortcutAvatar} />
+              <span>Rider: Sinchana B R</span>
             </button>
             <button onClick={() => router.push("/warehouse")} style={S.appShortcutBtn}>
-              🏬 Staging Racks
+              <span style={{ fontSize: 14 }}>🏬</span>
+              <span>Staging Racks</span>
             </button>
           </div>
         </aside>
@@ -1117,7 +1119,7 @@ export default function WarehouseDashboardPage() {
 
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 14 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 14, alignItems: "stretch" }}>
               {/* Thrupthi K S - MOTOROLA Moto G84 5G */}
               <div
                 style={{
@@ -1127,16 +1129,17 @@ export default function WarehouseDashboardPage() {
                   padding: "14px 16px",
                   display: "flex",
                   flexDirection: "column",
-                  gap: 10,
+                  justifyContent: "space-between",
+                  minHeight: 180,
                   boxShadow: deviceFleet.thrupthi === "LOGGED_IN" ? "0 4px 16px rgba(16, 185, 129, 0.12)" : "none",
                 }}
               >
                 {/* Top Staff & Hardware Bar */}
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                     <img
                       src="/thrupthi-logo.png"
-                      alt="Thrupthi K S"
+                      alt=""
                       style={{ width: 38, height: 38, borderRadius: "50%", objectFit: "cover", border: "2px solid #10b981" }}
                     />
                     <div>
@@ -1164,11 +1167,12 @@ export default function WarehouseDashboardPage() {
 
                 {/* Live Operation Status Box */}
                 {deviceFleet.thrupthi === "LOGGED_OUT" ? (
-                  <div style={{ background: "rgba(239, 68, 68, 0.08)", border: "1px dashed rgba(239, 68, 68, 0.35)", borderRadius: 8, padding: "10px 12px" }}>
+                  <div style={{ flex: 1, minHeight: 90, display: "flex", flexDirection: "column", justifyContent: "center", background: "rgba(239, 68, 68, 0.08)", border: "1px dashed rgba(239, 68, 68, 0.35)", borderRadius: 8, padding: "12px 14px", marginTop: 8 }}>
                     <div style={{ fontSize: 12, fontWeight: 800, color: "#f87171" }}>🔴 Off Duty</div>
+                    <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>Terminal offline • Ready to switch on duty</div>
                   </div>
                 ) : activePickOrder ? (
-                  <div style={{ background: "rgba(16, 185, 129, 0.09)", border: "1px solid rgba(16, 185, 129, 0.35)", borderRadius: 8, padding: "10px 12px" }}>
+                  <div style={{ flex: 1, minHeight: 90, display: "flex", flexDirection: "column", justifyContent: "center", background: "rgba(16, 185, 129, 0.09)", border: "1px solid rgba(16, 185, 129, 0.35)", borderRadius: 8, padding: "10px 12px", marginTop: 8 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
                       <span style={{ fontSize: 11, fontWeight: 900, color: "#34d399", textTransform: "uppercase", letterSpacing: "0.5px" }}>
                         ⚡ Picking
@@ -1187,7 +1191,7 @@ export default function WarehouseDashboardPage() {
                     </div>
                   </div>
                 ) : activeStagedOrder ? (
-                  <div style={{ background: "rgba(56, 189, 248, 0.09)", border: "1px solid rgba(56, 189, 248, 0.35)", borderRadius: 8, padding: "10px 12px" }}>
+                  <div style={{ flex: 1, minHeight: 90, display: "flex", flexDirection: "column", justifyContent: "center", background: "rgba(56, 189, 248, 0.09)", border: "1px solid rgba(56, 189, 248, 0.35)", borderRadius: 8, padding: "10px 12px", marginTop: 8 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
                       <span style={{ fontSize: 11, fontWeight: 900, color: "#38bdf8", textTransform: "uppercase" }}>
                         📦 Staged in Rack
@@ -1199,9 +1203,12 @@ export default function WarehouseDashboardPage() {
                     <div style={{ fontSize: 12, fontWeight: 800, color: "#ffffff" }}>
                       Waiting for Sinchana B R pickup
                     </div>
+                    <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>
+                      Staged in Bay Rack {activeStagedOrder.assignedRack || "-"}
+                    </div>
                   </div>
                 ) : (
-                  <div style={{ background: "rgba(30, 41, 59, 0.7)", border: "1px solid #334155", borderRadius: 8, padding: "10px 12px" }}>
+                  <div style={{ flex: 1, minHeight: 90, display: "flex", flexDirection: "column", justifyContent: "center", background: "rgba(30, 41, 59, 0.7)", border: "1px solid #334155", borderRadius: 8, padding: "10px 12px", marginTop: 8 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
                       <span style={{ fontSize: 11, fontWeight: 900, color: "#94a3b8", textTransform: "uppercase" }}>
                         Standby
@@ -1209,6 +1216,9 @@ export default function WarehouseDashboardPage() {
                       <span style={{ fontSize: 10, background: "#1e293b", color: "#38bdf8", padding: "1px 6px", borderRadius: 4, fontWeight: 800 }}>
                         Ready for Orders
                       </span>
+                    </div>
+                    <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>
+                      OD Picker stationed at Warehouse Staging Bay
                     </div>
                   </div>
                 )}
@@ -1224,16 +1234,17 @@ export default function WarehouseDashboardPage() {
                   padding: "14px 16px",
                   display: "flex",
                   flexDirection: "column",
-                  gap: 10,
+                  justifyContent: "space-between",
+                  minHeight: 180,
                   boxShadow: deviceFleet.sinchana === "LOGGED_IN" ? "0 4px 16px rgba(245, 158, 11, 0.12)" : "none",
                 }}
               >
                 {/* Top Staff & Hardware Bar */}
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                     <img
                       src="/sinchana-logo.png"
-                      alt="Sinchana B R"
+                      alt=""
                       style={{ width: 38, height: 38, borderRadius: "50%", objectFit: "cover", border: "2px solid #ca8a04" }}
                     />
                     <div>
@@ -1261,11 +1272,12 @@ export default function WarehouseDashboardPage() {
 
                 {/* Live Operation Status Box */}
                 {deviceFleet.sinchana === "LOGGED_OUT" ? (
-                  <div style={{ background: "rgba(239, 68, 68, 0.08)", border: "1px dashed rgba(239, 68, 68, 0.35)", borderRadius: 8, padding: "10px 12px" }}>
+                  <div style={{ flex: 1, minHeight: 90, display: "flex", flexDirection: "column", justifyContent: "center", background: "rgba(239, 68, 68, 0.08)", border: "1px dashed rgba(239, 68, 68, 0.35)", borderRadius: 8, padding: "12px 14px", marginTop: 8 }}>
                     <div style={{ fontSize: 12, fontWeight: 800, color: "#f87171" }}>🔴 Off Duty</div>
+                    <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>Terminal offline • Ready to switch on duty</div>
                   </div>
                 ) : activeDeliveryOrder ? (
-                  <div style={{ background: "rgba(245, 158, 11, 0.09)", border: "1px solid rgba(245, 158, 11, 0.35)", borderRadius: 8, padding: "10px 12px" }}>
+                  <div style={{ flex: 1, minHeight: 90, display: "flex", flexDirection: "column", justifyContent: "center", background: "rgba(245, 158, 11, 0.09)", border: "1px solid rgba(245, 158, 11, 0.35)", borderRadius: 8, padding: "10px 12px", marginTop: 8 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
                       <span style={{ fontSize: 11, fontWeight: 900, color: isRiderAtDoorstep ? "#34d399" : "#fbbf24", textTransform: "uppercase", letterSpacing: "0.5px" }}>
                         {isRiderAtDoorstep ? "🚪 At Doorstep" : "🛵 Out for Delivery"}
@@ -1278,12 +1290,12 @@ export default function WarehouseDashboardPage() {
                       🎒 Carrying: {dispatchedItems.map((i) => `${i.name} (x${i.qty || 1})`).join(", ") || "1 item"}
                     </div>
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 10, fontSize: 11, color: "#cbd5e1" }}>
-                      <div>Units: <strong style={{ color: "#facc15" }}>{totalDispatchedUnits} Unit(s) in Bag</strong></div>
+                      <div>Units: <strong style={{ color: "#facc15" }}>{totalDispatchedUnits} In Bag</strong></div>
                       <div>Destination: <strong style={{ color: "#38bdf8" }}>{activeDeliveryOrder.address || activeDeliveryOrder.customerAddress || "MG Road, Tiptur"}</strong></div>
                     </div>
                   </div>
                 ) : activeStagedOrder ? (
-                  <div style={{ background: "rgba(56, 189, 248, 0.09)", border: "1px solid rgba(56, 189, 248, 0.35)", borderRadius: 8, padding: "10px 12px" }}>
+                  <div style={{ flex: 1, minHeight: 90, display: "flex", flexDirection: "column", justifyContent: "center", background: "rgba(56, 189, 248, 0.09)", border: "1px solid rgba(56, 189, 248, 0.35)", borderRadius: 8, padding: "10px 12px", marginTop: 8 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
                       <span style={{ fontSize: 11, fontWeight: 900, color: "#38bdf8", textTransform: "uppercase" }}>
                         📦 Pickup Ready
@@ -1295,9 +1307,12 @@ export default function WarehouseDashboardPage() {
                     <div style={{ fontSize: 12, fontWeight: 800, color: "#ffffff" }}>
                       Rack {activeStagedOrder.assignedRack || "-"} • {activeStagedOrder.items?.reduce((s,i) => s + (i.qty||1), 0) || 1} Units
                     </div>
+                    <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>
+                      Ready for 8-min express delivery
+                    </div>
                   </div>
                 ) : (
-                  <div style={{ background: "rgba(30, 41, 59, 0.7)", border: "1px solid #334155", borderRadius: 8, padding: "10px 12px" }}>
+                  <div style={{ flex: 1, minHeight: 90, display: "flex", flexDirection: "column", justifyContent: "center", background: "rgba(30, 41, 59, 0.7)", border: "1px solid #334155", borderRadius: 8, padding: "10px 12px", marginTop: 8 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
                       <span style={{ fontSize: 11, fontWeight: 900, color: "#94a3b8", textTransform: "uppercase" }}>
                         Standby
@@ -1305,6 +1320,9 @@ export default function WarehouseDashboardPage() {
                       <span style={{ fontSize: 10, background: "#1e293b", color: "#f59e0b", padding: "1px 6px", borderRadius: 4, fontWeight: 800 }}>
                         Ready for Orders
                       </span>
+                    </div>
+                    <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>
+                      Delivery Captain ready for next 8-min run
                     </div>
                   </div>
                 )}
@@ -1317,62 +1335,124 @@ export default function WarehouseDashboardPage() {
           {activeTab === "overview" && (
             <div>
               <div style={S.statsGrid}>
+                {/* Stat 1: Order Cap */}
                 <div style={S.statCard}>
-                  <div style={S.statHeader}>
-                    <span style={S.statIcon}>🎯</span>
-                    <span style={S.statTitle}>Order Cap Status</span>
+                  <div>
+                    <div style={S.statHeader}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <span style={S.statIcon}>🎯</span>
+                        <span style={S.statTitle}>Order Cap Status</span>
+                      </div>
+                      <span style={{ fontSize: 10, fontWeight: 900, background: capacityPercent > 85 ? "#fee2e2" : "#dcfce7", color: capacityPercent > 85 ? "#b91c1c" : "#15803d", padding: "2px 7px", borderRadius: 4 }}>
+                        {capacityPercent}%
+                      </span>
+                    </div>
+                    <div style={S.statVal}>{currentOrdersCount} / {orderCapLimit}</div>
+                    <div style={S.statSub}>
+                      Capacity: <strong style={{ color: capacityPercent > 85 ? "#f59e0b" : "#10b981" }}>{capacityPercent}% utilized</strong>
+                    </div>
+                    <div style={S.progressBarTrack}>
+                      <div
+                        style={{
+                          ...S.progressBarFill,
+                          width: `${Math.max(4, capacityPercent)}%`,
+                          background: capacityPercent > 85 ? "#ef4444" : "#10b981",
+                        }}
+                      />
+                    </div>
                   </div>
-                  <div style={S.statVal}>{currentOrdersCount} / {orderCapLimit}</div>
-                  <div style={S.statSub}>
-                    Capacity: <strong style={{ color: capacityPercent > 85 ? "#f59e0b" : "#10b981" }}>{capacityPercent}%</strong>
-                  </div>
-                  <div style={S.progressBarTrack}>
-                    <div
-                      style={{
-                        ...S.progressBarFill,
-                        width: `${capacityPercent}%`,
-                        background: capacityPercent > 85 ? "#ef4444" : "#10b981",
-                      }}
-                    />
-                  </div>
+                  <button style={S.linkInlineBtn} onClick={() => setActiveTab("orderCap")}>
+                    Manage Surge Cap →
+                  </button>
                 </div>
 
+                {/* Stat 2: Today's Queue */}
                 <div style={S.statCard}>
-                  <div style={S.statHeader}>
-                    <span style={S.statIcon}>⚡</span>
-                    <span style={S.statTitle}>Today's Queue</span>
-                  </div>
-                  <div style={S.statVal}>{orders.length} Live</div>
-                  <div style={S.statSub}>
-                    Picking: <b>{pickingOrders.length}</b> • Staged: <b>{stagedOrders.length}</b> • En Route: <b>{inTransitOrders.length}</b>
+                  <div>
+                    <div style={S.statHeader}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <span style={S.statIcon}>⚡</span>
+                        <span style={S.statTitle}>Today's Queue</span>
+                      </div>
+                      <span style={{ fontSize: 10, fontWeight: 900, background: "#e0f2fe", color: "#0369a1", padding: "2px 7px", borderRadius: 4 }}>
+                        Live
+                      </span>
+                    </div>
+                    <div style={S.statVal}>{orders.length} Live</div>
+                    <div style={S.statSub}>
+                      Pick: <b>{pickingOrders.length}</b> • Stage: <b>{stagedOrders.length}</b> • Rider: <b>{inTransitOrders.length}</b>
+                    </div>
+                    <div style={S.progressBarTrack}>
+                      <div
+                        style={{
+                          ...S.progressBarFill,
+                          width: `${Math.min(100, Math.max(8, orders.length * 12))}%`,
+                          background: "#3b82f6",
+                        }}
+                      />
+                    </div>
                   </div>
                   <button style={S.linkInlineBtn} onClick={() => setActiveTab("queue")}>
                     Open Live Queue →
                   </button>
                 </div>
 
+                {/* Stat 3: Sales Margin */}
                 <div style={S.statCard}>
-                  <div style={S.statHeader}>
-                    <span style={S.statIcon}>💰</span>
-                    <span style={S.statTitle}>Sales Margin</span>
-                  </div>
-                  <div style={S.statVal}>22.4%</div>
-                  <div style={S.statSub}>
-                    Today's GMV: <b>₹68,450</b> • Target: 22.0%
+                  <div>
+                    <div style={S.statHeader}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <span style={S.statIcon}>💰</span>
+                        <span style={S.statTitle}>Sales Margin</span>
+                      </div>
+                      <span style={{ fontSize: 10, fontWeight: 900, background: "#dcfce7", color: "#15803d", padding: "2px 7px", borderRadius: 4 }}>
+                        +0.4%
+                      </span>
+                    </div>
+                    <div style={S.statVal}>22.4%</div>
+                    <div style={S.statSub}>
+                      Today's GMV: <b>₹68,450</b> • Target: 22.0%
+                    </div>
+                    <div style={S.progressBarTrack}>
+                      <div
+                        style={{
+                          ...S.progressBarFill,
+                          width: "92%",
+                          background: "#10b981",
+                        }}
+                      />
+                    </div>
                   </div>
                   <button style={S.linkInlineBtn} onClick={() => setActiveTab("margin")}>
                     View Financials →
                   </button>
                 </div>
 
+                {/* Stat 4: Customer Rating */}
                 <div style={S.statCard}>
-                  <div style={S.statHeader}>
-                    <span style={S.statIcon}>⭐</span>
-                    <span style={S.statTitle}>Customer Rating</span>
-                  </div>
-                  <div style={S.statVal}>4.9 ★</div>
-                  <div style={S.statSub}>
-                    CSAT: <b>98.4%</b> • Complaints: <b>0.08%</b>
+                  <div>
+                    <div style={S.statHeader}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <span style={S.statIcon}>⭐</span>
+                        <span style={S.statTitle}>Customer Rating</span>
+                      </div>
+                      <span style={{ fontSize: 10, fontWeight: 900, background: "#fef3c7", color: "#b45309", padding: "2px 7px", borderRadius: 4 }}>
+                        98.4%
+                      </span>
+                    </div>
+                    <div style={S.statVal}>4.9 ★</div>
+                    <div style={S.statSub}>
+                      CSAT: <b>98.4%</b> • Complaints: <b>0.08%</b>
+                    </div>
+                    <div style={S.progressBarTrack}>
+                      <div
+                        style={{
+                          ...S.progressBarFill,
+                          width: "98.4%",
+                          background: "#f59e0b",
+                        }}
+                      />
+                    </div>
                   </div>
                   <button style={S.linkInlineBtn} onClick={() => setActiveTab("ratings")}>
                     Read Reviews →
@@ -1395,30 +1475,29 @@ export default function WarehouseDashboardPage() {
                   <StoreToggleSwitch
                     isOpen={!isStorePaused}
                     onToggle={toggleStorePause}
-                    width={210}
-                    height={44}
+                    width={185}
+                    height={38}
                     ariaLabel="Dark store open or closed"
                   />
-                  <button style={S.actionBtnOutline} onClick={handleCreateSimulatedOrder}>
+                  <button style={S.controlActionBtn} onClick={handleCreateSimulatedOrder}>
                     ⚡ Simulate Test Order
                   </button>
                   <button
                     style={{
-                      ...S.actionBtnOutline,
+                      ...S.controlActionBtn,
                       background: "#fee2e2",
                       color: "#b91c1c",
                       borderColor: "#fca5a5",
-                      fontWeight: 800,
                     }}
                     onClick={handleClearTodayQueue}
                     title="Clear today's live orders queue across warehouse, picker, and ordering apps"
                   >
                     🗑️ Clear Today's Queue ({orders.length})
                   </button>
-                  <button style={S.actionBtnOutline} onClick={() => setActiveTab("queue")}>
+                  <button style={S.controlActionBtn} onClick={() => setActiveTab("queue")}>
                     Today's Queue
                   </button>
-                  <button style={S.actionBtnOutline} onClick={() => setActiveTab("inventory")}>
+                  <button style={S.controlActionBtn} onClick={() => setActiveTab("inventory")}>
                     SKU Units &amp; Stock
                   </button>
                   <DailyOperationsExportButton
@@ -1443,7 +1522,7 @@ export default function WarehouseDashboardPage() {
                       <div key={p.id} style={S.rosterRow}>
                         <div style={S.rosterLeft}>
                           {p.logo ? (
-                            <img src={p.logo} alt={p.name} style={{ width: 32, height: 32, borderRadius: "50%", objectFit: "cover" }} />
+                            <img src={p.logo} alt="" style={{ width: 32, height: 32, borderRadius: "50%", objectFit: "cover" }} />
                           ) : (
                             <span style={S.rosterAvatar}>{p.avatar}</span>
                           )}
@@ -1461,7 +1540,7 @@ export default function WarehouseDashboardPage() {
                   </div>
                 </div>
 
-                {/* Live Complaints Box */}
+                {/* Quality Desk Box */}
                 <div style={S.panel}>
                   <div style={S.panelHeader}>
                     <div style={S.panelTitle}>
@@ -1471,11 +1550,75 @@ export default function WarehouseDashboardPage() {
                   </div>
                   <div style={S.complaintMiniList}>
                     {openComplaintsCount === 0 ? (
-                      <div style={{ textAlign: "center", padding: "28px 12px", color: "#94a3b8" }}>
-                        <div style={{ fontSize: "1.6rem", marginBottom: 6 }}>🛡️</div>
-                        <div style={{ fontWeight: 800, color: "#cbd5e1", fontSize: "0.9rem" }}>Zero Open Complaints</div>
-                        <div style={{ fontSize: "0.78rem", color: "#64748b", marginTop: 4 }}>
-                          All customer orders delivered with 100% quality compliance.
+                      <div style={S.rosterList}>
+                        <div style={S.rosterRow}>
+                          <div style={S.rosterLeft}>
+                            <span style={{ fontSize: 20 }}>⚡</span>
+                            <div>
+                              <div style={S.rosterName}>10-Minute SLA Compliance</div>
+                              <div style={S.rosterRole}>100% Express Dark Store Target</div>
+                            </div>
+                          </div>
+                          <div style={S.rosterRight}>
+                            <span style={{ ...S.batteryTag, color: "#166534" }}>100% SLA</span>
+                            <span style={S.onlineTag}>● VERIFIED</span>
+                          </div>
+                        </div>
+
+                        <div style={S.rosterRow}>
+                          <div style={S.rosterLeft}>
+                            <span style={{ fontSize: 20 }}>🛡️</span>
+                            <div>
+                              <div style={S.rosterName}>Zero Defect Fulfillment</div>
+                              <div style={S.rosterRole}>0 Damaged or Missing SKUs Reported</div>
+                            </div>
+                          </div>
+                          <div style={S.rosterRight}>
+                            <span style={{ ...S.batteryTag, color: "#166534" }}>0 DEFECTS</span>
+                            <span style={S.onlineTag}>● VERIFIED</span>
+                          </div>
+                        </div>
+
+                        <div style={S.rosterRow}>
+                          <div style={S.rosterLeft}>
+                            <span style={{ fontSize: 20 }}>🥗</span>
+                            <div>
+                              <div style={S.rosterName}>APMC Yard Freshness</div>
+                              <div style={S.rosterRole}>Direct Agricultural Procurement &amp; In-Store Check</div>
+                            </div>
+                          </div>
+                          <div style={S.rosterRight}>
+                            <span style={{ ...S.batteryTag, color: "#166534" }}>GRADE A</span>
+                            <span style={S.onlineTag}>● VERIFIED</span>
+                          </div>
+                        </div>
+
+                        <div style={S.rosterRow}>
+                          <div style={S.rosterLeft}>
+                            <span style={{ fontSize: 20 }}>⭐</span>
+                            <div>
+                              <div style={S.rosterName}>Customer Satisfaction (CSAT)</div>
+                              <div style={S.rosterRole}>98.4% Positive Ratings • Zero Negative Escalations</div>
+                            </div>
+                          </div>
+                          <div style={S.rosterRight}>
+                            <span style={{ ...S.batteryTag, color: "#b45309" }}>4.9 ★</span>
+                            <span style={S.onlineTag}>● CSAT 98.4%</span>
+                          </div>
+                        </div>
+
+                        <div style={S.rosterRow}>
+                          <div style={S.rosterLeft}>
+                            <span style={{ fontSize: 20 }}>👑</span>
+                            <div>
+                              <div style={S.rosterName}>Store Manager Governance</div>
+                              <div style={S.rosterRole}>Authorized Instant Refund Desk Active</div>
+                            </div>
+                          </div>
+                          <div style={S.rosterRight}>
+                            <span style={{ ...S.batteryTag, color: "#1e3a8a" }}>₹0 PENDING</span>
+                            <span style={S.onlineTag}>● LIVE</span>
+                          </div>
                         </div>
                       </div>
                     ) : (
@@ -2414,40 +2557,41 @@ const S = {
   navItemIcon: { fontSize: 15 },
   navItemText: { flex: 1 },
   navBadgeCount: { fontSize: 10, fontWeight: 900, background: "#1e293b", color: "#94a3b8", padding: "1px 6px", borderRadius: 6 },
-  sidebarShortcuts: { borderTop: "1px solid #1E293B", paddingTop: 10, marginTop: "auto", display: "flex", flexDirection: "column", gap: 6 },
-  appShortcutBtn: { display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", background: "#1E293B", border: "1px solid #334155", borderRadius: 8, color: "#f8fafc", fontSize: 11, fontWeight: 700, cursor: "pointer" },
-  shortcutAvatar: { width: 18, height: 18, borderRadius: "50%", objectFit: "cover" },
+  sidebarShortcuts: { borderTop: "1px solid #1E293B", paddingTop: 12, marginTop: "auto", display: "flex", flexDirection: "column", gap: 6 },
+  appShortcutBtn: { display: "flex", alignItems: "center", gap: 10, padding: "0 12px", height: 38, background: "#1E293B", border: "1px solid #334155", borderRadius: 8, color: "#f8fafc", fontSize: 11, fontWeight: 700, cursor: "pointer", width: "100%", boxSizing: "border-box", transition: "all 0.15s ease" },
+  shortcutAvatar: { width: 20, height: 20, borderRadius: "50%", objectFit: "cover", flexShrink: 0 },
 
   mainContent: { flex: 1, padding: "24px 28px", maxWidth: 1400, overflowY: "auto" },
 
-  // Stats Grid
-  statsGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16, marginBottom: 20 },
-  statCard: { background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: 16, padding: 18, boxShadow: "0 2px 8px rgba(0,0,0,0.03)" },
-  statHeader: { display: "flex", alignItems: "center", gap: 8, marginBottom: 8 },
+  // Stats Grid - Equal Height & Unified Cards
+  statsGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))", gap: 16, marginBottom: 20, alignItems: "stretch" },
+  statCard: { background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: 16, padding: "18px 20px", boxShadow: "0 2px 8px rgba(0,0,0,0.03)", display: "flex", flexDirection: "column", justifyContent: "space-between", minHeight: 180, boxSizing: "border-box" },
+  statHeader: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 },
   statIcon: { fontSize: 16 },
-  statTitle: { fontSize: 12, fontWeight: 800, color: "#64748B", textTransform: "uppercase" },
-  statVal: { fontSize: 26, fontWeight: 900, color: "#0F172A" },
-  statSub: { fontSize: 12, color: "#64748B", marginTop: 4 },
-  linkInlineBtn: { background: "none", border: "none", color: "#0c831f", fontWeight: 800, fontSize: 12, cursor: "pointer", padding: 0, marginTop: 6, display: "block" },
+  statTitle: { fontSize: 12, fontWeight: 800, color: "#64748B", textTransform: "uppercase", letterSpacing: "0.4px" },
+  statVal: { fontSize: 26, fontWeight: 900, color: "#0F172A", lineHeight: 1.1 },
+  statSub: { fontSize: 12, color: "#64748B", marginTop: 6, minHeight: 18 },
+  linkInlineBtn: { background: "none", border: "none", color: "#0c831f", fontWeight: 800, fontSize: 12, cursor: "pointer", padding: 0, marginTop: 12, display: "inline-flex", alignItems: "center", gap: 4, textAlign: "left" },
   progressBarTrack: { background: "#E2E8F0", height: 6, borderRadius: 3, marginTop: 10, overflow: "hidden" },
-  progressBarFill: { height: "100%", transition: "width 0.4s ease" },
+  progressBarFill: { height: "100%", transition: "width 0.4s ease", borderRadius: 3 },
 
-  // Controls & Panels
-  quickControlBar: { background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: 16, padding: 16, marginBottom: 20, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 },
+  // Controls & Panels - Aligned 38px Standard Heights
+  quickControlBar: { background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: 16, padding: "16px 20px", marginBottom: 20, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 14 },
   controlTitle: { fontSize: 13, fontWeight: 900, color: "#0F172A", letterSpacing: "0.4px" },
   controlSub: { fontSize: 12, color: "#64748B", marginTop: 2 },
-  controlBtns: { display: "flex", gap: 8, flexWrap: "wrap" },
+  controlBtns: { display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" },
+  controlActionBtn: { height: 38, background: "#FFFFFF", border: "1px solid #CBD5E1", color: "#1E293B", padding: "0 14px", borderRadius: 8, fontWeight: 800, fontSize: 12, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, boxSizing: "border-box", transition: "all 0.15s ease" },
   actionBtn: { color: "#fff", border: "none", padding: "8px 14px", borderRadius: 8, fontWeight: 800, fontSize: 12, cursor: "pointer" },
-  actionBtnOutline: { background: "#FFFFFF", border: "1px solid #CBD5E1", color: "#1E293B", padding: "8px 14px", borderRadius: 8, fontWeight: 700, fontSize: 12, cursor: "pointer" },
+  actionBtnOutline: { height: 38, background: "#FFFFFF", border: "1px solid #CBD5E1", color: "#1E293B", padding: "0 14px", borderRadius: 8, fontWeight: 700, fontSize: 12, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, boxSizing: "border-box" },
 
-  twoColGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18 },
-  panel: { background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: 16, padding: 18, boxShadow: "0 2px 8px rgba(0,0,0,0.03)" },
-  panelHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 },
+  twoColGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18, alignItems: "stretch", marginBottom: 20 },
+  panel: { background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: 16, padding: "18px 20px", boxShadow: "0 2px 8px rgba(0,0,0,0.03)", display: "flex", flexDirection: "column", height: "100%", boxSizing: "border-box" },
+  panelHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, minHeight: 28 },
   panelTitle: { fontSize: 14, fontWeight: 900, color: "#0F172A" },
   smLinkBtn: { background: "none", border: "none", color: "#0C831F", fontWeight: 800, fontSize: 12, cursor: "pointer" },
 
-  rosterList: { display: "flex", flexDirection: "column", gap: 8 },
-  rosterRow: { display: "flex", justifyContent: "space-between", alignItems: "center", background: "#F8FAFC", border: "1px solid #E2E8F0", padding: "8px 12px", borderRadius: 10 },
+  rosterList: { display: "flex", flexDirection: "column", gap: 8, flex: 1 },
+  rosterRow: { display: "flex", justifyContent: "space-between", alignItems: "center", background: "#F8FAFC", border: "1px solid #E2E8F0", padding: "8px 12px", borderRadius: 10, minHeight: 46, boxSizing: "border-box" },
   rosterLeft: { display: "flex", alignItems: "center", gap: 10 },
   rosterAvatar: { fontSize: 18 },
   rosterName: { fontSize: 13, fontWeight: 800, color: "#0F172A" },

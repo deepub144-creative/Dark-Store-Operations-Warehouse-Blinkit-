@@ -838,12 +838,12 @@ export default function DailyOperationsExportButton({
         }}
         title="Download Today's Dark Store Operations Report (Excel, CSV, HTML, Word, PDF)"
         style={{
-          width: 44,
-          height: 44,
+          width: 38,
+          height: 38,
           display: "grid",
           placeItems: "center",
           border: "0",
-          borderRadius: 10,
+          borderRadius: 8,
           background: "#2556e8",
           color: "#ffffff",
           cursor: "pointer",
