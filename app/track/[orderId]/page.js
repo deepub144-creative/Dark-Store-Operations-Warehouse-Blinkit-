@@ -17,6 +17,12 @@ import { playSuccessChime, playNotificationChime } from "@/lib/soundSystem";
 import AuditxLogo from "@/components/AuditxLogo";
 import DeliveryReceiptModal from "@/components/DeliveryReceiptModal";
 import {
+  IOSMobileShell,
+  IOSNavBar,
+  IOSBottomSheet,
+  IOSToast,
+} from "@/components/ios";
+import {
   IconArrowLeft,
   IconPhone,
   IconCreditCard,
@@ -557,45 +563,71 @@ export default function TrackOrderPage() {
     y: Math.round(185 + (248 - 185) * Math.sin((routePct * Math.PI) / 2)),
   };
 
+  const timelineStepIdx = isDelivered
+    ? 3
+    : trackingStage === "en_route" ||
+      trackingStage === "almost_doorstep" ||
+      trackingStage === "rider_arrived" ||
+      isDispatched ||
+      isStaged
+    ? 2
+    : trackingStage === "packing" || trackingStage === "packed_assigning"
+    ? 1
+    : 0;
+
   return (
-    <div style={S.pageBackground}>
-      {toastMessage && (
-        <div style={S.toast}>
-          <IconCheck size={16} color="#ffffff" />
-          <span>{toastMessage}</span>
-        </div>
-      )}
+    <>
+      <IOSToast message={toastMessage} />
 
-      {/* Smartphone Device Shell Container */}
-      <div style={S.mobileShell}>
-        {/* ── 1. TOP GREEN HEADER (EXACT BLINKIT HEADER) ── */}
-        <header style={S.topGreenHeader}>
-          {/* Navigation & Header Content */}
-          <div style={S.greenNavRow}>
-            <button
-              type="button"
-              style={S.backArrowBtn}
-              onClick={() => router.push("/ordering")}
-              title="Back to Ordering"
-            >
-              <IconArrowLeft size={22} color="#ffffff" />
-            </button>
-
-            <div style={S.headerCenterInfo}>
-              <div style={S.packingSubText}>{phaseText}</div>
-              <h1 style={S.arrivingTitle}>{arrivalTitle}</h1>
-            </div>
-
-            <button
-              type="button"
-              style={S.supportHelpBtn}
-              onClick={() => setShowComplaintDrawer(true)}
-              title="Help & Support"
-            >
-              Help
-            </button>
+      <IOSMobileShell
+        onSwipeBack={() => router.push("/ordering")}
+        onRefresh={() => {
+          dispatchCloudAction("HEARTBEAT", { orderId: activeOrder?.id || orderId });
+        }}
+        header={
+          <IOSNavBar
+            title={arrivalTitle}
+            showLargeTitle={false}
+            onBack={() => router.push("/ordering")}
+            backLabel="Store"
+            right={
+              <button
+                type="button"
+                onClick={() => setShowComplaintDrawer(true)}
+                style={{
+                  background: "rgba(0, 122, 255, 0.12)",
+                  color: "#007AFF",
+                  border: "none",
+                  borderRadius: 10,
+                  padding: "6px 12px",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  minHeight: 34,
+                }}
+              >
+                Help
+              </button>
+            }
+          />
+        }
+      >
+        {/* Status Banner Strip */}
+        <div
+          style={{
+            background: isCancelled ? "#FF3B30" : "#0C831F",
+            color: "#FFFFFF",
+            padding: "12px 16px",
+            textAlign: "center",
+          }}
+        >
+          <div style={{ fontSize: 12, fontWeight: 700, opacity: 0.9, textTransform: "uppercase", letterSpacing: 0.5 }}>
+            {phaseText}
           </div>
-        </header>
+          <div className="ios-title" style={{ color: "#FFFFFF", marginTop: 2 }}>
+            {arrivalTitle}
+          </div>
+        </div>
 
         {/* Single concise delay line under header when packing exceeds initial window */}
         {trackingStage === "packing" && pickerDelayMins > 0 && (
@@ -697,6 +729,72 @@ export default function TrackOrderPage() {
             >
               <IconTarget size={16} color="#0c831f" />
             </button>
+          </div>
+        </section>
+
+        {/* ── VERTICAL STEP TIMELINE (Placed, Packing, On the way, Delivered) ── */}
+        <section style={{ padding: "10px 12px 0" }}>
+          <div className="ios-card" style={{ padding: "14px 16px" }}>
+            <div className="ios-caption" style={{ color: "var(--ios-label-2)", fontWeight: 700, textTransform: "uppercase", marginBottom: 10 }}>
+              Order Progress
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+              {[
+                { key: "placed", label: "Placed", sub: "Order confirmed at Tiptur Hub KA44" },
+                { key: "packing", label: "Packing", sub: "OD Picker picking from aisle bins" },
+                { key: "on_the_way", label: "On the way", sub: "Rider Captain en route to destination" },
+                { key: "delivered", label: "Delivered", sub: "Order handed over at doorstep" },
+              ].map((step, idx) => {
+                const done = idx <= timelineStepIdx;
+                const active = idx === timelineStepIdx && !isDelivered;
+                return (
+                  <div key={step.key} style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", width: 22 }}>
+                      <div
+                        className={active ? "ios-badge-pop" : undefined}
+                        style={{
+                          width: 22,
+                          height: 22,
+                          borderRadius: "50%",
+                          background: done ? "#34C759" : "var(--ios-fill)",
+                          color: done ? "#FFFFFF" : "var(--ios-label-2)",
+                          display: "grid",
+                          placeItems: "center",
+                          fontSize: 11,
+                          fontWeight: 800,
+                          boxShadow: active ? "0 0 0 4px rgba(52, 199, 89, 0.22)" : "none",
+                          transition: "background 260ms ease, box-shadow 260ms ease",
+                        }}
+                      >
+                        {done ? "✓" : idx + 1}
+                      </div>
+                      {idx < 3 && (
+                        <div style={{ width: 2, height: 22, background: "var(--ios-fill)", overflow: "hidden", margin: "2px 0" }}>
+                          <div
+                            style={{
+                              width: "100%",
+                              height: "100%",
+                              background: "#34C759",
+                              transformOrigin: "top center",
+                              transform: `scaleY(${idx < timelineStepIdx ? 1 : 0})`,
+                              transition: "transform 360ms var(--ios-spring)",
+                            }}
+                          />
+                        </div>
+                      )}
+                    </div>
+                    <div style={{ paddingBottom: idx < 3 ? 10 : 0 }}>
+                      <div className="ios-subhead" style={{ fontWeight: done ? 700 : 500, color: done ? "var(--ios-label)" : "var(--ios-label-2)" }}>
+                        {step.label}
+                      </div>
+                      <div className="ios-caption" style={{ color: "var(--ios-label-2)" }}>
+                        {step.sub}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </section>
 
@@ -1307,25 +1405,16 @@ export default function TrackOrderPage() {
             </button>
           </div>
         )}
-      </div>
+      </IOSMobileShell>
 
-      {/* ── PAY ONLINE MODAL ── */}
-      {showPayModal && (
-        <div style={S.modalOverlay} onClick={() => setShowPayModal(false)}>
-          <div style={S.payModalSheet} onClick={(e) => e.stopPropagation()}>
-            <div style={S.modalHeaderRow}>
-              <div>
-                <h3 style={S.modalTitle}>Pay ₹{activeOrder.totalAmount} Online</h3>
-                <div style={S.modalSub}>1-Tap instant UPI checkout for contactless delivery</div>
-              </div>
-              <button
-                type="button"
-                style={S.modalCloseBtn}
-                onClick={() => setShowPayModal(false)}
-              >
-                <IconClose size={20} color="#64748B" />
-              </button>
-            </div>
+      {/* ── PAY ONLINE BOTTOM SHEET ── */}
+      <IOSBottomSheet
+        isOpen={showPayModal}
+        onClose={() => setShowPayModal(false)}
+        title={`Pay ₹${activeOrder.totalAmount} Online`}
+        subtitle="1-Tap instant UPI checkout for contactless delivery"
+        detent="medium"
+      >
 
             <div style={S.upiMethodsGrid}>
               {[
@@ -1379,27 +1468,16 @@ export default function TrackOrderPage() {
               <IconRealLogoAuditxWallet size={24} />
               <span>Pay with AUDIT'X Wallet</span>
             </button>
-          </div>
-        </div>
-      )}
+      </IOSBottomSheet>
 
-      {/* ── COMPLAINT / SUPPORT DRAWER ── */}
-      {showComplaintDrawer && (
-        <div style={S.modalOverlay} onClick={() => setShowComplaintDrawer(false)}>
-          <div style={S.complaintSheet} onClick={(e) => e.stopPropagation()}>
-            <div style={S.modalHeaderRow}>
-              <div>
-                <h3 style={S.modalTitle}>Help & Live Support</h3>
-                <div style={S.modalSub}>Direct connection to <b>Store Manager (KA44 Tiptur HUB)</b></div>
-              </div>
-              <button
-                type="button"
-                style={S.modalCloseBtn}
-                onClick={() => setShowComplaintDrawer(false)}
-              >
-                <IconClose size={20} color="#64748B" />
-              </button>
-            </div>
+      {/* ── COMPLAINT / SUPPORT BOTTOM SHEET ── */}
+      <IOSBottomSheet
+        isOpen={showComplaintDrawer}
+        onClose={() => setShowComplaintDrawer(false)}
+        title="Help & Live Support"
+        subtitle="Store Manager (KA44 Tiptur HUB)"
+        detent="medium"
+      >
 
             <form onSubmit={submitComplaint} style={S.complaintForm}>
               <div style={S.formGroup}>
@@ -1437,16 +1515,14 @@ export default function TrackOrderPage() {
                 {submittingComplaint ? "Sending..." : "Submit to Store Manager →"}
               </button>
             </form>
-          </div>
-        </div>
-      )}
+      </IOSBottomSheet>
       {/* ── DELIVERY RECEIPT MODAL ── */}
       <DeliveryReceiptModal
         order={activeOrder}
         isOpen={showReceiptModal}
         onClose={() => setShowReceiptModal(false)}
       />
-    </div>
+    </>
   );
 }
 
@@ -2179,18 +2255,21 @@ const S = {
     color: "#334155",
   },
   formSelect: {
-    padding: "8px 12px",
-    borderRadius: 8,
-    border: "1px solid #CBD5E1",
-    fontSize: 13,
-    background: "#FFFFFF",
+    padding: "10px 12px",
+    borderRadius: 12,
+    border: "0.5px solid var(--ios-sep)",
+    fontSize: 16,
+    background: "var(--ios-fill-secondary)",
+    color: "var(--ios-label)",
     outline: "none",
   },
   formTextarea: {
-    padding: "8px 12px",
-    borderRadius: 8,
-    border: "1px solid #CBD5E1",
-    fontSize: 13,
+    padding: "10px 12px",
+    borderRadius: 12,
+    border: "0.5px solid var(--ios-sep)",
+    fontSize: 16,
+    background: "var(--ios-fill-secondary)",
+    color: "var(--ios-label)",
     outline: "none",
     fontFamily: "inherit",
   },

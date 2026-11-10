@@ -35,6 +35,15 @@ import SmDutyQrScannerModal from "@/components/SmDutyQrScannerModal";
 import DutyToggleSwitch from "@/components/DutyToggleSwitch";
 import AuditxSuiteTopBar from "@/components/AuditxSuiteTopBar";
 import {
+  IOSNavBar,
+  IOSTabBar,
+  IOSSwipeRow,
+  IOSToast,
+  IOSButton,
+  IOSGroupedList,
+  IOSListRow,
+} from "@/components/ios";
+import {
   IconAnimPicker,
   IconAnimPutaway,
   IconAnimInventoryAudit,
@@ -288,6 +297,8 @@ export default function OdPickerApp() {
   const [remainingSec, setRemainingSec] = useState(PICKER_SLA_SECONDS);
   const [elapsedSec, setElapsedSec] = useState(0);
   const [activeStep, setActiveStep] = useState("accept"); // accept | picking | staging | complete
+  const [pickerTab, setPickerTab] = useState("new_orders"); // new_orders | in_progress | packed
+  const [packedHistory, setPackedHistory] = useState([]);
   const [actionSuccess, setActionSuccess] = useState("");
   const [manualCodeInput, setManualCodeInput] = useState("");
   const [scannerOpen, setScannerOpen] = useState(true);
@@ -475,6 +486,10 @@ export default function OdPickerApp() {
     setSelectedItemIdx(0);
     setCaptainScannedRack(false);
     setActiveStep("picking");
+    setPickerTab("in_progress");
+    try {
+      navigator.vibrate?.(12);
+    } catch {}
 
     updateLiveOrder(order.id, {
       status: "picking",
@@ -709,6 +724,9 @@ export default function OdPickerApp() {
     if (!items[targetIdx]) return;
 
     playScanSuccess();
+    try {
+      navigator.vibrate?.(12);
+    } catch {}
     setPickedItemsMap((prev) => ({ ...prev, [targetIdx]: true }));
     setBarcodeScannedMap((prev) => ({ ...prev, [targetIdx]: true }));
     setAisleScannedMap((prev) => ({ ...prev, [targetIdx]: true }));
@@ -850,9 +868,24 @@ export default function OdPickerApp() {
 
     // 1. Immediately reset state so UI instantly returns to home task searching frame
     playSuccessChime();
+    try {
+      navigator.vibrate?.([15, 40, 20]);
+    } catch {}
+    setPackedHistory((prev) => [
+      {
+        id: currentOrder.id,
+        orderNumber: currentOrder.orderNumber || currentOrder.id,
+        rackId: currentRack.id,
+        pickTimeSec: finalSec,
+        itemCount: (currentOrder.items || []).length,
+        completedAt: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      },
+      ...prev.slice(0, 19),
+    ]);
     setActiveOrder(null);
     activeOrderRef.current = null;
     setActiveStep("accept");
+    setPickerTab("new_orders");
     setPickedItemsMap({});
     setBarcodeScannedMap({});
     setAisleScannedMap({});
@@ -952,6 +985,112 @@ export default function OdPickerApp() {
   // QR Code URL for the assigned rack (Local static delivery QR for high reliability)
   const rackQrUrl = "/delivery-qr.png";
 
+  const pickerHeaderElement = isPickerLoggedIn ? (
+    <IOSNavBar
+      largeTitle={
+        pickerTab === "in_progress"
+          ? activeStep === "staging"
+            ? "Stage Bag"
+            : "Pick List"
+          : pickerTab === "packed"
+          ? "Packed"
+          : "New Orders"
+      }
+      subtitle="Thrupthi K S • MOTOROLA"
+      onBack={
+        activeStep !== "accept" && pickerTab !== "new_orders"
+          ? () => {
+              if (activeStep === "staging") setActiveStep("picking");
+              else setPickerTab("new_orders");
+            }
+          : undefined
+      }
+      backLabel="Orders"
+      subHeader={
+        <div>
+          <AuditxSuiteTopBar
+            variant="picker"
+            isDutyOn={isOnline}
+            onDutyToggle={handleToggleDuty}
+            onExit={() => {
+              const statusUpdatedAt = Date.now();
+              setIsPickerLoggedIn(false);
+              setIsOnline(false);
+              try {
+                localStorage.removeItem("auditx_picker_authenticated");
+                localStorage.removeItem("auditx_picker_auth_date");
+                recordLocalStaffDuty({
+                  staffId: "thrupthi",
+                  staffName: "Thrupthi K S",
+                  deviceName: "MOTOROLA",
+                  deviceStatus: "LOGGED_OUT",
+                  statusUpdatedAt,
+                });
+              } catch (e) {}
+              broadcastEvent("STAFF_STATUS_CHANGED", {
+                staffId: "thrupthi",
+                staffName: "Thrupthi K S",
+                roleCode: "PICKER",
+                status: "offline",
+                deviceStatus: "LOGGED_OUT",
+                deviceName: "MOTOROLA",
+                deviceId: "MOTOROLA",
+                statusUpdatedAt,
+                time: new Date(statusUpdatedAt).toISOString(),
+              });
+              dispatchCloudAction("UPDATE_STAFF_DUTY", {
+                staffId: "thrupthi",
+                staffName: "Thrupthi K S",
+                deviceName: "MOTOROLA",
+                deviceStatus: "LOGGED_OUT",
+                statusUpdatedAt,
+              });
+            }}
+            walletAmount={28}
+            userName="Thrupthi K S"
+            userAvatarSrc="/thrupthi-logo.png"
+          />
+          <div
+            style={{
+              marginTop: 6,
+              padding: "6px 10px",
+              borderRadius: 12,
+              background: "var(--ios-fill-secondary)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 8,
+            }}
+          >
+            <span className="ios-caption" style={{ color: "var(--ios-label)", fontWeight: 600 }}>
+              ⏱ {formatLiveTrackingTime(loginSeconds)} • Shift {formatCumulativeShiftHours(loginSeconds)}
+            </span>
+            <span className="ios-caption" style={{ color: "#0C831F", fontWeight: 700 }}>
+              SLA &lt; 2:00
+            </span>
+          </div>
+        </div>
+      }
+    />
+  ) : null;
+
+  const pickerTabBarElement = isPickerLoggedIn ? (
+    <IOSTabBar
+      activeId={pickerTab}
+      onChange={(nextTab) => {
+        setPickerTab(nextTab);
+        if (nextTab === "in_progress" && activeOrder) {
+          if (activeStep === "accept") setActiveStep("picking");
+        }
+      }}
+      tabs={[
+        { id: "new_orders", label: "New Orders", icon: "inbox", badge: unassignedOrders.length },
+        { id: "in_progress", label: "In Progress", icon: "bolt", badge: activeOrder && activeStep !== "complete" ? 1 : 0 },
+        { id: "packed", label: "Packed", icon: "checkCircle", badge: packedHistory.length },
+      ]}
+    />
+  ) : null;
+
   return (
     <AndroidPhoneShell
       appName="MOTOROLA"
@@ -959,6 +1098,31 @@ export default function OdPickerApp() {
       statusBarColor="#0f172a"
       homeRoute="/picker"
       navBg="#ffffff"
+      iosHeader={pickerHeaderElement}
+      iosTabBar={pickerTabBarElement}
+      iosOverlay={
+        <>
+          <IOSToast message={actionSuccess} />
+          {phoneCameraModal && (
+            <PhoneCameraScannerModal
+              modalData={phoneCameraModal}
+              onClose={() => setPhoneCameraModal(null)}
+              onScanSuccess={handleCameraScanResult}
+            />
+          )}
+        </>
+      }
+      onRefresh={() => {
+        dispatchCloudAction("HEARTBEAT", { staffId: "thrupthi" });
+      }}
+      onSwipeBack={
+        isPickerLoggedIn && (pickerTab === "in_progress" || activeStep === "staging")
+          ? () => {
+              if (activeStep === "staging") setActiveStep("picking");
+              else setPickerTab("new_orders");
+            }
+          : undefined
+      }
     >
       {!isPickerLoggedIn ? (
         <StaffAppLoginScreen
@@ -1010,81 +1174,13 @@ export default function OdPickerApp() {
           }}
         />
       ) : (
-        <div style={S.container}>
-          {actionSuccess && <div style={S.toast}>{actionSuccess}</div>}
-
-          {/* ── 1. TOP HEADER (AUDIT'X SUITE TOP BAR DESIGN SPEC) ── */}
-          <AuditxSuiteTopBar
-            variant="picker"
-            isDutyOn={isOnline}
-            onDutyToggle={handleToggleDuty}
-            onExit={() => {
-              const statusUpdatedAt = Date.now();
-              setIsPickerLoggedIn(false);
-              setIsOnline(false);
-              try {
-                localStorage.removeItem("auditx_picker_authenticated");
-                localStorage.removeItem("auditx_picker_auth_date");
-                recordLocalStaffDuty({
-                  staffId: "thrupthi",
-                  staffName: "Thrupthi K S",
-                  deviceName: "MOTOROLA",
-                  deviceStatus: "LOGGED_OUT",
-                  statusUpdatedAt,
-                });
-              } catch (e) {}
-              broadcastEvent("STAFF_STATUS_CHANGED", {
-                staffId: "thrupthi",
-                staffName: "Thrupthi K S",
-                roleCode: "PICKER",
-                status: "offline",
-                deviceStatus: "LOGGED_OUT",
-                deviceName: "MOTOROLA",
-                deviceId: "MOTOROLA",
-                statusUpdatedAt,
-                time: new Date(statusUpdatedAt).toISOString(),
-              });
-              dispatchCloudAction("UPDATE_STAFF_DUTY", {
-                staffId: "thrupthi",
-                staffName: "Thrupthi K S",
-                deviceName: "MOTOROLA",
-                deviceStatus: "LOGGED_OUT",
-                statusUpdatedAt,
-              });
-            }}
-            walletAmount={28}
-            userName="Thrupthi K S"
-            userAvatarSrc="/thrupthi-logo.png"
-          />
-
-          {/* Sub-bar: Live Login Hours & OD Picker SLA Bar */}
-          <header style={{ ...S.topHeader, paddingTop: 4, paddingBottom: 4 }}>
-            <div style={S.headerContainer}>
-              <div style={S.etaAddressBar}>
-                <div style={S.etaAddressLeft}>
-                  <div style={S.etaBadgeRow}>
-                    <div style={S.lightningPill}>
-                      ⏱️
-                    </div>
-                    <div style={S.etaTitle}>
-                      Live Tracking: <span style={S.etaMinutes}>{formatLiveTrackingTime(loginSeconds)}</span> • Login Hours: <span style={S.etaMinutes}>{formatCumulativeShiftHours(loginSeconds)}</span>
-                    </div>
-                  </div>
-                  <div style={S.addressSnippetRow}>
-                    <span>📍 Warehouse Bay • MOTOROLA • SLA Target: 2 Mins</span>
-                  </div>
-                </div>
-                <span style={S.roleBadgeTag}>OD PICKER LEAD</span>
-              </div>
-            </div>
-          </header>
-
-        {/* MAIN BODY — WHITE THEME */}
-        <main style={S.main}>
+        <div style={{ ...S.container, background: "transparent", paddingBottom: 24 }}>
+        {/* MAIN BODY — NATIVE iOS STACK */}
+        <main key={pickerTab} className="ios-tab-crossfade" style={S.main}>
           {/* ════════════════════════════════════════════════════════
-              STEP 1: AWAITING LIVE ORDERS & HOME WORKSPACE
+              TAB 1: NEW ORDERS QUEUE
           ════════════════════════════════════════════════════════ */}
-          {activeStep === "accept" && (
+          {pickerTab === "new_orders" && (
             <div>
               {/* ── HOME TASK SEARCHING VIDEO (ALWAYS VISIBLE & PLAYING ON HOME) ── */}
               <div
@@ -1212,7 +1308,7 @@ export default function OdPickerApp() {
                           📋 {(ord.items || []).length} SKUs to pick inside warehouse aisles
                         </div>
 
-                        {/* SLIDE TO ACCEPT & START 2-MIN TIMER */}
+                        {/* SLIDE TO ACCEPT OR ONE-HAND 56PX ACCEPT */}
                         <div style={{ marginTop: 14 }}>
                           <SlideButton
                             text="SLIDE TO ACCEPT & START 2-MIN TIMER"
@@ -1222,9 +1318,14 @@ export default function OdPickerApp() {
                           />
                         </div>
 
-                        <button style={S.quickAcceptBtn} onClick={() => handleAcceptOrder(ord)}>
-                          ⚡ Quick Tap Accept & Start 2:00 Min Timer
-                        </button>
+                        <IOSButton
+                          variant="green"
+                          minHeight={56}
+                          onClick={() => handleAcceptOrder(ord)}
+                          style={{ marginTop: 4 }}
+                        >
+                          ⚡ Accept Order • {(ord.items || []).length} Items (2:00 SLA)
+                        </IOSButton>
                       </div>
                     );
                   })}
@@ -1240,15 +1341,65 @@ export default function OdPickerApp() {
           )}
 
           {/* ════════════════════════════════════════════════════════
-              STEP 2: ACTIVE PICKING WITH EXACT USER LAYOUT
-              - Left side: Item picture from ordering app
-              - Left down: Plus icon & no of units
-              - Right side: Aisle location & barcode
-              - Item scanner: Barcode & Aisle location
-              - Down bar rectangle: Item Picked option -> Handover
+              TAB 2: IN PROGRESS (ACTIVE PICKING & STAGING)
           ════════════════════════════════════════════════════════ */}
-          {activeStep === "picking" && activeOrder && (
+          {pickerTab === "in_progress" && !activeOrder && (
+            <div className="ios-card" style={{ padding: 28, textAlign: "center" }}>
+              <div style={{ fontSize: 36, marginBottom: 8 }}>📦</div>
+              <div className="ios-headline" style={{ marginBottom: 4 }}>No Order In Progress</div>
+              <div className="ios-footnote" style={{ color: "var(--ios-label-2)", marginBottom: 16 }}>
+                Accept an incoming order from New Orders to start the 2-minute pick SLA.
+              </div>
+              <IOSButton minHeight={52} onClick={() => setPickerTab("new_orders")}>
+                Go to New Orders
+              </IOSButton>
+            </div>
+          )}
+
+          {pickerTab === "in_progress" && activeStep === "picking" && activeOrder && (
             <div>
+              {/* TOP STICKY-FEEL PICK PROGRESS BAR ("3 of 8 picked") */}
+              <div
+                className="ios-card"
+                style={{
+                  padding: "12px 14px",
+                  marginBottom: 12,
+                  border: remainingSec <= 30 ? "1.5px solid #FF3B30" : remainingSec <= 60 ? "1.5px solid #FF9500" : "0.5px solid var(--ios-card-border)",
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                  <span className="ios-headline" style={{ color: "var(--ios-label)" }}>
+                    {pickedCount} of {items.length} picked
+                  </span>
+                  <span
+                    style={{
+                      padding: "4px 10px",
+                      borderRadius: 99,
+                      fontSize: 13,
+                      fontWeight: 800,
+                      color: "#FFFFFF",
+                      background: elapsedSec > 120 || remainingSec <= 30 ? "#FF3B30" : remainingSec <= 60 ? "#FF9500" : "#34C759",
+                      fontVariantNumeric: "tabular-nums",
+                    }}
+                  >
+                    {elapsedSec > 120
+                      ? `+${Math.floor((elapsedSec - 120) / 60).toString().padStart(2, "0")}:${((elapsedSec - 120) % 60).toString().padStart(2, "0")} DELAY`
+                      : `${minStr}:${secStr}`}
+                  </span>
+                </div>
+                <div style={{ height: 8, borderRadius: 99, background: "var(--ios-fill)", overflow: "hidden" }}>
+                  <div
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                      background: allPicked ? "#34C759" : "#007AFF",
+                      transformOrigin: "left center",
+                      transform: `scaleX(${items.length > 0 ? Math.min(1, pickedCount / items.length) : 0})`,
+                      transition: "transform 300ms var(--ios-spring)",
+                    }}
+                  />
+                </div>
+              </div>
               {/* 2-MINUTE SLA STOPWATCH WIDGET — WHITE THEME */}
               <div
                 style={{
@@ -1325,7 +1476,7 @@ export default function OdPickerApp() {
                 </div>
               </div>
 
-              {/* ITEMS LIST WITH EXACT USER LAYOUT */}
+              {/* ITEMS LIST WITH ONE-HAND 56PX TARGETS & SWIPE-RIGHT TO PICK */}
               <div style={S.itemsList}>
                 {items.map((item, idx) => {
                   const isPicked = !!pickedItemsMap[idx];
@@ -1337,166 +1488,160 @@ export default function OdPickerApp() {
                   return (
                     <div
                       key={idx}
-                      onClick={() => setSelectedItemIdx(idx)}
-                      style={{
-                        ...S.itemCard,
-                        borderColor: isPicked
-                          ? "#10b981"
-                          : isSelected
-                          ? "#0c831f"
-                          : "#e2e8f0",
-                        background: isPicked ? "#f0fdf4" : isSelected ? "#ffffff" : "#fbfcfd",
-                        boxShadow: isSelected ? "0 4px 16px rgba(12, 131, 31, 0.12)" : "0 1px 4px rgba(0,0,0,0.04)",
-                      }}
+                      className="ios-stagger-item"
+                      style={{ animationDelay: `${Math.min(idx, 8) * 30}ms` }}
                     >
-                      <div style={S.itemMainRow}>
-                        {/* ─── LEFT SIDE: ITEM PICTURE FROM ORDERING APP ─── */}
-                        <div style={S.itemLeftCol}>
-                          <div style={S.itemImgWrapper}>
-                            <img
-                              src={item.image || item.imageUrl || "https://images.unsplash.com/photo-1546548970-71785318a17b?auto=format&fit=crop&w=300&q=80"}
-                              alt={item.name}
-                              style={S.itemImg}
-                              onError={(e) => {
-                                e.target.src = "https://images.unsplash.com/photo-1546548970-71785318a17b?auto=format&fit=crop&w=300&q=80";
-                              }}
-                            />
-                            {isPicked && <div style={S.imgPickedOverlay}>✅</div>}
-                          </div>
-
-                          {/* ─── LEFT DOWN: PLUS ICON & NO OF UNITS ─── */}
-                          <div style={S.unitBadge}>
-                            <span style={S.plusIcon}>+</span>
-                            <span style={S.unitCount}>{item.qty || 1} {item.qty > 1 ? "Units" : "Unit"}</span>
-                          </div>
-                        </div>
-
-                        {/* ─── RIGHT SIDE: ITEM DETAILS & CLEAN AISLE MENTION ─── */}
-                        <div style={S.itemRightCol}>
-                          <div style={S.itemName}>{item.name}</div>
-
-                          <div style={S.itemMetaRow}>
-                            <span style={S.itemCategory}>{item.category || "Warehouse Inventory"}</span>
-                            <span>•</span>
-                            <span style={S.itemPrice}>₹{item.price || 0}</span>
-                          </div>
-
-                          {/* JUST MENTION AISLE LOCATION THAT'S IT */}
-                          <div style={S.aisleCleanMention}>
-                            <span style={{ fontSize: 13 }}>📍</span>
-                            <span style={S.aisleCleanText}>
-                              Aisle Location: <b style={{ color: "#0f172a" }}>{aisleCode}</b>
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* ─── DEDICATED OPTION BARS: SCAN AISLE & SCAN ITEM BARCODE VIA PHONE CAMERA ─── */}
-                      {!isPicked && (
-                        <div style={S.scannerOptionBarsContainer}>
-                          {/* 1. SCAN AISLE OPTION BAR (OPENS PHONE CAMERA) */}
-                          <div
-                            style={{
-                              ...S.optionBarCard,
-                              background: isAisleDone ? "#f0fdf4" : "#ffffff",
-                              borderColor: isAisleDone ? "#86efac" : "#cbd5e1",
-                            }}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              openPhoneScanner("aisle", aisleCode, idx);
-                            }}
-                          >
-                            <div style={S.optionBarLeft}>
-                              <span style={S.optionBarIcon}>📍</span>
-                              <div style={S.optionBarTextGroup}>
-                                <div style={S.optionBarTitle}>
-                                  Aisle: <b>{aisleCode}</b>
-                                </div>
-                                <div style={{ ...S.optionBarStatus, color: isAisleDone ? "#15803d" : "#d97706" }}>
-                                  {isAisleDone ? "✅ Aisle Verified" : "⏳ Tap bar or button to scan"}
-                                </div>
-                              </div>
-                            </div>
-
-                            <button
-                              type="button"
-                              style={{
-                                ...S.optionBarActionBtn,
-                                background: isAisleDone ? "#10b981" : "#d97706",
-                              }}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                openPhoneScanner("aisle", aisleCode, idx);
-                              }}
-                            >
-                              {isAisleDone ? "✅ Aisle Verified" : "📷 Scan Aisle via Phone Camera"}
-                            </button>
-                          </div>
-
-                          {/* 2. SCAN ITEM BARCODE OPTION BAR (OPENS PHONE CAMERA) */}
-                          <div
-                            style={{
-                              ...S.optionBarCard,
-                              background: isBarcodeDone ? "#f0fdf4" : "#ffffff",
-                              borderColor: isBarcodeDone ? "#86efac" : "#cbd5e1",
-                            }}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              openPhoneScanner("barcode", item.barcode || item.skuId, idx);
-                            }}
-                          >
-                            <div style={S.optionBarLeft}>
-                              <span style={S.optionBarIcon}>📦</span>
-                              <div style={S.optionBarTextGroup}>
-                                <div style={S.optionBarTitle}>
-                                  Barcode: <b>{item.barcode || item.skuId}</b>
-                                </div>
-                                <div style={{ ...S.optionBarStatus, color: isBarcodeDone ? "#15803d" : "#0284c7" }}>
-                                  {isBarcodeDone ? "✅ Barcode Verified" : "⏳ Tap bar or button to scan"}
-                                </div>
-                              </div>
-                            </div>
-
-                            <button
-                              type="button"
-                              style={{
-                                ...S.optionBarActionBtn,
-                                background: isBarcodeDone ? "#10b981" : "#0284c7",
-                              }}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                openPhoneScanner("barcode", item.barcode || item.skuId, idx);
-                              }}
-                            >
-                              {isBarcodeDone ? "✅ Barcode Verified" : "📷 Scan Item Barcode via Phone Camera"}
-                            </button>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* DOWN BAR RECTANGLE "ITEM PICKED" ACTION */}
-                      {!isPicked && (
-                        <button
+                      <IOSSwipeRow
+                        leftActionLabel="Mark Picked"
+                        disabled={isPicked}
+                        onSwipeRight={() => handleMarkItemPicked(idx)}
+                      >
+                        <div
+                          onClick={() => setSelectedItemIdx(idx)}
+                          data-ios-surface="card"
                           style={{
-                            ...S.downBarItemPickedBtn,
-                            background: isBarcodeDone && isAisleDone ? "#0c831f" : "#2563eb",
-                          }}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleMarkItemPicked(idx);
+                            ...S.itemCard,
+                            borderColor: isPicked
+                              ? "#34C759"
+                              : isSelected
+                              ? "#007AFF"
+                              : "var(--ios-card-border)",
+                            background: isPicked ? "rgba(52, 199, 89, 0.10)" : "var(--ios-card)",
+                            borderRadius: 18,
                           }}
                         >
-                          {isBarcodeDone && isAisleDone
-                            ? "📦 ALL SCANNED — CONFIRM ITEM PICKED & ADD TO TOTE"
-                            : "📦 ITEM PICKED — CONFIRM & ADD TO TOTE"}
-                        </button>
-                      )}
+                          <div style={S.itemMainRow}>
+                            {/* ─── LEFT SIDE: ITEM PICTURE ─── */}
+                            <div style={S.itemLeftCol}>
+                              <div style={S.itemImgWrapper}>
+                                <img
+                                  src={item.image || item.imageUrl || "https://images.unsplash.com/photo-1546548970-71785318a17b?auto=format&fit=crop&w=300&q=80"}
+                                  alt={item.name}
+                                  width={72}
+                                  height={72}
+                                  loading="lazy"
+                                  decoding="async"
+                                  style={S.itemImg}
+                                  onError={(e) => {
+                                    e.target.src = "https://images.unsplash.com/photo-1546548970-71785318a17b?auto=format&fit=crop&w=300&q=80";
+                                  }}
+                                />
+                                {isPicked && <div style={S.imgPickedOverlay}>✅</div>}
+                              </div>
 
-                      {isPicked && (
-                        <div style={S.itemPickedSuccessBar}>
-                          ✅ ITEM PICKED &amp; VERIFIED ({item.qty || 1} units in tote)
+                              <div style={S.unitBadge}>
+                                <span style={S.plusIcon}>Qty</span>
+                                <span style={S.unitCount}>{item.qty || 1} {item.qty > 1 ? "Units" : "Unit"}</span>
+                              </div>
+                            </div>
+
+                            {/* ─── RIGHT SIDE: LARGE BOLD AISLE & NAME ─── */}
+                            <div style={S.itemRightCol}>
+                              <div className="ios-headline" style={{ color: "var(--ios-label)", marginBottom: 4 }}>
+                                {item.name}
+                              </div>
+
+                              <div
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: 6,
+                                  padding: "6px 10px",
+                                  borderRadius: 10,
+                                  background: "rgba(0, 122, 255, 0.12)",
+                                  color: "#007AFF",
+                                  fontSize: 16,
+                                  fontWeight: 800,
+                                  letterSpacing: "-0.01em",
+                                }}
+                              >
+                                📍 {aisleCode}
+                              </div>
+
+                              <div className="ios-caption" style={{ color: "var(--ios-label-2)", marginTop: 4 }}>
+                                {item.category || "Warehouse"} • ₹{item.price || 0} {!isPicked && "• Swipe →"}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* NATIVE CAMERA SHORTCUT PILLS */}
+                          {!isPicked && (
+                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 10 }}>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openPhoneScanner("aisle", aisleCode, idx);
+                                }}
+                                style={{
+                                  minHeight: 48,
+                                  borderRadius: 12,
+                                  border: "0.5px solid var(--ios-sep)",
+                                  background: isAisleDone ? "rgba(52,199,89,0.16)" : "var(--ios-fill-secondary)",
+                                  color: isAisleDone ? "#15803d" : "var(--ios-label)",
+                                  fontSize: 13,
+                                  fontWeight: 700,
+                                  cursor: "pointer",
+                                }}
+                              >
+                                {isAisleDone ? "✓ Aisle Ready" : "📷 Scan Aisle"}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openPhoneScanner("barcode", item.barcode || item.skuId, idx);
+                                }}
+                                style={{
+                                  minHeight: 48,
+                                  borderRadius: 12,
+                                  border: "0.5px solid var(--ios-sep)",
+                                  background: isBarcodeDone ? "rgba(52,199,89,0.16)" : "var(--ios-fill-secondary)",
+                                  color: isBarcodeDone ? "#15803d" : "var(--ios-label)",
+                                  fontSize: 13,
+                                  fontWeight: 700,
+                                  cursor: "pointer",
+                                }}
+                              >
+                                {isBarcodeDone ? "✓ Barcode OK" : "📷 Scan Item"}
+                              </button>
+                            </div>
+                          )}
+
+                          {/* ONE-HAND >= 56PX PICKED CTA */}
+                          {!isPicked ? (
+                            <IOSButton
+                              variant={isBarcodeDone && isAisleDone ? "green" : "primary"}
+                              minHeight={56}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleMarkItemPicked(idx);
+                              }}
+                              style={{ marginTop: 10, fontSize: 17, fontWeight: 700 }}
+                            >
+                              ✓ Picked ({item.qty || 1} {item.qty > 1 ? "Units" : "Unit"})
+                            </IOSButton>
+                          ) : (
+                            <div
+                              className="ios-badge-pop"
+                              style={{
+                                marginTop: 10,
+                                minHeight: 48,
+                                borderRadius: 12,
+                                background: "#34C759",
+                                color: "#FFFFFF",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                fontWeight: 700,
+                                fontSize: 15,
+                              }}
+                            >
+                              ✓ Picked &amp; Added to Tote ({item.qty || 1})
+                            </div>
+                          )}
                         </div>
-                      )}
+                      </IOSSwipeRow>
                     </div>
                   );
                 })}
@@ -1575,25 +1720,42 @@ export default function OdPickerApp() {
                 )}
               </div>
 
-              {/* ─── DOWN BAR RECTANGLE: HANDOVER TO ORDER CAPTAIN ─── */}
+              {/* ─── SPRING SUCCESS CHECKMARK + MARK PACKED CTA ─── */}
               {allPicked && (
-                <div style={S.allPickedDownBarCard}>
+                <div className="ios-card ios-badge-pop" style={{ ...S.allPickedDownBarCard, marginTop: 14 }}>
                   <div style={S.allPickedTitleRow}>
-                    <span style={{ fontSize: 24 }}>🎉</span>
+                    <div
+                      style={{
+                        width: 44,
+                        height: 44,
+                        borderRadius: "50%",
+                        background: "#34C759",
+                        color: "#FFFFFF",
+                        display: "grid",
+                        placeItems: "center",
+                        fontSize: 22,
+                        fontWeight: 900,
+                        flexShrink: 0,
+                      }}
+                    >
+                      ✓
+                    </div>
                     <div>
-                      <div style={S.allPickedTitle}>All {items.length} Items Successfully Picked!</div>
+                      <div style={S.allPickedTitle}>All {items.length} Items Picked</div>
                       <div style={S.allPickedSub}>
-                        Ready for staging bag handover to Order Captain <b>Sinchana B R</b>.
+                        Ready for Rack {assignedRack.id} handover to Captain <b>Sinchana B R</b>
                       </div>
                     </div>
                   </div>
 
-                  <button
-                    style={S.handoverToCaptainBtn}
+                  <IOSButton
+                    variant="green"
+                    minHeight={56}
                     onClick={() => setActiveStep("staging")}
+                    style={{ marginTop: 10, fontSize: 17, fontWeight: 700 }}
                   >
-                    🚀 HANDOVER TO ORDER CAPTAIN (SINCHANA B R) →
-                  </button>
+                    Mark Packed &amp; Stage at Rack {assignedRack.id} →
+                  </IOSButton>
                 </div>
               )}
             </div>
@@ -1601,12 +1763,8 @@ export default function OdPickerApp() {
 
           {/* ════════════════════════════════════════════════════════
               STEP 3: ORDER CAPTAIN STAGING HANDOVER
-              - Randomly chosen Rack: B7, H2, D5, H4, T1, T6, B5, S4, T4
-              - Prominently displays the QR CODE for the rack
-              - Once Sinchana B R scans the QR code:
-                Slide bar option down to handover the bag!
           ════════════════════════════════════════════════════════ */}
-          {activeStep === "staging" && activeOrder && (
+          {pickerTab === "in_progress" && activeStep === "staging" && activeOrder && (
             <div style={S.stagingCard}>
               <div style={S.stagingHeader}>
                 <span style={{ fontSize: 36 }}>🏷️</span>
@@ -1769,99 +1927,71 @@ export default function OdPickerApp() {
           )}
 
           {/* ════════════════════════════════════════════════════════
-              STEP 4: COMPLETED SUMMARY + TASK SEARCHING VIDEO
+              TAB 3: PACKED ORDERS & HANDOVER SUMMARY
           ════════════════════════════════════════════════════════ */}
-          {activeStep === "complete" && (
-            <div style={S.completeCard}>
-              {/* TASK SEARCHING MP4 WHEN ALL TASKS COMPLETED */}
-              <div style={{ position: "relative", borderRadius: 14, overflow: "hidden", marginBottom: 16, border: "1.5px solid #10b981", background: "#080c14" }}>
-                <video
-                  autoPlay
-                  loop
-                  muted
-                  playsInline
-                  style={{
-                    width: "100%",
-                    height: 220,
-                    objectFit: "cover",
-                    display: "block",
-                    background: "#080c14",
-                  }}
-                >
-                  <source src="/tasksearching.mp4" type="video/mp4" />
-                  <source src="/task-searching.mp4" type="video/mp4" />
-                  <source src="/videos/task-searching.mp4" type="video/mp4" />
-                </video>
-                <div
-                  style={{
-                    position: "absolute",
-                    bottom: 10,
-                    left: "50%",
-                    transform: "translateX(-50%)",
-                    background: "rgba(15, 23, 42, 0.9)",
-                    backdropFilter: "blur(6px)",
-                    color: "#ffffff",
-                    padding: "6px 14px",
-                    borderRadius: 20,
-                    fontSize: 11,
-                    fontWeight: 700,
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8,
-                    whiteSpace: "nowrap",
-                    boxShadow: "0 2px 8px rgba(0,0,0,0.4)",
-                  }}
-                >
-                  <span
+          {pickerTab === "packed" && (
+            <div>
+              {activeStep === "complete" && (
+                <div className="ios-card ios-badge-pop" style={{ padding: 18, marginBottom: 16, textAlign: "center" }}>
+                  <div
                     style={{
-                      width: 8,
-                      height: 8,
+                      width: 60,
+                      height: 60,
                       borderRadius: "50%",
-                      background: "#10b981",
-                      boxShadow: "0 0 8px #10b981",
-                      display: "inline-block",
+                      background: "#34C759",
+                      color: "#FFFFFF",
+                      display: "grid",
+                      placeItems: "center",
+                      fontSize: 28,
+                      fontWeight: 900,
+                      margin: "0 auto 12px",
                     }}
+                  >
+                    ✓
+                  </div>
+                  <h2 className="ios-title" style={{ margin: "0 0 6px" }}>Rack {assignedRack.id} Packed</h2>
+                  <p className="ios-subhead" style={{ color: "var(--ios-label-2)", marginBottom: 14 }}>
+                    Order #{activeOrder?.orderNumber || activeOrder?.id} staged for Captain Sinchana B R.
+                  </p>
+                  <IOSButton
+                    variant="green"
+                    minHeight={56}
+                    onClick={() => {
+                      handleResetForNextOrder();
+                      setPickerTab("new_orders");
+                    }}
+                  >
+                    Ready for Next Order →
+                  </IOSButton>
+                </div>
+              )}
+
+              <IOSGroupedList
+                header="Packed & Staged Today"
+                footer="Completed orders move directly to Staging Racks for Order Captain dispatch."
+              >
+                {packedHistory.length === 0 ? (
+                  <IOSListRow
+                    title="No packed orders yet"
+                    subtitle="Completed picks will appear here automatically."
+                    last
                   />
-                  <span>All Tasks Completed • Searching Next Live Picker Task...</span>
-                </div>
-              </div>
-
-              <div style={S.successIcon}>🎉</div>
-              <h2 style={S.completeTitle}>Rack {assignedRack.id} Handover to Rider Complete!</h2>
-              <p style={S.completeSub}>
-                Order #{activeOrder?.orderNumber || activeOrder?.id} barcode for <b>Rack {assignedRack.id}</b> has been handed over to Rider Captain <b>Sinchana B R</b>. Ordering app ETA reduced to 8 mins!
-              </p>
-
-              <div style={S.summaryPills}>
-                <div style={S.summaryPill}>
-                  <span style={S.summaryPillLabel}>Pick Time</span>
-                  <b style={S.summaryPillVal}>{elapsedSec}s / 120s</b>
-                </div>
-                <div style={S.summaryPill}>
-                  <span style={S.summaryPillLabel}>Staging Rack</span>
-                  <b style={S.summaryPillVal}>{assignedRack.id}</b>
-                </div>
-                <div style={S.summaryPill}>
-                  <span style={S.summaryPillLabel}>Order Captain</span>
-                  <b style={S.summaryPillVal}>Sinchana B R (6m Transit)</b>
-                </div>
-              </div>
-
-              <button style={S.nextOrderBtn} onClick={handleResetForNextOrder}>
-                Ready for Next Order →
-              </button>
+                ) : (
+                  packedHistory.map((p, i) => (
+                    <IOSListRow
+                      key={`${p.id}-${i}`}
+                      leading={<span style={{ fontSize: 20 }}>📦</span>}
+                      title={`Order #${p.orderNumber}`}
+                      subtitle={`Rack ${p.rackId} • ${p.itemCount} SKUs • ${p.pickTimeSec}s`}
+                      trailing={<span className="ios-caption" style={{ color: "#34C759", fontWeight: 700 }}>{p.completedAt}</span>}
+                      last={i === packedHistory.length - 1}
+                    />
+                  ))
+                )}
+              </IOSGroupedList>
             </div>
           )}
         </main>
-
-        {/* REAL PHONE CAMERA SCANNER MODAL (BARCODE & QR CODE DETECTION) */}
-        {phoneCameraModal && (
-          <PhoneCameraScannerModal
-            modalData={phoneCameraModal}
-            onClose={() => setPhoneCameraModal(null)}
-            onScanSuccess={handleCameraScanResult}
-          />
-        )}
       </div>
       )}
     </AndroidPhoneShell>
@@ -2221,13 +2351,13 @@ const P = {
   },
   manualInput: {
     flex: 1,
-    padding: "9px 12px",
-    borderRadius: 6,
-    border: "1px solid #cbd5e1",
-    fontSize: 12,
+    padding: "10px 12px",
+    borderRadius: 10,
+    border: "1px solid var(--ios-sep)",
+    fontSize: 16,
     outline: "none",
-    background: "#ffffff",
-    color: "#0f172a",
+    background: "var(--ios-fill-secondary)",
+    color: "var(--ios-label)",
   },
   manualSubmitBtn: {
     padding: "9px 14px",
@@ -3031,12 +3161,12 @@ const S = {
   },
   manualInput: {
     flex: 1,
-    padding: "9px 12px",
-    borderRadius: 6,
-    border: "1px solid #cbd5e1",
-    fontSize: 12,
-    color: "#0f172a",
-    background: "#ffffff",
+    padding: "10px 12px",
+    borderRadius: 10,
+    border: "1px solid var(--ios-sep)",
+    fontSize: 16,
+    color: "var(--ios-label)",
+    background: "var(--ios-fill-secondary)",
     outline: "none",
   },
   manualSubmitBtn: {

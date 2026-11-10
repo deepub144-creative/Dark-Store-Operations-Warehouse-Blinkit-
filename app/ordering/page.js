@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState, useMemo, useRef } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { CATALOG } from "@/lib/items";
 import { getDefaultItemStock, mergeCatalogItems } from "@/lib/hubState";
@@ -22,12 +23,38 @@ import { getRandomStagingRack } from "@/lib/roles";
 import DiwaliTheme from "@/lib/diwaliTheme";
 import DiwaliCrackers from "@/lib/diwaliCrackers";
 import AuditxLogo from "@/components/AuditxLogo";
-import AuditxMiniAssistant from "@/components/AuditxMiniAssistant";
 import GoogleAuthButton from "@/components/GoogleAuthButton";
-import OrderPlacedSheet from "@/components/ui/OrderPlacedSheet";
-import DeliveryReceiptModal from "@/components/DeliveryReceiptModal";
 import AuditxSuiteTopBar from "@/components/AuditxSuiteTopBar";
-import LittlePenguin from "@/components/LittlePenguin";
+import {
+  IOSMobileShell,
+  IOSNavBar,
+  IOSTabBar,
+  IOSBottomSheet,
+  IOSStepper,
+  IOSToast,
+  IOSButton,
+  IOSGroupedList,
+  IOSListRow,
+  OrderingSkeletonScreen,
+} from "@/components/ios";
+
+// Route-level / heavy modal code-splitting for 60fps initial mobile paint
+const AuditxMiniAssistant = dynamic(() => import("@/components/AuditxMiniAssistant"), {
+  ssr: false,
+  loading: () => null,
+});
+const OrderPlacedSheet = dynamic(() => import("@/components/ui/OrderPlacedSheet"), {
+  ssr: false,
+  loading: () => null,
+});
+const DeliveryReceiptModal = dynamic(() => import("@/components/DeliveryReceiptModal"), {
+  ssr: false,
+  loading: () => null,
+});
+const LittlePenguin = dynamic(() => import("@/components/LittlePenguin"), {
+  ssr: false,
+  loading: () => null,
+});
 import {
   IconLightning,
   IconRealisticScooter,
@@ -303,6 +330,206 @@ const TIPTUR_FARMS = [
   },
 ];
 
+const OrderingProductCard = memo(function OrderingProductCard({
+  item,
+  idx,
+  qty,
+  availableUnits,
+  isOos,
+  isSoldOut,
+  isChoc,
+  isFrame,
+  isStoreOpen,
+  onUpdateQty,
+  onOpenComingSoon,
+  onStoreClosedToast,
+  S,
+}) {
+  return (
+    <div
+      data-dfx="card"
+      className="ios-stagger-item"
+      style={{
+        ...S.productCard,
+        animationDelay: `${Math.min(idx, 8) * 30}ms`,
+        opacity: isSoldOut ? 0.72 : isOos ? 0.65 : 1,
+        borderRadius: 18,
+        background: "var(--ios-card)",
+        border: isOos
+          ? "1px solid rgba(255, 59, 48, 0.45)"
+          : item.comingSoon
+          ? "1px solid rgba(255, 149, 0, 0.4)"
+          : "0.5px solid var(--ios-card-border)",
+        boxShadow: "var(--ios-card-shadow)",
+      }}
+    >
+      <div style={S.productImageContainer}>
+        <img
+          src={item.image}
+          alt={item.name}
+          width={140}
+          height={116}
+          loading="lazy"
+          decoding="async"
+          onError={(e) => {
+            if (item.image && item.image.startsWith("/frames/")) {
+              const fb = `${JSDELIVR_PUBLIC_CDN}${item.image}`;
+              if (e.target.src !== fb) {
+                e.target.src = fb;
+              }
+            }
+          }}
+          style={{
+            ...S.productImg,
+            ...(isOos ? { filter: "grayscale(35%)" } : {}),
+          }}
+        />
+        {isSoldOut ? (
+          <div
+            style={{
+              position: "absolute",
+              top: 6,
+              left: 6,
+              background: "#FF3B30",
+              color: "#ffffff",
+              fontSize: 9,
+              fontWeight: 800,
+              padding: "3px 7px",
+              borderRadius: 6,
+              letterSpacing: "0.04em",
+              display: "flex",
+              alignItems: "center",
+              gap: 3,
+              zIndex: 2,
+            }}
+          >
+            <span>⛔ SOLD OUT</span>
+          </div>
+        ) : item.comingSoon ? (
+          <div
+            style={{
+              position: "absolute",
+              top: 6,
+              left: 6,
+              background: "#FF9500",
+              color: "#ffffff",
+              fontSize: 9,
+              fontWeight: 800,
+              padding: "3px 7px",
+              borderRadius: 6,
+            }}
+          >
+            <span>⏳ SOON</span>
+          </div>
+        ) : isChoc ? (
+          <div
+            data-dfx="badge"
+            style={{
+              position: "absolute",
+              top: 6,
+              left: 6,
+              background: "#0C831F",
+              color: "#ffffff",
+              fontSize: 9,
+              fontWeight: 800,
+              padding: "2px 6px",
+              borderRadius: 6,
+            }}
+          >
+            <span>{item.isCustomPutaway ? `₹${item.price} NEW` : `₹${item.price}`}</span>
+          </div>
+        ) : isFrame ? (
+          <div
+            data-dfx="badge"
+            style={{
+              position: "absolute",
+              top: 6,
+              left: 6,
+              background: "#1e293b",
+              color: "#f8fafc",
+              fontSize: 9,
+              fontWeight: 800,
+              padding: "2px 6px",
+              borderRadius: 6,
+            }}
+          >
+            <span>{item.isCustomPutaway ? "🖼️ NEW" : "🖼️ FRAME"}</span>
+          </div>
+        ) : null}
+        {!isSoldOut && isOos && (
+          <div style={S.oosBadgeOverlay}>
+            <span>OUT OF STOCK</span>
+          </div>
+        )}
+      </div>
+
+      <div style={S.productDetailsCol}>
+        <h3 style={{ ...S.productName, color: "var(--ios-label)" }}>{item.name}</h3>
+        <div style={{ ...S.productWeight, color: "var(--ios-label-2)" }}>
+          {item.weight} •{" "}
+          <b style={{ color: availableUnits <= 0 ? "#FF3B30" : "#34C759" }}>
+            {availableUnits} left
+          </b>
+        </div>
+
+        <div style={S.productActionRow}>
+          <div>
+            {item.comingSoon ? (
+              <span style={{ fontSize: 12, fontWeight: 700, color: "#FF9500" }}>Soon</span>
+            ) : (
+              <>
+                <span style={{ ...S.productFinalPrice, color: "var(--ios-label)" }}>
+                  ₹{item.price}
+                </span>
+                {item.mrp > item.price && (
+                  <span style={S.productMrpStrike}>₹{item.mrp}</span>
+                )}
+              </>
+            )}
+          </div>
+
+          {item.comingSoon ? (
+            <button
+              type="button"
+              style={{
+                background: "rgba(255,149,0,0.12)",
+                border: "0.5px solid rgba(255,149,0,0.4)",
+                color: "#FF9500",
+                padding: "5px 10px",
+                borderRadius: 8,
+                fontSize: 11,
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+              onClick={onOpenComingSoon}
+            >
+              Soon
+            </button>
+          ) : isSoldOut || isOos ? (
+            <button style={S.productOosBtn} disabled>
+              {isSoldOut ? "Sold out" : "Out"}
+            </button>
+          ) : (
+            <IOSStepper
+              compact
+              value={qty}
+              addLabel="ADD"
+              onIncrement={() => {
+                if (!isStoreOpen) {
+                  onStoreClosedToast();
+                  return;
+                }
+                onUpdateQty(item.sku, 1);
+              }}
+              onDecrement={() => onUpdateQty(item.sku, -1)}
+            />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+});
+
 export default function OrderingAppPage() {
   const router = useRouter();
 
@@ -313,7 +540,19 @@ export default function OrderingAppPage() {
   const [cart, setCart] = useState({});
   const [selectedCategory, setSelectedCategory] = useState("Chocolates");
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
+  const [visibleLimit, setVisibleLimit] = useState(50);
+  const gridLoadMoreRef = useRef(null);
+  const searchInputRef = useRef(null);
   const [loading, setLoading] = useState(true);
+
+  // Debounce search inputs by 250ms to prevent frame drops while typing
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
   const [placingOrder, setPlacingOrder] = useState(false);
   const [toastMessage, setToastMessage] = useState("");
   const [oosList, setOosList] = useState([]);
@@ -324,7 +563,12 @@ export default function OrderingAppPage() {
 
   // Blinkit Cart & Checkout Flow State
   const [isCheckoutView, setIsCheckoutView] = useState(false); // Can view either Catalog or pure Checkout
-  const [activeBottomTab, setActiveBottomTab] = useState("home"); // 'home' | 'order_again' | 'categories' | 'explore_tiptur'
+  const [activeBottomTab, setActiveBottomTab] = useState("home"); // 'home' | 'categories' | 'search' | 'order_again' | 'explore_tiptur'
+
+  // Reset virtual window size when filter changes
+  useEffect(() => {
+    setVisibleLimit(50);
+  }, [selectedCategory, debouncedSearchQuery, activeBottomTab]);
   const [selectedAddress, setSelectedAddress] = useState(SAVED_ADDRESSES[0]);
   const [showAddressModal, setShowAddressModal] = useState(false);
   const [customAddressInput, setCustomAddressInput] = useState("");
@@ -362,6 +606,11 @@ export default function OrderingAppPage() {
   const playedOrderPlacedIds = useRef(new Set());
   const [receiptOrder, setReceiptOrder] = useState(null);
   const [showReceiptModal, setShowReceiptModal] = useState(false);
+
+  // Modal & Overlay visibility state (declared prior to isOrderingHomeActive TDZ guard)
+  const [showComplaintModal, setShowComplaintModal] = useState(false);
+  const [showProfileModal, setShowProfileModal] = useState(false);
+  const [showLoginModal, setShowLoginModal] = useState(false);
 
   // Fullscreen Opening Intro Video Splash (Muted, exact timeline, mobile app shell fit)
   const [showIntroOverlay, setShowIntroOverlay] = useState(true);
@@ -483,7 +732,6 @@ export default function OrderingAppPage() {
   }, [authChecked, showIntroOverlay]);
 
   // Customer Complaint System (Synced with SM Bhaskar N S & ASM Deepu B Dashboard)
-  const [showComplaintModal, setShowComplaintModal] = useState(false);
   const [complaintsTab, setComplaintsTab] = useState("tickets"); // "raise" | "tickets"
   const [complaintOrderId, setComplaintOrderId] = useState("");
   const [complaintCategory, setComplaintCategory] = useState("Missing Item");
@@ -493,8 +741,6 @@ export default function OrderingAppPage() {
   const [customerComplaints, setCustomerComplaints] = useState([]);
 
   // Profile & Customer Login State
-  const [showProfileModal, setShowProfileModal] = useState(false);
-  const [showLoginModal, setShowLoginModal] = useState(false);
   const [loginStep, setLoginStep] = useState("phone"); // 'phone' | 'otp' | 'name'
   const [loginPhone, setLoginPhone] = useState("");
   const [loginOtp, setLoginOtp] = useState("");
@@ -1005,7 +1251,7 @@ export default function OrderingAppPage() {
     return getDefaultItemStock(item);
   }
 
-  function updateQty(sku, delta) {
+  const updateQty = useCallback((sku, delta) => {
     if (!isStoreOpen && delta > 0) {
       triggerToast("🛑 Store is closed right now, ordering soon!");
       return;
@@ -1040,7 +1286,7 @@ export default function OrderingAppPage() {
     if (delta > 0 && item) {
       playSuccessChime();
     }
-  }
+  }, [isStoreOpen, effectiveCatalog, oosList, inventoryStockMap, cart]);
 
   function handleReorderAll(pastOrder) {
     if (!isStoreOpen) {
@@ -1168,14 +1414,39 @@ export default function OrderingAppPage() {
     return ["Chocolates", "Frames"];
   }, []);
 
-  const filteredCatalog = effectiveCatalog.filter((item) => {
-    const matchesSearch =
-      item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (item.aisle && item.aisle.toLowerCase().includes(searchQuery.toLowerCase()));
-    const matchesCategory = item.category === selectedCategory;
-    return matchesSearch && matchesCategory;
-  });
+  const filteredCatalog = useMemo(() => {
+    const q = debouncedSearchQuery.trim().toLowerCase();
+    return effectiveCatalog.filter((item) => {
+      const matchesSearch =
+        !q ||
+        item.name.toLowerCase().includes(q) ||
+        item.category.toLowerCase().includes(q) ||
+        (item.aisle && item.aisle.toLowerCase().includes(q));
+      const matchesCategory = activeBottomTab === "search" ? true : item.category === selectedCategory;
+      return matchesSearch && matchesCategory;
+    });
+  }, [effectiveCatalog, debouncedSearchQuery, activeBottomTab, selectedCategory]);
+
+  const visibleCatalog = useMemo(() => {
+    return filteredCatalog.slice(0, visibleLimit);
+  }, [filteredCatalog, visibleLimit]);
+
+  // Incrementally load next chunk when >50 items via IntersectionObserver (zero scroll layout thrash)
+  useEffect(() => {
+    const sentinel = gridLoadMoreRef.current;
+    if (!sentinel || typeof IntersectionObserver === "undefined") return;
+    if (visibleLimit >= filteredCatalog.length) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          setVisibleLimit((v) => Math.min(filteredCatalog.length, v + 30));
+        }
+      },
+      { rootMargin: "240px" }
+    );
+    io.observe(sentinel);
+    return () => io.disconnect();
+  }, [visibleLimit, filteredCatalog.length]);
 
   // Final Order Placement
   async function handleFinalOrderPlacement() {
@@ -1373,40 +1644,265 @@ export default function OrderingAppPage() {
     }
   }
 
+  const handleStoreClosedToast = useCallback(() => {
+    triggerToast("🛑 Store is closed right now, ordering soon!");
+  }, []);
+
+  const handleOpenComingSoon = useCallback(() => {
+    setShowComingSoonModal(true);
+  }, []);
+
   if (!authChecked) {
-    return <div style={{ minHeight: "100dvh", background: "#080C14" }} />;
+    return <OrderingSkeletonScreen />;
   }
 
   if (capacityBlockedMsg) {
     return (
-      <div style={S.pageWrapper}>
-        <div style={{ ...S.mobileShell, justifyContent: "center", alignItems: "center", padding: 24, textAlign: "center" }}>
-          <div style={{ background: "#ffffff", borderRadius: 20, padding: 26, border: "1.5px solid #fecaca", maxWidth: 360 }}>
+      <IOSMobileShell>
+        <div style={{ display: "flex", justifyContent: "center", alignItems: "center", padding: 24, textAlign: "center", minHeight: "100%" }}>
+          <div className="ios-card" style={{ padding: 26, border: "1px solid rgba(255,59,48,0.4)", maxWidth: 360 }}>
             <div style={{ fontSize: 42, marginBottom: 10 }}>🚫</div>
-            <h2 style={{ margin: "0 0 8px", fontSize: 18, fontWeight: 900, color: "#b91c1c" }}>
+            <h2 style={{ margin: "0 0 8px", fontSize: 18, fontWeight: 900, color: "#FF3B30" }}>
               Daily Capacity Full (400 / 400 Devices)
             </h2>
-            <p style={{ margin: 0, fontSize: 13, color: "#475569", lineHeight: 1.5 }}>
+            <p style={{ margin: 0, fontSize: 13, color: "var(--ios-label-2)", lineHeight: 1.5 }}>
               {capacityBlockedMsg}
             </p>
           </div>
         </div>
-      </div>
+      </IOSMobileShell>
     );
   }
 
-  return (
-    <div style={S.pageWrapper}>
-      {toastMessage && (
-        <div style={S.toast}>
-          <IconCheck size={16} color="#ffffff" />
-          <span>{toastMessage}</span>
-        </div>
-      )}
+  const etaHeadlineText =
+    orderingStage === "rider_arrived"
+      ? "Rider ARRIVED"
+      : orderingStage === "almost_doorstep"
+      ? "Almost at doorstep"
+      : orderingStage === "one_minute"
+      ? "Arriving in 1 MIN"
+      : orderingStage === "delivered" && !rateCompleted
+      ? "Delivered • Rate"
+      : activeDeliveryOrder && orderingStage === "picking" && pickerDelayMins > 0
+      ? `Delivery in ${10 + pickerDelayMins} MINS`
+      : activeDeliveryOrder && deliveryCountdownSec > 0
+      ? `Delivery in ${Math.max(1, Math.ceil(deliveryCountdownSec / 60))} MIN${Math.max(1, Math.ceil(deliveryCountdownSec / 60)) === 1 ? "" : "S"}`
+      : "Delivery in 10 MINS";
 
-      {/* Smartphone Device Shell Container (Dedicated Mobile Layout) */}
-      <div id="ax-ordering-shell" data-dfx="page" style={S.mobileShell}>
-        {/* ── FULLSCREEN MUTED INTRO SPLASH VIDEO OVERLAY (9:16 PORTRAIT, FITS MOBILE APP SHELL) ── */}
+  const activeTabLargeTitle = isCheckoutView
+    ? "Checkout"
+    : activeBottomTab === "categories"
+    ? "Categories"
+    : activeBottomTab === "search"
+    ? "Search"
+    : activeBottomTab === "order_again"
+    ? "Orders"
+    : activeBottomTab === "explore_tiptur"
+    ? "Tiptur Hub"
+    : "AUDIT'X";
+
+  const orderingHeaderElement = (
+    <IOSNavBar
+      largeTitle={activeTabLargeTitle}
+      subtitle="10-Min Hub KA44"
+      onBack={
+        isCheckoutView
+          ? () => setIsCheckoutView(false)
+          : activeBottomTab !== "home"
+          ? () => setActiveBottomTab("home")
+          : undefined
+      }
+      backLabel={isCheckoutView ? "Store" : "Home"}
+      subHeader={
+        <div>
+          <AuditxSuiteTopBar
+            variant="ordering"
+            isStoreOpen={isStoreOpen}
+            userName={customer?.name ? customer.name.split(" ")[0].toUpperCase() : "DEEPU"}
+            userInitial={customer?.name ? customer.name.charAt(0).toUpperCase() : "D"}
+            onUserClick={() => {
+              if (customer?.name) {
+                setShowProfileModal(true);
+              } else {
+                router.push("/ordering/login");
+              }
+            }}
+            cartCount={totalItems}
+            onCartClick={() => setIsCheckoutView(!isCheckoutView)}
+            supportCount={customerComplaints.length}
+            onSupportClick={() => {
+              if (activeDeliveryOrder) {
+                setComplaintOrderId(activeDeliveryOrder.orderNumber || activeDeliveryOrder.id || activeDeliveryOrder.orderId);
+              }
+              setShowComplaintModal(true);
+            }}
+          />
+
+          {/* Compact Delivery Address Chip */}
+          {!isCheckoutView && (
+            <button
+              type="button"
+              data-dfx="delivery"
+              onClick={() => setShowAddressModal(true)}
+              style={{
+                width: "100%",
+                marginTop: 6,
+                padding: "7px 11px",
+                borderRadius: 12,
+                border: "0.5px solid var(--ios-sep)",
+                background: "var(--ios-fill-secondary)",
+                color: "var(--ios-label)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 8,
+                cursor: "pointer",
+                textAlign: "left",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                <span style={{ fontSize: 12, flexShrink: 0 }}>⚡</span>
+                <span className="ios-footnote" style={{ fontWeight: 700, whiteSpace: "nowrap" }}>
+                  {etaHeadlineText}
+                </span>
+                <span className="ios-caption" style={{ color: "var(--ios-label-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  • {selectedAddress?.address || "KFGSC , Tiptur 572201"}
+                </span>
+              </div>
+              <IconChevronDown size={14} color="#007AFF" />
+            </button>
+          )}
+        </div>
+      }
+    />
+  );
+
+  const orderingTabBarElement = (
+    <IOSTabBar
+      activeId={
+        isCheckoutView
+          ? "cart"
+          : activeBottomTab === "order_again" || activeBottomTab === "explore_tiptur"
+          ? "orders"
+          : activeBottomTab
+      }
+      onChange={(nextTab) => {
+        if (nextTab === "cart") {
+          setIsCheckoutView(true);
+          return;
+        }
+        if (nextTab === "orders") {
+          setIsCheckoutView(false);
+          setActiveBottomTab("order_again");
+          return;
+        }
+        setIsCheckoutView(false);
+        setActiveBottomTab(nextTab);
+        if (nextTab === "search") {
+          setTimeout(() => {
+            try {
+              searchInputRef.current?.focus();
+            } catch {}
+          }, 120);
+        }
+      }}
+      tabs={[
+        { id: "home", domId: "tab-home", label: "Home", icon: "home" },
+        { id: "categories", domId: "tab-categories", label: "Categories", icon: "categories" },
+        { id: "search", domId: "tab-search", label: "Search", icon: "search" },
+        { id: "cart", domId: "tab-cart", label: "Cart", icon: "cart", badge: totalItems },
+        { id: "orders", domId: "tab-order-again", label: "Orders", icon: "orders" },
+      ]}
+    />
+  );
+
+  return (
+    <>
+      <IOSToast message={toastMessage} />
+
+      <IOSMobileShell
+        shellId="ax-ordering-shell"
+        dataDfx="page"
+        header={orderingHeaderElement}
+        tabBar={orderingTabBarElement}
+        onRefresh={() => {
+          dispatchCloudAction("HEARTBEAT", { deviceUid: getOrCreateDeviceUid() });
+        }}
+        onSwipeBack={
+          isCheckoutView
+            ? () => setIsCheckoutView(false)
+            : activeBottomTab !== "home"
+            ? () => setActiveBottomTab("home")
+            : undefined
+        }
+        stickyFooter={
+          isCheckoutView ? (
+            <div
+              style={{
+                background: "var(--ios-chrome-bg)",
+                WebkitBackdropFilter: "saturate(180%) blur(20px)",
+                backdropFilter: "saturate(180%) blur(20px)",
+                borderTop: "0.5px solid var(--ios-sep)",
+                padding: "10px 14px",
+              }}
+            >
+              <div style={S.stickyBarInner}>
+                <div style={S.stickyPriceCol}>
+                  <div style={S.stickyTotalRow}>
+                    <span style={{ ...S.stickyTotalAmount, color: "var(--ios-label)" }}>₹{grandTotal}</span>
+                    <span style={S.stickyTotalWord}>Total</span>
+                  </div>
+                  <div style={S.stickySavingsNote}>
+                    {hasOngoingOrder ? (
+                      <span style={{ color: "#FF9500", fontWeight: 700 }}>
+                        Active: #{ongoingTrackedOrder.orderNumber || ongoingTrackedOrder.id}
+                      </span>
+                    ) : (
+                      <span>Audit&apos;X Demo Wallet</span>
+                    )}
+                  </div>
+                </div>
+
+                {hasOngoingOrder ? (
+                  <IOSButton
+                    fullWidth={false}
+                    variant="primary"
+                    minHeight={46}
+                    style={{ background: "#FF9500" }}
+                    onClick={() => {
+                      const ordId = ongoingTrackedOrder.orderNumber || ongoingTrackedOrder.id || ongoingTrackedOrder.orderId;
+                      router.push(`/track/${ordId}`);
+                    }}
+                  >
+                    Track Live →
+                  </IOSButton>
+                ) : !isStoreOpen ? (
+                  <IOSButton
+                    fullWidth={false}
+                    variant="danger"
+                    minHeight={46}
+                    onClick={handleStoreClosedToast}
+                  >
+                    Store Closed
+                  </IOSButton>
+                ) : (
+                  <IOSButton
+                    fullWidth={false}
+                    variant="green"
+                    minHeight={48}
+                    disabled={placingOrder || cartItemsList.length === 0}
+                    loading={placingOrder}
+                    onClick={() => setShowPaymentModal(true)}
+                  >
+                    {placingOrder ? "Placing..." : "Place Order →"}
+                  </IOSButton>
+                )}
+              </div>
+            </div>
+          ) : null
+        }
+      >
+        {/* ── INTRO SPLASH VIDEO & ORDER PLACED OVERLAYS ── */}
         {showIntroOverlay && (
           <div
             aria-hidden="true"
@@ -1483,80 +1979,6 @@ export default function OrderingAppPage() {
             }}
           />
         )}
-
-        {/* ── 1. TOP HEADER (AUDIT'X SUITE TOP BAR DESIGN SPEC) ── */}
-        <AuditxSuiteTopBar
-          variant="ordering"
-          isStoreOpen={isStoreOpen}
-          userName={customer?.name ? customer.name.split(" ")[0].toUpperCase() : "DEEPU"}
-          userInitial={customer?.name ? customer.name.charAt(0).toUpperCase() : "D"}
-          onUserClick={() => {
-            if (customer?.name) {
-              setShowProfileModal(true);
-            } else {
-              router.push("/ordering/login");
-            }
-          }}
-          cartCount={totalItems}
-          onCartClick={() => setIsCheckoutView(!isCheckoutView)}
-          supportCount={customerComplaints.length}
-          onSupportClick={() => {
-            if (activeDeliveryOrder) {
-              setComplaintOrderId(activeDeliveryOrder.orderNumber || activeDeliveryOrder.id || activeDeliveryOrder.orderId);
-            }
-            setShowComplaintModal(true);
-          }}
-        />
-
-        {/* Blinkit Delivery ETA & Address Selector Bar */}
-        <header data-dfx="delivery" style={{ ...S.topHeader, paddingTop: 4, paddingBottom: 4 }}>
-          <div style={S.headerContainer}>
-            <div style={S.etaAddressBar} onClick={() => setShowAddressModal(true)}>
-            <div style={S.etaAddressLeft}>
-              <div style={S.etaBadgeRow}>
-                <div style={S.lightningPill}>
-                  <IconLightning size={14} color="#000000" />
-                </div>
-                <div style={S.etaTitle}>
-                  {orderingStage === "rider_arrived" ? (
-                    <>Rider <span style={S.etaMinutes}>ARRIVED AT LOCATION</span></>
-                  ) : orderingStage === "almost_doorstep" ? (
-                    <>Almost to your <span style={S.etaMinutes}>DOORSTEP</span></>
-                  ) : orderingStage === "one_minute" ? (
-                    <>Arriving in <span style={S.etaMinutes}>1 MIN</span></>
-                  ) : orderingStage === "delivered" && !rateCompleted ? (
-                    <>Delivered • <span style={S.etaMinutes}>RATE RIDER & ITEMS</span></>
-                  ) : activeDeliveryOrder && orderingStage === "picking" && pickerDelayMins > 0 ? (
-                    <>Delivery in <span style={S.etaMinutes}>{10 + pickerDelayMins} MINS</span></>
-                  ) : activeDeliveryOrder && deliveryCountdownSec > 0 ? (
-                    <>Delivery in <span style={S.etaMinutes}>{Math.max(1, Math.ceil(deliveryCountdownSec / 60))} {Math.max(1, Math.ceil(deliveryCountdownSec / 60)) === 1 ? "MIN" : "MINS"}</span></>
-                  ) : (
-                    <>Delivery in <span style={S.etaMinutes}>10 MINS</span></>
-                  )}
-                </div>
-              </div>
-              <div style={S.addressSnippetRow}>
-                <IconMapPin size={14} color="#0c831f" />
-                <span style={S.addressSnippetText}>KFGSC , Tiptur 572201</span>
-
-                <IconChevronDown size={14} color="#475569" />
-              </div>
-            </div>
-
-            <button
-              type="button"
-              data-dfx="cta"
-              style={S.changeAddressBtn}
-              onClick={(e) => {
-                e.stopPropagation();
-                setShowAddressModal(true);
-              }}
-            >
-              Change
-            </button>
-          </div>
-        </div>
-      </header>
 
       {/* ═══════════════════════════════════════════════════════════
           MAIN VIEW: CHECKOUT OR CATALOG (WITH STORE CLOSED BANNER)
@@ -1963,71 +2385,8 @@ export default function OrderingAppPage() {
               </div>
             </section>
 
-            {/* Spacer for sticky bar */}
-            <div style={{ height: 110 }} />
-          </div>
-
-          {/* ── 6. PAYMENT & CHECKOUT BAR (BOTTOM STICKY BAR) ── */}
-          <div style={S.bottomStickyBar}>
-            <div style={S.stickyBarInner}>
-              <div style={S.stickyPriceCol}>
-                <div style={S.stickyTotalRow}>
-                  <span style={S.stickyTotalAmount}>₹{grandTotal}</span>
-                  <span style={S.stickyTotalWord}>Total</span>
-                </div>
-                <div style={S.stickySavingsNote}>
-                  {hasOngoingOrder ? (
-                    <span style={{ color: "#d97706", fontWeight: 700 }}>
-                      ⚠️ Active: #{ongoingTrackedOrder.orderNumber || ongoingTrackedOrder.id}
-                    </span>
-                  ) : (
-                    <span>Paid through <b>Audit'X Demo Wallet</b></span>
-                  )}
-                </div>
-              </div>
-
-              {hasOngoingOrder ? (
-                <button
-                  type="button"
-                  style={{
-                    ...S.proceedToPayCTA,
-                    background: "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)",
-                    boxShadow: "0 4px 14px rgba(217, 119, 6, 0.4)",
-                  }}
-                  onClick={() => {
-                    const ordId = ongoingTrackedOrder.orderNumber || ongoingTrackedOrder.id || ongoingTrackedOrder.orderId;
-                    router.push(`/track/${ordId}`);
-                  }}
-                  title="An order is actively being tracked. Click to view live delivery."
-                >
-                  <span>🛵 TRACK ACTIVE DELIVERY</span>
-                  <IconArrowRight size={18} color="#ffffff" />
-                </button>
-              ) : !isStoreOpen ? (
-                <button
-                  type="button"
-                  style={{
-                    ...S.proceedToPayCTA,
-                    background: "#e11d48",
-                  }}
-                  onClick={() => {
-                    triggerToast("🛑 Store is closed right now, ordering soon!");
-                  }}
-                >
-                  <span>STORE CLOSED • ORDERING SOON</span>
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  style={S.proceedToPayCTA}
-                  onClick={() => setShowPaymentModal(true)}
-                  disabled={placingOrder || cartItemsList.length === 0}
-                >
-                  <span>{placingOrder ? "DISPATCHING..." : "PAY VIA AUDIT'X WALLET"}</span>
-                  <IconArrowRight size={18} color="#ffffff" />
-                </button>
-              )}
-            </div>
+            {/* Spacer for sticky footer */}
+            <div style={{ height: 20 }} />
           </div>
         </main>
       ) : (
@@ -2250,263 +2609,135 @@ export default function OrderingAppPage() {
                   </span>
                 </div>
 
-                {/* Product Cards Grid */}
+                {/* Product Cards Grid (Memoized + Virtualized Window + Lazy Images) */}
                 <div style={S.productGrid}>
-                  {filteredCatalog.map((item) => {
+                  {visibleCatalog.map((item, idx) => {
                     const qty = cart[item.sku] || 0;
                     const availableUnits = getAvailableUnits(item);
                     const isSoldOut = item.soldOut === true || item.inStock === false || (item.name && item.name.toLowerCase().includes("pup"));
                     const isAutoOos = availableUnits <= 0;
                     const isOos = oosList.includes(item.sku) || isSoldOut || isAutoOos;
-                    const isChoc = item.category === "Chocolates";
-                    const isFrame = item.category === "Frames";
-
                     return (
-                      <div
+                      <OrderingProductCard
                         key={item.sku}
-                        data-dfx="card"
-                        style={{
-                          ...S.productCard,
-                          opacity: isSoldOut ? 0.72 : isOos ? 0.65 : 1,
-                          ...(isOos ? { border: "1.5px solid #fca5a5" } : {}),
-                          ...(item.comingSoon ? { borderColor: "#fde68a" } : {}),
-                        }}
-                      >
-                        <div style={S.productImageContainer}>
-                          <img
-                            src={item.image}
-                            alt={item.name}
-                            onError={(e) => {
-                              if (item.image && item.image.startsWith("/frames/")) {
-                                const fb = `${JSDELIVR_PUBLIC_CDN}${item.image}`;
-                                if (e.target.src !== fb) {
-                                  e.target.src = fb;
-                                }
-                              }
-                            }}
-                            style={{
-                              ...S.productImg,
-                              ...(isOos ? { filter: "grayscale(35%)" } : {}),
-                            }}
-                          />
-                          {isSoldOut ? (
-                            <div style={{
-                              position: "absolute",
-                              top: 6,
-                              left: 6,
-                              background: "#dc2626",
-                              color: "#ffffff",
-                              fontSize: 9,
-                              fontWeight: 900,
-                              padding: "3px 7px",
-                              borderRadius: 4,
-                              letterSpacing: "0.04em",
-                              display: "flex",
-                              alignItems: "center",
-                              gap: 3,
-                              boxShadow: "0 2px 6px rgba(220,38,38,0.45)",
-                              zIndex: 2,
-                            }}>
-                              <span>⛔ SOLD OUT</span>
-                            </div>
-                          ) : item.comingSoon ? (
-                            <div style={{
-                              position: "absolute",
-                              top: 6,
-                              left: 6,
-                              background: "linear-gradient(135deg, #f59e0b, #d97706)",
-                              color: "#ffffff",
-                              fontSize: 9,
-                              fontWeight: 800,
-                              padding: "3px 7px",
-                              borderRadius: 4,
-                              letterSpacing: "0.03em",
-                              display: "flex",
-                              alignItems: "center",
-                              gap: 3,
-                              boxShadow: "0 2px 4px rgba(217,119,6,0.3)"
-                            }}>
-                              <span>⏳ COMING SOON</span>
-                            </div>
-                          ) : isChoc ? (
-                            <div
-                              data-dfx="badge"
-                              style={{
-                                position: "absolute",
-                                top: 6,
-                                left: 6,
-                                background: "#0c831f",
-                                color: "#ffffff",
-                                fontSize: 9,
-                                fontWeight: 800,
-                                padding: "2px 6px",
-                                borderRadius: 4,
-                                display: "flex",
-                                alignItems: "center",
-                                gap: 3,
-                                boxShadow: "0 2px 4px rgba(12,131,31,0.3)",
-                              }}
-                            >
-                              <span>{item.isCustomPutaway ? `₹${item.price} NEW` : `₹${item.price} WAREHOUSE`}</span>
-                            </div>
-                          ) : isFrame ? (
-                            <div
-                              data-dfx="badge"
-                              style={{
-                                position: "absolute",
-                                top: 6,
-                                left: 6,
-                                background: "#1e293b",
-                                color: "#f8fafc",
-                                fontSize: 9,
-                                fontWeight: 800,
-                                padding: "2px 6px",
-                                borderRadius: 4,
-                                display: "flex",
-                                alignItems: "center",
-                                gap: 3,
-                                boxShadow: "0 2px 4px rgba(0,0,0,0.3)",
-                              }}
-                            >
-                              <span>{item.isCustomPutaway ? "🖼️ NEW PUTAWAY" : "🖼️ IN WAREHOUSE"}</span>
-                            </div>
-                          ) : (
-                            <div style={S.etaBadgeOverlay}>
-                              <IconLightning size={12} color="#000000" />
-                              <span>10 MINS</span>
-                            </div>
-                          )}
-                          {!isSoldOut && isOos && (
-                            <div style={S.oosBadgeOverlay}>
-                              <IconAlertTriangle size={12} color="#ffffff" />
-                              <span>OUT OF STOCK</span>
-                            </div>
-                          )}
-                        </div>
-
-                        <div style={S.productDetailsCol}>
-
-                          <h3 style={S.productName}>{item.name}</h3>
-                          <div style={S.productWeight}>
-                            {item.weight} • <b style={{ color: availableUnits <= 0 ? "#dc2626" : "#0c831f" }}>{availableUnits} left</b>
-                          </div>
-
-                          <div style={S.productActionRow}>
-                            <div>
-                              {item.comingSoon ? (
-                                <span style={{ fontSize: 13, fontWeight: 800, color: "#d97706" }}>
-                                  Coming Soon
-                                </span>
-                              ) : (
-                                <>
-                                  <span style={S.productFinalPrice}>₹{item.price}</span>
-                                  {item.mrp > item.price && (
-                                    <span style={S.productMrpStrike}>₹{item.mrp}</span>
-                                  )}
-                                </>
-                              )}
-                            </div>
-
-                            {item.comingSoon ? (
-                              <button
-                                type="button"
-                                style={{
-                                  background: "#fffbeb",
-                                  border: "1px solid #fde68a",
-                                  color: "#b45309",
-                                  padding: "5px 10px",
-                                  borderRadius: 6,
-                                  fontSize: 11,
-                                  fontWeight: 700,
-                                  cursor: "pointer",
-                                  display: "flex",
-                                  alignItems: "center",
-                                  gap: 3,
-                                }}
-                                onClick={() => setShowComingSoonModal(true)}
-                              >
-                                <span>Coming Soon ⏳</span>
-                              </button>
-                            ) : isSoldOut ? (
-                              <button
-                                type="button"
-                                disabled
-                                style={{
-                                  background: "#fef2f2",
-                                  border: "1px solid #fca5a5",
-                                  color: "#dc2626",
-                                  padding: "5px 10px",
-                                  borderRadius: 6,
-                                  fontSize: 11,
-                                  fontWeight: 800,
-                                  cursor: "not-allowed",
-                                  letterSpacing: "0.02em",
-                                }}
-                              >
-                                SOLD OUT
-                              </button>
-                            ) : isOos ? (
-                              <button style={S.productOosBtn} disabled>
-                                Unavailable
-                              </button>
-                            ) : qty === 0 ? (
-                              <button
-                                type="button"
-                                data-dfx="add"
-                                style={S.productAddBtn}
-                                onClick={() => {
-                                  if (!isStoreOpen) {
-                                    triggerToast("🛑 Store is closed right now, ordering soon!");
-                                    return;
-                                  }
-                                  updateQty(item.sku, 1);
-                                }}
-                              >
-                                ADD
-                              </button>
-                            ) : (
-                              <div data-dfx="stepper" style={S.productStepper}>
-                                <button
-                                  type="button"
-                                  data-dfx="pop"
-                                  style={S.stepperSmallBtn}
-                                  onClick={() => updateQty(item.sku, -1)}
-                                >
-                                  −
-                                </button>
-                                <span style={S.stepperSmallQty}>{qty}</span>
-                                <button
-                                  type="button"
-                                  data-dfx="pop"
-                                  style={S.stepperSmallBtn}
-                                  onClick={() => {
-                                    if (!isStoreOpen) {
-                                      triggerToast("🛑 Store is closed right now, ordering soon!");
-                                      return;
-                                    }
-                                    updateQty(item.sku, 1);
-                                  }}
-                                >
-                                  +
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
+                        item={item}
+                        idx={idx}
+                        qty={qty}
+                        availableUnits={availableUnits}
+                        isOos={isOos}
+                        isSoldOut={isSoldOut}
+                        isChoc={item.category === "Chocolates"}
+                        isFrame={item.category === "Frames"}
+                        isStoreOpen={isStoreOpen}
+                        onUpdateQty={updateQty}
+                        onOpenComingSoon={handleOpenComingSoon}
+                        onStoreClosedToast={handleStoreClosedToast}
+                        S={S}
+                      />
                     );
                   })}
                 </div>
+                {visibleCatalog.length < filteredCatalog.length && (
+                  <div ref={gridLoadMoreRef} style={{ padding: "16px 0", textAlign: "center" }}>
+                    <IOSButton
+                      variant="tinted"
+                      fullWidth={false}
+                      minHeight={40}
+                      onClick={() => setVisibleLimit((v) => Math.min(filteredCatalog.length, v + 30))}
+                    >
+                      Show more ({filteredCatalog.length - visibleCatalog.length} remaining)
+                    </IOSButton>
+                  </div>
+                )}
               </>
             )}
           </>
         )}
 
         {/* ══════════════════════════════════════════
-            TAB 2: ORDER AGAIN (EMPTY STATE)
+            TAB: DEDICATED SEARCH (iOS SEARCH BAR + ALL CATALOG)
+            ══════════════════════════════════════════ */}
+        {activeBottomTab === "search" && (
+          <div className="ios-tab-crossfade" style={S.tabViewContainer}>
+            <div style={{ ...S.searchContainer, position: "sticky", top: 6, zIndex: 20 }}>
+              <div data-dfx="search" style={S.searchFieldWrapper}>
+                <IconSearch size={18} color="#8E8E93" />
+                <input
+                  ref={searchInputRef}
+                  type="search"
+                  placeholder={typewriterPlaceholder}
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  style={S.searchInput}
+                />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    style={S.searchClearBtn}
+                    onClick={() => setSearchQuery("")}
+                  >
+                    <IconClose size={16} color="#8E8E93" />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div style={S.productGrid}>
+              {visibleCatalog.map((item, idx) => {
+                const qty = cart[item.sku] || 0;
+                const availableUnits = getAvailableUnits(item);
+                const isSoldOut = item.soldOut === true || item.inStock === false || (item.name && item.name.toLowerCase().includes("pup"));
+                const isAutoOos = availableUnits <= 0;
+                const isOos = oosList.includes(item.sku) || isSoldOut || isAutoOos;
+                return (
+                  <OrderingProductCard
+                    key={item.sku}
+                    item={item}
+                    idx={idx}
+                    qty={qty}
+                    availableUnits={availableUnits}
+                    isOos={isOos}
+                    isSoldOut={isSoldOut}
+                    isChoc={item.category === "Chocolates"}
+                    isFrame={item.category === "Frames"}
+                    isStoreOpen={isStoreOpen}
+                    onUpdateQty={updateQty}
+                    onOpenComingSoon={handleOpenComingSoon}
+                    onStoreClosedToast={handleStoreClosedToast}
+                    S={S}
+                  />
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* ══════════════════════════════════════════
+            TAB 2: ORDERS & PROFILE (PAST ORDERS + ACCOUNT + EXPLORE)
             ══════════════════════════════════════════ */}
         {activeBottomTab === "order_again" && (
-          <div style={S.tabViewContainer}>
+          <div className="ios-tab-crossfade" style={S.tabViewContainer}>
+            <IOSGroupedList header="Account & Hub">
+              <IOSListRow
+                leading={
+                  <div style={{ width: 34, height: 34, borderRadius: "50%", background: "#007AFF", color: "#fff", display: "grid", placeItems: "center", fontWeight: 700 }}>
+                    {customer?.name ? customer.name.charAt(0).toUpperCase() : "A"}
+                  </div>
+                }
+                title={customer?.name || "Customer Account"}
+                subtitle={`Demo Wallet: ₹${(customer?.walletBalance || WALLET_LIMIT).toLocaleString("en-IN")}`}
+                chevron
+                onClick={() => setShowProfileModal(true)}
+              />
+              <IOSListRow
+                leading={<span style={{ fontSize: 18 }}>🌴</span>}
+                title="Explore Namma Tiptur"
+                subtitle="Heritage temples, cafes & local highlights"
+                chevron
+                last
+                onClick={() => setActiveBottomTab("explore_tiptur")}
+              />
+            </IOSGroupedList>
             <div style={S.tabHeaderRow}>
               <div>
                 <h2 style={S.tabTitle}>Order Again</h2>
@@ -3833,143 +4064,18 @@ export default function OrderingAppPage() {
         </div>
       )}
 
-      {/* ── AUTHENTIC MOBILE BOTTOM NAVIGATION BAR (Home, Order Again, Categories, Explore Namma Tiptur) ── */}
-      <nav data-dfx="nav" style={S.bottomNavBar}>
-        {/* Tab 1: Home */}
-        <button
-          id="tab-home"
-          type="button"
-          aria-current={activeBottomTab === "home" && !isCheckoutView ? "page" : undefined}
-          style={{
-            ...S.bottomNavTabBtn,
-            ...(activeBottomTab === "home" && !isCheckoutView ? S.bottomNavTabActive : {}),
-          }}
-          onClick={() => {
-            setActiveBottomTab("home");
-            setIsCheckoutView(false);
-          }}
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill={activeBottomTab === "home" && !isCheckoutView ? "#0C831F" : "none"} stroke={activeBottomTab === "home" && !isCheckoutView ? "#0C831F" : "#64748B"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-            <polyline points="9 22 9 12 15 12 15 22" />
-          </svg>
-          <span style={{
-            ...S.bottomNavLabel,
-            ...(activeBottomTab === "home" && !isCheckoutView ? S.bottomNavLabelActive : {}),
-          }}>
-            Home
-          </span>
-        </button>
-
-        {/* Tab 2: Order Again */}
-        <button
-          id="tab-order-again"
-          type="button"
-          style={{
-            ...S.bottomNavTabBtn,
-            ...(activeBottomTab === "order_again" && !isCheckoutView ? S.bottomNavTabActive : {}),
-          }}
-          onClick={() => {
-            setActiveBottomTab("order_again");
-            setIsCheckoutView(false);
-          }}
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={activeBottomTab === "order_again" && !isCheckoutView ? "#0C831F" : "#64748B"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M3 12a9 9 0 0 1 15.36-6.36L21 8" />
-            <path d="M21 3v5h-5" />
-            <path d="M21 12a9 9 0 0 1-15.36 6.36L3 16" />
-            <path d="M3 21v-5h5" />
-          </svg>
-          <span style={{
-            ...S.bottomNavLabel,
-            ...(activeBottomTab === "order_again" && !isCheckoutView ? S.bottomNavLabelActive : {}),
-          }}>
-            Order Again
-          </span>
-        </button>
-
-        {/* Tab 3: Categories */}
-        <button
-          id="tab-categories"
-          type="button"
-          style={{
-            ...S.bottomNavTabBtn,
-            ...(activeBottomTab === "categories" && !isCheckoutView ? S.bottomNavTabActive : {}),
-          }}
-          onClick={() => {
-            setActiveBottomTab("categories");
-            setIsCheckoutView(false);
-          }}
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={activeBottomTab === "categories" && !isCheckoutView ? "#0C831F" : "#64748B"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="3" y="3" width="7" height="7" rx="1.5" />
-            <rect x="14" y="3" width="7" height="7" rx="1.5" />
-            <rect x="14" y="14" width="7" height="7" rx="1.5" />
-            <rect x="3" y="14" width="7" height="7" rx="1.5" />
-          </svg>
-          <span style={{
-            ...S.bottomNavLabel,
-            ...(activeBottomTab === "categories" && !isCheckoutView ? S.bottomNavLabelActive : {}),
-          }}>
-            Categories
-          </span>
-        </button>
-
-        {/* Tab 4: Explore Namma Tiptur */}
-        <button
-          id="tab-explore-tiptur"
-          type="button"
-          style={{
-            ...S.bottomNavTabBtn,
-            ...(activeBottomTab === "explore_tiptur" && !isCheckoutView ? S.bottomNavTabActive : {}),
-          }}
-          onClick={() => {
-            setActiveBottomTab("explore_tiptur");
-            setIsCheckoutView(false);
-          }}
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={activeBottomTab === "explore_tiptur" && !isCheckoutView ? "#0C831F" : "#64748B"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="12" r="10" />
-            <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" fill={activeBottomTab === "explore_tiptur" && !isCheckoutView ? "#0C831F" : "none"} />
-          </svg>
-          <span style={{
-            ...S.bottomNavLabel,
-            ...(activeBottomTab === "explore_tiptur" && !isCheckoutView ? S.bottomNavLabelActive : {}),
-          }}>
-            Explore Namma Tiptur
-          </span>
-        </button>
-      </nav>
-      </div> {/* end mobileShell */}
+      </IOSMobileShell>
 
       {/* ═══════════════════════════════════════════════════════════
-          6. PAYMENT GATEWAY SELECTION MODAL
+          6. PAYMENT GATEWAY SELECTION BOTTOM SHEET
           ═══════════════════════════════════════════════════════════ */}
-      {showPaymentModal && (
-        <div
-          style={S.modalBackdrop}
-          onClick={() => setShowPaymentModal(false)}
-        >
-          <div
-            style={S.paymentModalSheet}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div style={S.modalHeader}>
-              <div>
-                <h3 style={S.modalTitle}>Select Payment Method</h3>
-                <div style={S.modalSubtitle}>
-                  Amount Payable: <b style={{ color: "#0c831f" }}>₹{grandTotal}</b>
-                </div>
-              </div>
-              <button
-                type="button"
-                style={S.modalCloseBtn}
-                onClick={() => setShowPaymentModal(false)}
-              >
-                <IconClose size={20} color="#64748b" />
-              </button>
-            </div>
-
+      <IOSBottomSheet
+        isOpen={showPaymentModal}
+        onClose={() => setShowPaymentModal(false)}
+        title="Select Payment Method"
+        subtitle={`Amount Payable: ₹${grandTotal}`}
+        detent="large"
+      >
             <div style={S.paymentOptionsList}>
               {/* Option 1: Audit'X Demo Wallet (ACTIVE & DEFAULT) */}
               <div
@@ -4159,28 +4265,19 @@ export default function OrderingAppPage() {
                 </button>
               )}
             </div>
-          </div>
-        </div>
-      )}
+      </IOSBottomSheet>
 
       {/* ═══════════════════════════════════════════════════════════
-          CUSTOMER PROFILE DRAWER / MODAL
+          CUSTOMER PROFILE BOTTOM SHEET
           ═══════════════════════════════════════════════════════════ */}
-      {showProfileModal && (
-        <div style={S.modalBackdrop} onClick={() => setShowProfileModal(false)}>
-          <div style={S.profileModalSheet} onClick={(e) => e.stopPropagation()}>
-            <div style={S.modalHeader}>
-              <div>
-                <h3 style={S.modalTitle}>Customer Account</h3>
-              </div>
-              <button
-                type="button"
-                style={{ ...S.modalCloseBtn, minWidth: 44, minHeight: 44 }}
-                onClick={() => setShowProfileModal(false)}
-              >
-                <IconClose size={20} color="#64748b" />
-              </button>
-            </div>
+      <IOSBottomSheet
+        isOpen={showProfileModal}
+        onClose={() => setShowProfileModal(false)}
+        title="Customer Account"
+        subtitle="AUDIT'X Hub KA44"
+        detent="medium"
+      >
+        <div>
 
             {/* Profile Hero Card */}
             <div style={S.profileHeroCard}>
@@ -4257,29 +4354,18 @@ export default function OrderingAppPage() {
               </button>
             </div>
           </div>
-        </div>
-      )}
+      </IOSBottomSheet>
 
       {/* ═══════════════════════════════════════════════════════════
-          CUSTOMER LOGIN MODAL (PHONE -> OTP -> NAME)
+          CUSTOMER LOGIN MODAL (GOOGLE OAUTH)
           ═══════════════════════════════════════════════════════════ */}
-      {showLoginModal && (
-        <div style={S.modalBackdrop} onClick={() => setShowLoginModal(false)}>
-          <div style={S.loginModalSheet} onClick={(e) => e.stopPropagation()}>
-            <div style={S.modalHeader}>
-              <div>
-                <h3 style={S.modalTitle}>Customer Sign In</h3>
-                <div style={S.modalSubtitle}>AUDIT'X Dark Store • KFGSC Tiptur 572201</div>
-              </div>
-              <button
-                type="button"
-                style={S.modalCloseBtn}
-                onClick={() => setShowLoginModal(false)}
-              >
-                <IconClose size={20} color="#64748b" />
-              </button>
-            </div>
-
+      <IOSBottomSheet
+        isOpen={showLoginModal}
+        onClose={() => setShowLoginModal(false)}
+        title="Customer Sign In"
+        subtitle="AUDIT'X Dark Store • KFGSC Tiptur 572201"
+        detent="medium"
+      >
             {loginError && (
               <div style={S.loginErrorBanner}>{loginError}</div>
             )}
@@ -4315,37 +4401,18 @@ export default function OrderingAppPage() {
                 />
               </div>
             </div>
-          </div>
-        </div>
-      )}
+      </IOSBottomSheet>
 
       {/* ═══════════════════════════════════════════════════════════
-          ADDRESS SELECTOR / SWITCHER MODAL
+          ADDRESS SELECTOR / SWITCHER BOTTOM SHEET
           ═══════════════════════════════════════════════════════════ */}
-      {showAddressModal && (
-        <div
-          style={S.modalBackdrop}
-          onClick={() => setShowAddressModal(false)}
-        >
-          <div
-            style={S.addressModalSheet}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div style={S.modalHeader}>
-              <div>
-                <h3 style={S.modalTitle}>Choose Delivery Address</h3>
-                <div style={S.modalSubtitle}>
-                  Fulfilled directly from <b>Dark Store Facility</b>
-                </div>
-              </div>
-              <button
-                type="button"
-                style={S.modalCloseBtn}
-                onClick={() => setShowAddressModal(false)}
-              >
-                <IconClose size={20} color="#64748b" />
-              </button>
-            </div>
+      <IOSBottomSheet
+        isOpen={showAddressModal}
+        onClose={() => setShowAddressModal(false)}
+        title="Choose Delivery Address"
+        subtitle="Fulfilled directly from Dark Store Facility"
+        detent="medium"
+      >
 
             <div style={S.addressCardsList}>
               {SAVED_ADDRESSES.map((addr) => {
@@ -4413,37 +4480,18 @@ export default function OrderingAppPage() {
                 Save
               </button>
             </div>
-          </div>
-        </div>
-      )}
+      </IOSBottomSheet>
 
       {/* ═══════════════════════════════════════════════════════════
-          COUPONS & OFFERS MODAL
+          COUPONS & OFFERS BOTTOM SHEET
           ═══════════════════════════════════════════════════════════ */}
-      {showCouponModal && (
-        <div
-          style={S.modalBackdrop}
-          onClick={() => setShowCouponModal(false)}
-        >
-          <div
-            style={S.couponModalSheet}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div style={S.modalHeader}>
-              <div>
-                <h3 style={S.modalTitle}>Available Coupons & Offers</h3>
-                <div style={S.modalSubtitle}>
-                  Apply voucher for instant dark store savings
-                </div>
-              </div>
-              <button
-                type="button"
-                style={S.modalCloseBtn}
-                onClick={() => setShowCouponModal(false)}
-              >
-                <IconClose size={20} color="#64748b" />
-              </button>
-            </div>
+      <IOSBottomSheet
+        isOpen={showCouponModal}
+        onClose={() => setShowCouponModal(false)}
+        title="Available Coupons & Offers"
+        subtitle="Apply voucher for instant dark store savings"
+        detent="medium"
+      >
 
             <div style={S.couponListModal}>
               {AVAILABLE_COUPONS.map((cp) => (
@@ -4466,9 +4514,7 @@ export default function OrderingAppPage() {
                 </div>
               ))}
             </div>
-          </div>
-        </div>
-      )}
+      </IOSBottomSheet>
 
       {/* Coming Soon Fullscreen Image Modal */}
       {showComingSoonModal && (
@@ -5020,7 +5066,7 @@ export default function OrderingAppPage() {
       {authChecked && customer && !capacityBlockedMsg && !showIntroOverlay && (
         <LittlePenguin rootSelector="#ax-ordering-shell" pos="left" ground={60} scale={1} awaySeconds={180} />
       )}
-    </div>
+    </>
   );
 }
 
@@ -6344,34 +6390,34 @@ const S = {
 
   // ── CATALOG BROWSE VIEW ──
   catalogMain: {
-    paddingBottom: 100,
+    paddingBottom: 88,
   },
   catalogContainer: {
     width: "100%",
-    padding: "10px 12px 140px",
+    padding: "10px 12px 96px",
     boxSizing: "border-box",
   },
   searchContainer: {
     marginBottom: 12,
   },
   searchFieldWrapper: {
-    background: "#FFFFFF",
-    border: "1px solid #E2E8F0",
-    borderRadius: 10,
+    background: "var(--ios-fill-secondary)",
+    border: "0.5px solid var(--ios-sep)",
+    borderRadius: 12,
     padding: "10px 14px",
     display: "flex",
     alignItems: "center",
     gap: 10,
-    boxShadow: "0 1px 3px rgba(0,0,0,0.03)",
+    backdropFilter: "blur(12px)",
   },
   searchInput: {
     border: "none",
     outline: "none",
-    fontSize: 13,
-    color: "#0F172A",
+    fontSize: 16,
+    color: "var(--ios-label)",
     width: "100%",
     background: "transparent",
-    fontWeight: 600,
+    fontWeight: 500,
   },
   searchClearBtn: {
     background: "transparent",
@@ -6565,7 +6611,7 @@ const S = {
   // Floating Quick Cart Bar (Catalog view)
   catalogFloatingCartBar: {
     position: "fixed",
-    bottom: 66,
+    bottom: "calc(58px + env(safe-area-inset-bottom, 0px))",
     left: "50%",
     transform: "translateX(-50%)",
     width: "calc(100% - 24px)",

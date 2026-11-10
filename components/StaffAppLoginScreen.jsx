@@ -4,6 +4,8 @@ import { useState } from "react";
 import AuditxLogo from "@/components/AuditxLogo";
 import { playSuccessChime } from "@/lib/soundSystem";
 import { getTodayISTDateKey } from "@/lib/hubState";
+import IOSOtpInput from "@/components/ios/IOSOtpInput";
+import { IOSButton } from "@/components/ios/IOSControls";
 
 export default function StaffAppLoginScreen({
   roleCode = "PICKER",
@@ -197,28 +199,26 @@ export default function StaffAppLoginScreen({
 
             <div style={L.fieldGroup}>
               <label style={L.label}>Enter Daily Verification OTP Code</label>
-              <input
-                type="text"
-                maxLength={6}
+              <IOSOtpInput
                 value={otp}
-                placeholder="OTP code"
-                onChange={(e) => {
-                  setOtp(e.target.value.replace(/\D/g, ""));
+                length={4}
+                disabled={loading}
+                onChange={(nextOtp) => {
+                  setOtp(nextOtp);
                   setError("");
                 }}
-                style={L.otpInput}
-                autoFocus
               />
             </div>
 
-            <button
-              type="button"
-              style={L.primaryBtn}
+            <IOSButton
+              variant="green"
+              loading={loading}
+              minHeight={48}
               onClick={handleVerifyOtp}
               disabled={loading || otp.length < 4}
             >
               <span>{loading ? "Verifying..." : "Verify Daily OTP & Open Terminal →"}</span>
-            </button>
+            </IOSButton>
 
             <button
               type="button"
@@ -245,12 +245,13 @@ export default function StaffAppLoginScreen({
 const L = {
   wrap: {
     minHeight: "100%",
-    padding: "24px 16px",
+    padding: "calc(24px + env(safe-area-inset-top, 0px)) 16px calc(24px + env(safe-area-inset-bottom, 0px))",
     display: "flex",
     flexDirection: "column",
     justifyContent: "center",
-    background: "#f8fafc",
-    fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+    background: "var(--ios-bg)",
+    color: "var(--ios-label)",
+    fontFamily: "var(--ios-font)",
   },
   brandCol: {
     display: "flex",
@@ -268,11 +269,12 @@ const L = {
     letterSpacing: "0.5px",
   },
   card: {
-    background: "#ffffff",
-    borderRadius: 16,
+    background: "var(--ios-card)",
+    color: "var(--ios-label)",
+    borderRadius: 20,
     padding: "20px 18px",
-    boxShadow: "0 10px 30px rgba(0,0,0,0.08)",
-    border: "1.5px solid #e2e8f0",
+    boxShadow: "var(--ios-card-shadow)",
+    border: "0.5px solid var(--ios-card-border)",
   },
   staffHeader: {
     display: "flex",
@@ -363,11 +365,12 @@ const L = {
   input: {
     flex: 1,
     border: "none",
-    padding: "10px 12px",
-    fontSize: 15,
+    padding: "12px 12px",
+    fontSize: 16,
     fontWeight: 700,
     outline: "none",
-    color: "#0f172a",
+    background: "transparent",
+    color: "var(--ios-label)",
   },
   hintRow: {
     display: "flex",

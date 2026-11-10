@@ -27,6 +27,15 @@ import StaffAppLoginScreen from "@/components/StaffAppLoginScreen";
 import DutyToggleSwitch from "@/components/DutyToggleSwitch";
 import AuditxSuiteTopBar from "@/components/AuditxSuiteTopBar";
 import {
+  IOSNavBar,
+  IOSTabBar,
+  IOSToggle,
+  IOSToast,
+  IOSButton,
+  IOSGroupedList,
+  IOSListRow,
+} from "@/components/ios";
+import {
   IconRealisticScooter,
   IconRealisticSliderArrow,
   IconRealisticDeliveryBag,
@@ -46,6 +55,11 @@ export default function DeliveryCaptainApp() {
   const [stagedOrders, setStagedOrders] = useState([]);
   const [activeOrder, setActiveOrder] = useState(null);
   const [activeStep, setActiveStep] = useState("awaiting_orders"); // awaiting_orders | rack_verification | en_route | customer_handover | delivered
+  const [riderTab, setRiderTab] = useState("tasks"); // tasks | active | earnings | profile
+  const [deliveryMilestone, setDeliveryMilestone] = useState("reached_store"); // reached_store | picked_up | reached_customer | delivered
+  const [sheetDetent, setSheetDetent] = useState("medium"); // medium | large
+  const [deliveredCelebration, setDeliveredCelebration] = useState(null);
+  const [earningsLog, setEarningsLog] = useState([]);
   const [elapsedSec, setElapsedSec] = useState(0);
 
   // Enforce Daily Shift OTP Login (IST Calendar Date) + Cloud Sync across devices
@@ -506,6 +520,12 @@ export default function DeliveryCaptainApp() {
     setTransitProgress(0);
     setCurrentWaypointIdx(0);
     setActiveStep("en_route");
+    setRiderTab("active");
+    setDeliveryMilestone("picked_up");
+    setDeliveredCelebration(null);
+    try {
+      navigator.vibrate?.(15);
+    } catch {}
     setActionSuccess("🚀 Pickup confirmed from Rack! 8-Minute express delivery started.");
     setTimeout(() => setActionSuccess(""), 3500);
   }
@@ -550,11 +570,29 @@ export default function DeliveryCaptainApp() {
       console.warn(e);
     }
 
-    // 1. Immediately reset state so UI instantly returns to home task searching frame
+    // 1. Immediately reset state & show delivered celebration summary
     creditSinchanaWallet();
     setShowDeliveredSheet(false);
+    setDeliveredCelebration({
+      orderNumber: activeOrder.orderNumber || activeOrder.id,
+      distanceKm: "5.1 kms",
+      earned: 28,
+      durationSec: elapsedSec,
+      completedAt: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+    });
+    setEarningsLog((prev) => [
+      {
+        orderNumber: activeOrder.orderNumber || activeOrder.id,
+        distanceKm: "5.1 kms",
+        earned: 28,
+        time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      },
+      ...prev.slice(0, 14),
+    ]);
     setActiveOrder(null);
-    setActiveStep("awaiting_orders");
+    setActiveStep("delivered");
+    setDeliveryMilestone("delivered");
+    setRiderTab("active");
     setArrivingMinutes(8);
     setDistanceLeftKm(1.5);
     setDoorstepSeconds(null);
@@ -584,8 +622,11 @@ export default function DeliveryCaptainApp() {
     if (!gigFormSubmitted) {
       creditSinchanaWallet();
     }
+    setDeliveredCelebration(null);
     setActiveOrder(null);
     setActiveStep("awaiting_orders");
+    setDeliveryMilestone("reached_store");
+    setRiderTab("tasks");
     setArrivingMinutes(8);
     setDistanceLeftKm(1.5);
     setDoorstepSeconds(null);
@@ -597,6 +638,104 @@ export default function DeliveryCaptainApp() {
   const minStr = Math.floor(remainingSec / 60).toString().padStart(2, "0");
   const secStr = (remainingSec % 60).toString().padStart(2, "0");
 
+  const activeTaskCount = stagedOrders.length + incomingAssignedOrders.length;
+
+  const riderHeaderElement = isRiderLoggedIn ? (
+    <IOSNavBar
+      largeTitle={
+        riderTab === "active"
+          ? "Active Delivery"
+          : riderTab === "earnings"
+          ? "Earnings"
+          : riderTab === "profile"
+          ? "Profile"
+          : "Rider Tasks"
+      }
+      subtitle="Sinchana B R • OPPO"
+      onBack={
+        riderTab === "active"
+          ? () => setRiderTab("tasks")
+          : undefined
+      }
+      backLabel="Tasks"
+      right={
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <span
+            className="ios-caption"
+            style={{
+              fontWeight: 700,
+              color: isCheckedIn ? "#34C759" : "var(--ios-label-2)",
+            }}
+          >
+            {isCheckedIn ? "Online" : "Offline"}
+          </span>
+          <IOSToggle
+            checked={isCheckedIn}
+            onChange={() => handleToggleDuty()}
+            ariaLabel="Online Offline Status"
+          />
+        </div>
+      }
+      subHeader={
+        <AuditxSuiteTopBar
+          variant="rider"
+          isDutyOn={isCheckedIn}
+          onDutyToggle={handleToggleDuty}
+          onExit={() => {
+            const statusUpdatedAt = Date.now();
+            setIsRiderLoggedIn(false);
+            setIsCheckedIn(false);
+            try {
+              localStorage.removeItem("auditx_rider_authenticated");
+              localStorage.removeItem("auditx_rider_auth_date");
+              recordLocalStaffDuty({
+                staffId: "sinchana",
+                staffName: "Sinchana B R",
+                deviceName: "OPPO",
+                deviceStatus: "LOGGED_OUT",
+                statusUpdatedAt,
+              });
+            } catch (e) {}
+            broadcastEvent("STAFF_STATUS_CHANGED", {
+              staffId: "sinchana",
+              staffName: "Sinchana B R",
+              roleCode: "DELIVERY",
+              status: "offline",
+              deviceStatus: "LOGGED_OUT",
+              deviceName: "OPPO",
+              deviceId: "OPPO",
+              statusUpdatedAt,
+              time: new Date(statusUpdatedAt).toISOString(),
+            });
+            dispatchCloudAction("UPDATE_STAFF_DUTY", {
+              staffId: "sinchana",
+              staffName: "Sinchana B R",
+              deviceName: "OPPO",
+              deviceStatus: "LOGGED_OUT",
+              statusUpdatedAt,
+            });
+          }}
+          walletAmount={sinchanaWalletBalance || 28}
+          userName="Sinchana B R"
+          userInitial="S"
+        />
+      }
+    />
+  ) : null;
+
+  const riderTabBarElement = isRiderLoggedIn ? (
+    <IOSTabBar
+      activeId={riderTab}
+      onChange={(nextTab) => setRiderTab(nextTab)}
+      tabs={[
+        { id: "tasks", label: "Tasks", icon: "inbox", badge: activeTaskCount },
+        { id: "active", label: "Active", icon: "mapPin", badge: activeOrder ? 1 : 0 },
+        { id: "earnings", label: "Earnings", icon: "wallet", badge: 0 },
+        { id: "profile", label: "Profile", icon: "orders", badge: 0 },
+      ]}
+    />
+  ) : null;
+
   return (
     <AndroidPhoneShell
       appName="OPPO"
@@ -604,6 +743,29 @@ export default function DeliveryCaptainApp() {
       statusBarColor="#0f172a"
       homeRoute="/rider"
       navBg="#ffffff"
+      iosHeader={riderHeaderElement}
+      iosTabBar={riderTabBarElement}
+      iosOverlay={
+        <>
+          <IOSToast message={actionSuccess} />
+          {showDeliveredSheet && (
+            <DeliveredSheet
+              orderId={activeOrder?.orderNumber || activeOrder?.id}
+              elapsedSeconds={elapsedSec}
+              slaSeconds={CAPTAIN_SLA_SECONDS}
+              onDone={() => setShowDeliveredSheet(false)}
+            />
+          )}
+        </>
+      }
+      onRefresh={() => {
+        dispatchCloudAction("HEARTBEAT", { staffId: "sinchana" });
+      }}
+      onSwipeBack={
+        isRiderLoggedIn && riderTab === "active"
+          ? () => setRiderTab("tasks")
+          : undefined
+      }
     >
       <AuditxAnimatedStyles />
       {!isRiderLoggedIn ? (
@@ -656,170 +818,15 @@ export default function DeliveryCaptainApp() {
           }}
         />
       ) : (
-        <div style={S.container}>
-
-          {/* ── FULL-SCREEN ORDER DELIVERED CELEBRATION SHEET OVERLAY ── */}
-          {showDeliveredSheet && (
-            <DeliveredSheet
-              orderId={activeOrder?.orderNumber || activeOrder?.id}
-              elapsedSeconds={elapsedSec}
-              slaSeconds={CAPTAIN_SLA_SECONDS}
-              onDone={() => setShowDeliveredSheet(false)}
-            />
-          )}
-
-          {actionSuccess && <div style={S.toast}>{actionSuccess}</div>}
-
-          {/* ── 1. TOP HEADER (AUDIT'X SUITE TOP BAR DESIGN SPEC) ── */}
-          <AuditxSuiteTopBar
-            variant="rider"
-            isDutyOn={isCheckedIn}
-            onDutyToggle={handleToggleDuty}
-            onExit={() => {
-              const statusUpdatedAt = Date.now();
-              setIsRiderLoggedIn(false);
-              setIsCheckedIn(false);
-              try {
-                localStorage.removeItem("auditx_rider_authenticated");
-                localStorage.removeItem("auditx_rider_auth_date");
-                recordLocalStaffDuty({
-                  staffId: "sinchana",
-                  staffName: "Sinchana B R",
-                  deviceName: "OPPO",
-                  deviceStatus: "LOGGED_OUT",
-                  statusUpdatedAt,
-                });
-              } catch (e) {}
-              broadcastEvent("STAFF_STATUS_CHANGED", {
-                staffId: "sinchana",
-                staffName: "Sinchana B R",
-                roleCode: "DELIVERY",
-                status: "offline",
-                deviceStatus: "LOGGED_OUT",
-                deviceName: "OPPO",
-                deviceId: "OPPO",
-                statusUpdatedAt,
-                time: new Date(statusUpdatedAt).toISOString(),
-              });
-              dispatchCloudAction("UPDATE_STAFF_DUTY", {
-                staffId: "sinchana",
-                staffName: "Sinchana B R",
-                deviceName: "OPPO",
-                deviceStatus: "LOGGED_OUT",
-                statusUpdatedAt,
-              });
-            }}
-            walletAmount={sinchanaWalletBalance || 28}
-            userName="Sinchana B R"
-            userInitial="S"
-          />
-
-          {/* Sub-bar: Delivery ETA / Fleet Status Bar matching ordering page */}
-          <header style={{ ...S.topHeader, paddingTop: 4, paddingBottom: 4 }}>
-            <div style={S.headerContainer}>
-              <div style={S.etaAddressBar}>
-                <div style={S.etaAddressLeft}>
-                  <div style={S.etaBadgeRow}>
-                    <div style={S.lightningPill}>
-                      ⚡
-                    </div>
-                    <div style={S.etaTitle}>
-                      {riderArrivedBar ? (
-                        <>Rider <span style={S.etaMinutes}>ARRIVED AT LOCATION</span></>
-                      ) : doorstepSeconds !== null ? (
-                        <>Almost to doorstep • <span style={S.etaMinutes}>{doorstepSeconds}s</span></>
-                      ) : activeOrder && arrivingMinutes ? (
-                        <>Delivery in <span style={S.etaMinutes}>{arrivingMinutes} {arrivingMinutes === 1 ? "MIN" : "MINS"}</span></>
-                      ) : (
-                        <>Delivery in <span style={S.etaMinutes}>8 MINS</span></>
-                      )}
-                    </div>
-                  </div>
-                  <div style={S.addressSnippetRow}>
-                    <span>
-                      🛵 {riderArrivedBar ? "Arrived at Customer Location" : activeOrder ? `${distanceLeftKm} kms left to destination` : "Fleet Ready"}
-                    </span>
-                  </div>
-                </div>
-                <span style={S.roleBadgeTag}>ORDER CAPTAIN</span>
-              </div>
-
-            {/* Live Ordering-App-Style Rider Progress Bar Message (Only when active order in transit) */}
-            {activeOrder && (activeStep === "out_for_delivery" || activeStep === "in_transit" || activeStep === "delivery") && (
-              <div
-                style={{
-                  marginTop: 8,
-                  background: "linear-gradient(135deg, #0f172a 0%, #1e293b 100%)",
-                  borderRadius: 12,
-                  padding: "9px 12px",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: 8,
-                  border: "1.5px solid rgba(12, 131, 31, 0.65)",
-                  boxShadow: "0 4px 14px rgba(15, 23, 42, 0.25)",
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, flex: 1 }}>
-                  <div
-                    style={{
-                      width: 30,
-                      height: 30,
-                      borderRadius: 8,
-                      background: "rgba(12, 131, 31, 0.25)",
-                      border: "1px solid rgba(34, 197, 94, 0.5)",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      flexShrink: 0,
-                    }}
-                  >
-                    <IconRealisticScooter size={18} color="#4ade80" animated={true} />
-                  </div>
-                  <div style={{ minWidth: 0, flex: 1 }}>
-                    <div style={{ fontSize: 12, fontWeight: 900, color: "#ffffff", letterSpacing: "-0.1px" }}>
-                      {riderArrivedBar
-                        ? "Rider arrived at customer doorstep"
-                        : doorstepSeconds !== null
-                        ? `Almost to customer doorstep • ${doorstepSeconds} seconds`
-                        : `${distanceLeftKm} kms left to location • Taking ${arrivingMinutes} ${arrivingMinutes === 1 ? "minute" : "minutes"}`}
-                    </div>
-                    <div style={{ fontSize: 10.5, color: "#94a3b8", fontWeight: 600 }}>
-                      Order #{activeOrder.orderNumber || activeOrder.id} • Auto-reducing countdown ({minStr}:{secStr})
-                    </div>
-                  </div>
-                </div>
-                <span
-                  style={{
-                    background: riderArrivedBar ? "#22c55e" : "rgba(34, 197, 94, 0.18)",
-                    color: riderArrivedBar ? "#ffffff" : "#4ade80",
-                    fontSize: 10.5,
-                    fontWeight: 900,
-                    padding: "4px 8px",
-                    borderRadius: 6,
-                    whiteSpace: "nowrap",
-                    border: "1px solid rgba(34, 197, 94, 0.4)",
-                  }}
-                >
-                  {riderArrivedBar
-                    ? "📍 ARRIVED"
-                    : doorstepSeconds !== null
-                    ? `⚡ ${doorstepSeconds}s`
-                    : `⚡ ${arrivingMinutes} MIN`}
-                </span>
-              </div>
-            )}
-          </div>
-        </header>
-
-        {/* ─── MAIN CONTENT — WHITE THEME ─── */}
-        <main style={S.main}>
-          {/* STEP 1: AWAITING PICKUP FROM STAGING RACKS (HOME WORKSPACE) */}
-          {activeStep === "awaiting_orders" && (
+        <div style={{ ...S.container, background: "transparent", paddingBottom: 24 }}>
+        {/* ─── MAIN CONTENT — NATIVE iOS TABS ─── */}
+        <main key={riderTab} className="ios-tab-crossfade" style={S.main}>
+          {/* STEP 1 / TAB 1: TASKS QUEUE */}
+          {riderTab === "tasks" && (
             <div>
-              {/* ── HOME TASK SEARCHING VIDEO (ALWAYS VISIBLE & PLAYING ON HOME) ── */}
-              <div style={S.idleCard}>
-                <div style={{ position: "relative", textAlign: "center", borderRadius: 14, overflow: "hidden", marginBottom: 14 }}>
+              {/* ── HOME TASK SEARCHING CARD ── */}
+              <div className="ios-card" style={{ padding: 12, marginBottom: 14 }}>
+                <div style={{ position: "relative", textAlign: "center", borderRadius: 14, overflow: "hidden" }}>
                   <video
                     autoPlay
                     loop
@@ -827,13 +834,10 @@ export default function DeliveryCaptainApp() {
                     playsInline
                     style={{
                       width: "100%",
-                      maxWidth: 360,
-                      height: 210,
+                      height: 190,
                       objectFit: "cover",
                       borderRadius: 14,
-                      boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
-                      display: "inline-block",
-                      border: "1.5px solid #e2e8f0",
+                      display: "block",
                       background: "#080c14",
                     }}
                   >
@@ -846,21 +850,20 @@ export default function DeliveryCaptainApp() {
                   <div
                     style={{
                       position: "absolute",
-                      bottom: 12,
+                      bottom: 10,
                       left: "50%",
                       transform: "translateX(-50%)",
                       background: "rgba(15, 23, 42, 0.85)",
-                      backdropFilter: "blur(6px)",
+                      backdropFilter: "blur(8px)",
                       color: "#ffffff",
                       padding: "6px 14px",
                       borderRadius: 20,
                       fontSize: 11.5,
-                      fontWeight: 800,
+                      fontWeight: 700,
                       display: "flex",
                       alignItems: "center",
                       gap: 8,
                       whiteSpace: "nowrap",
-                      boxShadow: "0 2px 8px rgba(0,0,0,0.4)",
                     }}
                   >
                     <span
@@ -868,12 +871,11 @@ export default function DeliveryCaptainApp() {
                         width: 8,
                         height: 8,
                         borderRadius: "50%",
-                        background: "#10b981",
-                        boxShadow: "0 0 8px #10b981",
+                        background: isCheckedIn ? "#34C759" : "#FF3B30",
                         display: "inline-block",
                       }}
                     />
-                    <span>Awaiting Order Dispatch • Searching Live Tasks...</span>
+                    <span>{isCheckedIn ? "Online • Searching Live Dispatch Tasks..." : "Offline • Toggle Online to Receive Tasks"}</span>
                   </div>
                 </div>
               </div>
@@ -1020,6 +1022,34 @@ export default function DeliveryCaptainApp() {
                             </div>
                           </div>
 
+                          {/* Pickup → Drop + Distance + Earning Card Summary */}
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "space-between",
+                              padding: "8px 10px",
+                              borderRadius: 12,
+                              background: "rgba(52, 199, 89, 0.12)",
+                              marginTop: 8,
+                              marginBottom: 8,
+                            }}
+                          >
+                            <span className="ios-footnote" style={{ fontWeight: 700, color: "var(--ios-label)" }}>
+                              🏪 Rack {rackId} → 📍 {ord.customerAddress || "Tiptur - 572201"}
+                            </span>
+                            <span
+                              style={{
+                                fontSize: 13,
+                                fontWeight: 800,
+                                color: "#0C831F",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              1.7 km • ₹28
+                            </span>
+                          </div>
+
                           {/* SKU Item List */}
                           <div style={S.skuListBox}>
                             <div style={S.skuListTitle}>Bag Contents:</div>
@@ -1033,7 +1063,7 @@ export default function DeliveryCaptainApp() {
 
                           <div style={{ marginTop: 14 }}>
                             <SlideButton
-                              text={`SLIDE TO CONFIRM PICKUP & START 8-MIN DELIVERY (RACK ${rackId})`}
+                              text={`SLIDE TO ACCEPT & PICKUP (RACK ${rackId})`}
                               color="#0c831f"
                               icon={<IconRealisticScooter size={26} color="#ffffff" />}
                               onSlideComplete={() => handleConfirmPickupAndStartDelivery(ord)}
@@ -1048,385 +1078,405 @@ export default function DeliveryCaptainApp() {
             </div>
           )}
 
-          {/* STEP 3: EN ROUTE - 8-MINUTE AUTO-REDUCING LIVE TRACKER ACROSS NAMMA TIPTUR */}
-          {activeStep === "en_route" && activeOrder && (
-            <div>
-              {/* 8-Minute Auto-Reducing Countdown SLA Card */}
-              <div style={S.slaCountdownCard}>
-                <div style={S.slaClockRow}>
-                  <div>
-                    <div style={S.slaTitle}>
-                      <IconRealisticScooter size={24} color="#0c831f" animated={true} style={{ marginRight: 8 }} />
-                      {riderArrivedBar
-                        ? "RIDER ARRIVED TO CUSTOMER LOCATION"
-                        : doorstepSeconds !== null
-                        ? `ALMOST TO DOORSTEP • ${doorstepSeconds} SECONDS`
-                        : `${distanceLeftKm} KMS LEFT • TAKING ${arrivingMinutes} ${arrivingMinutes === 1 ? "MINUTE" : "MINUTES"}`}
-                    </div>
-                    <div style={S.slaSubtitle}>
-                      Auto-reducing 8-Min Rider Countdown (Like Ordering App Tracking Page)
-                    </div>
-                  </div>
-                  <div style={S.slaDigits}>
-                    {doorstepSeconds !== null && !riderArrivedBar ? `00:${String(doorstepSeconds).padStart(2, "0")}` : `${minStr}:${secStr}`}
-                  </div>
-                </div>
-
-                {/* Progress bar */}
-                <div style={S.progressBarBg}>
-                  <div
-                    style={{
-                      ...S.progressBarFill,
-                      width: `${Math.max(5, (remainingSec / CAPTAIN_SLA_SECONDS) * 100)}%`,
-                    }}
-                  />
-                </div>
+          {/* TAB 2: ACTIVE DELIVERY WITH DETENT BOTTOM SHEET OVER MAP */}
+          {riderTab === "active" && !activeOrder && !deliveredCelebration && (
+            <div className="ios-card" style={{ padding: 28, textAlign: "center" }}>
+              <div style={{ fontSize: 36, marginBottom: 8 }}>🛵</div>
+              <div className="ios-headline" style={{ marginBottom: 4 }}>No Active Delivery</div>
+              <div className="ios-footnote" style={{ color: "var(--ios-label-2)", marginBottom: 16 }}>
+                Accept a staged order from Tasks to open live navigation and step controls.
               </div>
+              <IOSButton minHeight={50} onClick={() => setRiderTab("tasks")}>
+                View Available Tasks
+              </IOSButton>
+            </div>
+          )}
 
-              {/* Sinchana Greeting Banner */}
-              <div style={S.greetingBanner}>
+          {riderTab === "active" && activeOrder && (
+            <div style={{ position: "relative", minHeight: 540 }}>
+              {/* Full-bleed Map Area at Top */}
+              <div className="ios-card" style={{ padding: 10, marginBottom: 12 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                  <span className="ios-headline" style={{ fontSize: 15 }}>
+                    Order #{activeOrder.orderNumber || activeOrder.id} • {distanceLeftKm} km
+                  </span>
+                  <span
+                    style={{
+                      padding: "4px 10px",
+                      borderRadius: 99,
+                      background: "#0C831F",
+                      color: "#FFFFFF",
+                      fontSize: 12,
+                      fontWeight: 800,
+                      fontVariantNumeric: "tabular-nums",
+                    }}
+                  >
+                    {doorstepSeconds !== null && !riderArrivedBar
+                      ? `${doorstepSeconds}s`
+                      : `${minStr}:${secStr}`}
+                  </span>
+                </div>
                 <img
-                  src="/sinchana-logo.png"
-                  alt="Sinchana B R Logo"
+                  src="/tiptur-gps-route.jpg"
+                  alt="Tiptur Live Route"
+                  width={400}
+                  height={220}
+                  loading="lazy"
+                  decoding="async"
                   style={{
-                    width: 44,
-                    height: 44,
-                    borderRadius: "50%",
+                    width: "100%",
+                    height: sheetDetent === "large" ? 130 : 220,
                     objectFit: "cover",
-                    border: "2px solid #ca8a04",
-                    background: "#000000",
-                    flexShrink: 0,
-                    boxShadow: "0 2px 8px rgba(0,0,0,0.25)",
+                    borderRadius: 14,
+                    display: "block",
+                    transition: "height 280ms var(--ios-spring)",
                   }}
                 />
-                <div>
-                  <div style={S.greetingFrom}>Customer App Notification (Captain Sinchana B R):</div>
-                  <div style={S.greetingMessage}>
-                    "Hi I am Sinchana B R, your order captain on the way coming soon!"
-                  </div>
-                </div>
               </div>
 
-              {/* REAL GOOGLE MAPS NAVIGATION (MADIHALLI -> KFGSC TIPTUR) */}
-              <div style={S.gpsNavCard}>
-                <div style={S.gpsNavHeader}>
-                  <div style={S.gpsNavLeft}>
-                    <span style={S.gpsLiveDot} />
-                    <div>
-                      <div style={S.gpsNavTitle}>📍 LIVE GOOGLE MAPS TWO-WHEELER ROUTE</div>
-                      <div style={S.gpsNavSub}>Dark Store Facility → Kalpataru First Grade Science (KFGSC)</div>
-                    </div>
-                  </div>
-                  <div style={S.gpsBadge}>3 min (1.7 km)</div>
-                </div>
-
-                <div style={S.gpsMapImgWrap}>
-                  <img
-                    src="/tiptur-gps-route.jpg"
-                    alt="Two-wheeler 3 min 1.7 km route from Madihalli to KFGSC Tiptur"
+              {/* DETENT BOTTOM SHEET OVER MAP */}
+              <div
+                className="ios-card"
+                style={{
+                  borderTopLeftRadius: 28,
+                  borderTopRightRadius: 28,
+                  padding: "10px 16px 18px",
+                  boxShadow: "0 -8px 28px rgba(0, 0, 0, 0.14)",
+                }}
+              >
+                {/* Drag / Detent Grabber Pill */}
+                <button
+                  type="button"
+                  onClick={() => setSheetDetent((d) => (d === "medium" ? "large" : "medium"))}
+                  aria-label="Toggle delivery details sheet size"
+                  style={{
+                    width: "100%",
+                    background: "transparent",
+                    border: "none",
+                    padding: "4px 0 10px",
+                    cursor: "pointer",
+                  }}
+                >
+                  <span
                     style={{
-                      width: "100%",
-                      borderRadius: 12,
                       display: "block",
-                      border: "1.5px solid #1e293b",
-                      boxShadow: "0 4px 20px rgba(0,0,0,0.3)",
-                      height: "auto",
+                      width: 38,
+                      height: 5,
+                      borderRadius: 99,
+                      background: "var(--ios-fill)",
+                      margin: "0 auto",
                     }}
                   />
-                  <div style={{ ...S.gpsFloatBar, position: "relative", bottom: "auto", left: "auto", right: "auto", marginTop: 10 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <img
-                        src="/sinchana-logo.png"
-                        alt="Sinchana"
-                        style={{ width: 26, height: 26, borderRadius: "50%", border: "1.5px solid #ca8a04", flexShrink: 0 }}
-                      />
-                      <span style={{ fontSize: 12, fontWeight: 800, color: "#ffffff" }}>
-                        Sinchana B R • Fastest Route via APMC Road (1.7 km)
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      style={S.fastTransitBtn}
-                      onClick={() => {
-                        setRemainingSec(15);
-                        setElapsedSec(180);
-                        setDoorstepSeconds(15);
-                        setTransitProgress(96);
-                        setCurrentWaypointIdx(3);
-                        setDistanceLeftKm(0.1);
-                        playSuccessChime();
-                        setActionSuccess("⚡ Fast 3-min approach recorded! 15s to Customer Doorstep.");
-                      }}
-                      title="Advance to 15-second final doorstep approach"
-                    >
-                      ⚡ Fast 3-Min Arrival
-                    </button>
-                  </div>
-                </div>
-              </div>
+                </button>
 
-              {/* Live Tiptur Route Simulation */}
-              <div style={S.mapSimulationCard}>
-                <div style={S.mapHeader}>
-                  <span>🗺️ Live Mobile GPS Tracking in Namma Tiptur</span>
-                  <span style={S.pctBadge}>{Math.round(transitProgress)}% Completed</span>
-                </div>
-
-                <div style={S.currentLocationBox}>
-                  <span style={S.currentLocIcon}>📍</span>
-                  <div>
-                    <div style={S.currentLocLabel}>Current Position:</div>
-                    <div style={S.currentLocName}>{TIPTUR_WAYPOINTS[currentWaypointIdx].label}</div>
-                  </div>
-                </div>
-
-                {/* Landmarks Stepper */}
-                <div style={S.waypointsList}>
-                  {TIPTUR_WAYPOINTS.map((wp, idx) => {
-                    const isPassed = idx <= currentWaypointIdx;
-                    const isCurrent = idx === currentWaypointIdx;
+                {/* 4 Delivery Steps Stepper */}
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6, marginBottom: 14 }}>
+                  {[
+                    { id: "reached_store", label: "Reached store" },
+                    { id: "picked_up", label: "Picked up" },
+                    { id: "reached_customer", label: "Reached" },
+                    { id: "delivered", label: "Delivered" },
+                  ].map((st, idx) => {
+                    const orderSteps = ["reached_store", "picked_up", "reached_customer", "delivered"];
+                    const curIdx = orderSteps.indexOf(deliveryMilestone);
+                    const done = idx <= curIdx;
                     return (
-                      <div key={idx} style={S.waypointRow}>
+                      <div key={st.id} style={{ textAlign: "center" }}>
                         <div
                           style={{
-                            ...S.waypointDot,
-                            background: isPassed ? "#0c831f" : "#f1f5f9",
-                            color: isPassed ? "#ffffff" : "#64748b",
-                            borderColor: isCurrent ? "#0c831f" : isPassed ? "#0c831f" : "#cbd5e1",
+                            height: 4,
+                            borderRadius: 99,
+                            background: done ? "#34C759" : "var(--ios-fill)",
+                            marginBottom: 4,
+                            transition: "background 220ms ease",
                           }}
-                        >
-                          {isPassed ? "✓" : idx + 1}
-                        </div>
+                        />
                         <span
                           style={{
-                            ...S.waypointText,
-                            color: isCurrent ? "#0c831f" : isPassed ? "#0f172a" : "#64748b",
-                            fontWeight: isCurrent ? 800 : 500,
+                            fontSize: 10.5,
+                            fontWeight: done ? 700 : 500,
+                            color: done ? "#0C831F" : "var(--ios-label-2)",
                           }}
                         >
-                          {wp.label}
+                          {st.label}
                         </span>
                       </div>
                     );
                   })}
                 </div>
-              </div>
 
-              {/* Delivery Confirmation Trigger */}
-              <div style={S.handoverCard}>
-                <div style={S.handoverTitle}>Arrived at Customer Doorstep?</div>
-                <p style={S.handoverSub}>
-                  Hand over package to <b>{activeOrder.customerName || "Customer"}</b> and verify customer OTP / delivery receipt.
-                </p>
+                {/* Customer Info + Call & Maps Deep Link Buttons */}
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 12 }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div className="ios-headline" style={{ color: "var(--ios-label)" }}>
+                      {activeOrder.customerName || "Customer (Namma Tiptur)"}
+                    </div>
+                    <div className="ios-footnote" style={{ color: "var(--ios-label-2)" }}>
+                      📍 {activeOrder.customerAddress || "Kalpataru College Road, Tiptur 572201"}
+                    </div>
+                  </div>
+                </div>
 
-                <SlideButton
-                  text="SLIDE TO CONFIRM CUSTOMER HANDOVER"
-                  color="#0c831f"
-                  icon={<IconRealisticCheck size={24} color="#ffffff" />}
-                  onSlideComplete={handleCustomerHandoverConfirmation}
-                />
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
+                  <a
+                    href={`tel:${activeOrder.customerPhone || "9845099887"}`}
+                    style={{
+                      minHeight: 48,
+                      borderRadius: 14,
+                      background: "rgba(0, 122, 255, 0.14)",
+                      color: "#007AFF",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 6,
+                      fontWeight: 700,
+                      fontSize: 15,
+                      textDecoration: "none",
+                    }}
+                  >
+                    📞 Call Customer
+                  </a>
+                  <a
+                    href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(
+                      activeOrder.customerAddress || "KFGSC Tiptur 572201"
+                    )}&travelmode=two-wheeler`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      minHeight: 48,
+                      borderRadius: 14,
+                      background: "rgba(52, 199, 89, 0.14)",
+                      color: "#0C831F",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 6,
+                      fontWeight: 700,
+                      fontSize: 15,
+                      textDecoration: "none",
+                    }}
+                  >
+                    🧭 Navigate Maps
+                  </a>
+                </div>
 
-                <button style={S.quickHandoverBtn} onClick={handleCustomerHandoverConfirmation}>
-                  ✅ Confirm Customer Delivery Handover
-                </button>
+                {sheetDetent === "large" && (
+                  <div style={{ marginBottom: 12 }}>
+                    <div style={S.progressBarBg}>
+                      <div
+                        style={{
+                          ...S.progressBarFill,
+                          width: "100%",
+                          transformOrigin: "left center",
+                          transform: `scaleX(${Math.max(0.05, remainingSec / CAPTAIN_SLA_SECONDS)})`,
+                          transition: "transform 400ms linear",
+                        }}
+                      />
+                    </div>
+                    <div className="ios-caption" style={{ color: "var(--ios-label-2)", marginTop: 6 }}>
+                      Waypoint: {TIPTUR_WAYPOINTS[currentWaypointIdx].label}
+                    </div>
+                  </div>
+                )}
+
+                {/* Changing Primary CTA per Step */}
+                {deliveryMilestone === "reached_store" && (
+                  <IOSButton
+                    variant="primary"
+                    minHeight={54}
+                    onClick={() => {
+                      setDeliveryMilestone("picked_up");
+                      setActionSuccess("📦 Confirmed picked up from dark store rack!");
+                    }}
+                  >
+                    Confirm Picked Up from Rack
+                  </IOSButton>
+                )}
+
+                {deliveryMilestone === "picked_up" && (
+                  <IOSButton
+                    variant="primary"
+                    minHeight={54}
+                    onClick={() => {
+                      setDeliveryMilestone("reached_customer");
+                      setRemainingSec(15);
+                      setDoorstepSeconds(15);
+                      setTransitProgress(96);
+                      setCurrentWaypointIdx(4);
+                      setDistanceLeftKm(0.0);
+                      setRiderArrivedBar(true);
+                      playSuccessChime();
+                      setActionSuccess("📍 Marked Reached Customer Doorstep!");
+                    }}
+                  >
+                    Mark Reached Customer Doorstep →
+                  </IOSButton>
+                )}
+
+                {deliveryMilestone === "reached_customer" && (
+                  <div>
+                    <SlideButton
+                      text="SLIDE TO CONFIRM DELIVERED"
+                      color="#0c831f"
+                      icon={<IconRealisticCheck size={24} color="#ffffff" />}
+                      onSlideComplete={handleCustomerHandoverConfirmation}
+                    />
+                    <IOSButton
+                      variant="green"
+                      minHeight={52}
+                      onClick={handleCustomerHandoverConfirmation}
+                    >
+                      ✓ Complete Delivery (+₹28)
+                    </IOSButton>
+                  </div>
+                )}
               </div>
             </div>
           )}
 
-          {/* STEP 4: DELIVERED CELEBRATION + GIG EARNINGS FORM (5.1 KMS / 28 RUPEES -> SINCHANA B R WALLET) + TASKSEARCHING.MP4 */}
-          {activeStep === "delivered" && (
-            <div style={S.deliveredCard}>
-              {/* ── RIDER GIG PAYOUT FORM: GIGS 5.1 KMS, EARNED 28 RUPEES -> SINCHANA B R WALLET ── */}
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  if (!gigFormSubmitted) {
-                    creditSinchanaWallet();
-                  }
-                }}
+          {/* DELIVERED CELEBRATION + EARNING SUMMARY */}
+          {riderTab === "active" && !activeOrder && deliveredCelebration && (
+            <div className="ios-card ios-badge-pop" style={{ padding: 20, textAlign: "center" }}>
+              <div
                 style={{
-                  background: "linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)",
-                  border: "2px solid #16a34a",
-                  borderRadius: 16,
-                  padding: 16,
-                  marginBottom: 16,
-                  textAlign: "left",
-                  boxShadow: "0 8px 24px rgba(12, 131, 31, 0.14)",
+                  width: 64,
+                  height: 64,
+                  borderRadius: "50%",
+                  background: "#34C759",
+                  color: "#FFFFFF",
+                  display: "grid",
+                  placeItems: "center",
+                  fontSize: 30,
+                  fontWeight: 900,
+                  margin: "0 auto 12px",
                 }}
               >
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                ✓
+              </div>
+              <h2 className="ios-title" style={{ margin: "0 0 4px" }}>Delivered!</h2>
+              <p className="ios-subhead" style={{ color: "var(--ios-label-2)", marginBottom: 16 }}>
+                Order #{deliveredCelebration.orderNumber} safely delivered to customer.
+              </p>
+
+              <IOSGroupedList header="Trip Earning Summary">
+                <IOSListRow title="Earned" trailing={<b style={{ color: "#34C759" }}>+₹{deliveredCelebration.earned}</b>} />
+                <IOSListRow title="Trip Distance" trailing={<b>{deliveredCelebration.distanceKm}</b>} />
+                <IOSListRow title="Total Wallet" trailing={<b>₹{sinchanaWalletBalance}</b>} last />
+              </IOSGroupedList>
+
+              <IOSButton variant="green" minHeight={54} onClick={handleResetForNextDelivery}>
+                Find Next Delivery Task →
+              </IOSButton>
+            </div>
+          )}
+
+          {/* TAB 3: EARNINGS */}
+          {riderTab === "earnings" && (
+            <div>
+              <div
+                className="ios-card"
+                style={{
+                  padding: 18,
+                  marginBottom: 16,
+                  background: "linear-gradient(135deg, #0C831F 0%, #059669 100%)",
+                  color: "#FFFFFF",
+                }}
+              >
+                <div className="ios-caption" style={{ opacity: 0.9 }}>Sinchana B R Wallet</div>
+                <div className="ios-large-title" style={{ color: "#FFFFFF", margin: "4px 0" }}>
+                  ₹{sinchanaWalletBalance}
+                </div>
+                <div className="ios-footnote" style={{ opacity: 0.9 }}>
+                  Total Distance Completed: {sinchanaTotalGigsKm} kms
+                </div>
+              </div>
+
+              <IOSGroupedList header="Recent Payouts">
+                {earningsLog.length === 0 ? (
+                  <IOSListRow
+                    leading={<span style={{ fontSize: 18 }}>🛵</span>}
+                    title="Shift Base Payout"
+                    subtitle="5.1 kms • KFGSC Route"
+                    trailing={<b style={{ color: "#34C759" }}>₹28</b>}
+                    last
+                  />
+                ) : (
+                  earningsLog.map((e, idx) => (
+                    <IOSListRow
+                      key={idx}
+                      leading={<span style={{ fontSize: 18 }}>💰</span>}
+                      title={`Order #${e.orderNumber}`}
+                      subtitle={`${e.distanceKm} • ${e.time}`}
+                      trailing={<b style={{ color: "#34C759" }}>+₹{e.earned}</b>}
+                      last={idx === earningsLog.length - 1}
+                    />
+                  ))
+                )}
+              </IOSGroupedList>
+            </div>
+          )}
+
+          {/* TAB 4: RIDER PROFILE */}
+          {riderTab === "profile" && (
+            <div>
+              <IOSGroupedList header="Order Captain Account">
+                <IOSListRow
+                  leading={
                     <img
                       src="/sinchana-logo.png"
                       alt="Sinchana B R"
-                      style={{
-                        width: 42,
-                        height: 42,
-                        borderRadius: "50%",
-                        objectFit: "cover",
-                        border: "2px solid #0c831f",
-                      }}
+                      width={40}
+                      height={40}
+                      style={{ borderRadius: "50%", objectFit: "cover", border: "1.5px solid #ca8a04" }}
                     />
-                    <div>
-                      <div style={{ fontSize: 14, fontWeight: 900, color: "#0f172a" }}>
-                        Sinchana B R Wallet — Gig Payout Form
-                      </div>
-                      <div style={{ fontSize: 11.5, color: "#15803d", fontWeight: 700 }}>
-                        Order #{activeOrder?.orderNumber || activeOrder?.id}
-                      </div>
-                    </div>
-                  </div>
-                  <span
-                    style={{
-                      background: "#0c831f",
-                      color: "#ffffff",
-                      fontSize: 10.5,
-                      fontWeight: 900,
-                      padding: "4px 9px",
-                      borderRadius: 8,
-                    }}
-                  >
-                    {gigFormSubmitted ? "CREDITED ✓" : "GIG COMPLETED"}
-                  </span>
-                </div>
+                  }
+                  title="Sinchana B R"
+                  subtitle="Device: OPPO • 8088553237"
+                />
+                <IOSListRow
+                  title="Online Duty Status"
+                  subtitle={isCheckedIn ? "Receiving live orders" : "Paused"}
+                  trailing={<IOSToggle checked={isCheckedIn} onChange={() => handleToggleDuty()} />}
+                  last
+                />
+              </IOSGroupedList>
 
-                <div
-                  style={{
-                    background: "#ffffff",
-                    borderRadius: 12,
-                    padding: 12,
-                    border: "1px solid #86efac",
-                    marginBottom: 12,
+              <IOSGroupedList header="Actions">
+                <IOSListRow
+                  title="Simulate Test Order"
+                  subtitle="Stage a sample order at Rack D5"
+                  chevron
+                  onClick={handleSimulateIncomingStagedOrder}
+                />
+                <IOSListRow
+                  title="Sign Out of Shift"
+                  destructive
+                  last
+                  onClick={() => {
+                    const statusUpdatedAt = Date.now();
+                    setIsRiderLoggedIn(false);
+                    setIsCheckedIn(false);
+                    try {
+                      localStorage.removeItem("auditx_rider_authenticated");
+                      localStorage.removeItem("auditx_rider_auth_date");
+                      recordLocalStaffDuty({
+                        staffId: "sinchana",
+                        staffName: "Sinchana B R",
+                        deviceName: "OPPO",
+                        deviceStatus: "LOGGED_OUT",
+                        statusUpdatedAt,
+                      });
+                    } catch {}
+                    dispatchCloudAction("UPDATE_STAFF_DUTY", {
+                      staffId: "sinchana",
+                      staffName: "Sinchana B R",
+                      deviceName: "OPPO",
+                      deviceStatus: "LOGGED_OUT",
+                      statusUpdatedAt,
+                    });
                   }}
-                >
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      padding: "6px 0",
-                      borderBottom: "1px dashed #cbd5e1",
-                    }}
-                  >
-                    <span style={{ fontSize: 13, fontWeight: 700, color: "#334155" }}>🛵 Gigs :</span>
-                    <b style={{ fontSize: 15, fontWeight: 900, color: "#0f172a" }}>5.1 kms</b>
-                  </div>
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      padding: "6px 0",
-                      borderBottom: "1px dashed #cbd5e1",
-                    }}
-                  >
-                    <span style={{ fontSize: 13, fontWeight: 700, color: "#334155" }}>💰 Earned :</span>
-                    <b style={{ fontSize: 16, fontWeight: 900, color: "#0c831f" }}>₹28 (28 Rupees)</b>
-                  </div>
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      padding: "6px 0",
-                    }}
-                  >
-                    <span style={{ fontSize: 13, fontWeight: 700, color: "#334155" }}>🏦 Transfer To :</span>
-                    <b style={{ fontSize: 13.5, fontWeight: 900, color: "#15803d" }}>
-                      Sinchana B R Wallet (Balance: ₹{sinchanaWalletBalance})
-                    </b>
-                  </div>
-                </div>
-
-                {gigFormSubmitted ? (
-                  <div
-                    style={{
-                      background: "#0c831f",
-                      color: "#ffffff",
-                      borderRadius: 10,
-                      padding: "10px 14px",
-                      fontSize: 12.5,
-                      fontWeight: 800,
-                      textAlign: "center",
-                    }}
-                  >
-                    ✅ Gigs: 5.1 kms • Earned: ₹28 Credited to Sinchana B R Wallet! (Total: ₹{sinchanaWalletBalance} • {sinchanaTotalGigsKm} kms)
-                  </div>
-                ) : (
-                  <button
-                    type="submit"
-                    style={{
-                      width: "100%",
-                      background: "linear-gradient(135deg, #0c831f 0%, #15803d 100%)",
-                      color: "#ffffff",
-                      border: "none",
-                      borderRadius: 10,
-                      padding: "11px 16px",
-                      fontSize: 13.5,
-                      fontWeight: 900,
-                      cursor: "pointer",
-                      boxShadow: "0 4px 14px rgba(12, 131, 31, 0.3)",
-                    }}
-                  >
-                    💰 Credit ₹28 (Gigs: 5.1 kms) to Sinchana B R Wallet
-                  </button>
-                )}
-              </form>
-
-              {/* Play tasksearching.mp4 when all tasks are completed in Rider app */}
-              <div style={{ textAlign: "center", marginBottom: 14 }}>
-                <video
-                  autoPlay
-                  loop
-                  muted
-                  playsInline
-                  style={{
-                    width: "100%",
-                    maxWidth: 320,
-                    height: 185,
-                    objectFit: "cover",
-                    borderRadius: 14,
-                    boxShadow: "0 8px 24px rgba(0,0,0,0.14)",
-                    display: "inline-block",
-                    border: "1.5px solid #86efac",
-                    background: "#080c14",
-                  }}
-                >
-                  <source src="/animations/rider_order_delivered.mp4" type="video/mp4" />
-                  <source src="/rider_order_delivered.mp4" type="video/mp4" />
-                  <source src="/animations/task_search_icon_logo.mp4" type="video/mp4" />
-                  <source src="/task_search_icon_logo.mp4" type="video/mp4" />
-                  <source src="/tasksearching.mp4" type="video/mp4" />
-                </video>
-                <div style={{ fontSize: 11.5, fontWeight: 800, color: "#0c831f", marginTop: 6 }}>
-                  ⚡ All Tasks Completed • Searching Next Live Rider Dispatch Task...
-                </div>
-              </div>
-
-              <div style={S.celebrateIcon}>🎉</div>
-              <h2 style={S.deliveredTitle}>Order Successfully Delivered!</h2>
-              <p style={S.deliveredSub}>
-                Great job Sinchana B R! Order #{activeOrder?.orderNumber || activeOrder?.id} was safely delivered to the customer in Namma Tiptur under SLA!
-              </p>
-
-              <div style={S.slaResultBox}>
-                <div style={S.slaResultItem}>
-                  <span style={S.slaItemLabel}>Gigs Distance Completed</span>
-                  <b style={S.slaItemVal}>5.1 kms</b>
-                </div>
-                <div style={S.slaResultItem}>
-                  <span style={S.slaItemLabel}>Earned &amp; Credited to Sinchana B R Wallet</span>
-                  <b style={{ color: "#0c831f", fontSize: 15 }}>₹28 (28 Rupees)</b>
-                </div>
-                <div style={S.slaResultItem}>
-                  <span style={S.slaItemLabel}>Sinchana B R Wallet Balance</span>
-                  <b style={{ color: "#0c831f", fontSize: 16 }}>₹{sinchanaWalletBalance} ({sinchanaTotalGigsKm} kms)</b>
-                </div>
-              </div>
-
-              <button style={S.nextDeliveryBtn} onClick={handleResetForNextDelivery}>
-                Ready for Next Delivery →
-              </button>
+                />
+              </IOSGroupedList>
             </div>
           )}
         </main>

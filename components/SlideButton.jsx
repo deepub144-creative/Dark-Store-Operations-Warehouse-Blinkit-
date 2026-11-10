@@ -13,15 +13,29 @@ export default function SlideButton({ text, onSlideComplete, color = "#0c831f", 
   const [completed, setCompleted] = useState(false);
   const trackRef = useRef(null);
 
+  const [trackWidth, setTrackWidth] = useState(320);
+
   useEffect(() => {
     setCompleted(false);
     setDragX(0);
     setIsDragging(false);
   }, [text]);
 
+  useEffect(() => {
+    if (trackRef.current) {
+      setTrackWidth(trackRef.current.clientWidth || 320);
+    }
+  }, []);
+
   const handleStart = (clientX) => {
     if (completed) return;
+    if (trackRef.current) {
+      setTrackWidth(trackRef.current.clientWidth || 320);
+    }
     setIsDragging(true);
+    try {
+      navigator.vibrate?.(8);
+    } catch {}
   };
 
   const handleMove = (clientX) => {
@@ -37,6 +51,9 @@ export default function SlideButton({ text, onSlideComplete, color = "#0c831f", 
       setCompleted(true);
       setIsDragging(false);
       setDragX(maxDrag);
+      try {
+        navigator.vibrate?.(15);
+      } catch {}
       if (onSlideComplete) onSlideComplete();
     }
   };
@@ -104,18 +121,18 @@ export default function SlideButton({ text, onSlideComplete, color = "#0c831f", 
         cursor: completed ? "default" : "pointer",
       }}
     >
-      {/* Dynamic Slide Background Fill */}
+      {/* GPU-accelerated Slide Background Fill */}
       <div
         style={{
           position: "absolute",
-          left: 0,
-          top: 0,
-          bottom: 0,
-          width: dragX + 56,
+          inset: 0,
           background: color,
           opacity: completed ? 1 : 0.45,
           borderRadius: 28,
-          transition: isDragging ? "none" : "width 0.22s ease",
+          transformOrigin: "left center",
+          transform: `scaleX(${Math.min(1, (dragX + 56) / Math.max(1, trackWidth))})`,
+          transition: isDragging ? "none" : "transform 280ms var(--ios-spring)",
+          willChange: "transform",
         }}
       />
 
@@ -157,13 +174,13 @@ export default function SlideButton({ text, onSlideComplete, color = "#0c831f", 
         {completed ? "✓ CONFIRMED & VERIFIED" : text}
       </span>
 
-      {/* Draggable Realistic Handle */}
+      {/* Draggable GPU-Accelerated Realistic Handle */}
       <div
         onMouseDown={(e) => handleStart(e.clientX)}
         onTouchStart={(e) => handleStart(e.touches[0].clientX)}
         style={{
           position: "absolute",
-          left: dragX + 4,
+          left: 4,
           top: 4,
           width: 48,
           height: 48,
@@ -177,8 +194,9 @@ export default function SlideButton({ text, onSlideComplete, color = "#0c831f", 
           boxShadow: "0 4px 14px rgba(0,0,0,0.35)",
           border: completed ? "2px solid #10b981" : "2px solid rgba(255,255,255,0.4)",
           zIndex: 2,
-          transition: isDragging ? "none" : "left 0.22s ease, transform 0.15s ease",
-          transform: isDragging ? "scale(1.06)" : "scale(1)",
+          transition: isDragging ? "none" : "transform 300ms var(--ios-spring)",
+          transform: `translate3d(${dragX}px, 0, 0) scale(${isDragging ? 1.06 : 1})`,
+          willChange: "transform",
         }}
       >
         {completed ? <IconRealisticCheck size={24} color="#10b981" /> : renderHandleIcon()}
