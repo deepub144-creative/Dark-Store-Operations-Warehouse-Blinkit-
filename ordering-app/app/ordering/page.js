@@ -342,6 +342,74 @@ export default function OrderingAppPage() {
   const [receiptOrder, setReceiptOrder] = useState(null);
   const [showReceiptModal, setShowReceiptModal] = useState(false);
 
+  // Fullscreen Opening Intro Video Splash (Muted, exact timeline, mobile app shell fit)
+  const [showIntroOverlay, setShowIntroOverlay] = useState(true);
+  const [introFadeOut, setIntroFadeOut] = useState(false);
+  const introVideoRef = useRef(null);
+  const introCompletedRef = useRef(false);
+  const introHasStartedRef = useRef(false);
+  const introLastTickAtRef = useRef(Date.now());
+  const introFadeTimerRef = useRef(null);
+
+  function finishIntroSplash(immediate = false) {
+    if (introCompletedRef.current) return;
+    introCompletedRef.current = true;
+    if (immediate) {
+      setShowIntroOverlay(false);
+      return;
+    }
+    setIntroFadeOut(true);
+    introFadeTimerRef.current = setTimeout(() => {
+      setShowIntroOverlay(false);
+    }, 550);
+  }
+
+  useEffect(() => {
+    if (!showIntroOverlay) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [showIntroOverlay]);
+
+  useEffect(() => {
+    if (!showIntroOverlay) return;
+    const vid = introVideoRef.current;
+    if (!vid) return;
+
+    introLastTickAtRef.current = Date.now();
+    // Sound strictly OFF
+    vid.muted = true;
+    vid.defaultMuted = true;
+    vid.volume = 0;
+    vid.playbackRate = 1.0;
+
+    const playPromise = vid.play();
+    if (playPromise && typeof playPromise.catch === "function") {
+      playPromise.catch((err) => {
+        if (err && err.name === "NotAllowedError") {
+          finishIntroSplash(false);
+        }
+      });
+    }
+
+    // Safety guard only: never cuts off exact video timeline; handles initial load stall (> 8s) or mid-stream stall (> 4.5s)
+    const stallCheck = setInterval(() => {
+      if (introCompletedRef.current) return;
+      const idleMs = Date.now() - introLastTickAtRef.current;
+      const limitMs = introHasStartedRef.current ? 4500 : 8000;
+      if (idleMs > limitMs) {
+        finishIntroSplash(false);
+      }
+    }, 1500);
+
+    return () => {
+      clearInterval(stallCheck);
+      if (introFadeTimerRef.current) clearTimeout(introFadeTimerRef.current);
+    };
+  }, []);
+
   // Customer Complaint System (Synced with SM Bhaskar N S & ASM Deepu B Dashboard)
   const [showComplaintModal, setShowComplaintModal] = useState(false);
   const [complaintsTab, setComplaintsTab] = useState("tickets"); // "raise" | "tickets"
@@ -1129,6 +1197,69 @@ export default function OrderingAppPage() {
 
       {/* Smartphone Device Shell Container (Dedicated Mobile Layout) */}
       <div style={S.mobileShell}>
+        {/* ── FULLSCREEN MUTED INTRO SPLASH VIDEO OVERLAY (9:16 PORTRAIT, FITS MOBILE APP SHELL) ── */}
+        {showIntroOverlay && (
+          <div
+            aria-hidden="true"
+            style={{
+              position: "fixed",
+              top: 0,
+              bottom: 0,
+              left: "50%",
+              transform: "translateX(-50%)",
+              width: "100%",
+              maxWidth: 440,
+              zIndex: 999999,
+              background: "#0c100e",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              overflow: "hidden",
+              boxShadow: "0 0 40px rgba(0, 0, 0, 0.75)",
+              opacity: introFadeOut ? 0 : 1,
+              transition: "opacity 550ms cubic-bezier(0.22, 1, 0.36, 1)",
+              pointerEvents: introFadeOut ? "none" : "auto",
+            }}
+          >
+            <video
+              ref={introVideoRef}
+              src="/team-intro.mp4"
+              autoPlay
+              muted
+              playsInline
+              preload="auto"
+              controls={false}
+              disablePictureInPicture
+              controlsList="nodownload noplaybackrate noremoteplayback"
+              onPlay={(e) => {
+                e.currentTarget.muted = true;
+                e.currentTarget.defaultMuted = true;
+                e.currentTarget.volume = 0;
+                introLastTickAtRef.current = Date.now();
+              }}
+              onPlaying={() => {
+                introHasStartedRef.current = true;
+                introLastTickAtRef.current = Date.now();
+              }}
+              onTimeUpdate={() => {
+                introHasStartedRef.current = true;
+                introLastTickAtRef.current = Date.now();
+              }}
+              onEnded={() => finishIntroSplash(false)}
+              onError={() => finishIntroSplash(true)}
+              style={{
+                width: "100%",
+                height: "100%",
+                objectFit: "contain",
+                objectPosition: "center center",
+                display: "block",
+                background: "#0c100e",
+                pointerEvents: "none",
+              }}
+            />
+          </div>
+        )}
+
         {/* ── FULL-SCREEN ORDER PLACED CELEBRATION SHEET OVERLAY ── */}
         {placedOrderAnimation && (
           <OrderPlacedSheet
@@ -4684,7 +4815,9 @@ export default function OrderingAppPage() {
       />
 
       {/* ── RAG-BASED EMBEDDED AI ASSISTANT: AUDIT'X Mini ── */}
-      <AuditxMiniAssistant isStoreOpen={isStoreOpen} customer={customer} />
+      {!showIntroOverlay && (
+        <AuditxMiniAssistant isStoreOpen={isStoreOpen} customer={customer} />
+      )}
     </div>
   );
 }
