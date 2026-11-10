@@ -60,6 +60,8 @@ export default function TrackOrderPage() {
   // -> "delivered" ("Rate the Rider & Item")
   const [trackingStage, setTrackingStage] = useState("packing");
   const [arrivingMinutes, setArrivingMinutes] = useState(10);
+  const [pickerDelayMins, setPickerDelayMins] = useState(0);
+  const [pickerElapsedSec, setPickerElapsedSec] = useState(0);
   const [pickerWindowSec, setPickerWindowSec] = useState(120);
   const [riderCountdownSec, setRiderCountdownSec] = useState(480);
   const [doorstepCountdownSec, setDoorstepCountdownSec] = useState(15);
@@ -78,6 +80,9 @@ export default function TrackOrderPage() {
     function processOrderEta(match) {
       if (!match) return;
       setOrder(match);
+      if (match.delayMins !== undefined) {
+        setPickerDelayMins(match.delayMins);
+      }
       if (match.status === "delivered") {
         setTrackingStage("delivered");
         setArrivingMinutes(0);
@@ -94,12 +99,17 @@ export default function TrackOrderPage() {
       ) {
         // After OD Picker task handover to rider -> 8-minute delivery SLA
         setArrivingMinutes(8);
+        setRiderCountdownSec(480);
         setRiderProgress((prev) => Math.max(prev, 65));
         setTrackingStage((prev) =>
           prev === "packing" ? "en_route" : prev
         );
+      } else if (match.dynamicTotalSla) {
+        setArrivingMinutes(match.dynamicTotalSla);
       } else if (match.remainingMins) {
         setArrivingMinutes(match.remainingMins);
+      } else {
+        setArrivingMinutes(10);
       }
       setLoading(false);
     }
@@ -133,16 +143,29 @@ export default function TrackOrderPage() {
     const unsubEvents = subscribeToEvents((data) => {
       const payloadOrderId = data.orderId || data.payload?.orderId || data.payload?.id;
       if (
+        data.type === "PICKER_DELAY_UPDATED" &&
+        (!payloadOrderId || payloadOrderId === orderId)
+      ) {
+        const p = data.payload || data;
+        const delayM = p.delayMins || (p.delaySec ? Math.ceil(p.delaySec / 60) : 0);
+        setPickerDelayMins(delayM);
+        if (p.pickTimeSec) setPickerElapsedSec(p.pickTimeSec);
+        const dynamicTotal = p.dynamicTotalSla || (10 + delayM);
+        setArrivingMinutes(dynamicTotal);
+      }
+      if (
         (data.type === "ORDER_STAGED" ||
           data.type === "PICKER_HANDOVER_COMPLETED") &&
         (!payloadOrderId || payloadOrderId === orderId)
       ) {
+        const p = data.payload || data;
+        if (p.delayMins !== undefined) setPickerDelayMins(p.delayMins);
         // 1. Immediate notification upon handover slider completion
         setTrackingStage("packed_assigning");
         triggerToast("📦 Order is packed! We will assign the rider captain soon...");
         playNotificationChime();
 
-        // 2. Auto update to Delivery Captain Sinchana B R, reduce 2 mins (8 mins remaining live running)
+        // 2. Auto update to Delivery Captain Sinchana B R, Rider gets full 8 mins SLA
         setTimeout(() => {
           setArrivingMinutes(8);
           setRiderCountdownSec(480);
@@ -175,23 +198,22 @@ export default function TrackOrderPage() {
     };
   }, [orderId]);
 
-  // 2-minute OD Picker window timer (during "packing" phase)
+  // Live OD Picker window stopwatch & dynamic SLA scaling during "packing" phase
   useEffect(() => {
     if (trackingStage !== "packing") return;
     const timer = setInterval(() => {
-      setPickerWindowSec((prev) => {
-        if (prev <= 1) {
-          // If 2 mins elapse without picker manual slider, auto-advance to packed_assigning
-          setTrackingStage("packed_assigning");
-          setTimeout(() => {
-            setArrivingMinutes(8);
-            setRiderCountdownSec(480);
-            setTrackingStage("en_route");
-          }, 2500);
-          return 0;
+      setPickerElapsedSec((prev) => {
+        const next = prev + 1;
+        if (next > 120) {
+          // OD Picker has taken longer than 2 minutes (120s)
+          const delaySec = next - 120;
+          const delayM = Math.ceil(delaySec / 60);
+          setPickerDelayMins(delayM);
+          setArrivingMinutes(10 + delayM);
         }
-        return prev - 1;
+        return next;
       });
+      setPickerWindowSec((prev) => (prev > 0 ? prev - 1 : 0));
     }, 1000);
     return () => clearInterval(timer);
   }, [trackingStage]);
@@ -476,7 +498,9 @@ export default function TrackOrderPage() {
     phaseText = "Order on the way";
 
   let arrivalTitle = `Arriving in ${arrivingMinutes} ${arrivingMinutes === 1 ? "minute" : "minutes"}`;
-  if (trackingStage === "packed_assigning") {
+  if (trackingStage === "packing" && pickerDelayMins > 0) {
+    arrivalTitle = `Arriving in ${arrivingMinutes} mins (+${pickerDelayMins}m delay)`;
+  } else if (trackingStage === "packed_assigning") {
     arrivalTitle = "We will assign the rider captain soon...";
   } else if (trackingStage === "almost_doorstep") {
     arrivalTitle = `Almost to your doorstep • ${doorstepCountdownSec}s`;
@@ -534,6 +558,23 @@ export default function TrackOrderPage() {
             </button>
           </div>
         </header>
+
+        {/* Dynamic Picking Overrun Alert Notice if OD Picker Thrupthi delays picking */}
+        {trackingStage === "packing" && pickerDelayMins > 0 && (
+          <div style={{
+            background: "#fef2f2",
+            borderBottom: "1px solid #fecaca",
+            padding: "8px 16px",
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+          }}>
+            <span style={{ fontSize: 16 }}>⚠️</span>
+            <div style={{ fontSize: 11, color: "#991b1b", fontWeight: 700, lineHeight: 1.3 }}>
+              OD Picker <b>Thrupthi K S</b> is taking extra time picking items (+{pickerDelayMins}m delay). Total delivery SLA dynamically increased from 10m to <b>{arrivingMinutes} MINS</b>.
+            </div>
+          </div>
+        )}
 
         {/* ── 2. CUSTOMER LIVE TRACKING MAP (DEDICATED ORDERING TRACKING VIEW) ── */}
         <section style={S.mapSection}>
@@ -736,7 +777,9 @@ export default function TrackOrderPage() {
                 ? "Hi, I'm Sinchana B R, your delivery captain! 🛵 Out for delivery to your doorstep."
                 : trackingStage === "packed_assigning"
                 ? "Order is packed! Sinchana B R will be assigned shortly."
-                : "Thrupthi K S is packing your order under 2-min SLA at Tiptur HUB"}
+                : (pickerDelayMins > 0
+                    ? `⚠️ OD Picker Thrupthi K S picking overtime (+${pickerDelayMins}m delay). Total delivery SLA scaled to ${arrivingMinutes} mins.`
+                    : "Thrupthi K S is packing your order under 2-min SLA at Tiptur HUB")}
             </div>
 
             {/* Tipping & Happiness Section */}

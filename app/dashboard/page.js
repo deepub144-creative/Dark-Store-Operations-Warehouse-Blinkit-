@@ -382,6 +382,12 @@ export default function WarehouseDashboardPage() {
         playSuccessChime();
         setActionSuccess(`🟢 Order Captain Sinchana B R scanned SM Station QR & turned Duty ON!`);
         setTimeout(() => setActionSuccess(""), 4000);
+      } else if (data.type === "PICKER_DELAY_UPDATED" && data.payload) {
+        setPickerLiveOp({
+          type: "PICKING_DELAY",
+          summary: `⚠️ Order #${data.payload.orderNumber || data.payload.orderId} picking delayed (+${data.payload.delayMins}m). Dynamic Customer SLA: ${data.payload.dynamicTotalSla} mins`,
+          time: new Date().toLocaleTimeString(),
+        });
       } else if (data.type === "AISLE_RACK_SCANNED_BY_PICKER" && data.payload) {
         setPickerLiveOp({
           type: "AISLE_SCANNED",
@@ -2086,6 +2092,11 @@ export default function WarehouseDashboardPage() {
                               <div style={S.personnelName}>Thrupthi K S</div>
                               <div style={S.slaTimeNotice}>
                                 Pick SLA: <b>{ord.pickTimeSec ? `${ord.pickTimeSec}s` : "2:00 mins"}</b>
+                                {ord.delayMins > 0 && (
+                                  <span style={{ color: "#ef4444", marginLeft: 6, fontWeight: 800 }}>
+                                    (+{ord.delayMins}m delay • Dynamic SLA: {ord.finalTotalSla || ord.dynamicTotalSla || (10 + ord.delayMins)}m)
+                                  </span>
+                                )}
                               </div>
                             </div>
                           </div>

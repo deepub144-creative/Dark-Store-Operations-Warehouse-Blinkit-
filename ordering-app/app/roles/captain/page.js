@@ -225,6 +225,23 @@ export default function DeliveryCaptainApp() {
     });
 
     const unsubBus = subscribeToEvents((data) => {
+      if (data.type === "PICKER_DELAY_UPDATED") {
+        const p = data.payload || data;
+        setIncomingAssignedOrders((prev) =>
+          prev.map((ord) => {
+            if (ord.id === p.orderId || ord.orderNumber === p.orderId || ord.orderNumber === p.orderNumber) {
+              return {
+                ...ord,
+                delaySec: p.delaySec,
+                delayMins: p.delayMins,
+                dynamicTotalSla: p.dynamicTotalSla,
+                pickTimeSec: p.pickTimeSec,
+              };
+            }
+            return ord;
+          })
+        );
+      }
       if (data.type === "QUEUE_CLEARED") {
         setIncomingAssignedOrders([]);
         setStagedOrders([]);
@@ -761,9 +778,18 @@ export default function DeliveryCaptainApp() {
                             👤 <b>{ord.customerName || "Customer (Namma Tiptur)"}</b> • 📍 {ord.customerAddress || "Tiptur - 572201"}
                           </div>
 
-                          <div style={S.pickingStatusNotice}>
-                            <div style={S.pickingNoticeTitle}>
-                              📦 Warehouse Picking in Progress:
+                          <div style={{
+                            ...S.pickingStatusNotice,
+                            background: ord.delayMins > 0 ? "#fef2f2" : "#fef3c7",
+                            border: ord.delayMins > 0 ? "1px solid #fecaca" : "1px solid #fde68a",
+                          }}>
+                            <div style={{
+                              ...S.pickingNoticeTitle,
+                              color: ord.delayMins > 0 ? "#b91c1c" : "#92400e",
+                            }}>
+                              {ord.delayMins > 0
+                                ? `⚠️ Picking Delayed (+${ord.delayMins}m delay) • SLA: ${10 + ord.delayMins} mins`
+                                : "📦 Warehouse Picking in Progress:"}
                             </div>
                             <div style={S.pickingNoticeSub}>
                               <img
@@ -774,12 +800,20 @@ export default function DeliveryCaptainApp() {
                                   height: 18,
                                   borderRadius: "50%",
                                   objectFit: "cover",
-                                  border: "1px solid #f59e0b",
+                                  border: ord.delayMins > 0 ? "1px solid #ef4444" : "1px solid #f59e0b",
                                   verticalAlign: "middle",
                                   marginRight: 6,
                                 }}
                               />
-                              OD Picker <b>Thrupthi K S</b> is picking {(ord.items || []).length} SKUs under 2:00 SLA. Order will be placed into <b>Rack {rackId}</b> for your pickup.
+                              {ord.delayMins > 0 ? (
+                                <span>
+                                  OD Picker <b>Thrupthi K S</b> overtime: <b>{Math.floor((ord.pickTimeSec || 120) / 60)}:{(ord.pickTimeSec || 120) % 60 < 10 ? "0" : ""}{(ord.pickTimeSec || 120) % 60}</b> (+{ord.delayMins}m). Total delivery SLA dynamically scaled to <b>{10 + ord.delayMins} MINS</b>. Your delivery SLA remains a full <b>8 MINS</b> once staged.
+                                </span>
+                              ) : (
+                                <span>
+                                  OD Picker <b>Thrupthi K S</b> is picking {(ord.items || []).length} SKUs under 2:00 SLA. Order will be placed into <b>Rack {rackId}</b> for your pickup.
+                                </span>
+                              )}
                             </div>
                           </div>
 
@@ -828,6 +862,22 @@ export default function DeliveryCaptainApp() {
                             <span style={S.rackBadgeSmall}>OD PICKER STAGED AT:</span>
                             <span style={S.rackBadgeBig}>RACK {rackId}</span>
                           </div>
+
+                          {ord.delayMins > 0 && (
+                            <div style={{
+                              background: "#fef2f2",
+                              border: "1px solid #fecaca",
+                              borderRadius: 6,
+                              padding: "4px 8px",
+                              marginTop: 8,
+                              marginBottom: 8,
+                              fontSize: 11,
+                              color: "#b91c1c",
+                              fontWeight: 700,
+                            }}>
+                              ⚠️ Picker Overtime (+{ord.delayMins}m delay) • Overall SLA adjusted to {10 + ord.delayMins} mins (Rider SLA: 8 mins)
+                            </div>
+                          )}
 
                           {/* Customer & Items Details */}
                           <div style={S.customerRow}>

@@ -327,6 +327,7 @@ export default function OrderingAppPage() {
   }, []);
   const [orderingStage, setOrderingStage] = useState("idle"); // 'idle' | 'picking' | 'packed_assigning' | 'rider_assigned' | 'almost_doorstep' | 'rider_arrived' | 'delivered'
   const [deliveryCountdownSec, setDeliveryCountdownSec] = useState(600); // 10 minutes = 600 seconds total SLA (2m OD Picker + 8m Rider)
+  const [pickerDelayMins, setPickerDelayMins] = useState(0); // Dynamic picking delay from OD Picker Thrupthi K S
   const [customFloatingTitle, setCustomFloatingTitle] = useState("");
   const [customFloatingSub, setCustomFloatingSub] = useState("");
   const [customFloatingBadge, setCustomFloatingBadge] = useState("");
@@ -459,6 +460,9 @@ export default function OrderingAppPage() {
           active = live || null;
         }
         if (active && active.status !== "cancelled") {
+          if (active.delayMins) {
+            setPickerDelayMins(active.delayMins);
+          }
           if (active.status === "delivered" && active.customerRatingSubmitted) {
             setRateCompleted(true);
             setShowRateOrderModal(false);
@@ -484,10 +488,14 @@ export default function OrderingAppPage() {
           } else {
             setActiveDeliveryOrder(active);
             setOrderingStage((prev) => (prev === "idle" ? "picking" : prev));
+            if (active.delayMins > 0) {
+              setDeliveryCountdownSec(480 + (active.delaySec || active.delayMins * 60));
+            }
           }
         } else {
           setActiveDeliveryOrder(null);
           setOrderingStage("idle");
+          setPickerDelayMins(0);
         }
       } catch (err) {
         console.warn("Check active delivery error:", err);
@@ -528,6 +536,15 @@ export default function OrderingAppPage() {
           triggerToast(`In Stock: "${data.payload.name}" is now available at Dark Store!`);
         }
       }
+      if (data.type === "PICKER_DELAY_UPDATED") {
+        const p = data.payload || data;
+        const delayM = p.delayMins || (p.delaySec ? Math.ceil(p.delaySec / 60) : 0);
+        setPickerDelayMins(delayM);
+        const dynamicSec = 480 + (p.delaySec || delayM * 60);
+        setDeliveryCountdownSec(dynamicSec);
+        setCustomFloatingTitle(`Order Placed • Arriving in ${10 + delayM} minutes`);
+        setCustomFloatingSub(`⚠️ Picking delay (+${delayM}m) • OD Picker Thrupthi K S packing items`);
+      }
       if (
         data.type === "ORDER_CREATED" ||
         data.type === "ORDER_STATUS_CHANGED" ||
@@ -543,6 +560,8 @@ export default function OrderingAppPage() {
           data.type === "ORDER_STAGED" ||
           data.type === "PICKER_HANDOVER_COMPLETED"
         ) {
+          const p = data.payload || data;
+          if (p.delayMins !== undefined) setPickerDelayMins(p.delayMins);
           // 1. Immediate message upon OD Picker handover slider completion
           setOrderingStage("packed_assigning");
           setCustomFloatingTitle("Order is packed!");
@@ -551,12 +570,12 @@ export default function OrderingAppPage() {
           playNotificationChime();
           triggerToast("📦 Order is packed! We will assign the rider captain soon...");
 
-          // 2. Auto update to Delivery Captain Sinchana B R, reduce 2 mins (8 mins remaining live running)
+          // 2. Auto update to Delivery Captain Sinchana B R, Rider gets full 8 mins SLA
           setTimeout(() => {
             setOrderingStage("rider_assigned");
             setDeliveryCountdownSec(480);
             setCustomFloatingTitle("Hi, I'm Sinchana B R, your delivery captain! 🛵");
-            setCustomFloatingSub("Out for Delivery • On the way to your doorstep");
+            setCustomFloatingSub("Out for Delivery • On the way to your doorstep (8 mins SLA)");
             setCustomFloatingBadge("");
             playNotificationChime();
             triggerToast("Hi, I'm Sinchana B R, your delivery captain! 🛵 Arriving in 8 mins");
@@ -565,7 +584,7 @@ export default function OrderingAppPage() {
           setOrderingStage("rider_assigned");
           setDeliveryCountdownSec(480);
           setCustomFloatingTitle("Hi, I'm Sinchana B R, your delivery captain! 🛵");
-          setCustomFloatingSub("Out for Delivery • On the way to your doorstep");
+          setCustomFloatingSub("Out for Delivery • On the way to your doorstep (8 mins SLA)");
           setCustomFloatingBadge("");
         }
         if (data.type === "ORDER_DELIVERED") {
@@ -581,10 +600,12 @@ export default function OrderingAppPage() {
         setShowRateOrderModal(false);
         setActiveDeliveryOrder(null);
         setOrderingStage("idle");
+        setPickerDelayMins(0);
       }
       if (data.type === "QUEUE_CLEARED") {
         setActiveDeliveryOrder(null);
         setOrderingStage("idle");
+        setPickerDelayMins(0);
         setCustomerComplaints([]);
         triggerToast("🧹 Today's dispatch queue cleared across all apps!");
       }
@@ -1043,6 +1064,7 @@ export default function OrderingAppPage() {
 
     setActiveDeliveryOrder(createdOrder);
     setOrderingStage("picking");
+    setPickerDelayMins(0);
     setDeliveryCountdownSec(600);
     setCustomFloatingTitle("Order Placed • Arriving in 10 minutes");
     setCustomFloatingSub("Assigned to OD Picker: Thrupthi K S (Warehouse Staging)");
@@ -1164,6 +1186,8 @@ export default function OrderingAppPage() {
                     <>Arriving in <span style={S.etaMinutes}>1 MIN</span></>
                   ) : orderingStage === "delivered" && !rateCompleted ? (
                     <>Delivered • <span style={S.etaMinutes}>RATE RIDER & ITEMS</span></>
+                  ) : activeDeliveryOrder && orderingStage === "picking" && pickerDelayMins > 0 ? (
+                    <>Delivery in <span style={S.etaMinutes}>{10 + pickerDelayMins} MINS</span> <span style={{ fontSize: 11, color: "#dc2626", fontWeight: 800, marginLeft: 4 }}>(+{pickerDelayMins}m delay)</span></>
                   ) : activeDeliveryOrder && deliveryCountdownSec > 0 ? (
                     <>Delivery in <span style={S.etaMinutes}>{Math.max(1, Math.ceil(deliveryCountdownSec / 60))} {Math.max(1, Math.ceil(deliveryCountdownSec / 60)) === 1 ? "MIN" : "MINS"}</span></>
                   ) : (
@@ -3039,15 +3063,15 @@ export default function OrderingAppPage() {
                       : orderingStage === "rider_assigned"
                       ? "Hi, I'm Sinchana B R, your delivery captain! 🛵"
                       : orderingStage === "picking"
-                      ? "Order Placed • Arriving in 10 minutes"
+                      ? (pickerDelayMins > 0 ? `Order Placed • Arriving in ${10 + pickerDelayMins} minutes` : "Order Placed • Arriving in 10 minutes")
                       : "Out for Delivery")}
                 </span>
                 <span
                   style={{
                     fontSize: 10,
                     fontWeight: 800,
-                    color: "#22c55e",
-                    background: "rgba(34, 197, 94, 0.18)",
+                    color: pickerDelayMins > 0 && orderingStage === "picking" ? "#ef4444" : "#22c55e",
+                    background: pickerDelayMins > 0 && orderingStage === "picking" ? "rgba(239, 68, 68, 0.2)" : "rgba(34, 197, 94, 0.18)",
                     padding: "2px 6px",
                     borderRadius: 4,
                   }}
@@ -3061,8 +3085,10 @@ export default function OrderingAppPage() {
                       ? `⚡ ${deliveryCountdownSec}s`
                       : orderingStage === "packed_assigning"
                       ? "📦 Packed"
-                      : orderingStage === "picking" || orderingStage === "rider_assigned"
-                      ? `⏱️ ${Math.floor(deliveryCountdownSec / 60)}:${deliveryCountdownSec % 60 < 10 ? "0" : ""}${deliveryCountdownSec % 60}`
+                      : orderingStage === "picking"
+                      ? (pickerDelayMins > 0
+                          ? `⚠️ +${pickerDelayMins}m (${Math.floor(deliveryCountdownSec / 60)}:${deliveryCountdownSec % 60 < 10 ? "0" : ""}${deliveryCountdownSec % 60})`
+                          : `⏱️ ${Math.floor(deliveryCountdownSec / 60)}:${deliveryCountdownSec % 60 < 10 ? "0" : ""}${deliveryCountdownSec % 60}`)
                       : `⏱️ ${Math.floor(deliveryCountdownSec / 60)}:${deliveryCountdownSec % 60 < 10 ? "0" : ""}${deliveryCountdownSec % 60}`)}
                 </span>
               </div>
@@ -3088,7 +3114,9 @@ export default function OrderingAppPage() {
                     : orderingStage === "rider_assigned"
                     ? "Picked from Warehouse Staging • Out for Delivery"
                     : orderingStage === "picking"
-                    ? "Assigned to OD Picker Lead: Thrupthi K S (Warehouse Staging)"
+                    ? (pickerDelayMins > 0
+                        ? `⚠️ Picking overtime (+${pickerDelayMins}m delay) • OD Picker: Thrupthi K S`
+                        : "Assigned to OD Picker Lead: Thrupthi K S (Warehouse Staging)")
                     : "Your order is on the way to your doorstep")}
               </div>
             </div>

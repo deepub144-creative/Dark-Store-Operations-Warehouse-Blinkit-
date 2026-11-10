@@ -324,11 +324,38 @@ export default function OdPickerApp() {
     setTimeout(() => setActionSuccess(""), 3500);
   }
 
-  // 2-Minute Stopwatch & Countdown Timer
+  // 2-Minute Stopwatch & Dynamic SLA Countdown Timer (Customer Delivery SLA increases dynamically if picking is delayed)
   useEffect(() => {
     if (activeOrder && activeStep === "picking") {
       timerRef.current = setInterval(() => {
-        setElapsedSec((prev) => prev + 1);
+        setElapsedSec((prev) => {
+          const next = prev + 1;
+          if (next > PICKER_SLA_SECONDS) {
+            // OD Picker has delayed beyond 2:00 mins (120 seconds)
+            const delaySec = next - PICKER_SLA_SECONDS;
+            const delayMins = Math.ceil(delaySec / 60);
+            const dynamicTotalSla = 10 + delayMins;
+
+            // Broadcast live delay update every second so Ordering, Tracking & Rider apps increase time dynamically
+            updateLiveOrder(activeOrder.id, {
+              pickTimeSec: next,
+              delaySec,
+              delayMins,
+              dynamicTotalSla,
+              estimatedDeliveryMins: dynamicTotalSla,
+            });
+
+            broadcastEvent("PICKER_DELAY_UPDATED", {
+              orderId: activeOrder.id,
+              orderNumber: activeOrder.orderNumber || activeOrder.id,
+              pickTimeSec: next,
+              delaySec,
+              delayMins,
+              dynamicTotalSla,
+            });
+          }
+          return next;
+        });
         setRemainingSec((prev) => (prev <= 1 ? 0 : prev - 1));
       }, 1000);
     } else {
@@ -740,6 +767,9 @@ export default function OdPickerApp() {
     if (!activeOrder) return;
     const finalSec = elapsedSec;
     const isSlaAchieved = finalSec <= PICKER_SLA_SECONDS;
+    const delaySec = Math.max(0, finalSec - PICKER_SLA_SECONDS);
+    const delayMins = Math.ceil(delaySec / 60);
+    const finalTotalSla = 10 + delayMins;
     const currentOrder = activeOrder;
     const currentRack = assignedRack;
 
@@ -762,7 +792,7 @@ export default function OdPickerApp() {
     setActionSuccess(
       isSlaAchieved
         ? `🎉 SUCCESS: Picked & Handed Over to Rack ${currentRack.id} in ${finalSec}s! Searching next order...`
-        : `✅ Placed in Rack ${currentRack.id} in ${finalSec}s. Searching next order...`
+        : `⚠️ Placed in Rack ${currentRack.id} in ${finalSec}s (+${delayMins}m delay, total SLA: ${finalTotalSla} mins). Searching next order...`
     );
     setTimeout(() => setActionSuccess(""), 3500);
 
@@ -777,6 +807,9 @@ export default function OdPickerApp() {
       pickerName: "Thrupthi K S",
       stagedAt: new Date().toISOString(),
       pickTimeSec: finalSec,
+      delaySec: delaySec,
+      delayMins: delayMins,
+      finalTotalSla: finalTotalSla,
       remainingMins: 8,
       estimatedDeliveryMins: 8,
       riderEtaMins: 8,
@@ -789,6 +822,10 @@ export default function OdPickerApp() {
       assignedRack: currentRack.id,
       pickerName: "Thrupthi K S",
       captainName: "Sinchana B R",
+      pickTimeSec: finalSec,
+      delaySec: delaySec,
+      delayMins: delayMins,
+      finalTotalSla: finalTotalSla,
       remainingMins: 8,
       riderEtaMins: 8,
     });
@@ -798,6 +835,10 @@ export default function OdPickerApp() {
       assignedRack: currentRack.id,
       pickerName: "Thrupthi K S",
       captainName: "Sinchana B R",
+      pickTimeSec: finalSec,
+      delaySec: delaySec,
+      delayMins: delayMins,
+      finalTotalSla: finalTotalSla,
       remainingMins: 8,
       riderEtaMins: 8,
     });
@@ -1104,27 +1145,33 @@ export default function OdPickerApp() {
               <div
                 style={{
                   ...S.timerWidget,
-                  borderColor: remainingSec <= 30 ? "#ef4444" : remainingSec <= 60 ? "#f59e0b" : "#0c831f",
-                  background: remainingSec <= 30 ? "#fef2f2" : "#ffffff",
+                  borderColor: elapsedSec > 120 ? "#dc2626" : remainingSec <= 30 ? "#ef4444" : remainingSec <= 60 ? "#f59e0b" : "#0c831f",
+                  background: elapsedSec > 120 ? "#fef2f2" : remainingSec <= 30 ? "#fffbeb" : "#ffffff",
                 }}
               >
                 <div style={S.timerHeader}>
-                  <span style={{ fontWeight: 800, color: remainingSec <= 30 ? "#dc2626" : "#0f172a" }}>
+                  <span style={{ fontWeight: 800, color: elapsedSec > 120 ? "#dc2626" : remainingSec <= 30 ? "#ea580c" : "#0f172a" }}>
                     ⏱️ OD PICKER 2-MINUTE SLA COUNTDOWN
                   </span>
-                  <span style={S.slaTargetText}>TARGET: &lt; 2:00 MINS</span>
+                  <span style={{ ...S.slaTargetText, color: elapsedSec > 120 ? "#b91c1c" : "#64748b" }}>
+                    {elapsedSec > 120 ? `DELAY: +${Math.ceil((elapsedSec - 120) / 60)} MIN(S)` : "TARGET: < 2:00 MINS"}
+                  </span>
                 </div>
                 <div style={S.digitClock}>
-                  <span style={remainingSec <= 30 ? S.digitWarning : S.digitNormal}>
-                    {minStr}:{secStr}
+                  <span style={{ fontSize: "2rem", fontWeight: 900, color: elapsedSec > 120 ? "#dc2626" : remainingSec <= 30 ? "#ea580c" : "#0c831f" }}>
+                    {elapsedSec > 120 ? `+${Math.floor((elapsedSec - 120) / 60).toString().padStart(2, "0")}:${((elapsedSec - 120) % 60).toString().padStart(2, "0")}` : `${minStr}:${secStr}`}
                   </span>
                   <span style={S.elapsedSmall}>({elapsedSec}s elapsed)</span>
                 </div>
-                {remainingSec <= 30 && (
+                {elapsedSec > 120 ? (
+                  <div style={{ ...S.warningBanner, background: "#fee2e2", borderColor: "#fca5a5", color: "#991b1b" }}>
+                    ⚠️ PICKING OVERTIME (+{Math.ceil((elapsedSec - 120) / 60)}m delay)! Customer delivery SLA dynamically adjusted to {10 + Math.ceil((elapsedSec - 120) / 60)} MINS.
+                  </div>
+                ) : remainingSec <= 30 ? (
                   <div style={S.warningBanner}>
                     ⚠️ 30 SECONDS REMAINING! Pick remaining items fast or trigger bypass.
                   </div>
-                )}
+                ) : null}
               </div>
 
               {/* STAGING RACK ASSIGNMENT BANNER */}
@@ -1151,6 +1198,18 @@ export default function OdPickerApp() {
                     title="Simulate superfast 45-second picking"
                   >
                     ⚡ Fast 45s Pick &amp; Stage
+                  </button>
+                  <button
+                    style={{ ...S.bypassSmallBtn, background: "#dc2626", borderColor: "#dc2626", color: "#ffffff" }}
+                    onClick={() => {
+                      setElapsedSec(210);
+                      setRemainingSec(0);
+                      setActionSuccess("⚠️ Overtime simulated: 210s elapsed (+2m delay). Delivery SLA dynamically scaled to 12 mins across all apps!");
+                      setTimeout(() => setActionSuccess(""), 4000);
+                    }}
+                    title="Simulate picking delay overtime to test dynamic SLA scale"
+                  >
+                    ⚠️ Delay (+2m)
                   </button>
                   <button style={S.bypassSmallBtn} onClick={handlePickAllBypass}>
                     ✓ Pick All
