@@ -951,111 +951,425 @@ export default function WarehouseDashboardPage() {
       ) : (
         /* ── SM STORE MANAGER WORKSPACE ── */
         <div style={S.workspaceLayout}>
-        {/* ── 1. LEFT SLIDE BAR (EXPANDABLE / COLLAPSIBLE) ── */}
+        {/* ── 1. LEFT SLIDE BAR (EXPANDABLE / COLLAPSIBLE WAREHOUSE OPS LAUNCHER) ── */}
         <aside
           style={{
             ...S.sidebarWrap,
             display: sidebarOpen ? "flex" : "none",
-            width: sidebarOpen ? 270 : 0,
+            width: sidebarOpen ? 318 : 0,
+            padding: sidebarOpen ? "14px 12px 24px" : 0,
+            overflowY: "auto",
+            maxHeight: "calc(100vh - 72px)",
           }}
         >
-          <div style={S.sidebarHeader}>
-            <div style={S.sidebarTitleRow}>
-              <span style={{ fontSize: 13, fontWeight: 900, color: "#10b981", letterSpacing: "0.5px" }}>
-                OPERATIONS DESK
-              </span>
-              <span style={S.storePill}>572201</span>
+          {/* Header */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              marginBottom: 14,
+              paddingBottom: 12,
+              borderBottom: "1px solid #1E293B",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div
+                style={{
+                  width: 38,
+                  height: 38,
+                  borderRadius: 12,
+                  background: "#f8cb46",
+                  display: "grid",
+                  placeItems: "center",
+                  boxShadow: "0 2px 0 rgba(0,0,0,.12)",
+                  flexShrink: 0,
+                }}
+              >
+                <WarehouseGlyph name="bolt" size={22} stroke="#16181a" />
+              </div>
+              <div>
+                <h1
+                  style={{
+                    fontSize: 15,
+                    margin: 0,
+                    fontWeight: 800,
+                    color: "#ffffff",
+                    letterSpacing: "-0.2px",
+                  }}
+                >
+                  Warehouse ops
+                </h1>
+                <div
+                  style={{
+                    fontSize: 11,
+                    color: "#94a3b8",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                    marginTop: 2,
+                  }}
+                >
+                  <span
+                    style={{
+                      width: 7,
+                      height: 7,
+                      borderRadius: "50%",
+                      background: "#1faa3b",
+                      boxShadow: "0 0 0 3px rgba(31,170,59,.2)",
+                    }}
+                  />
+                  <span>Store live · {fullRoster.length} devices online</span>
+                </div>
+              </div>
             </div>
-            <div style={S.sidebarSub}>Namma Tiptur (572201)</div>
+
+            <button
+              type="button"
+              onClick={() => setSidebarOpen(false)}
+              style={{
+                background: "#1e293b",
+                border: "1px solid #334155",
+                color: "#cbd5e1",
+                width: 30,
+                height: 30,
+                borderRadius: 8,
+                cursor: "pointer",
+                display: "grid",
+                placeItems: "center",
+                fontSize: 11,
+                fontWeight: 900,
+              }}
+              title="Close slide menu"
+            >
+              ◀
+            </button>
           </div>
 
-          {/* Navigation Options in Slide Bar */}
-          <nav style={S.sidebarNav}>
-            <div style={S.navGroupLabel}>CORE COMMAND</div>
-
-            <button
-              style={{ ...S.navItemBtn, ...(activeTab === "overview" ? S.navItemActive : {}) }}
-              onClick={() => handleTabChange("overview")}
+          {/* iOS-Style App Sections Grid */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {/* Section 1: Core command */}
+            <section
+              style={{
+                background: "#161f2e",
+                border: "1px solid #233147",
+                borderRadius: 20,
+                padding: "12px 6px 8px",
+              }}
             >
-              <span style={S.navItemIcon}>📊</span>
-              <span style={S.navItemText}>Ops Overview</span>
-            </button>
+              <h2
+                style={{
+                  fontSize: 11,
+                  fontWeight: 800,
+                  color: "#94a3b8",
+                  margin: "0 8px 10px",
+                  letterSpacing: "0.5px",
+                  textTransform: "uppercase",
+                }}
+              >
+                Core command
+              </h2>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(3, 1fr)",
+                  gap: "6px 2px",
+                  justifyItems: "center",
+                }}
+              >
+                {/* Ops overview */}
+                <button
+                  type="button"
+                  onClick={() => handleTabChange("overview")}
+                  style={S.launcherBtn}
+                  aria-label="Ops overview"
+                >
+                  <span
+                    style={{
+                      ...S.launcherTile,
+                      background: "linear-gradient(160deg, #4f8dff, #2557d6)",
+                      boxShadow:
+                        activeTab === "overview"
+                          ? "0 0 0 3px #10b981, 0 8px 16px -4px rgba(37,87,214,.7)"
+                          : "0 6px 14px -4px rgba(37,87,214,.55), inset 0 1.5px 0 rgba(255,255,255,.45), inset 0 -2px 0 rgba(0,0,0,.14)",
+                    }}
+                  >
+                    <WarehouseGlyph name="gauge" size={26} />
+                  </span>
+                  <span style={{ ...S.launcherName, color: activeTab === "overview" ? "#ffffff" : "#cbd5e1" }}>
+                    Ops overview
+                  </span>
+                </button>
 
-            <button
-              style={{ ...S.navItemBtn, ...(activeTab === "queue" ? S.navItemActive : {}) }}
-              onClick={() => handleTabChange("queue")}
+                {/* Today's queue */}
+                <button
+                  type="button"
+                  onClick={() => handleTabChange("queue")}
+                  style={S.launcherBtn}
+                  aria-label="Today's queue"
+                >
+                  <span
+                    style={{
+                      ...S.launcherTile,
+                      background: "linear-gradient(160deg, #ffb23f, #f0740a)",
+                      boxShadow:
+                        activeTab === "queue"
+                          ? "0 0 0 3px #10b981, 0 8px 16px -4px rgba(240,116,10,.7)"
+                          : "0 6px 14px -4px rgba(240,116,10,.55), inset 0 1.5px 0 rgba(255,255,255,.45), inset 0 -2px 0 rgba(0,0,0,.14)",
+                    }}
+                  >
+                    <WarehouseGlyph name="queue" size={26} />
+                    <span style={S.launcherBadge}>{orders.length}</span>
+                  </span>
+                  <span style={{ ...S.launcherName, color: activeTab === "queue" ? "#ffffff" : "#cbd5e1" }}>
+                    Today's queue
+                  </span>
+                </button>
+
+                {/* SKU stock & units */}
+                <button
+                  type="button"
+                  onClick={() => handleTabChange("inventory")}
+                  style={S.launcherBtn}
+                  aria-label="SKU stock & units"
+                >
+                  <span
+                    style={{
+                      ...S.launcherTile,
+                      background: "linear-gradient(160deg, #2fcf85, #0c9a5a)",
+                      boxShadow:
+                        activeTab === "inventory"
+                          ? "0 0 0 3px #10b981, 0 8px 16px -4px rgba(12,154,90,.7)"
+                          : "0 6px 14px -4px rgba(12,154,90,.55), inset 0 1.5px 0 rgba(255,255,255,.45), inset 0 -2px 0 rgba(0,0,0,.14)",
+                    }}
+                  >
+                    <WarehouseGlyph name="boxes" size={26} />
+                    <span style={{ ...S.launcherBadge, background: "#0c831f" }}>
+                      {STORE_MANAGER_CATALOG.length || 59}
+                    </span>
+                  </span>
+                  <span style={{ ...S.launcherName, color: activeTab === "inventory" ? "#ffffff" : "#cbd5e1" }}>
+                    SKU stock &amp; units
+                  </span>
+                </button>
+              </div>
+            </section>
+
+            {/* Section 2: Commercial & quality */}
+            <section
+              style={{
+                background: "#161f2e",
+                border: "1px solid #233147",
+                borderRadius: 20,
+                padding: "12px 6px 8px",
+              }}
             >
-              <span style={S.navItemIcon}>⚡</span>
-              <span style={S.navItemText}>Today's Queue</span>
-              <span style={S.navBadgeCount}>{orders.length}</span>
-            </button>
+              <h2
+                style={{
+                  fontSize: 11,
+                  fontWeight: 800,
+                  color: "#94a3b8",
+                  margin: "0 8px 10px",
+                  letterSpacing: "0.5px",
+                  textTransform: "uppercase",
+                }}
+              >
+                Commercial &amp; quality
+              </h2>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(3, 1fr)",
+                  gap: "6px 2px",
+                  justifyItems: "center",
+                }}
+              >
+                {/* Sales margin */}
+                <button
+                  type="button"
+                  onClick={() => handleTabChange("margin")}
+                  style={S.launcherBtn}
+                  aria-label="Sales margin"
+                >
+                  <span
+                    style={{
+                      ...S.launcherTile,
+                      background: "linear-gradient(160deg, #a66bff, #6a2fd8)",
+                      boxShadow:
+                        activeTab === "margin"
+                          ? "0 0 0 3px #10b981, 0 8px 16px -4px rgba(106,47,216,.7)"
+                          : "0 6px 14px -4px rgba(106,47,216,.55), inset 0 1.5px 0 rgba(255,255,255,.45), inset 0 -2px 0 rgba(0,0,0,.14)",
+                    }}
+                  >
+                    <WarehouseGlyph name="margin" size={26} />
+                  </span>
+                  <span style={{ ...S.launcherName, color: activeTab === "margin" ? "#ffffff" : "#cbd5e1" }}>
+                    Sales margin
+                  </span>
+                  <span style={S.launcherVal}>
+                    22.4% <b style={{ color: "#34d399" }}>+0.4%</b>
+                  </span>
+                </button>
 
-            <button
-              style={{ ...S.navItemBtn, ...(activeTab === "inventory" ? S.navItemActive : {}) }}
-              onClick={() => handleTabChange("inventory")}
+                {/* Customer ratings */}
+                <button
+                  type="button"
+                  onClick={() => handleTabChange("ratings")}
+                  style={S.launcherBtn}
+                  aria-label="Customer ratings"
+                >
+                  <span
+                    style={{
+                      ...S.launcherTile,
+                      background: "linear-gradient(160deg, #ffd447, #f2a200)",
+                      boxShadow:
+                        activeTab === "ratings"
+                          ? "0 0 0 3px #10b981, 0 8px 16px -4px rgba(242,162,0,.7)"
+                          : "0 6px 14px -4px rgba(242,162,0,.55), inset 0 1.5px 0 rgba(255,255,255,.45), inset 0 -2px 0 rgba(0,0,0,.14)",
+                    }}
+                  >
+                    <WarehouseGlyph name="star" size={26} />
+                  </span>
+                  <span style={{ ...S.launcherName, color: activeTab === "ratings" ? "#ffffff" : "#cbd5e1" }}>
+                    Customer ratings
+                  </span>
+                  <span style={S.launcherVal}>4.9★</span>
+                </button>
+
+                {/* Complaints */}
+                <button
+                  type="button"
+                  onClick={() => handleTabChange("complaints")}
+                  style={S.launcherBtn}
+                  aria-label="Complaints"
+                >
+                  <span
+                    style={{
+                      ...S.launcherTile,
+                      background: "linear-gradient(160deg, #ff6b6b, #d6264a)",
+                      boxShadow:
+                        activeTab === "complaints"
+                          ? "0 0 0 3px #10b981, 0 8px 16px -4px rgba(214,38,74,.7)"
+                          : "0 6px 14px -4px rgba(214,38,74,.55), inset 0 1.5px 0 rgba(255,255,255,.45), inset 0 -2px 0 rgba(0,0,0,.14)",
+                    }}
+                  >
+                    <WarehouseGlyph name="alert" size={26} />
+                  </span>
+                  <span style={{ ...S.launcherName, color: activeTab === "complaints" ? "#ffffff" : "#cbd5e1" }}>
+                    Complaints
+                  </span>
+                  <span style={S.launcherVal}>0.08%</span>
+                </button>
+              </div>
+            </section>
+
+            {/* Section 3: System & terminals */}
+            <section
+              style={{
+                background: "#161f2e",
+                border: "1px solid #233147",
+                borderRadius: 20,
+                padding: "12px 6px 8px",
+              }}
             >
-              <span style={S.navItemIcon}>📦</span>
-              <span style={S.navItemText}>SKU Stock &amp; Units</span>
-              <span style={S.navBadgeCount}>{STORE_MANAGER_CATALOG.length}</span>
-            </button>
+              <h2
+                style={{
+                  fontSize: 11,
+                  fontWeight: 800,
+                  color: "#94a3b8",
+                  margin: "0 8px 10px",
+                  letterSpacing: "0.5px",
+                  textTransform: "uppercase",
+                }}
+              >
+                System &amp; terminals
+              </h2>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(3, 1fr)",
+                  gap: "6px 2px",
+                  justifyItems: "center",
+                }}
+              >
+                {/* Personnel & devices */}
+                <button
+                  type="button"
+                  onClick={() => handleTabChange("devices")}
+                  style={S.launcherBtn}
+                  aria-label="Personnel & devices"
+                >
+                  <span
+                    style={{
+                      ...S.launcherTile,
+                      background: "linear-gradient(160deg, #2cc7d6, #0b7f9c)",
+                      boxShadow:
+                        activeTab === "devices"
+                          ? "0 0 0 3px #10b981, 0 8px 16px -4px rgba(11,127,156,.7)"
+                          : "0 6px 14px -4px rgba(11,127,156,.55), inset 0 1.5px 0 rgba(255,255,255,.45), inset 0 -2px 0 rgba(0,0,0,.14)",
+                    }}
+                  >
+                    <WarehouseGlyph name="people" size={26} />
+                    <span style={{ ...S.launcherBadge, background: "#0c831f" }}>
+                      {fullRoster.length}
+                    </span>
+                  </span>
+                  <span style={{ ...S.launcherName, color: activeTab === "devices" ? "#ffffff" : "#cbd5e1" }}>
+                    Personnel &amp; devices
+                  </span>
+                </button>
 
-            <div style={S.navGroupLabel}>COMMERCIAL &amp; QUALITY</div>
+                {/* Order cap & surge */}
+                <button
+                  type="button"
+                  onClick={() => handleTabChange("orderCap")}
+                  style={S.launcherBtn}
+                  aria-label="Order cap & surge"
+                >
+                  <span
+                    style={{
+                      ...S.launcherTile,
+                      background: "linear-gradient(160deg, #ff8a5c, #e0431a)",
+                      boxShadow:
+                        activeTab === "orderCap"
+                          ? "0 0 0 3px #10b981, 0 8px 16px -4px rgba(224,67,26,.7)"
+                          : "0 6px 14px -4px rgba(224,67,26,.55), inset 0 1.5px 0 rgba(255,255,255,.45), inset 0 -2px 0 rgba(0,0,0,.14)",
+                    }}
+                  >
+                    <WarehouseGlyph name="zap" size={26} />
+                  </span>
+                  <span style={{ ...S.launcherName, color: activeTab === "orderCap" ? "#ffffff" : "#cbd5e1" }}>
+                    Order cap &amp; surge
+                  </span>
+                  <span style={S.launcherVal}>{capacityPercent}%</span>
+                </button>
 
-            <button
-              style={{ ...S.navItemBtn, ...(activeTab === "margin" ? S.navItemActive : {}) }}
-              onClick={() => handleTabChange("margin")}
-            >
-              <span style={S.navItemIcon}>💰</span>
-              <span style={S.navItemText}>Sales Margin (22.4%)</span>
-              <span style={{ ...S.navBadgeCount, background: "#dcfce7", color: "#15803d" }}>+0.4%</span>
-            </button>
-
-            <button
-              style={{ ...S.navItemBtn, ...(activeTab === "ratings" ? S.navItemActive : {}) }}
-              onClick={() => handleTabChange("ratings")}
-            >
-              <span style={S.navItemIcon}>⭐</span>
-              <span style={S.navItemText}>Customer Ratings</span>
-              <span style={{ ...S.navBadgeCount, background: "#fef3c7", color: "#b45309" }}>4.9★</span>
-            </button>
-
-            <button
-              style={{ ...S.navItemBtn, ...(activeTab === "complaints" ? S.navItemActive : {}) }}
-              onClick={() => handleTabChange("complaints")}
-            >
-              <span style={S.navItemIcon}>⚠️</span>
-              <span style={S.navItemText}>Complaints in %</span>
-              <span style={{ ...S.navBadgeCount, background: "#fee2e2", color: "#b91c1c" }}>0.08%</span>
-            </button>
-
-            <div style={S.navGroupLabel}>SYSTEM &amp; TERMINALS</div>
-
-            <button
-              style={{ ...S.navItemBtn, ...(activeTab === "devices" ? S.navItemActive : {}) }}
-              onClick={() => handleTabChange("devices")}
-            >
-              <span style={S.navItemIcon}>📱</span>
-              <span style={S.navItemText}>Personnel &amp; Devices</span>
-              <span style={S.navBadgeCount}>{fullRoster.length}</span>
-            </button>
-
-            <button
-              style={{ ...S.navItemBtn, ...(activeTab === "orderCap" ? S.navItemActive : {}) }}
-              onClick={() => handleTabChange("orderCap")}
-            >
-              <span style={S.navItemIcon}>🎯</span>
-              <span style={S.navItemText}>Order Cap &amp; Surge</span>
-              <span style={S.navBadgeCount}>{capacityPercent}%</span>
-            </button>
-
-            <button
-              style={{ ...S.navItemBtn, ...(activeTab === "erdDfd" ? S.navItemActive : {}) }}
-              onClick={() => handleTabChange("erdDfd")}
-            >
-              <span style={S.navItemIcon}>📐</span>
-              <span style={S.navItemText}>ERD &amp; DFD Diagrams</span>
-            </button>
-          </nav>
+                {/* Measures */}
+                <button
+                  type="button"
+                  onClick={() => handleTabChange("erdDfd")}
+                  style={S.launcherBtn}
+                  aria-label="ERD & DFD Architecture"
+                >
+                  <span
+                    style={{
+                      ...S.launcherTile,
+                      background: "linear-gradient(160deg, #6f7a89, #3b4452)",
+                      boxShadow:
+                        activeTab === "erdDfd"
+                          ? "0 0 0 3px #10b981, 0 8px 16px -4px rgba(59,68,82,.7)"
+                          : "0 6px 14px -4px rgba(59,68,82,.55), inset 0 1.5px 0 rgba(255,255,255,.45), inset 0 -2px 0 rgba(0,0,0,.14)",
+                    }}
+                  >
+                    <WarehouseGlyph name="ruler" size={26} />
+                  </span>
+                  <span style={{ ...S.launcherName, color: activeTab === "erdDfd" ? "#ffffff" : "#cbd5e1" }}>
+                    Measures &amp; DFD
+                  </span>
+                </button>
+              </div>
+            </section>
+          </div>
 
           {/* Direct Teammate App Shortcuts */}
           <div style={S.sidebarShortcuts}>
@@ -2522,6 +2836,95 @@ function statusBadge(status) {
   return { ...base, background: "#e2e8f0", color: "#334155" };
 }
 
+function WarehouseGlyph({ name, size = 26, stroke = "#ffffff" }) {
+  const glyphs = {
+    gauge: (
+      <>
+        <path d="M12 14l4-4" />
+        <path d="M3.3 17a10 10 0 1 1 17.4 0" />
+        <circle cx="12" cy="14" r="1.2" />
+      </>
+    ),
+    queue: (
+      <>
+        <rect x="5" y="3" width="14" height="18" rx="3" />
+        <path d="M9 3.5h6v3H9z" />
+        <path d="M9 12l2 2 4-4" />
+        <path d="M9 17.5h6" />
+      </>
+    ),
+    boxes: (
+      <>
+        <path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z" />
+        <path d="M4 7.5l8 4.5 8-4.5" />
+        <path d="M12 12v9" />
+      </>
+    ),
+    margin: (
+      <>
+        <path d="M3 17l6-6 4 4 8-8" />
+        <path d="M15 7h6v6" />
+      </>
+    ),
+    star: (
+      <path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z" />
+    ),
+    alert: (
+      <>
+        <path d="M12 3.5l9.5 16.5h-19z" />
+        <path d="M12 10v4.5" />
+        <circle cx="12" cy="17.3" r=".6" />
+      </>
+    ),
+    people: (
+      <>
+        <circle cx="9" cy="8" r="3.2" />
+        <path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6" />
+        <rect x="16.5" y="10" width="5" height="9" rx="1.4" />
+      </>
+    ),
+    zap: (
+      <path d="M13 2.5L4.5 13.5H11l-1 8 8.5-11H12z" />
+    ),
+    ruler: (
+      <>
+        <path d="M3 17L17 3l4 4L7 21z" />
+        <path d="M7 13l2 2M10 10l2 2M13 7l2 2" />
+      </>
+    ),
+    bolt: (
+      <>
+        <path d="M3 11l9-8 9 8" />
+        <path d="M5 10v10h14V10" />
+        <path d="M10 20v-6h4v6" />
+      </>
+    ),
+    sun: (
+      <>
+        <circle cx="12" cy="12" r="4" />
+        <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
+      </>
+    ),
+  };
+
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width={size}
+      height={size}
+      fill="none"
+      stroke={stroke}
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      style={{ filter: "drop-shadow(0 1px 1px rgba(0,0,0,.25))" }}
+      aria-hidden="true"
+    >
+      {glyphs[name] || glyphs.bolt}
+    </svg>
+  );
+}
+
 const S = {
   wrap: { minHeight: "100vh", background: "#F1F5F9", fontFamily: "system-ui, -apple-system, sans-serif" },
   header: { background: "#0F172A", borderBottom: "1px solid #1E293B", padding: "12px 20px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 },
@@ -2560,6 +2963,64 @@ const S = {
   sidebarShortcuts: { borderTop: "1px solid #1E293B", paddingTop: 12, marginTop: "auto", display: "flex", flexDirection: "column", gap: 6 },
   appShortcutBtn: { display: "flex", alignItems: "center", gap: 10, padding: "0 12px", height: 38, background: "#1E293B", border: "1px solid #334155", borderRadius: 8, color: "#f8fafc", fontSize: 11, fontWeight: 700, cursor: "pointer", width: "100%", boxSizing: "border-box", transition: "all 0.15s ease" },
   shortcutAvatar: { width: 20, height: 20, borderRadius: "50%", objectFit: "cover", flexShrink: 0 },
+
+  // Warehouse Ops iOS Launcher Styles
+  launcherBtn: {
+    all: "unset",
+    cursor: "pointer",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: 5,
+    padding: "4px 2px 8px",
+    borderRadius: 14,
+    textAlign: "center",
+    width: "100%",
+    boxSizing: "border-box",
+    WebkitTapHighlightColor: "transparent",
+    outline: "none",
+  },
+  launcherTile: {
+    position: "relative",
+    width: 58,
+    height: 58,
+    borderRadius: 18,
+    display: "grid",
+    placeItems: "center",
+    transition: "transform .12s ease, box-shadow .15s ease",
+  },
+  launcherBadge: {
+    position: "absolute",
+    top: -5,
+    right: -6,
+    minWidth: 20,
+    height: 20,
+    padding: "0 5px",
+    borderRadius: 10,
+    background: "#e5342d",
+    color: "#fff",
+    fontSize: 10,
+    fontWeight: 900,
+    display: "grid",
+    placeItems: "center",
+    border: "2.5px solid #161f2e",
+    boxSizing: "border-box",
+  },
+  launcherName: {
+    fontSize: 11,
+    fontWeight: 700,
+    lineHeight: 1.15,
+    maxWidth: 82,
+    textAlign: "center",
+    transition: "color .12s ease",
+  },
+  launcherVal: {
+    fontSize: 10.5,
+    fontWeight: 800,
+    color: "#94a3b8",
+    lineHeight: 1,
+    marginTop: 1,
+  },
 
   mainContent: { flex: 1, padding: "24px 28px", maxWidth: 1400, overflowY: "auto" },
 
