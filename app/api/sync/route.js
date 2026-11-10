@@ -12,11 +12,18 @@ import {
   getDefaultItemStock,
   getTodayISTDateKey,
   mergeCatalogItems,
+  mergeHubStates,
   normalizeHubState,
   rolloverStateIfNewDay,
 } from "@/lib/hubState";
 
 export const dynamic = "force-dynamic";
+
+const SERVER_BOOT_ID =
+  globalThis.__auditxServerBootId ||
+  (globalThis.__auditxServerBootId = `boot_${Date.now()}_${Math.random()
+    .toString(36)
+    .slice(2, 8)}`);
 
 const TMP_STATE_FILE = "/tmp/auditx-tiptur-ka44-hub-state.json";
 const STATE_KEY = "auditx:tiptur_ka44:hub_state_v2";
@@ -31,9 +38,20 @@ function getRedisCreds() {
   return url && token ? { url: url.replace(/\/$/, ""), token } : null;
 }
 
+function getFirebaseRtdbCreds() {
+  const url =
+    process.env.FIREBASE_DATABASE_URL ||
+    process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL ||
+    "";
+  const secret = process.env.FIREBASE_DATABASE_SECRET || "";
+  if (!url || url.includes("demo")) return null;
+  return { url: url.replace(/\/$/, ""), secret };
+}
+
 function getPersistenceMode() {
   if (adminDb) return "firestore";
   if (getRedisCreds()) return "redis";
+  if (getFirebaseRtdbCreds()) return "firebase-rtdb";
   return "memory";
 }
 
@@ -85,7 +103,27 @@ async function readRawState() {
     }
   }
 
-  // 3. In-memory + /tmp fallback
+  // 3. Firebase Realtime Database REST (optional env fallback)
+  const rtdb = getFirebaseRtdbCreds();
+  if (rtdb) {
+    try {
+      const authQ = rtdb.secret ? `?auth=${encodeURIComponent(rtdb.secret)}` : "";
+      const res = await fetch(
+        `${rtdb.url}/${FIRESTORE_COLLECTION}/${FIRESTORE_DOC}.json${authQ}`,
+        { cache: "no-store" }
+      );
+      if (res.ok) {
+        const json = await res.json();
+        if (json && typeof json === "object") {
+          return json;
+        }
+      }
+    } catch (e) {
+      console.warn("Firebase RTDB read fallback:", e?.message);
+    }
+  }
+
+  // 4. In-memory + /tmp fallback
   if (globalThis.__auditxCloudHubState) {
     return globalThis.__auditxCloudHubState;
   }
@@ -147,13 +185,31 @@ async function writeState(state) {
     }
   }
 
+  const rtdb = getFirebaseRtdbCreds();
+  if (rtdb) {
+    try {
+      const authQ = rtdb.secret ? `?auth=${encodeURIComponent(rtdb.secret)}` : "";
+      await fetch(
+        `${rtdb.url}/${FIRESTORE_COLLECTION}/${FIRESTORE_DOC}.json${authQ}`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(toSave),
+        }
+      );
+    } catch (e) {
+      console.warn("Firebase RTDB write note:", e?.message);
+    }
+  }
+
   return toSave;
 }
 
 async function loadCurrentStateWithRollover() {
   const raw = await readRawState();
   const { state, rolledOver } = rolloverStateIfNewDay(raw, getTodayISTDateKey());
-  if (rolledOver || !globalThis.__auditxCloudHubState) {
+  globalThis.__auditxCloudHubState = state;
+  if (rolledOver) {
     await writeState(state);
   }
   return state;
@@ -176,6 +232,7 @@ export async function GET(req) {
         revision: state.revision,
         dateKey: state.dateKey,
         persistenceMode: getPersistenceMode(),
+        serverBootId: SERVER_BOOT_ID,
       });
     }
 
@@ -184,6 +241,7 @@ export async function GET(req) {
       revision: state.revision,
       dateKey: state.dateKey,
       persistenceMode: getPersistenceMode(),
+      serverBootId: SERVER_BOOT_ID,
     });
   } catch (err) {
     return NextResponse.json(
@@ -202,7 +260,7 @@ export async function POST(req) {
     }
 
     let state = await loadCurrentStateWithRollover();
-    const next = normalizeHubState(state);
+    let next = normalizeHubState(state);
     let extraResult = {};
 
     switch (action) {
@@ -210,7 +268,12 @@ export async function POST(req) {
         const deviceUid = String(
           payload.deviceUid || payload.customerId || ""
         ).trim();
-        if (!deviceUid) {
+        const rawEmail = String(payload.email || "").trim().toLowerCase();
+        const isRealGoogleEmail =
+          rawEmail && rawEmail.includes("@") && !rawEmail.endsWith("@auditx.app");
+        const customerKey = isRealGoogleEmail ? `email:${rawEmail}` : deviceUid;
+
+        if (!customerKey) {
           return NextResponse.json(
             { error: "Device ID required" },
             { status: 400 }
@@ -219,7 +282,7 @@ export async function POST(req) {
         const devices = { ...(next.loginDevicesToday || {}) };
         const existingCount = Object.keys(devices).length;
 
-        if (!devices[deviceUid] && existingCount >= MAX_DAILY_USER_DEVICES) {
+        if (!devices[customerKey] && existingCount >= MAX_DAILY_USER_DEVICES) {
           return NextResponse.json(
             {
               error: `Device login capacity full: Maximum ${MAX_DAILY_USER_DEVICES} user devices logged in today.`,
@@ -233,35 +296,37 @@ export async function POST(req) {
         }
 
         const nowIso = new Date().toISOString();
-        devices[deviceUid] = {
-          deviceUid,
-          customerName: payload.name || devices[deviceUid]?.customerName || "Customer",
-          phone: payload.phone || devices[deviceUid]?.phone || "",
-          email: payload.email || devices[deviceUid]?.email || "",
+        devices[customerKey] = {
+          deviceUid: customerKey,
+          rawDeviceUid: deviceUid,
+          customerName: payload.name || devices[customerKey]?.customerName || "Customer",
+          phone: payload.phone || devices[customerKey]?.phone || "",
+          email: rawEmail || devices[customerKey]?.email || "",
           loginMethod:
             payload.loginMethod ||
-            devices[deviceUid]?.loginMethod ||
+            devices[customerKey]?.loginMethod ||
             "Ordering App Login",
-          firstSeenAt: devices[deviceUid]?.firstSeenAt || nowIso,
+          firstSeenAt: devices[customerKey]?.firstSeenAt || nowIso,
           lastSeenAt: nowIso,
         };
         next.loginDevicesToday = devices;
 
         const allDevices = { ...(next.allCustomerDevices || {}) };
         const signupsToday = { ...(next.newSignupsToday || {}) };
-        const prevEntry = allDevices[deviceUid];
+        const prevEntry = allDevices[customerKey] || allDevices[deviceUid];
         const prevDates = Array.isArray(prevEntry?.loginDates) ? prevEntry.loginDates : [];
         const loginDates = prevDates.includes(next.dateKey)
           ? prevDates
           : [...prevDates, next.dateKey];
 
         if (!prevEntry) {
-          allDevices[deviceUid] = {
-            deviceUid,
-            customerName: devices[deviceUid].customerName,
-            phone: devices[deviceUid].phone,
-            email: devices[deviceUid].email,
-            loginMethod: devices[deviceUid].loginMethod,
+          allDevices[customerKey] = {
+            deviceUid: customerKey,
+            rawDeviceUid: deviceUid,
+            customerName: devices[customerKey].customerName,
+            phone: devices[customerKey].phone,
+            email: devices[customerKey].email,
+            loginMethod: devices[customerKey].loginMethod,
             firstDateKey: next.dateKey,
             lastDateKey: next.dateKey,
             firstSeenAt: nowIso,
@@ -269,28 +334,36 @@ export async function POST(req) {
             loginDates,
             daysLoggedCount: loginDates.length,
           };
-          signupsToday[deviceUid] = {
-            deviceUid,
-            customerName: devices[deviceUid].customerName,
-            loginMethod: devices[deviceUid].loginMethod,
+          signupsToday[customerKey] = {
+            deviceUid: customerKey,
+            customerName: devices[customerKey].customerName,
+            loginMethod: devices[customerKey].loginMethod,
             firstSeenAt: nowIso,
           };
         } else {
-          allDevices[deviceUid] = {
+          allDevices[customerKey] = {
             ...prevEntry,
+            deviceUid: customerKey,
             customerName: payload.name || prevEntry.customerName || "Customer",
             phone: payload.phone || prevEntry.phone || "",
-            email: payload.email || prevEntry.email || "",
+            email: rawEmail || prevEntry.email || "",
             lastDateKey: next.dateKey,
             lastSeenAt: nowIso,
             loginDates,
             daysLoggedCount: loginDates.length,
           };
-          if (prevEntry.firstDateKey === next.dateKey && !signupsToday[deviceUid]) {
-            signupsToday[deviceUid] = {
-              deviceUid,
-              customerName: allDevices[deviceUid].customerName,
-              loginMethod: prevEntry.loginMethod || devices[deviceUid].loginMethod,
+          if (customerKey !== deviceUid && allDevices[deviceUid]) {
+            delete allDevices[deviceUid];
+            if (signupsToday[deviceUid]) {
+              signupsToday[customerKey] = signupsToday[deviceUid];
+              delete signupsToday[deviceUid];
+            }
+          }
+          if (prevEntry.firstDateKey === next.dateKey && !signupsToday[customerKey]) {
+            signupsToday[customerKey] = {
+              deviceUid: customerKey,
+              customerName: allDevices[customerKey].customerName,
+              loginMethod: prevEntry.loginMethod || devices[customerKey].loginMethod,
               firstSeenAt: prevEntry.firstSeenAt || nowIso,
             };
           }
@@ -309,7 +382,12 @@ export async function POST(req) {
       }
 
       case "TOGGLE_STORE": {
-        next.isStoreOpen = payload.isOpen !== false;
+        const incomingTs = Number(payload.statusUpdatedAt || Date.now());
+        const currentTs = Number(next.storeStatusUpdatedAt || 0);
+        if (incomingTs >= currentTs) {
+          next.isStoreOpen = payload.isOpen !== false;
+          next.storeStatusUpdatedAt = incomingTs;
+        }
         const actor = payload.updatedBy || "Bhaskar N S";
         const msg = next.isStoreOpen
           ? `🟢 STORE OPENED by ${actor} — synced across all apps.`
@@ -702,19 +780,33 @@ export async function POST(req) {
       case "UPDATE_STAFF_DUTY": {
         const { staffId, deviceStatus, staffName, deviceName } = payload;
         if (!staffId) break;
-        next.staffStatus = {
-          ...(next.staffStatus || {}),
-          [staffId]: {
-            staffId,
-            staffName:
-              staffName ||
-              (staffId === "thrupthi" ? "Thrupthi K S" : "Sinchana B R"),
-            deviceName:
-              deviceName || (staffId === "thrupthi" ? "MOTOROLA" : "OPPO"),
-            deviceStatus: deviceStatus || "LOGGED_OUT",
-            updatedAt: new Date().toISOString(),
-          },
-        };
+        const incomingTs = Number(payload.statusUpdatedAt || Date.now());
+        const currentTs = Number(next.staffStatus?.[staffId]?.statusUpdatedAt || 0);
+        if (incomingTs >= currentTs) {
+          next.staffStatus = {
+            ...(next.staffStatus || {}),
+            [staffId]: {
+              staffId,
+              staffName:
+                staffName ||
+                (staffId === "thrupthi" ? "Thrupthi K S" : "Sinchana B R"),
+              deviceName:
+                deviceName || (staffId === "thrupthi" ? "MOTOROLA" : "OPPO"),
+              deviceStatus: deviceStatus === "LOGGED_IN" ? "LOGGED_IN" : "LOGGED_OUT",
+              statusUpdatedAt: incomingTs,
+              updatedAt: new Date().toISOString(),
+            },
+          };
+        }
+        break;
+      }
+
+      case "SYNC_REHYDRATE_STATE": {
+        if (payload?.state && typeof payload.state === "object") {
+          next = mergeHubStates(next, payload.state, {
+            preferLocalOnCold: false,
+          });
+        }
         break;
       }
 
@@ -750,6 +842,7 @@ export async function POST(req) {
         next.ratingsToday = [];
         next.loginDevicesToday = {};
         next.newSignupsToday = {};
+        next.dayResetUpdatedAt = Date.now();
         next.capLogs = [
           {
             id: Date.now(),
@@ -775,6 +868,7 @@ export async function POST(req) {
       state: saved,
       revision: saved.revision,
       persistenceMode: getPersistenceMode(),
+      serverBootId: SERVER_BOOT_ID,
       ...extraResult,
     });
   } catch (err) {

@@ -28,6 +28,7 @@ export default function StoreToggleSwitch({
   useEffect(() => {
     if (first.current) {
       first.current = false;
+      setLabelOpen(isOpen);
       return;
     }
     const id = Date.now();

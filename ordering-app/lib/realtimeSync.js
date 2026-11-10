@@ -4,6 +4,7 @@ import {
   applyOrderInventoryAndStats,
   createInitialHubState,
   getTodayISTDateKey,
+  mergeHubStates,
   normalizeHubState,
   rolloverStateIfNewDay,
 } from "./hubState";
@@ -12,11 +13,13 @@ const STORAGE_ORDERS_KEY = "auditx_live_orders";
 const STORAGE_EVENT_KEY = "auditx_last_event";
 const STORAGE_CLOUD_CACHE_KEY = "auditx_hub_state_cache";
 const STORAGE_DEVICE_UID_KEY = "auditx_device_uid";
+const STORAGE_STORE_TS_KEY = "auditx_store_status_updated_at";
 
 let syncChannel = null;
 let inFlightPoll = null;
 let lastKnownRevision = 0;
 let lastKnownDateKey = "";
+const hydratedServerBoots = new Set();
 
 export function getSyncChannel() {
   if (typeof window !== "undefined" && "BroadcastChannel" in window) {
@@ -155,85 +158,210 @@ export function getCachedCloudHubState() {
   if (typeof window === "undefined") {
     return createInitialHubState(getTodayISTDateKey());
   }
+  let baseState = createInitialHubState(getTodayISTDateKey());
   try {
     const raw = localStorage.getItem(STORAGE_CLOUD_CACHE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      const { state } = rolloverStateIfNewDay(parsed, getTodayISTDateKey());
-      return state;
+      baseState = rolloverStateIfNewDay(parsed, getTodayISTDateKey()).state;
     }
+
+    // Reconcile standalone flags so individual keys & hub cache never contradict
+    const rawStore = localStorage.getItem("auditx_store_open");
+    const rawStoreTs = Number(localStorage.getItem(STORAGE_STORE_TS_KEY) || 0);
+    if (
+      rawStore !== null &&
+      rawStoreTs >= Number(baseState.storeStatusUpdatedAt || 0)
+    ) {
+      baseState.isStoreOpen = rawStore !== "false";
+      baseState.storeStatusUpdatedAt = rawStoreTs;
+    }
+
+    const nextStaff = { ...(baseState.staffStatus || {}) };
+    for (const id of ["thrupthi", "sinchana"]) {
+      const rawStatus = localStorage.getItem(`auditx_device_${id}`);
+      const rawTs = Number(
+        localStorage.getItem(`auditx_device_${id}_updated_at`) || 0
+      );
+      if (
+        rawStatus &&
+        rawTs >= Number(nextStaff[id]?.statusUpdatedAt || 0)
+      ) {
+        nextStaff[id] = {
+          ...(nextStaff[id] || {}),
+          staffId: id,
+          staffName: id === "thrupthi" ? "Thrupthi K S" : "Sinchana B R",
+          deviceName: id === "thrupthi" ? "MOTOROLA" : "OPPO",
+          deviceStatus: rawStatus === "LOGGED_IN" ? "LOGGED_IN" : "LOGGED_OUT",
+          statusUpdatedAt: rawTs,
+        };
+      }
+    }
+    baseState.staffStatus = nextStaff;
   } catch (e) {
     // ignore parse glitch
   }
-  return createInitialHubState(getTodayISTDateKey());
+  return baseState;
 }
 
-export function applyCloudStateToLocalStorage(rawState) {
+function writeCloudStateToStorage(state) {
+  lastKnownRevision = Math.max(
+    lastKnownRevision,
+    Number(state.revision || 1)
+  );
+  lastKnownDateKey = state.dateKey || getTodayISTDateKey();
+
+  localStorage.setItem(STORAGE_CLOUD_CACHE_KEY, JSON.stringify(state));
+  localStorage.setItem(
+    STORAGE_ORDERS_KEY,
+    JSON.stringify(Array.isArray(state.orders) ? state.orders : [])
+  );
+  localStorage.setItem(
+    "auditx_complaints",
+    JSON.stringify(Array.isArray(state.complaints) ? state.complaints : [])
+  );
+  localStorage.setItem(
+    "auditx_store_open",
+    state.isStoreOpen !== false ? "true" : "false"
+  );
+  localStorage.setItem(
+    STORAGE_STORE_TS_KEY,
+    String(Number(state.storeStatusUpdatedAt || 0))
+  );
+  localStorage.setItem(
+    "auditx_oos_items",
+    JSON.stringify(Array.isArray(state.oosList) ? state.oosList : [])
+  );
+  localStorage.setItem(
+    "auditx_inventory_units",
+    JSON.stringify(state.inventoryStockMap || {})
+  );
+  localStorage.setItem(
+    "auditx_custom_catalog",
+    JSON.stringify(
+      Array.isArray(state.customCatalogItems) ? state.customCatalogItems : []
+    )
+  );
+  localStorage.setItem(
+    "auditx_customer_ratings",
+    JSON.stringify(Array.isArray(state.ratingsToday) ? state.ratingsToday : [])
+  );
+  localStorage.setItem(
+    "auditx_daily_history",
+    JSON.stringify(Array.isArray(state.dailyHistory) ? state.dailyHistory : [])
+  );
+  for (const id of ["thrupthi", "sinchana"]) {
+    const entry = state.staffStatus?.[id];
+    if (entry?.deviceStatus) {
+      localStorage.setItem(`auditx_device_${id}`, entry.deviceStatus);
+      localStorage.setItem(
+        `auditx_device_${id}_updated_at`,
+        String(Number(entry.statusUpdatedAt || 0))
+      );
+    }
+  }
+
+  window.dispatchEvent(
+    new CustomEvent("auditx_cloud_synced", { detail: state })
+  );
+}
+
+export function applyCloudStateToLocalStorage(rawState, opts = {}) {
   if (typeof window === "undefined" || !rawState) return null;
-  const { state } = rolloverStateIfNewDay(rawState, getTodayISTDateKey());
+  const incoming = rolloverStateIfNewDay(rawState, getTodayISTDateKey()).state;
+  const state = opts.directWrite
+    ? incoming
+    : mergeHubStates(getCachedCloudHubState(), incoming, {
+        preferLocalOnCold: true,
+      });
   try {
-    lastKnownRevision = Number(state.revision || lastKnownRevision || 1);
-    lastKnownDateKey = state.dateKey || getTodayISTDateKey();
-
-    localStorage.setItem(STORAGE_CLOUD_CACHE_KEY, JSON.stringify(state));
-    localStorage.setItem(
-      STORAGE_ORDERS_KEY,
-      JSON.stringify(Array.isArray(state.orders) ? state.orders : [])
-    );
-    localStorage.setItem(
-      "auditx_complaints",
-      JSON.stringify(Array.isArray(state.complaints) ? state.complaints : [])
-    );
-    localStorage.setItem(
-      "auditx_store_open",
-      state.isStoreOpen !== false ? "true" : "false"
-    );
-    localStorage.setItem(
-      "auditx_oos_items",
-      JSON.stringify(Array.isArray(state.oosList) ? state.oosList : [])
-    );
-    localStorage.setItem(
-      "auditx_inventory_units",
-      JSON.stringify(state.inventoryStockMap || {})
-    );
-    localStorage.setItem(
-      "auditx_custom_catalog",
-      JSON.stringify(
-        Array.isArray(state.customCatalogItems) ? state.customCatalogItems : []
-      )
-    );
-    localStorage.setItem(
-      "auditx_customer_ratings",
-      JSON.stringify(
-        Array.isArray(state.ratingsToday) ? state.ratingsToday : []
-      )
-    );
-    localStorage.setItem(
-      "auditx_daily_history",
-      JSON.stringify(
-        Array.isArray(state.dailyHistory) ? state.dailyHistory : []
-      )
-    );
-    if (state.staffStatus?.thrupthi?.deviceStatus) {
-      localStorage.setItem(
-        "auditx_device_thrupthi",
-        state.staffStatus.thrupthi.deviceStatus
-      );
-    }
-    if (state.staffStatus?.sinchana?.deviceStatus) {
-      localStorage.setItem(
-        "auditx_device_sinchana",
-        state.staffStatus.sinchana.deviceStatus
-      );
-    }
-
-    window.dispatchEvent(
-      new CustomEvent("auditx_cloud_synced", { detail: state })
-    );
+    writeCloudStateToStorage(state);
   } catch (e) {
     console.warn("Cache write note:", e);
   }
   return state;
+}
+
+function pushChannelState(state) {
+  const ch = getSyncChannel();
+  if (!ch || !state) return;
+  try {
+    ch.postMessage({
+      type: "CLOUD_STATE_PUSH",
+      state,
+      timestamp: Date.now(),
+    });
+  } catch (e) {}
+}
+
+export function recordLocalStoreStatus(isOpen, statusUpdatedAt = Date.now()) {
+  if (typeof window === "undefined") return null;
+  const current = getCachedCloudHubState();
+  const next = {
+    ...current,
+    isStoreOpen: isOpen !== false,
+    storeStatusUpdatedAt: Math.max(
+      Number(statusUpdatedAt || Date.now()),
+      Number(current.storeStatusUpdatedAt || 0) + 1
+    ),
+    revision: Number(current.revision || 1) + 1,
+    updatedAt: new Date().toISOString(),
+  };
+  const applied = applyCloudStateToLocalStorage(next, { directWrite: true });
+  pushChannelState(applied);
+  return applied;
+}
+
+export function recordLocalStaffDuty({
+  staffId,
+  staffName,
+  deviceName,
+  deviceStatus,
+  statusUpdatedAt = Date.now(),
+}) {
+  if (typeof window === "undefined" || !staffId) return null;
+  const current = getCachedCloudHubState();
+  const prevTs = Number(current.staffStatus?.[staffId]?.statusUpdatedAt || 0);
+  const nextTs = Math.max(Number(statusUpdatedAt || Date.now()), prevTs + 1);
+  const next = {
+    ...current,
+    staffStatus: {
+      ...(current.staffStatus || {}),
+      [staffId]: {
+        staffId,
+        staffName:
+          staffName || (staffId === "thrupthi" ? "Thrupthi K S" : "Sinchana B R"),
+        deviceName: deviceName || (staffId === "thrupthi" ? "MOTOROLA" : "OPPO"),
+        deviceStatus: deviceStatus === "LOGGED_IN" ? "LOGGED_IN" : "LOGGED_OUT",
+        statusUpdatedAt: nextTs,
+        updatedAt: new Date().toISOString(),
+      },
+    },
+    revision: Number(current.revision || 1) + 1,
+    updatedAt: new Date().toISOString(),
+  };
+  const applied = applyCloudStateToLocalStorage(next, { directWrite: true });
+  pushChannelState(applied);
+  return applied;
+}
+
+function shouldRehydrateServer(serverState, mergedState) {
+  if (!serverState || !mergedState) return false;
+  if (Number(serverState.storeStatusUpdatedAt || 0) < Number(mergedState.storeStatusUpdatedAt || 0)) {
+    return true;
+  }
+  for (const id of ["thrupthi", "sinchana"]) {
+    if (
+      Number(serverState.staffStatus?.[id]?.statusUpdatedAt || 0) <
+      Number(mergedState.staffStatus?.[id]?.statusUpdatedAt || 0)
+    ) {
+      return true;
+    }
+  }
+  if (Number(serverState.revision || 1) < Number(mergedState.revision || 1)) {
+    return true;
+  }
+  return false;
 }
 
 export async function fetchCloudHubState({ force = false } = {}) {
@@ -252,10 +380,34 @@ export async function fetchCloudHubState({ force = false } = {}) {
       if (!res.ok) return null;
       const json = await res.json();
       if (json?.unchanged) {
-        return { state: getCachedCloudHubState(), unchanged: true, persistenceMode: json.persistenceMode };
+        return {
+          state: getCachedCloudHubState(),
+          unchanged: true,
+          persistenceMode: json.persistenceMode,
+        };
       }
       if (json?.state) {
-        const applied = applyCloudStateToLocalStorage(json.state);
+        const applied = applyCloudStateToLocalStorage(json.state, {
+          persistenceMode: json.persistenceMode,
+        });
+        if (
+          json.persistenceMode === "memory" &&
+          json.serverBootId &&
+          !hydratedServerBoots.has(json.serverBootId) &&
+          shouldRehydrateServer(json.state, applied)
+        ) {
+          if (hydratedServerBoots.size > 30) hydratedServerBoots.clear();
+          hydratedServerBoots.add(json.serverBootId);
+          fetch("/api/sync", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              action: "SYNC_REHYDRATE_STATE",
+              payload: { state: applied },
+            }),
+            cache: "no-store",
+          }).catch(() => {});
+        }
         return { state: applied, persistenceMode: json.persistenceMode };
       }
       return null;
@@ -283,17 +435,10 @@ export async function dispatchCloudAction(action, payload = {}) {
     });
     const data = await res.json().catch(() => ({}));
     if (data?.state) {
-      const applied = applyCloudStateToLocalStorage(data.state);
-      const ch = getSyncChannel();
-      if (ch) {
-        try {
-          ch.postMessage({
-            type: "CLOUD_STATE_PUSH",
-            state: applied,
-            timestamp: Date.now(),
-          });
-        } catch (e) {}
-      }
+      const applied = applyCloudStateToLocalStorage(data.state, {
+        persistenceMode: data.persistenceMode,
+      });
+      pushChannelState(applied);
       if (res.ok) {
         return { ok: true, status: res.status, state: applied, data };
       }
@@ -314,7 +459,9 @@ export function subscribeToCloudHub(callback, intervalMs = 1800) {
   deliverCached();
 
   let active = true;
-  fetchCloudHubState({ force: true }).then((res) => {
+  let lastFocusSyncAt = 0;
+
+  fetchCloudHubState({ force: false }).then((res) => {
     if (active && res?.state) {
       callback(res.state, { persistenceMode: res.persistenceMode });
     }
@@ -333,9 +480,25 @@ export function subscribeToCloudHub(callback, intervalMs = 1800) {
     }
   };
 
+  const handleStorage = (e) => {
+    if (!active) return;
+    if (
+      e.key === STORAGE_CLOUD_CACHE_KEY ||
+      e.key === "auditx_store_open" ||
+      e.key === "auditx_device_thrupthi" ||
+      e.key === "auditx_device_sinchana"
+    ) {
+      const updated = getCachedCloudHubState();
+      callback(updated, { fromStorage: true });
+    }
+  };
+
   const handleFocus = () => {
-    fetchCloudHubState({ force: true }).then((res) => {
-      if (active && res?.state) {
+    const now = Date.now();
+    if (now - lastFocusSyncAt < 650) return;
+    lastFocusSyncAt = now;
+    fetchCloudHubState({ force: false }).then((res) => {
+      if (active && res?.state && !res.unchanged) {
         callback(res.state, { persistenceMode: res.persistenceMode });
       }
     });
@@ -346,6 +509,7 @@ export function subscribeToCloudHub(callback, intervalMs = 1800) {
   };
 
   window.addEventListener("auditx_cloud_synced", handleCloudEvt);
+  window.addEventListener("storage", handleStorage);
   window.addEventListener("focus", handleFocus);
   document.addEventListener("visibilitychange", handleVisibility);
 
@@ -364,6 +528,7 @@ export function subscribeToCloudHub(callback, intervalMs = 1800) {
     active = false;
     clearInterval(poller);
     window.removeEventListener("auditx_cloud_synced", handleCloudEvt);
+    window.removeEventListener("storage", handleStorage);
     window.removeEventListener("focus", handleFocus);
     document.removeEventListener("visibilitychange", handleVisibility);
     if (ch) ch.removeEventListener("message", handleChannelMsg);

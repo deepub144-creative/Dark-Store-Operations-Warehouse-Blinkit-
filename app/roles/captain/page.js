@@ -15,6 +15,7 @@ import {
   saveLiveOrder,
   subscribeToCloudHub,
   dispatchCloudAction,
+  recordLocalStaffDuty,
 } from "@/lib/realtimeSync";
 import { getTodayISTDateKey } from "@/lib/hubState";
 import { STAGING_RACKS } from "@/lib/roles";
@@ -89,51 +90,41 @@ export default function DeliveryCaptainApp() {
   }, []);
 
   function handleToggleDuty() {
-    if (!isCheckedIn) {
-      setIsCheckedIn(true);
-      try {
-        localStorage.setItem("auditx_device_sinchana", "LOGGED_IN");
-      } catch (e) {}
-      dispatchCloudAction("UPDATE_STAFF_DUTY", {
+    const nextStatus = !isCheckedIn ? "LOGGED_IN" : "LOGGED_OUT";
+    const statusUpdatedAt = Date.now();
+    setIsCheckedIn(!isCheckedIn);
+    try {
+      recordLocalStaffDuty({
         staffId: "sinchana",
         staffName: "Sinchana B R",
         deviceName: "OPPO",
-        deviceStatus: "LOGGED_IN",
+        deviceStatus: nextStatus,
+        statusUpdatedAt,
       });
-      broadcastEvent("STAFF_STATUS_CHANGED", {
-        staffId: "sinchana",
-        staffName: "Sinchana B R",
-        roleCode: "DELIVERY",
-        status: "on_duty",
-        deviceStatus: "LOGGED_IN",
-        deviceName: "OPPO",
-        deviceId: "OPPO",
-        time: new Date().toISOString(),
-      });
+    } catch (e) {}
+    broadcastEvent("STAFF_STATUS_CHANGED", {
+      staffId: "sinchana",
+      staffName: "Sinchana B R",
+      roleCode: "DELIVERY",
+      status: nextStatus === "LOGGED_IN" ? "on_duty" : "offline",
+      deviceStatus: nextStatus,
+      deviceName: "OPPO",
+      deviceId: "OPPO",
+      statusUpdatedAt,
+      time: new Date(statusUpdatedAt).toISOString(),
+    });
+    dispatchCloudAction("UPDATE_STAFF_DUTY", {
+      staffId: "sinchana",
+      staffName: "Sinchana B R",
+      deviceName: "OPPO",
+      deviceStatus: nextStatus,
+      statusUpdatedAt,
+    });
+    if (nextStatus === "LOGGED_IN") {
       playSuccessChime();
       setActionSuccess("🟢 Duty Activated! Delivery shift started for Sinchana B R.");
       setTimeout(() => setActionSuccess(""), 3000);
     } else {
-      setIsCheckedIn(false);
-      try {
-        localStorage.setItem("auditx_device_sinchana", "LOGGED_OUT");
-      } catch (e) {}
-      dispatchCloudAction("UPDATE_STAFF_DUTY", {
-        staffId: "sinchana",
-        staffName: "Sinchana B R",
-        deviceName: "OPPO",
-        deviceStatus: "LOGGED_OUT",
-      });
-      broadcastEvent("STAFF_STATUS_CHANGED", {
-        staffId: "sinchana",
-        staffName: "Sinchana B R",
-        roleCode: "DELIVERY",
-        status: "offline",
-        deviceStatus: "LOGGED_OUT",
-        deviceName: "OPPO",
-        deviceId: "OPPO",
-        time: new Date().toISOString(),
-      });
       setActionSuccess("Shift paused • Order Captain is now OFFLINE");
       setTimeout(() => setActionSuccess(""), 2500);
     }
@@ -590,20 +581,21 @@ export default function DeliveryCaptainApp() {
           deviceId="OPPO"
           onLoginSuccess={(loginData) => {
             const todayKey = loginData?.authDate || getTodayISTDateKey();
+            const statusUpdatedAt = Date.now();
             setIsRiderLoggedIn(true);
             setIsCheckedIn(true);
             try {
               localStorage.setItem("auditx_rider_authenticated", "true");
               localStorage.setItem("auditx_rider_auth_date", todayKey);
               localStorage.setItem("auditx_rider_phone", loginData?.phone || "8088553237");
-              localStorage.setItem("auditx_device_sinchana", "LOGGED_IN");
+              recordLocalStaffDuty({
+                staffId: "sinchana",
+                staffName: "Sinchana B R",
+                deviceName: "OPPO",
+                deviceStatus: "LOGGED_IN",
+                statusUpdatedAt,
+              });
             } catch (e) {}
-            dispatchCloudAction("UPDATE_STAFF_DUTY", {
-              staffId: "sinchana",
-              staffName: "Sinchana B R",
-              deviceName: "OPPO",
-              deviceStatus: "LOGGED_IN",
-            });
             broadcastEvent("STAFF_STATUS_CHANGED", {
               staffId: "sinchana",
               staffName: "Sinchana B R",
@@ -612,7 +604,15 @@ export default function DeliveryCaptainApp() {
               deviceStatus: "LOGGED_IN",
               deviceName: "OPPO",
               deviceId: "OPPO",
-              time: new Date().toISOString(),
+              statusUpdatedAt,
+              time: new Date(statusUpdatedAt).toISOString(),
+            });
+            dispatchCloudAction("UPDATE_STAFF_DUTY", {
+              staffId: "sinchana",
+              staffName: "Sinchana B R",
+              deviceName: "OPPO",
+              deviceStatus: "LOGGED_IN",
+              statusUpdatedAt,
             });
             playSuccessChime();
             setActionSuccess("✅ Daily OTP Verified! Logged in as Sinchana B R (OPPO).");
@@ -640,19 +640,20 @@ export default function DeliveryCaptainApp() {
             isDutyOn={isCheckedIn}
             onDutyToggle={handleToggleDuty}
             onExit={() => {
+              const statusUpdatedAt = Date.now();
               setIsRiderLoggedIn(false);
               setIsCheckedIn(false);
               try {
                 localStorage.removeItem("auditx_rider_authenticated");
                 localStorage.removeItem("auditx_rider_auth_date");
-                localStorage.setItem("auditx_device_sinchana", "LOGGED_OUT");
+                recordLocalStaffDuty({
+                  staffId: "sinchana",
+                  staffName: "Sinchana B R",
+                  deviceName: "OPPO",
+                  deviceStatus: "LOGGED_OUT",
+                  statusUpdatedAt,
+                });
               } catch (e) {}
-              dispatchCloudAction("UPDATE_STAFF_DUTY", {
-                staffId: "sinchana",
-                staffName: "Sinchana B R",
-                deviceName: "OPPO",
-                deviceStatus: "LOGGED_OUT",
-              });
               broadcastEvent("STAFF_STATUS_CHANGED", {
                 staffId: "sinchana",
                 staffName: "Sinchana B R",
@@ -661,7 +662,15 @@ export default function DeliveryCaptainApp() {
                 deviceStatus: "LOGGED_OUT",
                 deviceName: "OPPO",
                 deviceId: "OPPO",
-                time: new Date().toISOString(),
+                statusUpdatedAt,
+                time: new Date(statusUpdatedAt).toISOString(),
+              });
+              dispatchCloudAction("UPDATE_STAFF_DUTY", {
+                staffId: "sinchana",
+                staffName: "Sinchana B R",
+                deviceName: "OPPO",
+                deviceStatus: "LOGGED_OUT",
+                statusUpdatedAt,
               });
             }}
             walletAmount={sinchanaWalletBalance || 28}

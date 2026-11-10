@@ -22,6 +22,7 @@ import {
   clearAllLiveOrders,
   subscribeToCloudHub,
   dispatchCloudAction,
+  recordLocalStaffDuty,
 } from "@/lib/realtimeSync";
 import { getTodayISTDateKey } from "@/lib/hubState";
 import { STAGING_RACKS, getRandomStagingRack } from "@/lib/roles";
@@ -169,51 +170,41 @@ export default function OdPickerApp() {
   }, []);
 
   function handleToggleDuty() {
-    if (!isOnline) {
-      setIsOnline(true);
-      try {
-        localStorage.setItem("auditx_device_thrupthi", "LOGGED_IN");
-      } catch (e) {}
-      dispatchCloudAction("UPDATE_STAFF_DUTY", {
+    const nextStatus = !isOnline ? "LOGGED_IN" : "LOGGED_OUT";
+    const statusUpdatedAt = Date.now();
+    setIsOnline(!isOnline);
+    try {
+      recordLocalStaffDuty({
         staffId: "thrupthi",
         staffName: "Thrupthi K S",
         deviceName: "MOTOROLA",
-        deviceStatus: "LOGGED_IN",
+        deviceStatus: nextStatus,
+        statusUpdatedAt,
       });
-      broadcastEvent("STAFF_STATUS_CHANGED", {
-        staffId: "thrupthi",
-        staffName: "Thrupthi K S",
-        roleCode: "PICKER",
-        status: "on_duty",
-        deviceStatus: "LOGGED_IN",
-        deviceName: "MOTOROLA",
-        deviceId: "MOTOROLA",
-        time: new Date().toISOString(),
-      });
+    } catch (e) {}
+    broadcastEvent("STAFF_STATUS_CHANGED", {
+      staffId: "thrupthi",
+      staffName: "Thrupthi K S",
+      roleCode: "PICKER",
+      status: nextStatus === "LOGGED_IN" ? "on_duty" : "offline",
+      deviceStatus: nextStatus,
+      deviceName: "MOTOROLA",
+      deviceId: "MOTOROLA",
+      statusUpdatedAt,
+      time: new Date(statusUpdatedAt).toISOString(),
+    });
+    dispatchCloudAction("UPDATE_STAFF_DUTY", {
+      staffId: "thrupthi",
+      staffName: "Thrupthi K S",
+      deviceName: "MOTOROLA",
+      deviceStatus: nextStatus,
+      statusUpdatedAt,
+    });
+    if (nextStatus === "LOGGED_IN") {
       playSuccessChime();
       setActionSuccess("🟢 Duty Activated! Thrupthi K S is online on MOTOROLA.");
       setTimeout(() => setActionSuccess(""), 3000);
     } else {
-      setIsOnline(false);
-      try {
-        localStorage.setItem("auditx_device_thrupthi", "LOGGED_OUT");
-      } catch (e) {}
-      dispatchCloudAction("UPDATE_STAFF_DUTY", {
-        staffId: "thrupthi",
-        staffName: "Thrupthi K S",
-        deviceName: "MOTOROLA",
-        deviceStatus: "LOGGED_OUT",
-      });
-      broadcastEvent("STAFF_STATUS_CHANGED", {
-        staffId: "thrupthi",
-        staffName: "Thrupthi K S",
-        roleCode: "PICKER",
-        status: "offline",
-        deviceStatus: "LOGGED_OUT",
-        deviceName: "MOTOROLA",
-        deviceId: "MOTOROLA",
-        time: new Date().toISOString(),
-      });
       setActionSuccess("Shift paused • OD Picker is now OFFLINE");
       setTimeout(() => setActionSuccess(""), 2500);
     }
@@ -944,20 +935,21 @@ export default function OdPickerApp() {
           deviceId="MOTOROLA"
           onLoginSuccess={(loginData) => {
             const todayKey = loginData?.authDate || getTodayISTDateKey();
+            const statusUpdatedAt = Date.now();
             setIsPickerLoggedIn(true);
             setIsOnline(true);
             try {
               localStorage.setItem("auditx_picker_authenticated", "true");
               localStorage.setItem("auditx_picker_auth_date", todayKey);
               localStorage.setItem("auditx_picker_phone", loginData?.phone || "6362435746");
-              localStorage.setItem("auditx_device_thrupthi", "LOGGED_IN");
+              recordLocalStaffDuty({
+                staffId: "thrupthi",
+                staffName: "Thrupthi K S",
+                deviceName: "MOTOROLA",
+                deviceStatus: "LOGGED_IN",
+                statusUpdatedAt,
+              });
             } catch (e) {}
-            dispatchCloudAction("UPDATE_STAFF_DUTY", {
-              staffId: "thrupthi",
-              staffName: "Thrupthi K S",
-              deviceName: "MOTOROLA",
-              deviceStatus: "LOGGED_IN",
-            });
             broadcastEvent("STAFF_STATUS_CHANGED", {
               staffId: "thrupthi",
               staffName: "Thrupthi K S",
@@ -966,7 +958,15 @@ export default function OdPickerApp() {
               deviceStatus: "LOGGED_IN",
               deviceName: "MOTOROLA",
               deviceId: "MOTOROLA",
-              time: new Date().toISOString(),
+              statusUpdatedAt,
+              time: new Date(statusUpdatedAt).toISOString(),
+            });
+            dispatchCloudAction("UPDATE_STAFF_DUTY", {
+              staffId: "thrupthi",
+              staffName: "Thrupthi K S",
+              deviceName: "MOTOROLA",
+              deviceStatus: "LOGGED_IN",
+              statusUpdatedAt,
             });
             playSuccessChime();
             setActionSuccess("✅ Daily OTP Verified! Logged in as Thrupthi K S (MOTOROLA).");
@@ -983,19 +983,20 @@ export default function OdPickerApp() {
             isDutyOn={isOnline}
             onDutyToggle={handleToggleDuty}
             onExit={() => {
+              const statusUpdatedAt = Date.now();
               setIsPickerLoggedIn(false);
               setIsOnline(false);
               try {
                 localStorage.removeItem("auditx_picker_authenticated");
                 localStorage.removeItem("auditx_picker_auth_date");
-                localStorage.setItem("auditx_device_thrupthi", "LOGGED_OUT");
+                recordLocalStaffDuty({
+                  staffId: "thrupthi",
+                  staffName: "Thrupthi K S",
+                  deviceName: "MOTOROLA",
+                  deviceStatus: "LOGGED_OUT",
+                  statusUpdatedAt,
+                });
               } catch (e) {}
-              dispatchCloudAction("UPDATE_STAFF_DUTY", {
-                staffId: "thrupthi",
-                staffName: "Thrupthi K S",
-                deviceName: "MOTOROLA",
-                deviceStatus: "LOGGED_OUT",
-              });
               broadcastEvent("STAFF_STATUS_CHANGED", {
                 staffId: "thrupthi",
                 staffName: "Thrupthi K S",
@@ -1004,7 +1005,15 @@ export default function OdPickerApp() {
                 deviceStatus: "LOGGED_OUT",
                 deviceName: "MOTOROLA",
                 deviceId: "MOTOROLA",
-                time: new Date().toISOString(),
+                statusUpdatedAt,
+                time: new Date(statusUpdatedAt).toISOString(),
+              });
+              dispatchCloudAction("UPDATE_STAFF_DUTY", {
+                staffId: "thrupthi",
+                staffName: "Thrupthi K S",
+                deviceName: "MOTOROLA",
+                deviceStatus: "LOGGED_OUT",
+                statusUpdatedAt,
               });
             }}
             walletAmount={28}

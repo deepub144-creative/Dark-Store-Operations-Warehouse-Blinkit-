@@ -18,6 +18,7 @@ import {
   subscribeToCloudHub,
   dispatchCloudAction,
   getCachedCloudHubState,
+  recordLocalStoreStatus,
 } from "@/lib/realtimeSync";
 import { STAFF, STAGE_SEQUENCE, getRandomStagingRack } from "@/lib/roles";
 import { CATALOG } from "@/lib/items";
@@ -167,19 +168,29 @@ export default function WarehouseDashboardPage() {
     totalLoginsCount: 0,
   });
   const [dailyHistory, setDailyHistory] = useState([]);
+  const [syncPersistenceMode, setSyncPersistenceMode] = useState("");
 
-  // Device Fleet Login Tracking (MOTOROLA for Thrupthi, OPPO for Sinchana)
+  // Device Fleet Login Tracking (MOTOROLA for Thrupthi, OPPO for Sinchana — defaults OFF DUTY until staff turns duty ON)
   const [deviceFleet, setDeviceFleet] = useState({
-    thrupthi: "LOGGED_IN",
-    sinchana: "LOGGED_IN",
+    thrupthi: "LOGGED_OUT",
+    sinchana: "LOGGED_OUT",
   });
   const [pickerLiveOp, setPickerLiveOp] = useState(null);
   const [riderLiveOp, setRiderLiveOp] = useState(null);
 
   useEffect(() => {
     try {
-      const p = localStorage.getItem("auditx_device_thrupthi") || "LOGGED_IN";
-      const r = localStorage.getItem("auditx_device_sinchana") || "LOGGED_IN";
+      const cached = getCachedCloudHubState();
+      const p =
+        cached?.staffStatus?.thrupthi?.deviceStatus ||
+        (localStorage.getItem("auditx_device_thrupthi") === "LOGGED_IN"
+          ? "LOGGED_IN"
+          : "LOGGED_OUT");
+      const r =
+        cached?.staffStatus?.sinchana?.deviceStatus ||
+        (localStorage.getItem("auditx_device_sinchana") === "LOGGED_IN"
+          ? "LOGGED_IN"
+          : "LOGGED_OUT");
       setDeviceFleet({ thrupthi: p, sinchana: r });
     } catch (e) {}
   }, []);
@@ -259,6 +270,16 @@ export default function WarehouseDashboardPage() {
     const handleStorage = (e) => {
       if (e.key === "auditx_store_open") {
         setIsStorePaused(e.newValue === "false");
+      } else if (e.key === "auditx_device_thrupthi") {
+        setDeviceFleet((prev) => ({
+          ...prev,
+          thrupthi: e.newValue === "LOGGED_IN" ? "LOGGED_IN" : "LOGGED_OUT",
+        }));
+      } else if (e.key === "auditx_device_sinchana") {
+        setDeviceFleet((prev) => ({
+          ...prev,
+          sinchana: e.newValue === "LOGGED_IN" ? "LOGGED_IN" : "LOGGED_OUT",
+        }));
       }
     };
     window.addEventListener("storage", handleStorage);
@@ -383,8 +404,9 @@ export default function WarehouseDashboardPage() {
     if (!staff) return;
 
     // 1. Subscribe to live cloud hub state (Orders, Inventory, OOS, Putaway, Logins, Ratings, Cumulative, Daily History)
-    const unsubCloud = subscribeToCloudHub((cloudState) => {
+    const unsubCloud = subscribeToCloudHub((cloudState, meta) => {
       if (!cloudState) return;
+      if (meta?.persistenceMode) setSyncPersistenceMode(meta.persistenceMode);
       setIsStorePaused(cloudState.isStoreOpen === false);
       if (Array.isArray(cloudState.orders)) setOrders(sanitizeOrders(cloudState.orders));
       if (Array.isArray(cloudState.complaints)) setComplaints(sanitizeComplaints(cloudState.complaints));
@@ -402,8 +424,8 @@ export default function WarehouseDashboardPage() {
       if (Number(cloudState.orderCapLimit) > 0) setOrderCapLimit(Number(cloudState.orderCapLimit));
       if (cloudState.staffStatus) {
         setDeviceFleet({
-          thrupthi: cloudState.staffStatus.thrupthi?.deviceStatus || "LOGGED_IN",
-          sinchana: cloudState.staffStatus.sinchana?.deviceStatus || "LOGGED_IN",
+          thrupthi: cloudState.staffStatus.thrupthi?.deviceStatus || "LOGGED_OUT",
+          sinchana: cloudState.staffStatus.sinchana?.deviceStatus || "LOGGED_OUT",
         });
       }
     }, 1800);
@@ -578,18 +600,7 @@ export default function WarehouseDashboardPage() {
     setTimeout(() => setActionSuccess(""), 3000);
   }
 
-  function logout() {
-    // Responsibility Rule: Warehouse managers (SM, ASM, MD) MUST close store toggle OFF before logging out
-    if (!isStorePaused) {
-      playNotificationChime();
-      setLogoutBlockedModal(true);
-      setActionSuccess(
-        `🛑 Store is OPEN! ${staff?.name || "Warehouse Manager"} must turn Store Toggle OFF (STORE CLOSED) before logging out.`
-      );
-      setTimeout(() => setActionSuccess(""), 5000);
-      return;
-    }
-
+  function clearWarehouseSessionAndReturn(notice) {
     stopOrderAlarm();
     try {
       localStorage.removeItem("auditx_wh_session");
@@ -599,12 +610,40 @@ export default function WarehouseDashboardPage() {
     setLogoutBlockedModal(false);
     setWhSession(null);
     setStaff(null);
-    setLoginNotice("Store Closed & Daily Session Logged Out. Enter credentials to log back in.");
+    setLoginNotice(notice);
+  }
+
+  function switchToAsmOrMd() {
+    clearWarehouseSessionAndReturn(
+      "Switched account — select MD (A B Harshitha) or ASM (Deepu B). Store status remains unchanged."
+    );
+  }
+
+  function logout() {
+    const isManagerClosingRequired = staff?.roleCode === "SM";
+
+    // Only SM final daily close requires Store Toggle OFF; MD & ASM exit without mandatory store close
+    if (isManagerClosingRequired && !isStorePaused) {
+      playNotificationChime();
+      setLogoutBlockedModal(true);
+      setActionSuccess(
+        `🛑 Store is OPEN! SM ${staff?.name || "Bhaskar N S"} must turn Store Toggle OFF before daily logout (or use Switch to ASM / MD).`
+      );
+      setTimeout(() => setActionSuccess(""), 5000);
+      return;
+    }
+
+    clearWarehouseSessionAndReturn(
+      isManagerClosingRequired
+        ? "Store Closed & SM Daily Session Logged Out. Enter credentials to log back in."
+        : `${staff?.roleCode || "Manager"} (${staff?.name || ""}) session logged out. Store status unchanged.`
+    );
   }
 
   async function toggleStorePause() {
     const nextPaused = !isStorePaused;
     const nextOpen = !nextPaused;
+    const statusUpdatedAt = Date.now();
     setIsStorePaused(nextPaused);
 
     if (nextPaused) {
@@ -617,16 +656,18 @@ export default function WarehouseDashboardPage() {
     }
 
     try {
-      localStorage.setItem("auditx_store_open", nextOpen ? "true" : "false");
-      await dispatchCloudAction("TOGGLE_STORE", {
-        isOpen: nextOpen,
-        updatedBy: staff?.name || "Bhaskar N S (Store Manager)",
-      });
+      recordLocalStoreStatus(nextOpen, statusUpdatedAt);
       broadcastEvent("STORE_STATUS_CHANGED", {
         isOpen: nextOpen,
+        statusUpdatedAt,
         updatedBy: staff?.name || "Bhaskar N S (Store Manager)",
         role: staff?.designation || "Store Manager",
-        timestamp: new Date().toISOString(),
+        timestamp: new Date(statusUpdatedAt).toISOString(),
+      });
+      await dispatchCloudAction("TOGGLE_STORE", {
+        isOpen: nextOpen,
+        statusUpdatedAt,
+        updatedBy: staff?.name || "Bhaskar N S (Store Manager)",
       });
     } catch (e) {
       console.warn("Store toggle persist error:", e);
@@ -1067,7 +1108,7 @@ export default function WarehouseDashboardPage() {
             />
           </div>
           <div style={S.subText}>
-            ⚡ Blinkit Dark Store Operations Command Tower • Tumkur District - 572201 • 10-Min Delivery SLA
+            Audit'X Dark Store • Tiptur (KA-44) • 10-Min Express
           </div>
         </div>
 
@@ -1221,10 +1262,9 @@ export default function WarehouseDashboardPage() {
           </button>
 
           <div style={S.staffSwitcherBlock}>
-            <span style={S.switcherLabel}>Signed In:</span>
             <div style={S.activeStaffPill}>
               {staff.logo ? (
-                <img src={staff.logo} alt={staff.name} style={{ width: 22, height: 22, borderRadius: "50%", objectFit: "cover" }} />
+                <img src={staff.logo} alt="" style={{ width: 22, height: 22, borderRadius: "50%", objectFit: "cover" }} />
               ) : (
                 <span>{staff.avatar}</span>
               )}
@@ -1257,6 +1297,25 @@ export default function WarehouseDashboardPage() {
             )}
           </div>
 
+          <button
+            type="button"
+            onClick={switchToAsmOrMd}
+            style={{
+              background: "#1E293B",
+              color: "#E2E8F0",
+              border: "1px solid #334155",
+              borderRadius: 10,
+              padding: "8px 12px",
+              fontSize: 12,
+              fontWeight: 800,
+              cursor: "pointer",
+              whiteSpace: "nowrap",
+            }}
+            title="Switch to MD / ASM without closing the store"
+          >
+            🔄 Switch MD / ASM
+          </button>
+
           <button style={S.logoutBtn} onClick={logout}>
             Exit Portal
           </button>
@@ -1268,7 +1327,7 @@ export default function WarehouseDashboardPage() {
       {actionSuccess && <div style={S.actionAlert}>{actionSuccess}</div>}
       {pingedDevice && <div style={S.pingAlert}>🔔 Pinging terminal "{pingedDevice}"... Chime dispatched to device speaker!</div>}
 
-      {/* Mandatory Close-Store-Before-Logout Responsibility Modal */}
+      {/* Mandatory Close-Store-Before-Logout Responsibility Modal (SM Daily Close only) */}
       {logoutBlockedModal && (
         <div
           style={{
@@ -1286,7 +1345,7 @@ export default function WarehouseDashboardPage() {
           <div
             style={{
               width: "100%",
-              maxWidth: 440,
+              maxWidth: 460,
               background: "#FFFFFF",
               borderRadius: 18,
               border: "2px solid #ef4444",
@@ -1296,14 +1355,14 @@ export default function WarehouseDashboardPage() {
             }}
           >
             <div style={{ fontSize: 18, fontWeight: 900, color: "#b91c1c", marginBottom: 8 }}>
-              🛑 Store Must Be Closed Before Logout
+              🛑 Store Must Be Closed Before SM Daily Logout
             </div>
             <p style={{ fontSize: 13.5, color: "#475569", lineHeight: 1.55, margin: "0 0 16px" }}>
-              Warehouse Manager Responsibility (<b>{staff.name} • {staff.roleCode}</b>): Store is currently{" "}
+              Store Manager Responsibility (<b>{staff.name} • {staff.roleCode}</b>): Store is currently{" "}
               <b style={{ color: isStorePaused ? "#dc2626" : "#0c831f" }}>
                 {isStorePaused ? "CLOSED (OFF)" : "OPEN (ON)"}
               </b>
-              . You cannot log out or close daily operations until you turn the Store Toggle to <b>STORE CLOSED (OFF)</b>.
+              . To close SM daily operations, turn the Store Toggle to <b>STORE CLOSED (OFF)</b>. If you are only switching to <b>ASM / MD</b>, closing the store is not required.
             </p>
 
             <div
@@ -1316,7 +1375,7 @@ export default function WarehouseDashboardPage() {
                 alignItems: "center",
                 justifyContent: "space-between",
                 gap: 12,
-                marginBottom: 18,
+                marginBottom: 16,
               }}
             >
               <span style={{ fontSize: 13, fontWeight: 800, color: "#0F172A" }}>
@@ -1331,40 +1390,59 @@ export default function WarehouseDashboardPage() {
               />
             </div>
 
-            <div style={{ display: "flex", gap: 10 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               <button
                 type="button"
-                onClick={() => setLogoutBlockedModal(false)}
+                onClick={switchToAsmOrMd}
                 style={{
-                  flex: 1,
+                  width: "100%",
                   padding: "10px 14px",
                   borderRadius: 10,
-                  border: "1px solid #CBD5E1",
-                  background: "#FFFFFF",
-                  color: "#334155",
-                  fontWeight: 700,
+                  border: "1px solid #0284c7",
+                  background: "#f0f9ff",
+                  color: "#0369a1",
+                  fontWeight: 800,
                   cursor: "pointer",
                 }}
               >
-                Cancel
+                🔄 Switch to MD / ASM (Keep Store Open)
               </button>
-              <button
-                type="button"
-                disabled={!isStorePaused}
-                onClick={() => logout()}
-                style={{
-                  flex: 1.4,
-                  padding: "10px 14px",
-                  borderRadius: 10,
-                  border: "none",
-                  background: isStorePaused ? "#dc2626" : "#cbd5e1",
-                  color: "#FFFFFF",
-                  fontWeight: 800,
-                  cursor: isStorePaused ? "pointer" : "not-allowed",
-                }}
-              >
-                {isStorePaused ? "🔒 Confirm Logout Now" : "Close Store First to Logout"}
-              </button>
+
+              <div style={{ display: "flex", gap: 10 }}>
+                <button
+                  type="button"
+                  onClick={() => setLogoutBlockedModal(false)}
+                  style={{
+                    flex: 1,
+                    padding: "10px 14px",
+                    borderRadius: 10,
+                    border: "1px solid #CBD5E1",
+                    background: "#FFFFFF",
+                    color: "#334155",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={!isStorePaused}
+                  onClick={() => logout()}
+                  style={{
+                    flex: 1.4,
+                    padding: "10px 14px",
+                    borderRadius: 10,
+                    border: "none",
+                    background: isStorePaused ? "#dc2626" : "#cbd5e1",
+                    color: "#FFFFFF",
+                    fontWeight: 800,
+                    cursor: isStorePaused ? "pointer" : "not-allowed",
+                  }}
+                >
+                  {isStorePaused ? "🔒 Confirm Logout Now" : "Close Store First to Logout"}
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -1440,11 +1518,13 @@ export default function WarehouseDashboardPage() {
                       width: 7,
                       height: 7,
                       borderRadius: "50%",
-                      background: "#1faa3b",
-                      boxShadow: "0 0 0 3px rgba(31,170,59,.2)",
+                      background: isStorePaused ? "#ef4444" : "#1faa3b",
+                      boxShadow: isStorePaused
+                        ? "0 0 0 3px rgba(239,68,68,.2)"
+                        : "0 0 0 3px rgba(31,170,59,.2)",
                     }}
                   />
-                  <span>Store live · {fullRoster.length} devices online</span>
+                  <span>{isStorePaused ? "Store Closed" : "Store Open"}</span>
                 </div>
               </div>
             </div>
@@ -1820,9 +1900,6 @@ export default function WarehouseDashboardPage() {
                   <span style={{ ...S.launcherName, color: activeTab === "history" ? "#ffffff" : "#cbd5e1" }}>
                     Daily history
                   </span>
-                  <span style={S.launcherVal}>
-                    {yesterdaySnapshot ? "Yesterday saved" : "IST Auto 0"}
-                  </span>
                 </button>
 
                 {/* ASM Putaway & Audit Desk */}
@@ -1847,7 +1924,6 @@ export default function WarehouseDashboardPage() {
                   <span style={{ ...S.launcherName, color: activeTab === "asmDesk" ? "#ffffff" : "#cbd5e1" }}>
                     ASM Putaway
                   </span>
-                  <span style={S.launcherVal}>Deepu B • Desk</span>
                 </button>
               </div>
             </section>
@@ -1867,31 +1943,13 @@ export default function WarehouseDashboardPage() {
               boxShadow: "0 4px 20px rgba(0, 0, 0, 0.25)",
             }}
           >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 10, marginBottom: 12 }}>
-              <div>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                  <span
-                    style={{
-                      background: "#0c831f",
-                      color: "#ffffff",
-                      fontSize: 10,
-                      fontWeight: 900,
-                      padding: "2px 8px",
-                      borderRadius: 4,
-                      letterSpacing: "0.5px",
-                    }}
-                  >
-                    LIVE TERMINAL TRACKER
-                  </span>
-                  <span style={{ color: "#38bdf8", fontSize: 12, fontWeight: 700 }}>
-                    ● Real-Time Staff Operations
-                  </span>
-                </div>
-                <h3 style={{ margin: "2px 0 4px", color: "#ffffff", fontSize: 16, fontWeight: 800 }}>
-                  Staff Terminals
-                </h3>
-              </div>
-
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10, marginBottom: 12 }}>
+              <h3 style={{ margin: 0, color: "#ffffff", fontSize: 15.5, fontWeight: 800 }}>
+                Staff Duty Status
+              </h3>
+              <span style={{ color: "#94a3b8", fontSize: 11.5, fontWeight: 600 }}>
+                Synced from /picker &amp; /rider
+              </span>
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 14, alignItems: "stretch" }}>
@@ -2171,12 +2229,9 @@ export default function WarehouseDashboardPage() {
                         }}
                       />
                     </div>
-                    <div style={S.statSub}>
-                      Capacity: <strong>{capacityPercent}% utilized</strong>
-                    </div>
                   </div>
                   <button style={S.linkInlineBtn} onClick={() => setActiveTab("orderCap")}>
-                    Manage surge cap →
+                    Manage cap →
                   </button>
                 </div>
 
@@ -2200,24 +2255,21 @@ export default function WarehouseDashboardPage() {
                         >
                           <WarehouseGlyph name="zap" size={20} stroke="#ffffff" />
                         </span>
-                        <span style={S.statTitle}>Today’s queue</span>
+                        <span style={S.statTitle}>Live queue</span>
                       </div>
                     </div>
                     <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 4 }}>
-                      <span style={S.statVal}>Live</span>
+                      <span style={S.statVal}>{orders.length}</span>
                       <span style={{ fontSize: 12, fontWeight: 800, padding: "3px 9px", borderRadius: 99, background: "#e0f2fe", color: "#0369a1" }}>
-                        {orders.length} Live
+                        Active Orders
                       </span>
                     </div>
                     <div style={{ fontSize: 12.5, color: "#64748b", marginTop: 8, fontWeight: 600 }}>
                       Pick: <b>{pickingOrders.length}</b> • Stage: <b>{stagedOrders.length}</b> • Rider: <b>{inTransitOrders.length}</b>
                     </div>
-                    <div style={S.statSub}>
-                      Orders waiting to be fulfilled
-                    </div>
                   </div>
                   <button style={S.linkInlineBtn} onClick={() => setActiveTab("queue")}>
-                    Open live queue →
+                    Open queue →
                   </button>
                 </div>
 
@@ -2241,20 +2293,17 @@ export default function WarehouseDashboardPage() {
                         >
                           <WarehouseGlyph name="trend" size={20} stroke="#ffffff" />
                         </span>
-                        <span style={S.statTitle}>Money saved &amp; sales</span>
+                        <span style={S.statTitle}>Revenue saved</span>
                       </div>
                     </div>
                     <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 4, flexWrap: "wrap" }}>
                       <span style={S.statVal}>₹{hubMetrics.totalRevenueSaved.toLocaleString("en-IN")}</span>
                       <span style={{ fontSize: 12, fontWeight: 800, padding: "3px 9px", borderRadius: 99, background: "#e5f5e8", color: "#0c831f" }}>
-                        {hubMetrics.totalSalesCount} Total Sales
+                        {hubMetrics.totalSalesCount} Sales
                       </span>
                     </div>
                     <div style={{ fontSize: 12.5, color: "#64748b", marginTop: 8, fontWeight: 600 }}>
-                      Today’s Revenue: <b>₹{hubMetrics.todayRevenue.toLocaleString("en-IN")}</b> ({hubMetrics.todayOrdersCount} orders)
-                    </div>
-                    <div style={S.statSub}>
-                      Saved money &amp; total sales stay constant daily
+                      Today: <b>₹{hubMetrics.todayRevenue.toLocaleString("en-IN")}</b> ({hubMetrics.todayOrdersCount} orders)
                     </div>
                   </div>
                   <button style={S.linkInlineBtn} onClick={() => setActiveTab("margin")}>
@@ -2294,12 +2343,7 @@ export default function WarehouseDashboardPage() {
                       </span>
                     </div>
                     <div style={{ fontSize: 12.5, color: "#64748b", marginTop: 8, fontWeight: 600 }}>
-                      CSAT: <b>{hubMetrics.csatPctToday}%</b> • Complaints: <b>{hubMetrics.complaintsPctToday.toFixed(2)}%</b>
-                    </div>
-                    <div style={S.statSub}>
-                      {hubMetrics.ratingsCountToday === 0
-                        ? "Starts at 0 daily • Resets midnight IST"
-                        : `${openComplaintsCount} open complaint ticket(s)`}
+                      CSAT: <b>{hubMetrics.csatPctToday}%</b> • Tickets: <b>{openComplaintsCount}</b>
                     </div>
                   </div>
                   <button style={S.linkInlineBtn} onClick={() => setActiveTab("ratings")}>
@@ -2308,7 +2352,87 @@ export default function WarehouseDashboardPage() {
                 </div>
               </div>
 
-              {/* ── STORE EMERGENCY & SURGE GOVERNANCE CARD ── */}
+              {/* ── LIVE CUSTOMER LOGINS SUMMARY (/ordering) ── */}
+              <div
+                style={{
+                  background: "#FFFFFF",
+                  border: "2px solid #E2E8F0",
+                  borderRadius: 20,
+                  padding: "16px 22px",
+                  marginBottom: 18,
+                  boxShadow: "0 2px 8px rgba(0,0,0,0.03)",
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10, marginBottom: 12 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                    <h2 style={{ margin: 0, fontSize: 15.5, fontWeight: 900, color: "#0F172A" }}>
+                      Ordering App Logins (/ordering)
+                    </h2>
+                    <span style={{ fontSize: 12, fontWeight: 800, padding: "3px 10px", borderRadius: 99, background: "#e5f5e8", color: "#0c831f" }}>
+                      {hubMetrics.userLoginsTodayCount} / 400 Today
+                    </span>
+                  </div>
+                  <button style={S.smLinkBtn} onClick={() => setActiveTab("history")}>
+                    Daily History →
+                  </button>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12 }}>
+                  <div style={{ background: "#F0FDF4", border: "1px solid #BBF7D0", borderRadius: 12, padding: "12px 14px" }}>
+                    <div style={{ fontSize: 11.5, fontWeight: 700, color: "#15803D" }}>New Sign-Ups (Today)</div>
+                    <div style={{ fontSize: 26, fontWeight: 900, color: "#0F172A", marginTop: 2 }}>{hubMetrics.newSignupsTodayCount}</div>
+                  </div>
+                  <div style={{ background: "#EFF6FF", border: "1px solid #BFDBFE", borderRadius: 12, padding: "12px 14px" }}>
+                    <div style={{ fontSize: 11.5, fontWeight: 700, color: "#1D4ED8" }}>Active Logins (Today)</div>
+                    <div style={{ fontSize: 26, fontWeight: 900, color: "#0F172A", marginTop: 2 }}>{hubMetrics.userLoginsTodayCount}</div>
+                  </div>
+                  <div style={{ background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: 12, padding: "12px 14px" }}>
+                    <div style={{ fontSize: 11.5, fontWeight: 700, color: "#475569" }}>Total Logins (All Days)</div>
+                    <div style={{ fontSize: 26, fontWeight: 900, color: "#0F172A", marginTop: 2 }}>{hubMetrics.totalLoginsCount}</div>
+                  </div>
+                </div>
+
+                {loggedInCustomerList.length > 0 && (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
+                    {[...loggedInCustomerList]
+                      .sort((a, b) => String(b.lastSeenAt || "").localeCompare(String(a.lastSeenAt || "")))
+                      .slice(0, 8)
+                      .map((cust) => {
+                        const isNewToday = cust.firstDateKey === currentDateKey || Boolean(newSignupsToday[cust.deviceUid]);
+                        return (
+                          <span
+                            key={cust.deviceUid}
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 6,
+                              padding: "5px 10px",
+                              borderRadius: 99,
+                              fontSize: 11.5,
+                              fontWeight: 700,
+                              background: isNewToday ? "#ECFDF5" : "#F1F5F9",
+                              color: isNewToday ? "#065F46" : "#334155",
+                              border: isNewToday ? "1px solid #A7F3D0" : "1px solid #CBD5E1",
+                            }}
+                          >
+                            <span>{cust.customerName || "Customer"}</span>
+                            <span style={{ fontSize: 10, fontWeight: 800, opacity: 0.85 }}>
+                              {isNewToday ? "NEW TODAY" : "RETURNING"}
+                            </span>
+                          </span>
+                        );
+                      })}
+                  </div>
+                )}
+
+                {syncPersistenceMode === "memory" && (
+                  <div style={{ marginTop: 10, fontSize: 11.5, fontWeight: 600, color: "#B45309", background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: 8, padding: "7px 10px" }}>
+                    Cloud DB not attached (server memory mode): connect Upstash Redis or Firebase Admin in Vercel env vars so friend logins on other phones sync live across devices.
+                  </div>
+                )}
+              </div>
+
+              {/* ── STORE CONTROL CARD ── */}
               <div
                 style={{
                   background: "#FFFFFF",
@@ -2319,23 +2443,16 @@ export default function WarehouseDashboardPage() {
                   boxShadow: "0 2px 8px rgba(0,0,0,0.03)",
                 }}
               >
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10, marginBottom: 14 }}>
                   <h2 style={{ margin: 0, fontSize: 16, fontWeight: 900, color: "#0F172A", display: "flex", alignItems: "center", gap: 8 }}>
                     <span style={{ color: "#e0a100" }}>
                       <WarehouseGlyph name="zap" size={20} stroke="#e0a100" />
                     </span>
-                    Store emergency &amp; surge governance
+                    Store control
                   </h2>
-                  <span style={{ fontSize: 12.5, color: "#64748B" }}>
-                    Customer ordering app:{" "}
-                    <b style={{ color: isStorePaused ? "#ef4444" : "#0c831f", fontWeight: 800 }}>
-                      {isStorePaused ? "Store closed" : "Store open"}
-                    </b>
+                  <span style={{ fontSize: 12.5, fontWeight: 800, color: isStorePaused ? "#ef4444" : "#0c831f" }}>
+                    {isStorePaused ? "● Store Closed" : "● Store Open"}
                   </span>
-                </div>
-
-                <div style={{ fontSize: 13, color: "#64748B", margin: "6px 0 14px" }}>
-                  Authorized operator: <b style={{ color: "#0F172A" }}>Bhaskar N S</b> (Store Manager (SM))
                 </div>
 
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
@@ -2533,57 +2650,69 @@ export default function WarehouseDashboardPage() {
                 </div>
               </div>
 
-              {/* ── TWO-COLUMN GRID: PERSONNEL & QUALITY DESK ── */}
+              {/* ── TWO-COLUMN GRID: STAFF ROSTER & QUALITY TICKETS ── */}
               <div style={S.twoColGrid}>
-                {/* On-Duty Operations Personnel Card */}
+                {/* Staff Roster Card */}
                 <div style={S.panel}>
                   <div style={S.panelHeader}>
                     <h2 style={{ margin: 0, fontSize: 15, fontWeight: 900, color: "#0F172A" }}>
-                      On-duty operations personnel ({STAFF_OPERATIONS.length})
+                      Staff roster ({STAFF_OPERATIONS.length})
                     </h2>
                     <button style={S.smLinkBtn} onClick={() => setActiveTab("devices")}>
                       View all →
                     </button>
                   </div>
                   <div style={S.rosterList}>
-                    {STAFF_OPERATIONS.map((s) => (
-                      <div key={s.id} style={S.rosterRow}>
-                        <div style={S.rosterLeft}>
-                          <span
-                            style={{
-                              width: 40,
-                              height: 40,
-                              borderRadius: "50%",
-                              background: s.c,
-                              color: "#FFFFFF",
-                              fontWeight: 900,
-                              fontSize: 14,
-                              display: "grid",
-                              placeItems: "center",
-                              flexShrink: 0,
-                            }}
-                          >
-                            {getInitials(s.n)}
-                          </span>
-                          <div>
-                            <div style={S.rosterName}>{s.n}</div>
-                            <div style={S.rosterRole}>{s.r}</div>
+                    {STAFF_OPERATIONS.map((s) => {
+                      const hasDutyStatus = s.id === "thrupthi" || s.id === "sinchana";
+                      const isOnDuty = hasDutyStatus ? deviceFleet[s.id] === "LOGGED_IN" : true;
+                      return (
+                        <div key={s.id} style={S.rosterRow}>
+                          <div style={S.rosterLeft}>
+                            <span
+                              style={{
+                                width: 40,
+                                height: 40,
+                                borderRadius: "50%",
+                                background: s.c,
+                                color: "#FFFFFF",
+                                fontWeight: 900,
+                                fontSize: 14,
+                                display: "grid",
+                                placeItems: "center",
+                                flexShrink: 0,
+                              }}
+                            >
+                              {getInitials(s.n)}
+                            </span>
+                            <div>
+                              <div style={S.rosterName}>{s.n}</div>
+                              <div style={S.rosterRole}>{s.r}</div>
+                            </div>
+                          </div>
+                          <div style={S.rosterRight}>
+                            <span style={S.batteryTag}>🔋 {s.b}%</span>
+                            <span
+                              style={{
+                                ...S.onlineTag,
+                                background: isOnDuty ? "#ECFDF5" : "#FEF2F2",
+                                color: isOnDuty ? "#059669" : "#DC2626",
+                              }}
+                            >
+                              ● {hasDutyStatus ? (isOnDuty ? "ON DUTY" : "OFF DUTY") : "ACTIVE"}
+                            </span>
                           </div>
                         </div>
-                        <div style={S.rosterRight}>
-                          <span style={S.batteryTag}>🔋 {s.b}%</span>
-                          <span style={S.onlineTag}>● LIVE</span>
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
 
-                {/* Quality Desk (0 Open Tickets) Card */}
+                {/* Quality & Tickets Card */}
                 <div style={S.panel}>
                   <div style={S.panelHeader}>
                     <h2 style={{ margin: 0, fontSize: 15, fontWeight: 900, color: "#0F172A" }}>
-                      Quality desk (0 open tickets)
+                      Quality &amp; tickets ({openComplaintsCount} open)
                     </h2>
                     <button style={S.smLinkBtn} onClick={() => setActiveTab("complaints")}>
                       View all →
@@ -2594,51 +2723,26 @@ export default function WarehouseDashboardPage() {
                       {
                         glyph: "clock",
                         grad: "linear-gradient(160deg, #4f8dff, #2557d6)",
-                        title: "10-minute SLA compliance",
-                        sub: "100% express dark store target",
+                        title: "10-Min SLA Target",
+                        sub: "Express dispatch & rider run",
                         badge: "100% SLA",
-                        status: "VERIFIED",
+                        status: "ACTIVE",
                       },
                       {
-                        glyph: "shield",
+                        glyph: "alert",
                         grad: "linear-gradient(160deg, #2fcf85, #0c9a5a)",
-                        title: "Zero defect fulfillment",
-                        sub: "0 damaged or missing SKUs reported",
-                        badge: "0 DEFECTS",
-                        status: "VERIFIED",
-                      },
-                      {
-                        glyph: "leaf",
-                        grad: "linear-gradient(160deg, #7bd34a, #3f9a1c)",
-                        title: "APMC yard freshness",
-                        sub: "Direct agricultural procurement & in-store check",
-                        badge: "GRADE A",
-                        status: "VERIFIED",
+                        title: "Open Quality Tickets",
+                        sub: openComplaintsCount === 0 ? "No pending customer tickets" : `${openComplaintsCount} ticket(s) open`,
+                        badge: `${openComplaintsCount} OPEN`,
+                        status: openComplaintsCount === 0 ? "CLEAR" : "REVIEW",
                       },
                       {
                         glyph: "star",
                         grad: "linear-gradient(160deg, #ffd447, #f2a200)",
-                        title: "Customer satisfaction (CSAT)",
-                        sub:
-                          hubMetrics.ratingsCountToday > 0
-                            ? `${hubMetrics.csatPctToday}% positive ratings from ${hubMetrics.ratingsCountToday} review(s) today`
-                            : "Starts at 0 daily — awaiting customer reviews today",
-                        badge:
-                          hubMetrics.ratingsCountToday > 0
-                            ? `${hubMetrics.avgRatingToday} ★`
-                            : "0.0 ★",
-                        status:
-                          hubMetrics.ratingsCountToday > 0
-                            ? `CSAT ${hubMetrics.csatPctToday}%`
-                            : "0 TODAY",
-                      },
-                      {
-                        glyph: "crown",
-                        grad: "linear-gradient(160deg, #a66bff, #6a2fd8)",
-                        title: "Store manager governance",
-                        sub: "Authorized instant refund desk active",
-                        badge: "₹0 PENDING",
-                        status: "LIVE",
+                        title: "Customer Satisfaction",
+                        sub: `${hubMetrics.ratingsCountToday} review(s) submitted today`,
+                        badge: hubMetrics.ratingsCountToday > 0 ? `${hubMetrics.avgRatingToday} ★` : "0.0 ★",
+                        status: `CSAT ${hubMetrics.csatPctToday}%`,
                       },
                     ].map((item, idx) => (
                       <div key={idx} style={S.rosterRow}>
