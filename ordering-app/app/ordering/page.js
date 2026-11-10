@@ -4228,14 +4228,11 @@ export default function OrderingAppPage() {
                 type="button"
                 style={S.profileEditBtn}
                 onClick={() => {
-                  setLoginName(customer?.name || "");
-                  setLoginPhone(customer?.phone || "");
-                  setLoginStep("phone");
                   setShowProfileModal(false);
                   setShowLoginModal(true);
                 }}
               >
-                <span>Edit Account (Name / Phone Number)</span>
+                <span>Switch Google Account</span>
                 <IconArrowRight size={14} color="#0c831f" />
               </button>
 
