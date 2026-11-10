@@ -31,6 +31,10 @@ import {
   IconBox,
   IconLightning,
   IconRealLogoAuditxWallet,
+  IconRealLogoPhonePe,
+  IconRealLogoGooglePay,
+  IconRealLogoPaytm,
+  IconRealLogoUPI,
 } from "@/components/RealIcons";
 
 export default function TrackOrderPage() {
@@ -1325,10 +1329,10 @@ export default function TrackOrderPage() {
 
             <div style={S.upiMethodsGrid}>
               {[
-                { name: "Google Pay", id: "gpay" },
-                { name: "PhonePe", id: "phonepe" },
-                { name: "Paytm UPI", id: "paytm" },
-                { name: "AUDIT'X Wallet", id: "wallet" },
+                { name: "PhonePe", id: "phonepe", icon: <IconRealLogoPhonePe size={48} style={{ borderRadius: 13 }} /> },
+                { name: "Google Pay", id: "gpay", icon: <IconRealLogoGooglePay size={48} style={{ borderRadius: 13 }} /> },
+                { name: "Paytm", id: "paytm", icon: <IconRealLogoPaytm size={48} style={{ borderRadius: 13 }} /> },
+                { name: "UPI", id: "upi", icon: <IconRealLogoUPI size={48} style={{ borderRadius: 13 }} /> },
               ].map((m) => (
                 <button
                   key={m.id}
@@ -1341,11 +1345,40 @@ export default function TrackOrderPage() {
                     triggerToast(`Payment of ₹${activeOrder.totalAmount} via ${m.name} successful!`);
                   }}
                 >
-                  <IconCheck size={14} color="#0C831F" />
+                  {m.icon}
                   <span>{m.name}</span>
                 </button>
               ))}
             </div>
+
+            <button
+              type="button"
+              style={{
+                width: "100%",
+                marginTop: 10,
+                background: "#F0FDF4",
+                border: "1px solid #BBF7D0",
+                borderRadius: 12,
+                padding: "10px 12px",
+                fontSize: 13,
+                fontWeight: 800,
+                color: "#166534",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 8,
+              }}
+              onClick={() => {
+                setIsPaidOnline(true);
+                setShowPayModal(false);
+                playSuccessChime();
+                triggerToast(`Payment of ₹${activeOrder.totalAmount} via AUDIT'X Wallet successful!`);
+              }}
+            >
+              <IconRealLogoAuditxWallet size={24} />
+              <span>Pay with AUDIT'X Wallet</span>
+            </button>
           </div>
         </div>
       )}
@@ -2111,22 +2144,24 @@ const S = {
   },
   upiMethodsGrid: {
     display: "grid",
-    gridTemplateColumns: "1fr 1fr",
-    gap: 10,
-    marginTop: 8,
+    gridTemplateColumns: "repeat(4, 1fr)",
+    gap: 8,
+    marginTop: 10,
   },
   upiOptionBtn: {
     background: "#F8FAFC",
     border: "1px solid #E2E8F0",
-    borderRadius: 8,
-    padding: "12px",
-    fontSize: 13,
-    fontWeight: 800,
-    color: "#1E293B",
+    borderRadius: 12,
+    padding: "10px 4px",
+    fontSize: 11.5,
+    fontWeight: 700,
+    color: "#334155",
     cursor: "pointer",
     display: "flex",
+    flexDirection: "column",
     alignItems: "center",
-    gap: 8,
+    justifyContent: "center",
+    gap: 6,
   },
   complaintForm: {
     display: "flex",

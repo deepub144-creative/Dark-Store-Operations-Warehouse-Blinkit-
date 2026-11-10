@@ -1933,6 +1933,34 @@ export default function OrderingAppPage() {
                   <IconCheck size={14} color="#0c831f" />
                 </div>
               </div>
+
+              <div
+                onClick={() => {
+                  if (!hasOngoingOrder) setShowPaymentModal(true);
+                }}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 10,
+                  marginTop: 10,
+                  padding: "10px 12px",
+                  borderRadius: 12,
+                  background: "#f8fafc",
+                  border: "1px solid #e2e8f0",
+                  cursor: hasOngoingOrder ? "default" : "pointer",
+                }}
+              >
+                <span style={{ fontSize: 11, fontWeight: 700, color: "#64748b" }}>
+                  UPI Apps
+                </span>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <IconRealLogoPhonePe size={28} />
+                  <IconRealLogoGooglePay size={28} />
+                  <IconRealLogoPaytm size={28} />
+                  <IconRealLogoUPI size={28} />
+                </div>
+              </div>
             </section>
 
             {/* Spacer for sticky bar */}
@@ -3981,71 +4009,52 @@ export default function OrderingAppPage() {
                 />
               </div>
 
-              {/* SECTION: UPI & DIGITAL APPS - COMING SOON WITH REAL LOGOS */}
+              {/* SECTION: UPI & DIGITAL APPS */}
               <div style={{ marginTop: 14, marginBottom: 4 }}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8, padding: "0 2px" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10, padding: "0 2px" }}>
                   <span style={{ fontSize: 11, fontWeight: 900, color: "#475569", letterSpacing: "0.5px", textTransform: "uppercase" }}>
-                    Select Payment Method (UPI &amp; Wallets)
+                    Pay via UPI App
                   </span>
                   <span style={S.comingSoonHeaderBadge}>COMING SOON</span>
                 </div>
 
                 <div style={S.comingSoonMethodsGrid}>
-                  {/* Real Logo: Google Pay */}
-                  <div
-                    style={S.comingSoonMethodCard}
-                    onClick={() => triggerToast("⚡ Google Pay integration coming soon! Paid through Audit'X Demo Wallet for now.")}
-                  >
-                    <div style={S.comingSoonLogoWrap}>
-                      <IconRealLogoGooglePay width={58} height={28} />
-                    </div>
-                    <div style={S.comingSoonMethodInfo}>
-                      <div style={S.comingSoonMethodName}>Google Pay</div>
-                      <span style={S.comingSoonSmallPill}>Coming Soon</span>
-                    </div>
-                  </div>
-
-                  {/* Real Logo: PhonePe */}
-                  <div
-                    style={S.comingSoonMethodCard}
-                    onClick={() => triggerToast("⚡ PhonePe integration coming soon! Paid through Audit'X Demo Wallet for now.")}
-                  >
-                    <div style={S.comingSoonLogoWrap}>
-                      <IconRealLogoPhonePe size={30} />
-                    </div>
-                    <div style={S.comingSoonMethodInfo}>
-                      <div style={S.comingSoonMethodName}>PhonePe UPI</div>
-                      <span style={S.comingSoonSmallPill}>Coming Soon</span>
-                    </div>
-                  </div>
-
-                  {/* Real Logo: Paytm */}
-                  <div
-                    style={S.comingSoonMethodCard}
-                    onClick={() => triggerToast("⚡ Paytm integration coming soon! Paid through Audit'X Demo Wallet for now.")}
-                  >
-                    <div style={S.comingSoonLogoWrap}>
-                      <IconRealLogoPaytm width={58} height={28} />
-                    </div>
-                    <div style={S.comingSoonMethodInfo}>
-                      <div style={S.comingSoonMethodName}>Paytm UPI</div>
-                      <span style={S.comingSoonSmallPill}>Coming Soon</span>
-                    </div>
-                  </div>
-
-                  {/* Real Logo: UPI Direct */}
-                  <div
-                    style={S.comingSoonMethodCard}
-                    onClick={() => triggerToast("⚡ NPCI UPI integration coming soon! Paid through Audit'X Demo Wallet for now.")}
-                  >
-                    <div style={S.comingSoonLogoWrap}>
-                      <IconRealLogoUPI width={58} height={26} />
-                    </div>
-                    <div style={S.comingSoonMethodInfo}>
-                      <div style={S.comingSoonMethodName}>UPI Direct</div>
-                      <span style={S.comingSoonSmallPill}>Coming Soon</span>
-                    </div>
-                  </div>
+                  {[
+                    {
+                      id: "phonepe",
+                      label: "PhonePe",
+                      toast: "⚡ PhonePe integration coming soon! Paid through Audit'X Demo Wallet for now.",
+                      icon: <IconRealLogoPhonePe size={56} style={{ borderRadius: 15 }} />,
+                    },
+                    {
+                      id: "gpay",
+                      label: "Google Pay",
+                      toast: "⚡ Google Pay integration coming soon! Paid through Audit'X Demo Wallet for now.",
+                      icon: <IconRealLogoGooglePay size={56} style={{ borderRadius: 15 }} />,
+                    },
+                    {
+                      id: "paytm",
+                      label: "Paytm",
+                      toast: "⚡ Paytm integration coming soon! Paid through Audit'X Demo Wallet for now.",
+                      icon: <IconRealLogoPaytm size={56} style={{ borderRadius: 15 }} />,
+                    },
+                    {
+                      id: "upi",
+                      label: "UPI",
+                      toast: "⚡ NPCI UPI integration coming soon! Paid through Audit'X Demo Wallet for now.",
+                      icon: <IconRealLogoUPI size={56} style={{ borderRadius: 15 }} />,
+                    },
+                  ].map((app) => (
+                    <button
+                      key={app.id}
+                      type="button"
+                      style={S.comingSoonMethodCard}
+                      onClick={() => triggerToast(app.toast)}
+                    >
+                      <div style={S.comingSoonLogoWrap}>{app.icon}</div>
+                      <span style={S.comingSoonMethodName}>{app.label}</span>
+                    </button>
+                  ))}
                 </div>
               </div>
 
@@ -6762,19 +6771,25 @@ const S = {
   },
   comingSoonMethodsGrid: {
     display: "grid",
-    gridTemplateColumns: "1fr 1fr",
-    gap: 8,
+    gridTemplateColumns: "repeat(4, 1fr)",
+    gap: 10,
+    textAlign: "center",
+    background: "#ffffff",
+    border: "1px solid #e2e8f0",
+    borderRadius: 16,
+    padding: "14px 10px",
   },
   comingSoonMethodCard: {
     display: "flex",
+    flexDirection: "column",
     alignItems: "center",
-    gap: 10,
-    padding: "10px 12px",
-    background: "#f8fafc",
-    border: "1px dashed #cbd5e1",
-    borderRadius: 8,
+    justifyContent: "flex-start",
+    gap: 7,
+    padding: "4px 2px",
+    background: "transparent",
+    border: "none",
     cursor: "pointer",
-    transition: "all 0.15s ease",
+    transition: "transform 0.12s ease",
   },
   comingSoonLogoWrap: {
     display: "flex",
@@ -6785,11 +6800,12 @@ const S = {
   comingSoonMethodInfo: {
     display: "flex",
     flexDirection: "column",
+    alignItems: "center",
     gap: 2,
     minWidth: 0,
   },
   comingSoonMethodName: {
-    fontSize: 12,
+    fontSize: 11.5,
     fontWeight: 700,
     color: "#334155",
     whiteSpace: "nowrap",
