@@ -20,6 +20,7 @@ import {
 } from "@/lib/realtimeSync";
 import { playNotificationChime, playSuccessChime } from "@/lib/soundSystem";
 import { getRandomStagingRack } from "@/lib/roles";
+import { downloadDeliveredOrderPdfSlip } from "@/lib/orderSlipPdf";
 import DiwaliTheme from "@/lib/diwaliTheme";
 import DiwaliCrackers from "@/lib/diwaliCrackers";
 import AuditxLogo from "@/components/AuditxLogo";
@@ -606,14 +607,95 @@ export default function OrderingAppPage() {
   const playedOrderPlacedIds = useRef(new Set());
   const [receiptOrder, setReceiptOrder] = useState(null);
   const [showReceiptModal, setShowReceiptModal] = useState(false);
+  const [latestDeliveredSlipOrder, setLatestDeliveredSlipOrder] = useState(null);
+
+  const syncPastOrdersWithLive = useCallback((ordersList) => {
+    if (!Array.isArray(ordersList) || ordersList.length === 0) return;
+    try {
+      const liveById = new Map();
+      ordersList.forEach((o) => {
+        if (!o) return;
+        const k1 = String(o.id || "");
+        const k2 = String(o.orderId || "");
+        const k3 = String(o.orderNumber || "");
+        if (k1) liveById.set(k1, o);
+        if (k2) liveById.set(k2, o);
+        if (k3) liveById.set(k3, o);
+      });
+      const existingRaw = JSON.parse(localStorage.getItem("auditx_customer_past_orders") || "[]");
+      const existing = Array.isArray(existingRaw) ? existingRaw : [];
+      let changed = false;
+      const merged = existing.map((po) => {
+        const match =
+          liveById.get(String(po.id || "")) ||
+          liveById.get(String(po.orderNumber || "")) ||
+          liveById.get(String(po.orderId || ""));
+        if (!match) return po;
+        const nextStatus = match.status || po.status || "pending";
+        const nextDeliveredAt = match.deliveredAt || po.deliveredAt || null;
+        if (
+          nextStatus !== po.status ||
+          nextDeliveredAt !== (po.deliveredAt || null) ||
+          (!po.paymentMethod && match.paymentMethod)
+        ) {
+          changed = true;
+          return {
+            ...po,
+            status: nextStatus,
+            deliveredAt: nextDeliveredAt || po.deliveredAt,
+            deliveryDurationSec: match.deliveryDurationSec || po.deliveryDurationSec,
+            pickTimeSec: match.pickTimeSec || po.pickTimeSec,
+            pickerName: match.pickerName || po.pickerName,
+            captainName: match.captainName || po.captainName,
+            paymentMethod: match.paymentMethod || po.paymentMethod,
+            customerName: match.customerName || po.customerName,
+            customerPhone: match.customerPhone || po.customerPhone,
+            customerAddress: match.customerAddress || po.customerAddress,
+            totalAmount: match.totalAmount ?? po.totalAmount ?? po.total,
+          };
+        }
+        return po;
+      });
+      if (changed) {
+        localStorage.setItem("auditx_customer_past_orders", JSON.stringify(merged));
+        setPastOrders(merged);
+      }
+
+      const lastRaw = localStorage.getItem("auditx_customer_last_order");
+      if (lastRaw) {
+        const last = JSON.parse(lastRaw);
+        const lastKey = String(last.id || last.orderId || last.orderNumber || "");
+        const liveLast = liveById.get(lastKey) || last;
+        const lastSt = String(liveLast?.status || "").toLowerCase();
+        const dismissedSlip = String(localStorage.getItem("auditx_dismissed_slip_banner") || "");
+        if (lastSt === "delivered" && lastKey && dismissedSlip !== lastKey) {
+          setLatestDeliveredSlipOrder(liveLast);
+        } else if (lastSt && lastSt !== "delivered") {
+          setLatestDeliveredSlipOrder(null);
+        }
+      }
+    } catch {}
+  }, []);
+
+  async function handleDownloadPdfSlip(orderObj, focusItem = null) {
+    if (!orderObj) return;
+    const ok = await downloadDeliveredOrderPdfSlip(orderObj, focusItem);
+    if (ok) {
+      triggerToast(
+        focusItem
+          ? `📄 Downloaded PDF slip for ${focusItem.name}`
+          : `📄 Downloaded delivery slip PDF for #${orderObj.orderNumber || orderObj.id}`
+      );
+    }
+  }
 
   // Modal & Overlay visibility state (declared prior to isOrderingHomeActive TDZ guard)
   const [showComplaintModal, setShowComplaintModal] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
 
-  // Fullscreen Opening Intro Video Splash (Muted, exact timeline, mobile app shell fit)
-  const [showIntroOverlay, setShowIntroOverlay] = useState(true);
+  // Fullscreen Opening Intro Video Splash (plays once strictly after Google Auth login)
+  const [showIntroOverlay, setShowIntroOverlay] = useState(false);
 
   const isOrderingHomeActive = Boolean(
     authChecked &&
@@ -671,6 +753,22 @@ export default function OrderingAppPage() {
   const introHasStartedRef = useRef(false);
   const introLastTickAtRef = useRef(Date.now());
   const introFadeTimerRef = useRef(null);
+
+  function triggerTeamIntroOnce() {
+    try {
+      sessionStorage.removeItem("auditx_play_team_intro_once");
+      localStorage.removeItem("auditx_play_team_intro_once");
+    } catch {}
+    if (introFadeTimerRef.current) {
+      clearTimeout(introFadeTimerRef.current);
+      introFadeTimerRef.current = null;
+    }
+    introCompletedRef.current = false;
+    introHasStartedRef.current = false;
+    introLastTickAtRef.current = Date.now();
+    setIntroFadeOut(false);
+    setShowIntroOverlay(true);
+  }
 
   function finishIntroSplash(immediate = false) {
     if (introCompletedRef.current) return;
@@ -821,6 +919,15 @@ export default function OrderingAppPage() {
     setCustomer(parsedCustomer);
     setAuthChecked(true);
 
+    try {
+      const pendingIntro =
+        sessionStorage.getItem("auditx_play_team_intro_once") === "1" ||
+        localStorage.getItem("auditx_play_team_intro_once") === "1";
+      if (pendingIntro) {
+        triggerTeamIntroOnce();
+      }
+    } catch {}
+
     // Check-in returning device into today's 400-device daily cap & live login count
     dispatchCloudAction("REGISTER_LOGIN", {
       deviceUid: getOrCreateDeviceUid(),
@@ -854,6 +961,9 @@ export default function OrderingAppPage() {
     function checkActiveDelivery(ordersOverride = null) {
       try {
         const liveOrders = Array.isArray(ordersOverride) ? ordersOverride : getAllLiveOrders();
+        if (liveOrders && liveOrders.length > 0) {
+          syncPastOrdersWithLive(liveOrders);
+        }
         if (!liveOrders || liveOrders.length === 0) {
           setActiveDeliveryOrder(null);
           return;
@@ -865,25 +975,26 @@ export default function OrderingAppPage() {
           const live = liveOrders.find((o) => (o.id || o.orderId) === (last.id || last.orderId));
           active = live || null;
         }
-        if (active && active.status !== "cancelled") {
+        const dismissedOrderId = String(localStorage.getItem("auditx_dismissed_track_order") || "");
+        const activeId = String(active?.id || active?.orderId || active?.orderNumber || "");
+        const activeSt = String(active?.status || "").toLowerCase();
+        if (
+          active &&
+          activeSt !== "cancelled" &&
+          activeSt !== "delivered" &&
+          activeSt !== "arrived" &&
+          activeSt !== "rider_arrived" &&
+          !active.trackingDismissed &&
+          (!dismissedOrderId || dismissedOrderId !== activeId)
+        ) {
           if (active.delayMins) {
             setPickerDelayMins(active.delayMins);
           }
-          if (active.status === "delivered" && active.customerRatingSubmitted) {
-            setRateCompleted(true);
-            setShowRateOrderModal(false);
-            setActiveDeliveryOrder(null);
-            setOrderingStage("idle");
-          } else if (active.status === "delivered") {
-            setActiveDeliveryOrder(active);
-            setOrderingStage("delivered");
-            setRateCompleted(false);
-            setShowRateOrderModal(true);
-          } else if (
-            active.status === "staged" ||
-            active.status === "picked" ||
-            active.status === "dispatched" ||
-            active.status === "en_route" ||
+          if (
+            activeSt === "staged" ||
+            activeSt === "picked" ||
+            activeSt === "dispatched" ||
+            activeSt === "en_route" ||
             active.handoverToRiderCompleted
           ) {
             setActiveDeliveryOrder(active);
@@ -899,6 +1010,7 @@ export default function OrderingAppPage() {
             }
           }
         } else {
+          setShowRateOrderModal(false);
           setActiveDeliveryOrder(null);
           setOrderingStage("idle");
           setPickerDelayMins(0);
@@ -1026,11 +1138,32 @@ export default function OrderingAppPage() {
           setCustomFloatingBadge("");
         }
         if (data.type === "ORDER_DELIVERED") {
-          setOrderingStage("delivered");
+          try {
+            const ordId = String(
+              data.payload?.id || data.payload?.orderId || data.payload?.orderNumber || ""
+            );
+            if (ordId) localStorage.setItem("auditx_dismissed_track_order", ordId);
+            if (data.payload) {
+              const deliveredObj = {
+                ...data.payload,
+                status: "delivered",
+                deliveredAt: data.payload.deliveredAt || new Date().toISOString(),
+              };
+              syncPastOrdersWithLive([deliveredObj]);
+              const dismissedSlip = String(localStorage.getItem("auditx_dismissed_slip_banner") || "");
+              if (!ordId || dismissedSlip !== ordId) {
+                setLatestDeliveredSlipOrder(deliveredObj);
+              }
+            }
+          } catch {}
           setRateCompleted(false);
-          setShowRateOrderModal(true);
+          setShowRateOrderModal(false);
+          setDismissDeliveryBar(true);
+          setActiveDeliveryOrder(null);
+          setOrderingStage("idle");
+          setPickerDelayMins(0);
           playSuccessChime();
-          triggerToast("🎉 Order Delivered! Please rate your rider & items.");
+          triggerToast("🎉 Order arrived at your doorstep!");
         }
       }
       if (data.type === "ORDER_RATED") {
@@ -1092,10 +1225,21 @@ export default function OrderingAppPage() {
     const t = setInterval(() => {
       setDeliveryCountdownSec((prev) => {
         if (prev <= 1) {
-          setOrderingStage("rider_arrived");
+          try {
+            const ordId = String(
+              activeDeliveryOrder.id ||
+                activeDeliveryOrder.orderId ||
+                activeDeliveryOrder.orderNumber ||
+                ""
+            );
+            if (ordId) localStorage.setItem("auditx_dismissed_track_order", ordId);
+          } catch {}
+          setActiveDeliveryOrder(null);
+          setOrderingStage("idle");
+          setShowRateOrderModal(false);
+          setDismissDeliveryBar(true);
           playSuccessChime();
-          triggerToast("🛵 Rider arrived at your doorstep! Please rate your delivery.");
-          setShowRateOrderModal(true);
+          triggerToast("🛵 Your order has arrived at your doorstep!");
           return 0;
         }
         const next = prev - 1;
@@ -1388,12 +1532,20 @@ export default function OrderingAppPage() {
   const ongoingTrackedOrder = useMemo(() => {
     if (activeDeliveryOrder) {
       const st = (activeDeliveryOrder.status || "").toLowerCase();
-      if (st !== "delivered" && st !== "cancelled") {
+      if (
+        st !== "delivered" &&
+        st !== "cancelled" &&
+        st !== "arrived" &&
+        st !== "rider_arrived" &&
+        !activeDeliveryOrder.trackingDismissed &&
+        orderingStage !== "rider_arrived" &&
+        orderingStage !== "delivered"
+      ) {
         return activeDeliveryOrder;
       }
     }
     return null;
-  }, [activeDeliveryOrder]);
+  }, [activeDeliveryOrder, orderingStage]);
 
   const hasOngoingOrder = !!ongoingTrackedOrder;
 
@@ -1556,15 +1708,28 @@ export default function OrderingAppPage() {
       const prevPast = JSON.parse(localStorage.getItem("auditx_customer_past_orders") || "[]");
       const pastEntry = {
         id: createdOrder.id || createdOrder.orderId || orderId,
+        orderId: createdOrder.id || orderId,
         orderNumber: createdOrder.orderNumber || orderId,
+        status: createdOrder.status || "pending",
         placedAt: new Date().toISOString(),
         total: grandTotal,
+        totalAmount: grandTotal,
+        customerName: createdOrder.customerName,
+        customerPhone: createdOrder.customerPhone,
+        customerAddress: createdOrder.customerAddress,
+        paymentMethod: createdOrder.paymentMethod,
+        deliveryFee: createdOrder.deliveryFee,
+        handlingFee: createdOrder.handlingFee,
+        pickerName: createdOrder.pickerName,
+        captainName: createdOrder.captainName,
         items: cartItemsList.map((item) => ({
           sku: item.sku,
           name: item.name,
           qty: item.qty,
           price: item.price,
           image: item.image,
+          category: item.category,
+          unitSpecification: item.category === "Frames" ? "1 unit single" : "5 units fixed",
         })),
       };
       const nextPast = [pastEntry, ...(Array.isArray(prevPast) ? prevPast : [])].slice(0, 20);
@@ -1573,6 +1738,11 @@ export default function OrderingAppPage() {
     } catch (e) {
       console.warn(e);
     }
+    try {
+      localStorage.removeItem("auditx_dismissed_track_order");
+      localStorage.removeItem("auditx_dismissed_slip_banner");
+    } catch {}
+    setLatestDeliveredSlipOrder(null);
     setDismissDeliveryBar(false);
     playNotificationChime();
 
@@ -2433,6 +2603,84 @@ export default function OrderingAppPage() {
                 </div>
               </div>
             )}
+            {/* Delivered Order PDF Slip Banner on Home (non-blocking, dismissible) */}
+            {!hasOngoingOrder && latestDeliveredSlipOrder && (
+              <div
+                style={{
+                  background: "linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)",
+                  border: "1.5px solid #86efac",
+                  borderRadius: 14,
+                  padding: "11px 12px",
+                  marginBottom: 12,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 8,
+                  boxShadow: "0 2px 10px rgba(12, 131, 31, 0.1)",
+                }}
+              >
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{ fontSize: 12.5, fontWeight: 900, color: "#14532D" }}>
+                    ✅ Order #{latestDeliveredSlipOrder.orderNumber || latestDeliveredSlipOrder.id} Delivered
+                  </div>
+                  <div style={{ fontSize: 11, color: "#166534", marginTop: 2 }}>
+                    {(latestDeliveredSlipOrder.items || []).length} delivered item(s) • ₹{latestDeliveredSlipOrder.totalAmount ?? latestDeliveredSlipOrder.total ?? 0}
+                  </div>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                  <button
+                    type="button"
+                    onClick={() => handleDownloadPdfSlip(latestDeliveredSlipOrder)}
+                    style={{
+                      background: "#0C831F",
+                      color: "#FFFFFF",
+                      border: "none",
+                      borderRadius: 8,
+                      padding: "7px 11px",
+                      fontSize: 11.5,
+                      fontWeight: 800,
+                      cursor: "pointer",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    📄 PDF Slip
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Dismiss delivered slip banner"
+                    onClick={() => {
+                      const ordId = String(
+                        latestDeliveredSlipOrder.id ||
+                          latestDeliveredSlipOrder.orderId ||
+                          latestDeliveredSlipOrder.orderNumber ||
+                          ""
+                      );
+                      try {
+                        if (ordId) localStorage.setItem("auditx_dismissed_slip_banner", ordId);
+                      } catch {}
+                      setLatestDeliveredSlipOrder(null);
+                    }}
+                    style={{
+                      width: 26,
+                      height: 26,
+                      borderRadius: "50%",
+                      border: "1px solid #86efac",
+                      background: "#ffffff",
+                      color: "#166534",
+                      fontSize: 12,
+                      fontWeight: 800,
+                      cursor: "pointer",
+                      display: "grid",
+                      placeItems: "center",
+                      padding: 0,
+                    }}
+                  >
+                    ✕
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Top Ongoing Order Alert in Catalog */}
             {hasOngoingOrder && (
               <div
@@ -2818,6 +3066,9 @@ export default function OrderingAppPage() {
               <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 16 }}>
                 {pastOrders.map((po) => {
                   const itemCount = (po.items || []).reduce((s, it) => s + (it.qty || 1), 0);
+                  const isOrderDelivered =
+                    String(po.status || "").toLowerCase() === "delivered" ||
+                    Boolean(po.deliveredAt);
                   return (
                     <div
                       key={po.id || po.orderNumber}
@@ -2831,8 +3082,37 @@ export default function OrderingAppPage() {
                     >
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
                         <div style={{ minWidth: 0 }}>
-                          <div style={{ fontWeight: 800, fontSize: 13.5, color: "#0f172a" }}>
-                            Order #{po.orderNumber || po.id}
+                          <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                            <span style={{ fontWeight: 800, fontSize: 13.5, color: "#0f172a" }}>
+                              Order #{po.orderNumber || po.id}
+                            </span>
+                            {isOrderDelivered ? (
+                              <span
+                                style={{
+                                  fontSize: 10,
+                                  fontWeight: 800,
+                                  color: "#15803d",
+                                  background: "#dcfce7",
+                                  padding: "2px 7px",
+                                  borderRadius: 999,
+                                }}
+                              >
+                                ✓ Delivered
+                              </span>
+                            ) : (
+                              <span
+                                style={{
+                                  fontSize: 10,
+                                  fontWeight: 700,
+                                  color: "#b45309",
+                                  background: "#fef3c7",
+                                  padding: "2px 7px",
+                                  borderRadius: 999,
+                                }}
+                              >
+                                In Progress
+                              </span>
+                            )}
                           </div>
                           <div style={{ fontSize: 11.5, color: "#64748b", marginTop: 2 }}>
                             {po.placedAt ? new Date(po.placedAt).toLocaleString() : ""} • {itemCount} {itemCount === 1 ? "item" : "items"}
@@ -2881,16 +3161,37 @@ export default function OrderingAppPage() {
                                 Qty {it.qty} • ₹{it.price}
                               </div>
                             </div>
+                            {isOrderDelivered && (
+                              <button
+                                type="button"
+                                onClick={() => handleDownloadPdfSlip(po, it)}
+                                title={`Download delivered item PDF slip for ${it.name}`}
+                                style={{
+                                  background: "#dcfce7",
+                                  color: "#15803d",
+                                  border: "1px solid #86efac",
+                                  borderRadius: 7,
+                                  padding: "4px 7px",
+                                  fontSize: 10.5,
+                                  fontWeight: 800,
+                                  cursor: "pointer",
+                                  whiteSpace: "nowrap",
+                                }}
+                              >
+                                📄 PDF
+                              </button>
+                            )}
                           </div>
                         ))}
                       </div>
 
-                      <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+                      <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
                         <button
                           type="button"
                           onClick={() => handleReorderAll(po)}
                           style={{
                             flex: 1,
+                            minWidth: 110,
                             padding: "11px 12px",
                             borderRadius: 10,
                             border: "none",
@@ -2904,36 +3205,56 @@ export default function OrderingAppPage() {
                         >
                           🛒 Reorder All
                         </button>
-                        {po.status === "delivered" || po.deliveredAt || !po.status ? (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setReceiptOrder(po);
-                              setShowReceiptModal(true);
-                            }}
-                            style={{
-                              padding: "11px 14px",
-                              borderRadius: 10,
-                              border: "1.5px solid #0c831f",
-                              background: "#f0fdf4",
-                              color: "#0c831f",
-                              fontWeight: 800,
-                              fontSize: 12.5,
-                              cursor: "pointer",
-                              display: "inline-flex",
-                              alignItems: "center",
-                              gap: 6,
-                              whiteSpace: "nowrap",
-                            }}
-                            title="View & Download Thermal Delivery Receipt"
-                          >
-                            🧾 Receipt
-                          </button>
+                        {isOrderDelivered ? (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => handleDownloadPdfSlip(po)}
+                              style={{
+                                padding: "11px 13px",
+                                borderRadius: 10,
+                                border: "1.5px solid #0c831f",
+                                background: "#f0fdf4",
+                                color: "#0c831f",
+                                fontWeight: 800,
+                                fontSize: 12.5,
+                                cursor: "pointer",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: 5,
+                                whiteSpace: "nowrap",
+                              }}
+                              title="Download Delivered Order Slip in PDF"
+                            >
+                              📄 Download PDF Slip
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setReceiptOrder(po);
+                                setShowReceiptModal(true);
+                              }}
+                              style={{
+                                padding: "11px 12px",
+                                borderRadius: 10,
+                                border: "1px solid #cbd5e1",
+                                background: "#ffffff",
+                                color: "#0f172a",
+                                fontWeight: 700,
+                                fontSize: 12.5,
+                                cursor: "pointer",
+                                whiteSpace: "nowrap",
+                              }}
+                              title="View Receipt Preview"
+                            >
+                              🧾 Slip
+                            </button>
+                          </>
                         ) : (
                           <button
                             type="button"
                             onClick={() =>
-                              triggerToast("🔒 Delivery receipt unlocks once order is delivered to your doorstep!")
+                              triggerToast("🔒 PDF slip downloads once this item/order is delivered!")
                             }
                             style={{
                               padding: "10px 12px",
@@ -2949,9 +3270,9 @@ export default function OrderingAppPage() {
                               gap: 5,
                               whiteSpace: "nowrap",
                             }}
-                            title="Receipt available after order is delivered"
+                            title="PDF slip unlocks after order is delivered"
                           >
-                            🔒 Receipt on delivery
+                            🔒 PDF on delivery
                           </button>
                         )}
                       </div>
@@ -4349,6 +4670,10 @@ export default function OrderingAppPage() {
                 onClick={() => {
                   localStorage.removeItem("auditx_customer");
                   localStorage.removeItem("blinkit_customer");
+                  try {
+                    sessionStorage.removeItem("auditx_play_team_intro_once");
+                    localStorage.removeItem("auditx_play_team_intro_once");
+                  } catch {}
                   setCustomer(null);
                   setShowProfileModal(false);
                   triggerToast("Logged out successfully.");
@@ -4400,6 +4725,7 @@ export default function OrderingAppPage() {
                       };
                       setCustomer(custObj);
                       setShowLoginModal(false);
+                      triggerTeamIntroOnce();
                       triggerToast(`Welcome, ${authData.name}! Signed in with Google.`);
                     }
                   }}

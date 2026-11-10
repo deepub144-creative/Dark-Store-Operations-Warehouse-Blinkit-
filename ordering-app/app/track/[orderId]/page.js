@@ -14,6 +14,7 @@ import {
   dispatchCloudAction,
 } from "@/lib/realtimeSync";
 import { playSuccessChime, playNotificationChime } from "@/lib/soundSystem";
+import { downloadDeliveredOrderPdfSlip } from "@/lib/orderSlipPdf";
 import AuditxLogo from "@/components/AuditxLogo";
 import DeliveryReceiptModal from "@/components/DeliveryReceiptModal";
 import {
@@ -456,6 +457,24 @@ export default function TrackOrderPage() {
   const isDispatched = activeOrder.status === "dispatched" || isDelivered || trackingStage === "one_minute" || trackingStage === "almost_doorstep" || trackingStage === "rider_arrived";
   const isStaged = activeOrder.status === "staged" || isDispatched;
   const isPicking = activeOrder.status === "picking" || isStaged;
+  const hasArrivedAtDoorstep = isDelivered || trackingStage === "rider_arrived";
+
+  function handleReturnToCatalog() {
+    try {
+      const ordKey = String(activeOrder?.id || activeOrder?.orderId || orderId || "");
+      if (ordKey) {
+        localStorage.setItem("auditx_dismissed_track_order", ordKey);
+      }
+      sessionStorage.removeItem("auditx_play_team_intro_once");
+      localStorage.removeItem("auditx_play_team_intro_once");
+      if (hasArrivedAtDoorstep) {
+        updateLiveOrder(activeOrder?.id || orderId, { trackingDismissed: true });
+      }
+    } catch (e) {
+      console.warn(e);
+    }
+    router.replace("/ordering");
+  }
 
   function handleSubmitCustomerRating(e) {
     if (e) e.preventDefault();
@@ -501,6 +520,10 @@ export default function TrackOrderPage() {
       itemRatings,
     });
     dispatchCloudAction("SUBMIT_RATING", { ratingPayload });
+    try {
+      const ordKey = String(activeOrder.id || activeOrder.orderId || orderId || "");
+      if (ordKey) localStorage.setItem("auditx_dismissed_track_order", ordKey);
+    } catch {}
     broadcastEvent("ORDER_DELIVERED", deliveredOrder);
     broadcastEvent("ORDER_RATED", ratingPayload);
     setRatingSubmitted(true);
@@ -580,7 +603,7 @@ export default function TrackOrderPage() {
       <IOSToast message={toastMessage} />
 
       <IOSMobileShell
-        onSwipeBack={() => router.push("/ordering")}
+        onSwipeBack={handleReturnToCatalog}
         onRefresh={() => {
           dispatchCloudAction("HEARTBEAT", { orderId: activeOrder?.id || orderId });
         }}
@@ -588,8 +611,8 @@ export default function TrackOrderPage() {
           <IOSNavBar
             title={arrivalTitle}
             showLargeTitle={false}
-            onBack={() => router.push("/ordering")}
-            backLabel="Store"
+            onBack={handleReturnToCatalog}
+            backLabel="Catalog"
             right={
               <button
                 type="button"
@@ -644,7 +667,78 @@ export default function TrackOrderPage() {
           </div>
         )}
 
-        {/* ── 2. CUSTOMER LIVE TRACKING MAP (DEDICATED ORDERING TRACKING VIEW) ── */}
+        {/* ── ARRIVED COMPLETION CARD (Tracking disappears once arrived at doorstep) ── */}
+        {hasArrivedAtDoorstep && !isCancelled && (
+          <section style={S.cardContainer}>
+            <div
+              className="ios-card"
+              style={{
+                padding: "16px 16px",
+                border: "1.5px solid #86efac",
+                background: "#F0FDF4",
+                display: "flex",
+                flexDirection: "column",
+                gap: 10,
+                textAlign: "center",
+              }}
+            >
+              <div style={{ fontSize: 15, fontWeight: 900, color: "#14532D" }}>
+                Order arrived at your doorstep
+              </div>
+              <div style={{ fontSize: 12.5, color: "#166534", fontWeight: 500 }}>
+                Handover with Sinchana B R is ready at your gate. Live tracking has ended.
+              </div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {isDelivered && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const ok = await downloadDeliveredOrderPdfSlip(activeOrder);
+                      if (ok) triggerToast("📄 Delivery slip PDF downloaded!");
+                    }}
+                    style={{
+                      flex: 1,
+                      minWidth: 140,
+                      minHeight: 46,
+                      background: "#FFFFFF",
+                      color: "#0C831F",
+                      border: "1.5px solid #0C831F",
+                      borderRadius: 12,
+                      fontSize: 13.5,
+                      fontWeight: 800,
+                      cursor: "pointer",
+                    }}
+                  >
+                    📄 Download PDF Slip
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={handleReturnToCatalog}
+                  style={{
+                    flex: 1,
+                    minWidth: 140,
+                    minHeight: 46,
+                    background: "#0C831F",
+                    color: "#FFFFFF",
+                    border: "none",
+                    borderRadius: 12,
+                    fontSize: 14,
+                    fontWeight: 800,
+                    cursor: "pointer",
+                    boxShadow: "0 4px 12px rgba(12, 131, 31, 0.25)",
+                  }}
+                >
+                  Return to Catalog
+                </button>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* ── 2. CUSTOMER LIVE TRACKING MAP (Hidden once arrived at doorstep) ── */}
+        {!hasArrivedAtDoorstep && !isCancelled && (
+          <>
         <section style={S.mapSection}>
           <div style={S.mapViewport}>
             <svg
@@ -797,6 +891,8 @@ export default function TrackOrderPage() {
             </div>
           </div>
         </section>
+          </>
+        )}
 
         {/* ── 3. PAYMENT / COD CARD ── */}
         {(() => {
@@ -1099,7 +1195,7 @@ export default function TrackOrderPage() {
                   <p style={{ margin: "6px 0 0", fontSize: 12.5, color: "#475569" }}>
                     You rated Delivery Partner <b>Sinchana B R</b> {riderRating}/5 ★ and reviewed {(activeOrder.items || []).length} item(s).
                   </p>
-                  <div style={{ marginTop: 14 }}>
+                  <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 8 }}>
                     <button
                       type="button"
                       onClick={() => setShowReceiptModal(true)}
@@ -1107,18 +1203,35 @@ export default function TrackOrderPage() {
                         padding: "11px 18px",
                         borderRadius: 10,
                         border: "1.5px solid #0c831f",
-                        background: "#0c831f",
-                        color: "#ffffff",
+                        background: "#ffffff",
+                        color: "#0c831f",
                         fontSize: 13,
                         fontWeight: 800,
                         cursor: "pointer",
                         display: "inline-flex",
                         alignItems: "center",
+                        justifyContent: "center",
                         gap: 8,
-                        boxShadow: "0 4px 12px rgba(12, 131, 31, 0.25)",
                       }}
                     >
                       🧾 View &amp; Download Delivery Receipt (PDF)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleReturnToCatalog}
+                      style={{
+                        padding: "12px 18px",
+                        borderRadius: 10,
+                        border: "none",
+                        background: "#0c831f",
+                        color: "#ffffff",
+                        fontSize: 13.5,
+                        fontWeight: 800,
+                        cursor: "pointer",
+                        boxShadow: "0 4px 12px rgba(12, 131, 31, 0.25)",
+                      }}
+                    >
+                      Return to Catalog
                     </button>
                   </div>
                 </div>
@@ -1331,7 +1444,7 @@ export default function TrackOrderPage() {
         <div style={{ padding: "14px 16px 0", textAlign: "center" }}>
           <button
             type="button"
-            onClick={() => router.push("/ordering")}
+            onClick={handleReturnToCatalog}
             style={{
               width: "100%",
               background: "#0c831f",
@@ -1349,7 +1462,7 @@ export default function TrackOrderPage() {
               boxShadow: "0 4px 12px rgba(12, 131, 31, 0.25)",
             }}
           >
-            <span>Back to store</span>
+            <span>Return to Catalog</span>
           </button>
         </div>
 

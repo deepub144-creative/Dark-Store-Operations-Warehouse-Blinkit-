@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useRef } from "react";
+import React from "react";
+import { downloadDeliveredOrderPdfSlip } from "@/lib/orderSlipPdf";
 
 export default function DeliveryReceiptModal({
   order,
@@ -68,108 +69,7 @@ export default function DeliveryReceiptModal({
   });
 
   async function handleDownloadPDF() {
-    try {
-      const { jsPDF } = await import("jspdf");
-      const estimatedHeight = Math.max(190, 110 + items.length * 6 + 45);
-      const doc = new jsPDF({
-        orientation: "portrait",
-        unit: "mm",
-        format: [80, estimatedHeight], // Thermal receipt width (80mm)
-      });
-
-      doc.setFont("courier", "bold");
-      doc.setFontSize(14);
-      doc.text("AUDIT'X", 40, 12, { align: "center" });
-
-      doc.setFont("courier", "normal");
-      doc.setFontSize(8);
-      doc.text("Tiptur KA-44 Hub", 40, 17, { align: "center" });
-      doc.text("KFGSC, Tiptur 572201", 40, 21, { align: "center" });
-      doc.text("Support Desk: Private", 40, 25, { align: "center" });
-
-      doc.text("* * * * * * * * * * * * * * * * * * * *", 40, 30, { align: "center" });
-
-      doc.setFont("courier", "bold");
-      doc.setFontSize(10);
-      doc.text("DELIVERY RECEIPT", 40, 35, { align: "center" });
-
-      doc.setFont("courier", "normal");
-      doc.setFontSize(8);
-      doc.text("* * * * * * * * * * * * * * * * * * * *", 40, 40, { align: "center" });
-
-      doc.text(`Order: ${orderId}`, 6, 45);
-      doc.text(`Date: ${formattedDate}`, 6, 49);
-      doc.text(`Name: ${customerName}`, 6, 53);
-      doc.text(`Deliver to: ${deliveryAddress.slice(0, 30)}`, 6, 57);
-
-      doc.text("* * * * * * * * * * * * * * * * * * * *", 40, 62, { align: "center" });
-
-      doc.setFont("courier", "bold");
-      doc.text("Description", 6, 67);
-      doc.text("Price", 74, 67, { align: "right" });
-      doc.setFont("courier", "normal");
-
-      let curY = 72;
-      items.forEach((it) => {
-        const line = `${it.qty || 1}x ${it.name || "Item"}`;
-        const price = `₹${((it.qty || 1) * (it.price || 0)).toFixed(2)}`;
-        doc.text(line.slice(0, 24), 6, curY);
-        doc.text(price, 74, curY, { align: "right" });
-        curY += 5;
-      });
-
-      doc.text("* * * * * * * * * * * * * * * * * * * *", 40, curY + 2, { align: "center" });
-      curY += 7;
-
-      doc.setFont("courier", "bold");
-      doc.setFontSize(11);
-      doc.text("Total", 6, curY);
-      doc.text(`₹${totalAmount.toFixed(2)}`, 74, curY, { align: "right" });
-
-      doc.setFont("courier", "normal");
-      doc.setFontSize(8);
-      curY += 5;
-      doc.text("Paid", 6, curY);
-      doc.text(`₹${totalAmount.toFixed(2)}`, 74, curY, { align: "right" });
-
-      curY += 4;
-      doc.text("Change", 6, curY);
-      doc.text("₹0.00", 74, curY, { align: "right" });
-
-      curY += 5;
-      doc.text("* * * * * * * * * * * * * * * * * * * *", 40, curY, { align: "center" });
-      curY += 5;
-
-      doc.text(`Payment: ${paymentMethod}`, 6, curY);
-      curY += 4;
-      doc.text(`Ref: #${refCode}`, 6, curY);
-
-      curY += 5;
-      doc.text("* * * * * * * * * * * * * * * * * * * *", 40, curY, { align: "center" });
-      curY += 5;
-
-      doc.text(`Packed by: ${pickerName}`, 6, curY);
-      curY += 4;
-      doc.text(`Pack time: ${pickSla}`, 6, curY);
-      curY += 4;
-      doc.text(`Rider: ${captainName}`, 6, curY);
-      curY += 4;
-      doc.text(`Delivery time: ${deliverySla}`, 6, curY);
-
-      curY += 5;
-      doc.text("* * * * * * * * * * * * * * * * * * * *", 40, curY, { align: "center" });
-      curY += 6;
-
-      doc.setFont("courier", "bold");
-      doc.text(`✓ DELIVERED IN ${deliveredIn}`, 40, curY, { align: "center" });
-      curY += 5;
-      doc.text("THANK YOU!", 40, curY, { align: "center" });
-
-      doc.save(`auditx-receipt-${orderId}.pdf`);
-    } catch (e) {
-      console.error(e);
-      window.print();
-    }
+    await downloadDeliveredOrderPdfSlip(order);
   }
 
   return (

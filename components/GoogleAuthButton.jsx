@@ -186,6 +186,8 @@ export default function GoogleAuthButton({
         localStorage.setItem("auditx_last_google_account", JSON.stringify(googleUser));
         localStorage.setItem("auditx_customer", JSON.stringify(custObj));
         localStorage.setItem("blinkit_customer", JSON.stringify(custObj));
+        sessionStorage.setItem("auditx_play_team_intro_once", "1");
+        localStorage.setItem("auditx_play_team_intro_once", "1");
       } catch (e) {
         console.warn(e);
       }
