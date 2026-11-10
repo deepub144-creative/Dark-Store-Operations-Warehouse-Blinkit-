@@ -1852,27 +1852,6 @@ export default function WarehouseDashboardPage() {
               </div>
             </section>
           </div>
-
-          {/* Direct Teammate App Shortcuts */}
-          <div style={S.sidebarShortcuts}>
-            <div style={S.navGroupLabel}>QUICK APPS</div>
-            <button onClick={() => router.push("/ordering")} style={S.appShortcutBtn}>
-              <span style={{ fontSize: 14 }}>🛒</span>
-              <span>Customer App (Audit'X)</span>
-            </button>
-            <button onClick={() => router.push("/picker")} style={S.appShortcutBtn}>
-              <img src="/thrupthi-logo.png" alt="" style={S.shortcutAvatar} />
-              <span>OD Picker: Thrupthi K S</span>
-            </button>
-            <button onClick={() => router.push("/rider")} style={S.appShortcutBtn}>
-              <img src="/sinchana-logo.png" alt="" style={S.shortcutAvatar} />
-              <span>Rider: Sinchana B R</span>
-            </button>
-            <button onClick={() => router.push("/warehouse")} style={S.appShortcutBtn}>
-              <span style={{ fontSize: 14 }}>🏬</span>
-              <span>Staging Racks</span>
-            </button>
-          </div>
         </aside>
 
         {/* ── 2. MAIN WORKSPACE CONTENT ── */}
