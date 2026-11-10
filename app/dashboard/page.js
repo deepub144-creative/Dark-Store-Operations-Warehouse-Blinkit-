@@ -1186,55 +1186,19 @@ export default function WarehouseDashboardPage() {
                     ● LIVE
                   </span>
                 </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 240, overflowY: "auto" }}>
-                  {loggedInCustomerList.length === 0 ? (
-                    <div style={{ fontSize: 12, color: "#94a3b8", padding: "12px 6px", textAlign: "center" }}>
-                      0 customers logged in on /ordering yet.
-                    </div>
-                  ) : (
-                    loggedInCustomerList.map((cust) => (
-                      <div
-                        key={cust.deviceUid}
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 10,
-                          padding: "6px 8px",
-                          borderRadius: 8,
-                          background: "rgba(16, 185, 129, 0.12)",
-                          border: "1px solid rgba(16, 185, 129, 0.35)",
-                        }}
-                      >
-                        <span
-                          style={{
-                            width: 30,
-                            height: 30,
-                            borderRadius: "50%",
-                            background: "#0c831f",
-                            color: "#ffffff",
-                            fontSize: 11,
-                            fontWeight: 900,
-                            display: "grid",
-                            placeItems: "center",
-                            flexShrink: 0,
-                          }}
-                        >
-                          {getInitials(cust.customerName || "C")}
-                        </span>
-                        <div style={{ minWidth: 0, flex: 1 }}>
-                          <div style={{ fontSize: 12.5, fontWeight: 800, color: "#ffffff", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                            {cust.customerName || "Customer"}
-                          </div>
-                          <div style={{ fontSize: 10.5, color: "#94a3b8", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                            {cust.loginMethod || "Ordering App"} • {cust.daysLoggedCount || 1} day{(cust.daysLoggedCount || 1) === 1 ? "" : "s"}
-                          </div>
-                        </div>
-                        <span style={{ fontSize: 10, fontWeight: 800, color: "#34d399" }}>
-                          SAVED
-                        </span>
-                      </div>
-                    ))
-                  )}
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
+                  <div style={{ background: "rgba(16, 185, 129, 0.12)", border: "1px solid rgba(16, 185, 129, 0.3)", borderRadius: 10, padding: "8px 10px" }}>
+                    <div style={{ fontSize: 10, color: "#6ee7b7", fontWeight: 700 }}>New Today</div>
+                    <div style={{ fontSize: 18, fontWeight: 900, color: "#ffffff" }}>{hubMetrics.newSignupsTodayCount}</div>
+                  </div>
+                  <div style={{ background: "rgba(56, 189, 248, 0.12)", border: "1px solid rgba(56, 189, 248, 0.3)", borderRadius: 10, padding: "8px 10px" }}>
+                    <div style={{ fontSize: 10, color: "#7dd3fc", fontWeight: 700 }}>Active Today</div>
+                    <div style={{ fontSize: 18, fontWeight: 900, color: "#ffffff" }}>{hubMetrics.userLoginsTodayCount}</div>
+                  </div>
+                  <div style={{ background: "rgba(148, 163, 184, 0.12)", border: "1px solid rgba(148, 163, 184, 0.3)", borderRadius: 10, padding: "8px 10px" }}>
+                    <div style={{ fontSize: 10, color: "#cbd5e1", fontWeight: 700 }}>Total Saved</div>
+                    <div style={{ fontSize: 18, fontWeight: 900, color: "#ffffff" }}>{hubMetrics.totalLoginsCount}</div>
+                  </div>
                 </div>
               </div>
             )}
@@ -2391,45 +2355,6 @@ export default function WarehouseDashboardPage() {
                     <div style={{ fontSize: 26, fontWeight: 900, color: "#0F172A", marginTop: 2 }}>{hubMetrics.totalLoginsCount}</div>
                   </div>
                 </div>
-
-                {loggedInCustomerList.length > 0 && (
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
-                    {[...loggedInCustomerList]
-                      .sort((a, b) => String(b.lastSeenAt || "").localeCompare(String(a.lastSeenAt || "")))
-                      .slice(0, 8)
-                      .map((cust) => {
-                        const isNewToday = cust.firstDateKey === currentDateKey || Boolean(newSignupsToday[cust.deviceUid]);
-                        return (
-                          <span
-                            key={cust.deviceUid}
-                            style={{
-                              display: "inline-flex",
-                              alignItems: "center",
-                              gap: 6,
-                              padding: "5px 10px",
-                              borderRadius: 99,
-                              fontSize: 11.5,
-                              fontWeight: 700,
-                              background: isNewToday ? "#ECFDF5" : "#F1F5F9",
-                              color: isNewToday ? "#065F46" : "#334155",
-                              border: isNewToday ? "1px solid #A7F3D0" : "1px solid #CBD5E1",
-                            }}
-                          >
-                            <span>{cust.customerName || "Customer"}</span>
-                            <span style={{ fontSize: 10, fontWeight: 800, opacity: 0.85 }}>
-                              {isNewToday ? "NEW TODAY" : "RETURNING"}
-                            </span>
-                          </span>
-                        );
-                      })}
-                  </div>
-                )}
-
-                {syncPersistenceMode === "memory" && (
-                  <div style={{ marginTop: 10, fontSize: 11.5, fontWeight: 600, color: "#B45309", background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: 8, padding: "7px 10px" }}>
-                    Cloud DB not attached (server memory mode): connect Upstash Redis or Firebase Admin in Vercel env vars so friend logins on other phones sync live across devices.
-                  </div>
-                )}
               </div>
 
               {/* ── STORE CONTROL CARD ── */}
