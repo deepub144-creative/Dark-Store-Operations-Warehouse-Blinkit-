@@ -20,6 +20,7 @@ import {
 import { playNotificationChime, playSuccessChime } from "@/lib/soundSystem";
 import { getRandomStagingRack } from "@/lib/roles";
 import DiwaliTheme from "@/lib/diwaliTheme";
+import DiwaliCrackers from "@/lib/diwaliCrackers";
 import AuditxLogo from "@/components/AuditxLogo";
 import AuditxMiniAssistant from "@/components/AuditxMiniAssistant";
 import GoogleAuthButton from "@/components/GoogleAuthButton";
@@ -377,21 +378,36 @@ export default function OrderingAppPage() {
   // Festive crackers & Diwali theme active strictly on Ordering App Home page
   useEffect(() => {
     if (!isOrderingHomeActive) {
+      DiwaliCrackers.unmount();
       DiwaliTheme.unmount();
       return;
     }
+    let alreadySeenSplash = false;
+    try {
+      alreadySeenSplash = !!sessionStorage.getItem("dfx-seen");
+    } catch (e) {}
+
     const timer = setTimeout(() => {
       DiwaliTheme.mount({
         root: "#ax-ordering-shell",
         ground: 58,
         mode: "light",
         sound: true,
-        ambient: true,
+        ambient: false,
         once: true,
+      });
+      DiwaliCrackers.mount({
+        root: "#ax-ordering-shell",
+        ground: 68,
+        scale: 0.6,
+        sound: true,
+        loop: true,
+        delayMs: alreadySeenSplash ? 0 : 5400,
       });
     }, 60);
     return () => {
       clearTimeout(timer);
+      DiwaliCrackers.unmount();
       DiwaliTheme.unmount();
     };
   }, [isOrderingHomeActive]);
