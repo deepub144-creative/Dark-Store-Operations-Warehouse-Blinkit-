@@ -58,7 +58,7 @@ export default function AuditxSuiteTopBar({
         </defs>
       </svg>
 
-      <header className="bar">
+      <header className="bar" data-dfx={variant === "ordering" ? "header" : undefined}>
         {/* Left branding group */}
         <div className="grp">
           <AuditxLogo height={16} href="/" />
@@ -182,6 +182,7 @@ export default function AuditxSuiteTopBar({
               <button
                 type="button"
                 className="c cart"
+                data-dfx="cart"
                 onClick={onCartClick}
                 title="View Cart / Checkout"
               >

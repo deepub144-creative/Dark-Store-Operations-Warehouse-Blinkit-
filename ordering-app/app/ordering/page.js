@@ -19,6 +19,7 @@ import {
 } from "@/lib/realtimeSync";
 import { playNotificationChime, playSuccessChime } from "@/lib/soundSystem";
 import { getRandomStagingRack } from "@/lib/roles";
+import DiwaliTheme from "@/lib/diwaliTheme";
 import AuditxLogo from "@/components/AuditxLogo";
 import AuditxMiniAssistant from "@/components/AuditxMiniAssistant";
 import GoogleAuthButton from "@/components/GoogleAuthButton";
@@ -362,6 +363,38 @@ export default function OrderingAppPage() {
 
   // Fullscreen Opening Intro Video Splash (Muted, exact timeline, mobile app shell fit)
   const [showIntroOverlay, setShowIntroOverlay] = useState(true);
+
+  const isOrderingHomeActive = Boolean(
+    authChecked &&
+      customer &&
+      !capacityBlockedMsg &&
+      !showIntroOverlay &&
+      !placedOrderAnimation &&
+      !isCheckoutView &&
+      activeBottomTab === "home"
+  );
+
+  // Festive crackers & Diwali theme active strictly on Ordering App Home page
+  useEffect(() => {
+    if (!isOrderingHomeActive) {
+      DiwaliTheme.unmount();
+      return;
+    }
+    const timer = setTimeout(() => {
+      DiwaliTheme.mount({
+        root: "#ax-ordering-shell",
+        ground: 58,
+        mode: "light",
+        sound: true,
+        ambient: true,
+        once: true,
+      });
+    }, 60);
+    return () => {
+      clearTimeout(timer);
+      DiwaliTheme.unmount();
+    };
+  }, [isOrderingHomeActive]);
   const [introFadeOut, setIntroFadeOut] = useState(false);
   const introVideoRef = useRef(null);
   const introCompletedRef = useRef(false);
@@ -1353,7 +1386,7 @@ export default function OrderingAppPage() {
       )}
 
       {/* Smartphone Device Shell Container (Dedicated Mobile Layout) */}
-      <div style={S.mobileShell}>
+      <div id="ax-ordering-shell" data-dfx="page" style={S.mobileShell}>
         {/* ── FULLSCREEN MUTED INTRO SPLASH VIDEO OVERLAY (9:16 PORTRAIT, FITS MOBILE APP SHELL) ── */}
         {showIntroOverlay && (
           <div
@@ -1457,7 +1490,7 @@ export default function OrderingAppPage() {
         />
 
         {/* Blinkit Delivery ETA & Address Selector Bar */}
-        <header style={{ ...S.topHeader, paddingTop: 4, paddingBottom: 4 }}>
+        <header data-dfx="delivery" style={{ ...S.topHeader, paddingTop: 4, paddingBottom: 4 }}>
           <div style={S.headerContainer}>
             <div style={S.etaAddressBar} onClick={() => setShowAddressModal(true)}>
             <div style={S.etaAddressLeft}>
@@ -1493,6 +1526,7 @@ export default function OrderingAppPage() {
 
             <button
               type="button"
+              data-dfx="cta"
               style={S.changeAddressBtn}
               onClick={(e) => {
                 e.stopPropagation();
@@ -2060,7 +2094,7 @@ export default function OrderingAppPage() {
               <>
                 {/* Search Bar */}
                 <div style={S.searchContainer}>
-              <div style={S.searchFieldWrapper}>
+              <div data-dfx="search" style={S.searchFieldWrapper}>
                 <IconSearch size={18} color="#64748b" />
                 <input
                   type="text"
@@ -2089,6 +2123,8 @@ export default function OrderingAppPage() {
                   <button
                     key={cat}
                     type="button"
+                    data-dfx="chip"
+                    aria-pressed={active}
                     style={{
                       ...S.categoryTabPill,
                       ...(active ? S.categoryTabActive : {}),
@@ -2198,6 +2234,7 @@ export default function OrderingAppPage() {
                     return (
                       <div
                         key={item.sku}
+                        data-dfx="card"
                         style={{
                           ...S.productCard,
                           opacity: isSoldOut ? 0.72 : isOos ? 0.65 : 1,
@@ -2262,39 +2299,45 @@ export default function OrderingAppPage() {
                               <span>⏳ COMING SOON</span>
                             </div>
                           ) : isChoc ? (
-                            <div style={{
-                              position: "absolute",
-                              top: 6,
-                              left: 6,
-                              background: "#0c831f",
-                              color: "#ffffff",
-                              fontSize: 9,
-                              fontWeight: 800,
-                              padding: "2px 6px",
-                              borderRadius: 4,
-                              display: "flex",
-                              alignItems: "center",
-                              gap: 3,
-                              boxShadow: "0 2px 4px rgba(12,131,31,0.3)"
-                            }}>
+                            <div
+                              data-dfx="badge"
+                              style={{
+                                position: "absolute",
+                                top: 6,
+                                left: 6,
+                                background: "#0c831f",
+                                color: "#ffffff",
+                                fontSize: 9,
+                                fontWeight: 800,
+                                padding: "2px 6px",
+                                borderRadius: 4,
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 3,
+                                boxShadow: "0 2px 4px rgba(12,131,31,0.3)",
+                              }}
+                            >
                               <span>{item.isCustomPutaway ? `₹${item.price} NEW` : `₹${item.price} WAREHOUSE`}</span>
                             </div>
                           ) : isFrame ? (
-                            <div style={{
-                              position: "absolute",
-                              top: 6,
-                              left: 6,
-                              background: "#1e293b",
-                              color: "#f8fafc",
-                              fontSize: 9,
-                              fontWeight: 800,
-                              padding: "2px 6px",
-                              borderRadius: 4,
-                              display: "flex",
-                              alignItems: "center",
-                              gap: 3,
-                              boxShadow: "0 2px 4px rgba(0,0,0,0.3)"
-                            }}>
+                            <div
+                              data-dfx="badge"
+                              style={{
+                                position: "absolute",
+                                top: 6,
+                                left: 6,
+                                background: "#1e293b",
+                                color: "#f8fafc",
+                                fontSize: 9,
+                                fontWeight: 800,
+                                padding: "2px 6px",
+                                borderRadius: 4,
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 3,
+                                boxShadow: "0 2px 4px rgba(0,0,0,0.3)",
+                              }}
+                            >
                               <span>{item.isCustomPutaway ? "🖼️ NEW PUTAWAY" : "🖼️ IN WAREHOUSE"}</span>
                             </div>
                           ) : (
@@ -2379,6 +2422,7 @@ export default function OrderingAppPage() {
                             ) : qty === 0 ? (
                               <button
                                 type="button"
+                                data-dfx="add"
                                 style={S.productAddBtn}
                                 onClick={() => {
                                   if (!isStoreOpen) {
@@ -2391,9 +2435,10 @@ export default function OrderingAppPage() {
                                 ADD
                               </button>
                             ) : (
-                              <div style={S.productStepper}>
+                              <div data-dfx="stepper" style={S.productStepper}>
                                 <button
                                   type="button"
+                                  data-dfx="pop"
                                   style={S.stepperSmallBtn}
                                   onClick={() => updateQty(item.sku, -1)}
                                 >
@@ -2402,6 +2447,7 @@ export default function OrderingAppPage() {
                                 <span style={S.stepperSmallQty}>{qty}</span>
                                 <button
                                   type="button"
+                                  data-dfx="pop"
                                   style={S.stepperSmallBtn}
                                   onClick={() => {
                                     if (!isStoreOpen) {
@@ -3764,11 +3810,12 @@ export default function OrderingAppPage() {
       )}
 
       {/* ── AUTHENTIC MOBILE BOTTOM NAVIGATION BAR (Home, Order Again, Categories, Explore Namma Tiptur) ── */}
-      <nav style={S.bottomNavBar}>
+      <nav data-dfx="nav" style={S.bottomNavBar}>
         {/* Tab 1: Home */}
         <button
           id="tab-home"
           type="button"
+          aria-current={activeBottomTab === "home" && !isCheckoutView ? "page" : undefined}
           style={{
             ...S.bottomNavTabBtn,
             ...(activeBottomTab === "home" && !isCheckoutView ? S.bottomNavTabActive : {}),
