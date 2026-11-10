@@ -246,7 +246,65 @@ export async function POST(req) {
           lastSeenAt: nowIso,
         };
         next.loginDevicesToday = devices;
+
+        const allDevices = { ...(next.allCustomerDevices || {}) };
+        const signupsToday = { ...(next.newSignupsToday || {}) };
+        const prevEntry = allDevices[deviceUid];
+        const prevDates = Array.isArray(prevEntry?.loginDates) ? prevEntry.loginDates : [];
+        const loginDates = prevDates.includes(next.dateKey)
+          ? prevDates
+          : [...prevDates, next.dateKey];
+
+        if (!prevEntry) {
+          allDevices[deviceUid] = {
+            deviceUid,
+            customerName: devices[deviceUid].customerName,
+            phone: devices[deviceUid].phone,
+            email: devices[deviceUid].email,
+            loginMethod: devices[deviceUid].loginMethod,
+            firstDateKey: next.dateKey,
+            lastDateKey: next.dateKey,
+            firstSeenAt: nowIso,
+            lastSeenAt: nowIso,
+            loginDates,
+            daysLoggedCount: loginDates.length,
+          };
+          signupsToday[deviceUid] = {
+            deviceUid,
+            customerName: devices[deviceUid].customerName,
+            loginMethod: devices[deviceUid].loginMethod,
+            firstSeenAt: nowIso,
+          };
+        } else {
+          allDevices[deviceUid] = {
+            ...prevEntry,
+            customerName: payload.name || prevEntry.customerName || "Customer",
+            phone: payload.phone || prevEntry.phone || "",
+            email: payload.email || prevEntry.email || "",
+            lastDateKey: next.dateKey,
+            lastSeenAt: nowIso,
+            loginDates,
+            daysLoggedCount: loginDates.length,
+          };
+          if (prevEntry.firstDateKey === next.dateKey && !signupsToday[deviceUid]) {
+            signupsToday[deviceUid] = {
+              deviceUid,
+              customerName: allDevices[deviceUid].customerName,
+              loginMethod: prevEntry.loginMethod || devices[deviceUid].loginMethod,
+              firstSeenAt: prevEntry.firstSeenAt || nowIso,
+            };
+          }
+        }
+
+        next.allCustomerDevices = allDevices;
+        next.newSignupsToday = signupsToday;
+        next.cumulativeStats = {
+          ...(next.cumulativeStats || {}),
+          totalLoginsCount: Object.keys(allDevices).length,
+        };
         extraResult.userLoginsTodayCount = Object.keys(devices).length;
+        extraResult.newSignupsTodayCount = Object.keys(signupsToday).length;
+        extraResult.totalLoginsCount = Object.keys(allDevices).length;
         break;
       }
 
@@ -691,6 +749,7 @@ export async function POST(req) {
         next.complaints = [];
         next.ratingsToday = [];
         next.loginDevicesToday = {};
+        next.newSignupsToday = {};
         next.capLogs = [
           {
             id: Date.now(),

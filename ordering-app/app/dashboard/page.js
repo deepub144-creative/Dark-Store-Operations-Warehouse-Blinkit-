@@ -151,13 +151,16 @@ export default function WarehouseDashboardPage() {
   const [oosList, setOosList] = useState([]);
   const [customCatalogItems, setCustomCatalogItems] = useState([]);
 
-  // Live Daily Metrics + Cumulative Persistent Revenue/Sales + Archived History
+  // Live Daily Metrics + Cumulative Persistent Revenue/Sales/Logins + Archived History
   const [currentDateKey, setCurrentDateKey] = useState(getTodayISTDateKey());
   const [loginDevicesToday, setLoginDevicesToday] = useState({});
+  const [newSignupsToday, setNewSignupsToday] = useState({});
+  const [allCustomerDevices, setAllCustomerDevices] = useState({});
   const [ratingsToday, setRatingsToday] = useState([]);
   const [cumulativeStats, setCumulativeStats] = useState({
     totalRevenueSaved: 0,
     totalSalesCount: 0,
+    totalLoginsCount: 0,
   });
   const [dailyHistory, setDailyHistory] = useState([]);
 
@@ -294,6 +297,8 @@ export default function WarehouseDashboardPage() {
         if (Array.isArray(cached.oosList)) setOosList(cached.oosList);
         if (Array.isArray(cached.customCatalogItems)) setCustomCatalogItems(cached.customCatalogItems);
         if (cached.loginDevicesToday) setLoginDevicesToday(cached.loginDevicesToday);
+        if (cached.newSignupsToday) setNewSignupsToday(cached.newSignupsToday);
+        if (cached.allCustomerDevices) setAllCustomerDevices(cached.allCustomerDevices);
         if (Array.isArray(cached.ratingsToday)) setRatingsToday(cached.ratingsToday);
         if (cached.cumulativeStats) setCumulativeStats(cached.cumulativeStats);
         if (Array.isArray(cached.dailyHistory)) setDailyHistory(cached.dailyHistory);
@@ -380,6 +385,8 @@ export default function WarehouseDashboardPage() {
       if (Array.isArray(cloudState.oosList)) setOosList(cloudState.oosList);
       if (Array.isArray(cloudState.customCatalogItems)) setCustomCatalogItems(cloudState.customCatalogItems);
       if (cloudState.loginDevicesToday) setLoginDevicesToday(cloudState.loginDevicesToday);
+      if (cloudState.newSignupsToday) setNewSignupsToday(cloudState.newSignupsToday);
+      if (cloudState.allCustomerDevices) setAllCustomerDevices(cloudState.allCustomerDevices);
       if (Array.isArray(cloudState.ratingsToday)) setRatingsToday(cloudState.ratingsToday);
       if (cloudState.cumulativeStats) setCumulativeStats(cloudState.cumulativeStats);
       if (Array.isArray(cloudState.dailyHistory)) setDailyHistory(cloudState.dailyHistory);
@@ -673,6 +680,8 @@ export default function WarehouseDashboardPage() {
       setComplaints(res.state.complaints || []);
       setRatingsToday(res.state.ratingsToday || []);
       setLoginDevicesToday(res.state.loginDevicesToday || {});
+      setNewSignupsToday(res.state.newSignupsToday || {});
+      if (res.state.allCustomerDevices) setAllCustomerDevices(res.state.allCustomerDevices);
       setCumulativeStats(res.state.cumulativeStats || cumulativeStats);
       setActionSuccess("📦 Closed current day into History Archive & reset Today's Queue/Logins/Ratings to 0!");
       setTimeout(() => setActionSuccess(""), 4500);
@@ -922,16 +931,24 @@ export default function WarehouseDashboardPage() {
 
   if (!staff) return null;
 
-  // Live Metrics Derived from Hub State (Daily resets at midnight IST; Total Revenue Saved & Total Sales remain constant)
+  // Live Metrics Derived from Hub State (Daily resets at midnight IST; Total Revenue Saved, Total Sales & Total Logins stay saved)
   const hubMetrics = computeHubMetrics({
     dateKey: currentDateKey,
     orders,
     complaints,
     ratingsToday,
     loginDevicesToday,
+    newSignupsToday,
+    allCustomerDevices,
     cumulativeStats,
     dailyHistory,
   });
+
+  const loggedInCustomerList = Object.values(
+    allCustomerDevices && Object.keys(allCustomerDevices).length > 0
+      ? allCustomerDevices
+      : loginDevicesToday || {}
+  );
 
   const yesterdayKey = getYesterdayISTDateKey();
   const yesterdaySnapshot =
@@ -1055,7 +1072,7 @@ export default function WarehouseDashboardPage() {
         </div>
 
         <div style={S.headerRight}>
-          {/* Active Logged-in Staff Popover Trigger */}
+          {/* Active Ordering App Customer Logins Popover Trigger (Live Customer Count, NOT hardcoded 5 staff) */}
           <div style={{ position: "relative" }}>
             <button
               type="button"
@@ -1072,9 +1089,9 @@ export default function WarehouseDashboardPage() {
                 cursor: "pointer",
               }}
               onClick={() => setShowLoginsPopover(!showLoginsPopover)}
-              aria-label={`${STAFF_OPERATIONS.length} users logged in`}
+              aria-label={`${hubMetrics.totalLoginsCount} customer total logins`}
               aria-expanded={showLoginsPopover}
-              title="View on-duty logged in personnel"
+              title="View live Ordering App customer logins"
             >
               <WarehouseGlyph name="login" size={18} stroke="#cbd5e1" />
               <span
@@ -1086,7 +1103,7 @@ export default function WarehouseDashboardPage() {
                   height: 20,
                   padding: "0 5px",
                   borderRadius: 10,
-                  background: "#0c831f",
+                  background: hubMetrics.totalLoginsCount > 0 ? "#0c831f" : "#475569",
                   color: "#ffffff",
                   fontSize: 11,
                   fontWeight: 900,
@@ -1095,7 +1112,7 @@ export default function WarehouseDashboardPage() {
                   border: "2px solid #0F172A",
                 }}
               >
-                {STAFF_OPERATIONS.length}
+                {hubMetrics.totalLoginsCount}
               </span>
             </button>
 
@@ -1106,7 +1123,7 @@ export default function WarehouseDashboardPage() {
                   position: "absolute",
                   right: 0,
                   top: 48,
-                  width: 290,
+                  width: 310,
                   background: "#1E293B",
                   border: "1px solid #334155",
                   borderRadius: 16,
@@ -1116,56 +1133,67 @@ export default function WarehouseDashboardPage() {
                 }}
               >
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, paddingBottom: 8, borderBottom: "1px solid #334155" }}>
-                  <h3 style={{ margin: 0, fontSize: 13, fontWeight: 800, color: "#94a3b8" }}>
-                    {STAFF_OPERATIONS.length} users logged in
-                  </h3>
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: 13, fontWeight: 800, color: "#ffffff" }}>
+                      {hubMetrics.totalLoginsCount} Total Login{hubMetrics.totalLoginsCount === 1 ? "" : "s"}
+                    </h3>
+                    <div style={{ fontSize: 10.5, color: "#94a3b8", marginTop: 2 }}>
+                      {hubMetrics.newSignupsTodayCount} New sign-ups today • Saved across days
+                    </div>
+                  </div>
                   <span style={{ fontSize: 11, fontWeight: 800, color: "#10b981", background: "rgba(16, 185, 129, 0.15)", padding: "2px 6px", borderRadius: 4 }}>
                     ● LIVE
                   </span>
                 </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                  {STAFF_OPERATIONS.map((s) => (
-                    <div
-                      key={s.id}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 10,
-                        padding: "6px 8px",
-                        borderRadius: 8,
-                        background: staff?.id === s.id ? "rgba(16, 185, 129, 0.12)" : "rgba(15, 23, 42, 0.5)",
-                        border: staff?.id === s.id ? "1px solid rgba(16, 185, 129, 0.4)" : "1px solid transparent",
-                      }}
-                    >
-                      <span
+                <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 240, overflowY: "auto" }}>
+                  {loggedInCustomerList.length === 0 ? (
+                    <div style={{ fontSize: 12, color: "#94a3b8", padding: "12px 6px", textAlign: "center" }}>
+                      0 customers logged in on /ordering yet.
+                    </div>
+                  ) : (
+                    loggedInCustomerList.map((cust) => (
+                      <div
+                        key={cust.deviceUid}
                         style={{
-                          width: 30,
-                          height: 30,
-                          borderRadius: "50%",
-                          background: s.c,
-                          color: "#ffffff",
-                          fontSize: 11,
-                          fontWeight: 900,
-                          display: "grid",
-                          placeItems: "center",
-                          flexShrink: 0,
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 10,
+                          padding: "6px 8px",
+                          borderRadius: 8,
+                          background: "rgba(16, 185, 129, 0.12)",
+                          border: "1px solid rgba(16, 185, 129, 0.35)",
                         }}
                       >
-                        {getInitials(s.n)}
-                      </span>
-                      <div style={{ minWidth: 0, flex: 1 }}>
-                        <div style={{ fontSize: 12.5, fontWeight: 800, color: "#ffffff", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                          {s.n}
+                        <span
+                          style={{
+                            width: 30,
+                            height: 30,
+                            borderRadius: "50%",
+                            background: "#0c831f",
+                            color: "#ffffff",
+                            fontSize: 11,
+                            fontWeight: 900,
+                            display: "grid",
+                            placeItems: "center",
+                            flexShrink: 0,
+                          }}
+                        >
+                          {getInitials(cust.customerName || "C")}
+                        </span>
+                        <div style={{ minWidth: 0, flex: 1 }}>
+                          <div style={{ fontSize: 12.5, fontWeight: 800, color: "#ffffff", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                            {cust.customerName || "Customer"}
+                          </div>
+                          <div style={{ fontSize: 10.5, color: "#94a3b8", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                            {cust.loginMethod || "Ordering App"} • {cust.daysLoggedCount || 1} day{(cust.daysLoggedCount || 1) === 1 ? "" : "s"}
+                          </div>
                         </div>
-                        <div style={{ fontSize: 10.5, color: "#94a3b8", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                          {s.r}
-                        </div>
+                        <span style={{ fontSize: 10, fontWeight: 800, color: "#34d399" }}>
+                          SAVED
+                        </span>
                       </div>
-                      <span style={{ fontSize: 10, fontWeight: 800, color: "#64748b" }}>
-                        🔋{s.b}%
-                      </span>
-                    </div>
-                  ))}
+                    ))
+                  )}
                 </div>
               </div>
             )}
@@ -2173,7 +2201,7 @@ export default function WarehouseDashboardPage() {
                     >
                       <WarehouseGlyph name="phone" size={19} stroke="#ffffff" />
                     </span>
-                    No. of user’s login today (Ordering App Live Count)
+                    Customer app logins (/ordering)
                   </h2>
                   <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                     <span
@@ -2192,7 +2220,7 @@ export default function WarehouseDashboardPage() {
                         borderRadius: 99,
                       }}
                     >
-                      Capacity: {hubMetrics.userLoginsTodayCount} / {MAX_DAILY_USER_DEVICES} devices
+                      Capacity: {hubMetrics.userLoginsTodayCount} / {MAX_DAILY_USER_DEVICES} devices today
                     </span>
                     <button
                       style={S.smLinkBtn}
@@ -2204,24 +2232,37 @@ export default function WarehouseDashboardPage() {
                   </div>
                 </div>
 
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 20, flexWrap: "wrap" }}>
-                  <div style={{ display: "flex", alignItems: "baseline", gap: 14 }}>
-                    <div style={{ fontSize: 44, fontWeight: 900, color: "#0c831f", lineHeight: 1 }}>
-                      {hubMetrics.userLoginsTodayCount}
+                {/* Live 3-Column Metrics (Total Logins Saved Across Days, New Sign-ups Today, Placed an Order; Unique Customers option removed) */}
+                <div style={{ display: "grid", gridTemplateColumns: "1.3fr 1fr", gap: 24, alignItems: "center" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 14 }}>
+                    <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 12, padding: "12px 14px" }}>
+                      <div style={{ fontSize: 32, fontWeight: 900, color: "#0F172A", lineHeight: 1.05 }}>
+                        {hubMetrics.totalLoginsCount}
+                      </div>
+                      <div style={{ fontSize: 13, color: "#0F172A", fontWeight: 800, marginTop: 4 }}>Total logins</div>
+                      <div style={{ fontSize: 11, color: "#64748B", fontWeight: 600 }}>Saved across days</div>
                     </div>
-                    <div>
-                      <div style={{ fontSize: 14, fontWeight: 800, color: "#0F172A" }}>
-                        User{hubMetrics.userLoginsTodayCount === 1 ? "" : "s"} Logged In Today
+
+                    <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 12, padding: "12px 14px" }}>
+                      <div style={{ fontSize: 32, fontWeight: 900, color: "#1d4ed8", lineHeight: 1.05 }}>
+                        {hubMetrics.newSignupsTodayCount}
                       </div>
-                      <div style={{ fontSize: 12, color: "#64748B", fontWeight: 600 }}>
-                        Includes 1-Tap Bypass, Google &amp; Mobile OTP • Resets to 0 daily at 12:00 AM IST
+                      <div style={{ fontSize: 13, color: "#1e3a8a", fontWeight: 800, marginTop: 4 }}>New sign-ups</div>
+                      <div style={{ fontSize: 11, color: "#3b82f6", fontWeight: 600 }}>Logged in today on /ordering</div>
+                    </div>
+
+                    <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 12, padding: "12px 14px" }}>
+                      <div style={{ fontSize: 32, fontWeight: 900, color: "#0c831f", lineHeight: 1.05 }}>
+                        {hubMetrics.todayOrdersCount}
                       </div>
+                      <div style={{ fontSize: 13, color: "#14532d", fontWeight: 800, marginTop: 4 }}>Placed an order</div>
+                      <div style={{ fontSize: 11, color: "#15803d", fontWeight: 600 }}>Live orders today</div>
                     </div>
                   </div>
 
-                  <div style={{ flex: "1 1 260px", maxWidth: 420 }}>
+                  <div>
                     <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11.5, fontWeight: 700, color: "#475569", marginBottom: 6 }}>
-                      <span>Device Limit (Up to 400 Users/Devices)</span>
+                      <span>Device Limit (Up to 400 Users/Devices Today)</span>
                       <span>
                         {Math.min(
                           100,
@@ -2230,7 +2271,7 @@ export default function WarehouseDashboardPage() {
                         % ({MAX_DAILY_USER_DEVICES - hubMetrics.userLoginsTodayCount} left)
                       </span>
                     </div>
-                    <div style={{ height: 10, borderRadius: 99, background: "#E2E8F0", overflow: "hidden" }}>
+                    <div style={{ height: 10, borderRadius: 99, background: "#E2E8F0", overflow: "hidden", marginBottom: 10 }}>
                       <div
                         style={{
                           width: `${Math.min(
@@ -2245,6 +2286,30 @@ export default function WarehouseDashboardPage() {
                           transition: "width 0.3s ease",
                         }}
                       />
+                    </div>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      {loggedInCustomerList.length === 0 ? (
+                        <span style={{ fontSize: 11.5, color: "#64748B", fontWeight: 600 }}>
+                          0 customer logins right now. Open /ordering &amp; log in to see live count.
+                        </span>
+                      ) : (
+                        loggedInCustomerList.slice(0, 5).map((cust) => (
+                          <span
+                            key={cust.deviceUid}
+                            style={{
+                              fontSize: 11,
+                              fontWeight: 700,
+                              background: "#f1f5f9",
+                              color: "#0f172a",
+                              border: "1px solid #cbd5e1",
+                              borderRadius: 99,
+                              padding: "3px 9px",
+                            }}
+                          >
+                            👤 {cust.customerName || "Customer"} • {cust.daysLoggedCount || 1}d
+                          </span>
+                        ))
+                      )}
                     </div>
                   </div>
                 </div>
@@ -3591,13 +3656,16 @@ export default function WarehouseDashboardPage() {
                       <div style={S.statTitle}>Day Revenue (GMV)</div>
                       <div style={S.statVal}>₹{Number(yesterdaySnapshot.gmv || 0).toLocaleString("en-IN")}</div>
                       <div style={S.statSub}>
-                        Saved Total: ₹{Number(yesterdaySnapshot.cumulativeRevenueAtClose || hubMetrics.totalRevenueSaved).toLocaleString("en-IN")}
+                        Saved Total: ₹{Number(yesterdaySnapshot.cumulativeRevenueSavedAfterDay || hubMetrics.totalRevenueSaved).toLocaleString("en-IN")}
                       </div>
                     </div>
                     <div style={S.statCard}>
-                      <div style={S.statTitle}>User Logins</div>
-                      <div style={S.statVal}>{yesterdaySnapshot.userLoginsCount || 0}</div>
-                      <div style={S.statSub}>Cap: 400 devices/day</div>
+                      <div style={S.statTitle}>New Sign-ups / Total Logins</div>
+                      <div style={S.statVal}>
+                        {yesterdaySnapshot.newSignupsCount ?? yesterdaySnapshot.userLoginsCount ?? 0} /{" "}
+                        {yesterdaySnapshot.totalLoginsAtClose ?? yesterdaySnapshot.userLoginsCount ?? 0}
+                      </div>
+                      <div style={S.statSub}>Total Logins stay saved across days</div>
                     </div>
                     <div style={S.statCard}>
                       <div style={S.statTitle}>Day Rating &amp; Tickets</div>
