@@ -27,6 +27,7 @@ import GoogleAuthButton from "@/components/GoogleAuthButton";
 import OrderPlacedSheet from "@/components/ui/OrderPlacedSheet";
 import DeliveryReceiptModal from "@/components/DeliveryReceiptModal";
 import AuditxSuiteTopBar from "@/components/AuditxSuiteTopBar";
+import LittlePenguin from "@/components/LittlePenguin";
 import {
   IconLightning,
   IconRealisticScooter,
@@ -5037,6 +5038,11 @@ export default function OrderingAppPage() {
       {/* ── RAG-BASED EMBEDDED AI ASSISTANT: AUDIT'X Mini ── */}
       {!showIntroOverlay && (
         <AuditxMiniAssistant isStoreOpen={isStoreOpen} customer={customer} />
+      )}
+
+      {/* ── INTERACTIVE LITTLE PENGUIN OVERLAY ── */}
+      {authChecked && customer && !capacityBlockedMsg && !showIntroOverlay && (
+        <LittlePenguin rootSelector="#ax-ordering-shell" pos="left" ground={60} scale={1} awaySeconds={180} />
       )}
     </div>
   );
