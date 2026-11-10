@@ -9,7 +9,8 @@ export default function PwaRegistrar() {
 
     const registerSw = () => {
       navigator.serviceWorker
-        .register("/sw.js", { scope: "/" })
+        .register("/sw.js", { scope: "/", updateViaCache: "none" })
+        .then((reg) => reg?.update?.().catch(() => {}))
         .catch(() => {});
     };
 
@@ -23,3 +24,4 @@ export default function PwaRegistrar() {
 
   return null;
 }
+
