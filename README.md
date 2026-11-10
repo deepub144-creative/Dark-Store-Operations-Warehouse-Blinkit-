@@ -134,3 +134,33 @@ npm run dev -- -p 3001
 
 * **Warehouse App**: Open `http://localhost:3000/login`
 * **Ordering App**: Open `http://localhost:3001/`
+
+---
+
+## 🤖 Audit-X Assistant (Dual-Mode AI, Hybrid RAG, Text-to-SQL & Report Studio)
+
+A full-stack chat product located across `backend/`, `rag/`, `data/`, `app/web-chat/`, `infra/`, and `docs/`:
+
+- **Architecture & 12-Entity ER Model**: See [`docs/chatbot-architecture.md`](./docs/chatbot-architecture.md)
+- **Setup, Runbook & 10 Demo Prompts**: See [`docs/DEMO_PROMPTS_AND_RUNBOOK.md`](./docs/DEMO_PROMPTS_AND_RUNBOOK.md)
+
+### One-Command Startup
+```powershell
+# Windows (seeds DB, indexes RAG corpus, launches FastAPI :8000 & React Web Chat :5173)
+.\run_assistant.ps1
+```
+```bash
+# Linux / macOS
+./run_assistant.sh
+
+# Or Docker Compose
+docker compose -f infra/docker-compose.yml up --build
+```
+
+### Verification Commands
+```bash
+python -m pytest tests/ -v        # 26 unit & integration tests (RAG, SQL validator, File builders, FastAPI SSE)
+python -m rag.evaluate            # Retrieval Hit-Rate@3/5, MRR & grounding refusal evaluation
+python scripts/demo_e2e.py        # End-to-end 10-prompt walkthrough
+```
+

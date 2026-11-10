@@ -1,0 +1,35 @@
+services:
+  backend:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.backend
+    container_name: auditx-assistant-backend
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env.example
+    volumes:
+      - auditx_data:/app/data
+      - auditx_generated:/app/backend/generated
+      - auditx_uploads:/app/backend/uploads
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 20s
+      timeout: 5s
+      retries: 3
+
+  frontend:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.frontend
+    container_name: auditx-assistant-webchat
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+
+volumes:
+  auditx_data:
+  auditx_generated:
+  auditx_uploads:
+

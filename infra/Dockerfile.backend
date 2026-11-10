@@ -1,0 +1,31 @@
+FROM python:3.12-slim
+
+WORKDIR /app
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    MPLCONFIGDIR=/tmp/matplotlib
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    fonts-noto-core fonts-noto-cjk curl \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY backend/ ./backend/
+COPY rag/ ./rag/
+COPY data/ ./data/
+COPY docs/ ./docs/
+COPY ml/ ./ml/
+COPY cv/ ./cv/
+COPY telemetry/ ./telemetry/
+COPY dashboard/ ./dashboard/
+COPY README.md ./README.md
+
+RUN python data/seed_db.py && python -m rag.ingest
+
+EXPOSE 8000
+
+CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000"]
+

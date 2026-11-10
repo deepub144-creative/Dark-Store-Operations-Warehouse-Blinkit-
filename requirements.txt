@@ -1,0 +1,32 @@
+# Core FastAPI + Streaming + Validation
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+pydantic>=2.10.0
+python-dotenv>=1.0.1
+python-multipart>=0.0.18
+httpx>=0.28.0
+SQLAlchemy>=2.0.36
+
+# Hybrid RAG + Numerics + Document Parsing
+numpy>=2.1.0
+scikit-learn>=1.6.0
+PyMuPDF>=1.25.0
+pypdf>=5.0.0
+
+# Office / Report Builders (.pptx, .pdf, .docx, .xlsx, .csv)
+pandas>=2.2.3
+openpyxl>=3.1.5
+python-pptx>=1.0.2
+reportlab>=4.2.5
+python-docx>=1.1.2
+matplotlib>=3.9.2
+
+# Optional External Vector / HF Backends (uncomment in Linux/Python 3.11-3.12 ML images)
+# sentence-transformers>=3.3.1
+# chromadb>=0.6.0
+# faiss-cpu>=1.9.0
+# rank-bm25>=0.2.2
+
+# Testing
+pytest>=8.3.4
+
