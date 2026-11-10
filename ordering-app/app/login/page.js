@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { STAFF, staffByPhone } from "@/lib/roles";
 import AuditxLogo from "@/components/AuditxLogo";
 import GoogleAuthButton from "@/components/GoogleAuthButton";
+import { getTodayISTDateKey } from "@/lib/hubState";
 
 // FIXED REGISTERED DARK STORE PERSONNEL FOR TIPTUR HUB KA44
 export const AUTHORIZED_STAFF_NUMBERS = [
@@ -151,9 +152,11 @@ export default function LoginPage() {
       if (targetRoleCode === "PICKER") {
         localStorage.setItem("auditx_picker_authenticated", "true");
         localStorage.setItem("auditx_picker_phone", cleanPhone);
+        localStorage.setItem("auditx_picker_auth_date", getTodayISTDateKey());
       } else if (targetRoleCode === "DELIVERY") {
         localStorage.setItem("auditx_rider_authenticated", "true");
         localStorage.setItem("auditx_rider_phone", cleanPhone);
+        localStorage.setItem("auditx_rider_auth_date", getTodayISTDateKey());
       } else {
         localStorage.setItem(
           "auditx_manager_session",

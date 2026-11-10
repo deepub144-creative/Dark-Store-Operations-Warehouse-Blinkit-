@@ -3,7 +3,20 @@
 import { useEffect, useState, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { CATALOG } from "@/lib/items";
-import { broadcastEvent, subscribeToEvents, saveLiveOrder, getAllLiveOrders, updateLiveOrder, clearAllLiveOrders, getAllLiveComplaints, sanitizeComplaints } from "@/lib/realtimeSync";
+import { getDefaultItemStock, mergeCatalogItems } from "@/lib/hubState";
+import {
+  broadcastEvent,
+  subscribeToEvents,
+  saveLiveOrder,
+  getAllLiveOrders,
+  updateLiveOrder,
+  clearAllLiveOrders,
+  getAllLiveComplaints,
+  sanitizeComplaints,
+  subscribeToCloudHub,
+  dispatchCloudAction,
+  getOrCreateDeviceUid,
+} from "@/lib/realtimeSync";
 import { playNotificationChime, playSuccessChime } from "@/lib/soundSystem";
 import { getRandomStagingRack } from "@/lib/roles";
 import AuditxLogo from "@/components/AuditxLogo";
@@ -291,6 +304,8 @@ export default function OrderingAppPage() {
   const router = useRouter();
 
   // Core Data
+  const [authChecked, setAuthChecked] = useState(false);
+  const [capacityBlockedMsg, setCapacityBlockedMsg] = useState("");
   const [customer, setCustomer] = useState(null);
   const [cart, setCart] = useState({});
   const [selectedCategory, setSelectedCategory] = useState("Chocolates");
@@ -299,7 +314,10 @@ export default function OrderingAppPage() {
   const [placingOrder, setPlacingOrder] = useState(false);
   const [toastMessage, setToastMessage] = useState("");
   const [oosList, setOosList] = useState([]);
+  const [inventoryStockMap, setInventoryStockMap] = useState({});
+  const [customCatalogItems, setCustomCatalogItems] = useState([]);
   const [isStoreOpen, setIsStoreOpen] = useState(true); // Store Manager Bhaskar N S toggle state
+  const prevStoreOpenRef = useRef(true);
 
   // Blinkit Cart & Checkout Flow State
   const [isCheckoutView, setIsCheckoutView] = useState(false); // Can view either Catalog or pure Checkout
@@ -365,16 +383,16 @@ export default function OrderingAppPage() {
   }
 
   useEffect(() => {
-    if (!showIntroOverlay) return;
+    if (!authChecked || !showIntroOverlay) return;
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
       document.body.style.overflow = prevOverflow;
     };
-  }, [showIntroOverlay]);
+  }, [authChecked, showIntroOverlay]);
 
   useEffect(() => {
-    if (!showIntroOverlay) return;
+    if (!authChecked || !showIntroOverlay) return;
     const vid = introVideoRef.current;
     if (!vid) return;
 
@@ -408,7 +426,7 @@ export default function OrderingAppPage() {
       clearInterval(stallCheck);
       if (introFadeTimerRef.current) clearTimeout(introFadeTimerRef.current);
     };
-  }, []);
+  }, [authChecked, showIntroOverlay]);
 
   // Customer Complaint System (Synced with SM Bhaskar N S & ASM Deepu B Dashboard)
   const [showComplaintModal, setShowComplaintModal] = useState(false);
@@ -479,43 +497,63 @@ export default function OrderingAppPage() {
   }, [charPos, isDeletingChar, typeItemIdx, STORED_SEARCH_ITEMS]);
 
 
-  // Load Customer & Real-time Listeners
+  // Load Customer (Mandatory Login Gate on Fresh Device + Cross-Device Cloud Sync)
   useEffect(() => {
-    const raw = localStorage.getItem("auditx_customer") || localStorage.getItem("blinkit_customer");
-    if (raw) {
-      try {
-        const parsed = JSON.parse(raw);
-        parsed.location = "KFGSC , Tiptur 572201";
-        setCustomer(parsed);
-      } catch (e) {
-        console.warn(e);
-      }
-    }
-
-    const rawOos = localStorage.getItem("auditx_oos_items");
-    if (rawOos) {
-      try {
-        setOosList(JSON.parse(rawOos));
-      } catch (e) {
-        console.warn(e);
-      }
-    }
-
-    // Load persisted store open status (Store Manager Bhaskar N S)
+    let parsedCustomer = null;
     try {
-      const rawStoreOpen = localStorage.getItem("auditx_store_open");
-      if (rawStoreOpen === "false") {
-        setIsStoreOpen(false);
-      } else {
-        setIsStoreOpen(true);
+      const raw = localStorage.getItem("auditx_customer") || localStorage.getItem("blinkit_customer");
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && parsed.name && (parsed.customerId || parsed.email || parsed.phone)) {
+          parsed.location = "KFGSC , Tiptur 572201";
+          parsedCustomer = parsed;
+        }
       }
     } catch (e) {
-      console.warn("Store open check error:", e);
+      console.warn(e);
     }
 
-    function checkActiveDelivery() {
+    if (!parsedCustomer) {
+      router.replace("/ordering/login");
+      return;
+    }
+
+    setCustomer(parsedCustomer);
+    setAuthChecked(true);
+
+    // Check-in returning device into today's 400-device daily cap & live login count
+    dispatchCloudAction("REGISTER_LOGIN", {
+      deviceUid: getOrCreateDeviceUid(),
+      name: parsedCustomer.name,
+      phone: parsedCustomer.phone || "",
+      email: parsedCustomer.email || "",
+      loginMethod: parsedCustomer.loginMethod || "Saved Session",
+    }).then((res) => {
+      if (res && !res.ok && res.status === 403) {
+        setCapacityBlockedMsg(
+          res.error || "Ordering app daily capacity reached (400 / 400 devices logged in today)."
+        );
+      }
+    });
+
+    try {
+      const rawOos = localStorage.getItem("auditx_oos_items");
+      if (rawOos) setOosList(JSON.parse(rawOos));
+      const rawInv = localStorage.getItem("auditx_inventory_units");
+      if (rawInv) setInventoryStockMap(JSON.parse(rawInv));
+      const rawCustom = localStorage.getItem("auditx_custom_catalog");
+      if (rawCustom) setCustomCatalogItems(JSON.parse(rawCustom));
+      const rawStoreOpen = localStorage.getItem("auditx_store_open");
+      const openNow = rawStoreOpen !== "false";
+      setIsStoreOpen(openNow);
+      prevStoreOpenRef.current = openNow;
+    } catch (e) {
+      console.warn("Cache init error:", e);
+    }
+
+    function checkActiveDelivery(ordersOverride = null) {
       try {
-        const liveOrders = getAllLiveOrders();
+        const liveOrders = Array.isArray(ordersOverride) ? ordersOverride : getAllLiveOrders();
         if (!liveOrders || liveOrders.length === 0) {
           setActiveDeliveryOrder(null);
           return;
@@ -571,7 +609,7 @@ export default function OrderingAppPage() {
     }
 
     checkActiveDelivery();
-    window.addEventListener("focus", checkActiveDelivery);
+    window.addEventListener("focus", () => checkActiveDelivery());
 
     function loadComplaints() {
       try {
@@ -583,9 +621,43 @@ export default function OrderingAppPage() {
     }
     loadComplaints();
 
+    // Cross-device real-time cloud hub subscription (syncs laptop SM/ASM edits -> friends' phones!)
+    const unsubCloud = subscribeToCloudHub((cloudState, meta) => {
+      if (!cloudState) return;
+      const cloudOpen = cloudState.isStoreOpen !== false;
+      if (!meta?.fromCache && prevStoreOpenRef.current !== cloudOpen) {
+        if (!cloudOpen) {
+          playNotificationChime();
+          triggerToast("🛑 Oops! Your Store is now closed , opening soon");
+        } else {
+          playSuccessChime();
+          triggerToast("🟢 Store is now OPEN! Bhaskar N S has opened the store for ordering.");
+        }
+      }
+      prevStoreOpenRef.current = cloudOpen;
+      setIsStoreOpen(cloudOpen);
+
+      if (Array.isArray(cloudState.oosList)) {
+        setOosList(cloudState.oosList);
+      }
+      if (cloudState.inventoryStockMap && typeof cloudState.inventoryStockMap === "object") {
+        setInventoryStockMap(cloudState.inventoryStockMap);
+      }
+      if (Array.isArray(cloudState.customCatalogItems)) {
+        setCustomCatalogItems(cloudState.customCatalogItems);
+      }
+      if (Array.isArray(cloudState.complaints)) {
+        setCustomerComplaints(sanitizeComplaints(cloudState.complaints));
+      }
+      if (Array.isArray(cloudState.orders)) {
+        checkActiveDelivery(cloudState.orders);
+      }
+    }, 1800);
+
     const unsubBus = subscribeToEvents((data) => {
       if (data.type === "STORE_STATUS_CHANGED" && data.payload) {
         const nextOpen = data.payload.isOpen !== false;
+        prevStoreOpenRef.current = nextOpen;
         setIsStoreOpen(nextOpen);
         if (!nextOpen) {
           playNotificationChime();
@@ -694,17 +766,26 @@ export default function OrderingAppPage() {
       if (e.key === "auditx_complaints") {
         loadComplaints();
       }
+      if (e.key === "auditx_oos_items" && e.newValue) {
+        try { setOosList(JSON.parse(e.newValue)); } catch (err) {}
+      }
+      if (e.key === "auditx_inventory_units" && e.newValue) {
+        try { setInventoryStockMap(JSON.parse(e.newValue)); } catch (err) {}
+      }
+      if (e.key === "auditx_custom_catalog" && e.newValue) {
+        try { setCustomCatalogItems(JSON.parse(e.newValue)); } catch (err) {}
+      }
     };
     window.addEventListener("storage", handleStorageEvent);
 
     const timer = setTimeout(() => setLoading(false), 200);
     return () => {
       clearTimeout(timer);
+      unsubCloud();
       unsubBus();
-      window.removeEventListener("focus", checkActiveDelivery);
       window.removeEventListener("storage", handleStorageEvent);
     };
-  }, []);
+  }, [router]);
 
   // Synchronized SLA Countdown Progression: 8m pick -> 6m rider transit -> 15s doorstep -> Rider arrived
   useEffect(() => {
@@ -739,6 +820,8 @@ export default function OrderingAppPage() {
     const ordId = activeDeliveryOrder.id || activeDeliveryOrder.orderId || activeDeliveryOrder.orderNumber;
     const ratingPayload = {
       orderId: ordId,
+      orderNumber: activeDeliveryOrder.orderNumber || ordId,
+      customerName: customer?.name || activeDeliveryOrder.customerName || "Customer",
       riderName: "Sinchana B R",
       riderRating: riderStars,
       itemRatings: itemStarsMap,
@@ -762,6 +845,7 @@ export default function OrderingAppPage() {
       itemRatings: itemStarsMap,
     };
     updateLiveOrder(ordId, deliveredOrder);
+    dispatchCloudAction("SUBMIT_RATING", { ratingPayload });
     broadcastEvent("ORDER_DELIVERED", deliveredOrder);
     broadcastEvent("ORDER_RATED", ratingPayload);
     setRateCompleted(true);
@@ -817,6 +901,7 @@ export default function OrderingAppPage() {
       console.warn("Save complaint error:", err);
     }
 
+    dispatchCloudAction("FILE_COMPLAINT", { complaint: newComplaint });
     broadcastEvent("CUSTOMER_COMPLAINT_FILED", newComplaint);
     broadcastEvent("COMPLAINT_RAISED", newComplaint);
 
@@ -848,12 +933,32 @@ export default function OrderingAppPage() {
     setTimeout(() => setToastMessage(""), 3500);
   }
 
+  // Merge standard catalog with ASM Putaway newly dumped custom items
+  const effectiveCatalog = useMemo(() => {
+    return mergeCatalogItems(CATALOG, customCatalogItems);
+  }, [customCatalogItems]);
+
+  function getAvailableUnits(item) {
+    if (!item) return 0;
+    if (item.soldOut || item.inStock === false || (item.name && item.name.toLowerCase().includes("pup"))) {
+      return 0;
+    }
+    if (oosList.includes(item.sku)) return 0;
+    if (inventoryStockMap[item.sku] !== undefined) {
+      return Math.max(0, Number(inventoryStockMap[item.sku]));
+    }
+    if (item.isCustomPutaway && item.units !== undefined) {
+      return Math.max(0, Number(item.units));
+    }
+    return getDefaultItemStock(item);
+  }
+
   function updateQty(sku, delta) {
     if (!isStoreOpen && delta > 0) {
       triggerToast("🛑 Store is closed right now, ordering soon!");
       return;
     }
-    const item = CATALOG.find((c) => c.sku === sku);
+    const item = effectiveCatalog.find((c) => c.sku === sku);
     if ((item?.soldOut || item?.inStock === false || (item?.name && item.name.toLowerCase().includes("pup"))) && delta > 0) {
       triggerToast(`⛔ "${item.name}" is Sold Out!`);
       return;
@@ -862,8 +967,13 @@ export default function OrderingAppPage() {
       triggerToast(`${item.name} is coming soon to Tiptur Dark Store!`);
       return;
     }
-    if (oosList.includes(sku) && delta > 0) {
-      triggerToast("This item was marked Out of Stock by ASM Deepu B!");
+    const avail = getAvailableUnits(item);
+    if ((oosList.includes(sku) || avail <= 0) && delta > 0) {
+      triggerToast(`⛔ "${item?.name || sku}" is currently Out of Stock!`);
+      return;
+    }
+    if (delta > 0 && (cart[sku] || 0) + delta > avail) {
+      triggerToast(`⚠️ Only ${avail} unit(s) left in stock for "${item?.name || sku}"!`);
       return;
     }
 
@@ -888,12 +998,13 @@ export default function OrderingAppPage() {
     const next = {};
     let skipped = 0;
     (pastOrder?.items || []).forEach((it) => {
-      const item = CATALOG.find((c) => c.sku === it.sku);
-      if (!item || item.soldOut || item.inStock === false || item.comingSoon || oosList.includes(it.sku)) {
+      const item = effectiveCatalog.find((c) => c.sku === it.sku);
+      const avail = getAvailableUnits(item);
+      if (!item || item.soldOut || item.inStock === false || item.comingSoon || oosList.includes(it.sku) || avail <= 0) {
         skipped += 1;
         return;
       }
-      next[it.sku] = (next[it.sku] || 0) + (it.qty || 1);
+      next[it.sku] = Math.min(avail, (next[it.sku] || 0) + (it.qty || 1));
     });
     if (Object.keys(next).length === 0) {
       triggerToast("These items are currently unavailable.");
@@ -930,12 +1041,12 @@ export default function OrderingAppPage() {
   const cartItemsList = useMemo(() => {
     return cartEntries
       .map(([sku, qty]) => {
-        const product = CATALOG.find((c) => c.sku === sku);
+        const product = effectiveCatalog.find((c) => c.sku === sku);
         if (!product) return null;
         return { ...product, qty };
       })
       .filter(Boolean);
-  }, [cartEntries]);
+  }, [cartEntries, effectiveCatalog]);
 
   const itemTotalMrp = useMemo(() => {
     return cartItemsList.reduce((s, item) => s + (item.mrp || item.price) * item.qty, 0);
@@ -990,8 +1101,10 @@ export default function OrderingAppPage() {
 
   // Upsell Recommendations ("Before you checkout")
   const upsellRecommendations = useMemo(() => {
-    return CATALOG.filter((c) => !cart[c.sku] && !oosList.includes(c.sku) && !c.comingSoon).slice(0, 6);
-  }, [cart, oosList]);
+    return effectiveCatalog
+      .filter((c) => !cart[c.sku] && !oosList.includes(c.sku) && !c.comingSoon && getAvailableUnits(c) > 0)
+      .slice(0, 6);
+  }, [cart, oosList, effectiveCatalog, inventoryStockMap]);
 
   // Categories & Filtering: Only Chocolates and Frames in active warehouse inventory
   const CATEGORY_DISPLAY = {
@@ -1003,11 +1116,11 @@ export default function OrderingAppPage() {
     return ["Chocolates", "Frames"];
   }, []);
 
-  const filteredCatalog = CATALOG.filter((item) => {
+  const filteredCatalog = effectiveCatalog.filter((item) => {
     const matchesSearch =
       item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       item.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.aisle.toLowerCase().includes(searchQuery.toLowerCase());
+      (item.aisle && item.aisle.toLowerCase().includes(searchQuery.toLowerCase()));
     const matchesCategory = item.category === selectedCategory;
     return matchesSearch && matchesCategory;
   });
@@ -1089,11 +1202,32 @@ export default function OrderingAppPage() {
         price: item.price,
         mrp: item.mrp || item.price,
         image: item.image,
+        isCustomPutaway: !!item.isCustomPutaway,
       })),
     };
 
-    // 1. Immediately persist & dispatch to Thrupthi K S and Sinchana B R (< 10ms)
-    saveLiveOrder(createdOrder);
+    // 1. Validate & Persist atomically on Cloud Hub (/api/sync -> deducts stock & auto-OOS at 0)
+    const cloudRes = await dispatchCloudAction("PLACE_ORDER", { order: createdOrder });
+    if (cloudRes && !cloudRes.ok) {
+      if (cloudRes.data?.storeClosed) {
+        setIsStoreOpen(false);
+        triggerToast("🛑 Store just closed right now, ordering soon!");
+      } else if (cloudRes.data?.outOfStock) {
+        if (cloudRes.state?.inventoryStockMap) setInventoryStockMap(cloudRes.state.inventoryStockMap);
+        if (cloudRes.state?.oosList) setOosList(cloudRes.state.oosList);
+        triggerToast(`⛔ ${cloudRes.error || "Selected item is out of stock!"}`);
+      } else {
+        triggerToast(`⚠️ ${cloudRes.error || "Could not place order right now."}`);
+      }
+      setPlacingOrder(false);
+      return;
+    }
+
+    if (cloudRes?.state?.inventoryStockMap) setInventoryStockMap(cloudRes.state.inventoryStockMap);
+    if (cloudRes?.state?.oosList) setOosList(cloudRes.state.oosList);
+
+    // 2. Also update local live cache (< 10ms)
+    saveLiveOrder(createdOrder, { skipCloud: true });
     try {
       localStorage.setItem("auditx_customer_last_order", JSON.stringify(createdOrder));
       const prevPast = JSON.parse(localStorage.getItem("auditx_customer_past_orders") || "[]");
@@ -1119,7 +1253,7 @@ export default function OrderingAppPage() {
     setDismissDeliveryBar(false);
     playNotificationChime();
 
-    // 2. Update wallet locally
+    // 3. Update wallet locally
     if (selectedPaymentMethod === "wallet") {
       const updated = {
         ...customer,
@@ -1137,10 +1271,11 @@ export default function OrderingAppPage() {
     setCustomFloatingTitle("Order Placed • Arriving in 10 minutes");
     setCustomFloatingSub("Assigned to OD Picker: Thrupthi K S (Warehouse Staging)");
     setCustomFloatingBadge("");
+    setPlacingOrder(false);
 
     triggerToast(`Order #${orderId} Placed! Arriving in 10 minutes!`);
 
-    // 3. Clear cart and trigger premium OrderPlacedSheet celebration overlay
+    // 4. Clear cart and trigger premium OrderPlacedSheet celebration overlay
     const currentItemCount = totalItems;
     const currentTotal = grandTotal;
     setCart({});
@@ -1184,6 +1319,28 @@ export default function OrderingAppPage() {
       default:
         return <IconBellOff size={16} color={col} />;
     }
+  }
+
+  if (!authChecked) {
+    return <div style={{ minHeight: "100dvh", background: "#080C14" }} />;
+  }
+
+  if (capacityBlockedMsg) {
+    return (
+      <div style={S.pageWrapper}>
+        <div style={{ ...S.mobileShell, justifyContent: "center", alignItems: "center", padding: 24, textAlign: "center" }}>
+          <div style={{ background: "#ffffff", borderRadius: 20, padding: 26, border: "1.5px solid #fecaca", maxWidth: 360 }}>
+            <div style={{ fontSize: 42, marginBottom: 10 }}>🚫</div>
+            <h2 style={{ margin: "0 0 8px", fontSize: 18, fontWeight: 900, color: "#b91c1c" }}>
+              Daily Capacity Full (400 / 400 Devices)
+            </h2>
+            <p style={{ margin: 0, fontSize: 13, color: "#475569", lineHeight: 1.5 }}>
+              {capacityBlockedMsg}
+            </p>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -2013,17 +2170,17 @@ export default function OrderingAppPage() {
                     </h2>
                     {selectedCategory === "Chocolates" && (
                       <p style={{ margin: "2px 0 0", fontSize: "0.78rem", color: "#0c831f", fontWeight: 700 }}>
-                        🍫 Dark Store Warehouse Special: All 24 chocolate varieties in stock!
+                        🍫 Dark Store Warehouse Special: {effectiveCatalog.filter((c) => c.category === "Chocolates").length} chocolate varieties tracked live!
                       </p>
                     )}
                     {selectedCategory === "Frames" && (
                       <p style={{ margin: "2px 0 0", fontSize: "0.78rem", color: "#6366f1", fontWeight: 700 }}>
-                        🖼️ Dark Store Warehouse Special: 35 Art & Heritage Glass Frames!
+                        🖼️ Dark Store Warehouse Special: {effectiveCatalog.filter((c) => c.category === "Frames").length} Art &amp; Heritage Glass Frames!
                       </p>
                     )}
                   </div>
                   <span style={S.catalogItemCount}>
-                    {filteredCatalog.length} available items
+                    {filteredCatalog.length} items
                   </span>
                 </div>
 
@@ -2031,8 +2188,10 @@ export default function OrderingAppPage() {
                 <div style={S.productGrid}>
                   {filteredCatalog.map((item) => {
                     const qty = cart[item.sku] || 0;
+                    const availableUnits = getAvailableUnits(item);
                     const isSoldOut = item.soldOut === true || item.inStock === false || (item.name && item.name.toLowerCase().includes("pup"));
-                    const isOos = oosList.includes(item.sku) || isSoldOut;
+                    const isAutoOos = availableUnits <= 0;
+                    const isOos = oosList.includes(item.sku) || isSoldOut || isAutoOos;
                     const isChoc = item.category === "Chocolates";
                     const isFrame = item.category === "Frames";
 
@@ -2042,7 +2201,7 @@ export default function OrderingAppPage() {
                         style={{
                           ...S.productCard,
                           opacity: isSoldOut ? 0.72 : isOos ? 0.65 : 1,
-                          ...(isSoldOut ? { border: "1.5px solid #fca5a5" } : {}),
+                          ...(isOos ? { border: "1.5px solid #fca5a5" } : {}),
                           ...(item.comingSoon ? { borderColor: "#fde68a" } : {}),
                         }}
                       >
@@ -2060,7 +2219,7 @@ export default function OrderingAppPage() {
                             }}
                             style={{
                               ...S.productImg,
-                              ...(isSoldOut ? { filter: "grayscale(25%)" } : {}),
+                              ...(isOos ? { filter: "grayscale(35%)" } : {}),
                             }}
                           />
                           {isSoldOut ? (
@@ -2118,7 +2277,7 @@ export default function OrderingAppPage() {
                               gap: 3,
                               boxShadow: "0 2px 4px rgba(12,131,31,0.3)"
                             }}>
-                              <span>₹1 WAREHOUSE</span>
+                              <span>{item.isCustomPutaway ? `₹${item.price} NEW` : `₹${item.price} WAREHOUSE`}</span>
                             </div>
                           ) : isFrame ? (
                             <div style={{
@@ -2136,7 +2295,7 @@ export default function OrderingAppPage() {
                               gap: 3,
                               boxShadow: "0 2px 4px rgba(0,0,0,0.3)"
                             }}>
-                              <span>🖼️ IN WAREHOUSE</span>
+                              <span>{item.isCustomPutaway ? "🖼️ NEW PUTAWAY" : "🖼️ IN WAREHOUSE"}</span>
                             </div>
                           ) : (
                             <div style={S.etaBadgeOverlay}>
@@ -2155,7 +2314,9 @@ export default function OrderingAppPage() {
                         <div style={S.productDetailsCol}>
 
                           <h3 style={S.productName}>{item.name}</h3>
-                          <div style={S.productWeight}>{item.weight}</div>
+                          <div style={S.productWeight}>
+                            {item.weight} • <b style={{ color: availableUnits <= 0 ? "#dc2626" : "#0c831f" }}>{availableUnits} left</b>
+                          </div>
 
                           <div style={S.productActionRow}>
                             <div>
@@ -2512,16 +2673,16 @@ export default function OrderingAppPage() {
                 {
                   name: "Chocolates",
                   tag: "In Warehouse",
-                  desc: "Beatss, Melody, Kopiko, Boomer, Eclairs, Candyman & 24 varieties in warehouse",
-                  count: "24 items",
+                  desc: "Beatss, Melody, Kopiko, Boomer, Eclairs, Candyman & more varieties in warehouse",
+                  count: `${effectiveCatalog.filter((c) => c.category === "Chocolates").length} items`,
                   bg: "#FEF3C7",
                   accent: "#92400E",
                 },
                 {
                   name: "Frames",
                   tag: "In Warehouse",
-                  desc: "Kantara, D Boss, Yash KGF, Mahadev, Coding, Anime & 35 A4 Glass Frames",
-                  count: "35 items",
+                  desc: "Kantara, D Boss, Yash KGF, Mahadev, Coding, Anime & A4 Glass Frames",
+                  count: `${effectiveCatalog.filter((c) => c.category === "Frames").length} items`,
                   bg: "#EDE9FE",
                   accent: "#6B21A8",
                 },
@@ -4052,8 +4213,7 @@ export default function OrderingAppPage() {
                   setCustomer(null);
                   setShowProfileModal(false);
                   triggerToast("Logged out successfully.");
-                  setLoginStep("phone");
-                  setShowLoginModal(true);
+                  router.replace("/ordering/login");
                 }}
               >
                 <span>Log Out</span>

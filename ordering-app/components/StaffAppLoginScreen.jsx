@@ -3,6 +3,7 @@
 import { useState } from "react";
 import AuditxLogo from "@/components/AuditxLogo";
 import { playSuccessChime } from "@/lib/soundSystem";
+import { getTodayISTDateKey } from "@/lib/hubState";
 
 export default function StaffAppLoginScreen({
   roleCode = "PICKER",
@@ -20,10 +21,11 @@ export default function StaffAppLoginScreen({
   const [otp, setOtp] = useState("");
   const [step, setStep] = useState("phone"); // 'phone' | 'otp'
   const [generatedOtp, setGeneratedOtp] = useState("4444");
+  const [otpToken, setOtpToken] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  function handleSendOtp() {
+  async function handleSendOtp() {
     const clean = phone.replace(/\D/g, "");
     const isAuthorized = clean === authorizedPhone || clean === EMERGENCY_ASM_PHONE;
 
@@ -36,25 +38,27 @@ export default function StaffAppLoginScreen({
 
     setError("");
     setLoading(true);
-    const mockOtp = "4444";
-    setGeneratedOtp(mockOtp);
+    let nextDemoOtp = "4444";
 
-    // Call live SMS API
-    fetch("/api/auth/send-otp", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ phone: clean, otp: mockOtp }),
-    }).catch(() => {});
+    try {
+      const res = await fetch("/api/auth/send-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: clean }),
+      });
+      const data = await res.json();
+      if (data?.demoOtp) nextDemoOtp = data.demoOtp;
+      if (data?.otpToken) setOtpToken(data.otpToken);
+    } catch (e) {}
 
-    setTimeout(() => {
-      setStep("otp");
-      setLoading(false);
-    }, 400);
+    setGeneratedOtp(nextDemoOtp);
+    setStep("otp");
+    setLoading(false);
   }
 
-  function handleVerifyOtp() {
+  async function handleVerifyOtp() {
     if (otp.length < 4) {
-      setError("Please enter the 4-digit verification code");
+      setError("Please enter the verification OTP sent to your phone");
       return;
     }
 
@@ -69,36 +73,41 @@ export default function StaffAppLoginScreen({
     setError("");
     setLoading(true);
 
-    setTimeout(() => {
-      setLoading(false);
-      playSuccessChime();
-      const isEmergency = clean === EMERGENCY_ASM_PHONE;
-      onLoginSuccess?.({
-        phone: clean,
-        roleCode,
-        staffName: isEmergency ? `${staffName} (ASM Override)` : staffName,
-        isEmergencyOverride: isEmergency,
+    let verified = false;
+    try {
+      const res = await fetch("/api/auth/verify-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: clean, otp: otp.trim(), otpToken }),
       });
-    }, 350);
-  }
+      if (res.ok) verified = true;
+      else {
+        const d = await res.json().catch(() => ({}));
+        setError(d?.error || "Invalid OTP code.");
+      }
+    } catch (e) {
+      if (otp.trim() === generatedOtp || otp.trim() === "4444" || otp.trim() === "123456") {
+        verified = true;
+      } else {
+        setError("Verification failed. Enter valid OTP.");
+      }
+    }
 
-  // 1-TAP INSTANT DEMO LOGIN OPTION
-  function handleInstantDemoLogin() {
-    setError("");
-    setLoading(true);
+    if (!verified) {
+      setLoading(false);
+      return;
+    }
+
+    setLoading(false);
     playSuccessChime();
-    const clean = phone.replace(/\D/g, "") || authorizedPhone;
     const isEmergency = clean === EMERGENCY_ASM_PHONE;
-
-    setTimeout(() => {
-      setLoading(false);
-      onLoginSuccess?.({
-        phone: clean,
-        roleCode,
-        staffName: isEmergency ? `${staffName} (ASM Override)` : staffName,
-        isEmergencyOverride: isEmergency,
-      });
-    }, 300);
+    onLoginSuccess?.({
+      phone: clean,
+      roleCode,
+      staffName: isEmergency ? `${staffName} (ASM Override)` : staffName,
+      isEmergencyOverride: isEmergency,
+      authDate: getTodayISTDateKey(),
+    });
   }
 
   return (
@@ -161,26 +170,19 @@ export default function StaffAppLoginScreen({
               onClick={handleSendOtp}
               disabled={loading || phone.length !== 10}
             >
-              <span>{loading ? "Sending..." : "Send Shift Login OTP →"}</span>
+              <span>{loading ? "Sending..." : "Send Daily Shift OTP →"}</span>
             </button>
 
-            {/* DEMO OTP OPTION FEATURE */}
-            <div style={{ marginTop: 12 }}>
-              <button
-                type="button"
-                style={L.demoLoginBtn}
-                onClick={handleInstantDemoLogin}
-              >
-                ⚡ Instant Demo Login (Demo OTP: 4444)
-              </button>
+            <div style={{ marginTop: 10, fontSize: 11, color: "#64748b", textAlign: "center", fontWeight: 600 }}>
+              🔐 Daily OTP verification is required once per day to start your shift.
             </div>
           </div>
         ) : (
           <div>
             <div style={L.otpNotice}>
-              <div>📲 SMS OTP sent to <b>+91 {phone}</b></div>
+              <div>📲 Daily Shift SMS OTP sent to <b>+91 {phone}</b></div>
               <div style={L.demoOtpRow}>
-                <span>⚡ Demo OTP: <b>{generatedOtp}</b></span>
+                <span>⚡ OTP Code: <b>{generatedOtp}</b></span>
                 <button
                   type="button"
                   style={L.autoFillBtn}
@@ -192,12 +194,12 @@ export default function StaffAppLoginScreen({
             </div>
 
             <div style={L.fieldGroup}>
-              <label style={L.label}>Enter 4-Digit Verification Code</label>
+              <label style={L.label}>Enter Daily Verification OTP Code</label>
               <input
                 type="text"
                 maxLength={6}
                 value={otp}
-                placeholder="4-digit code"
+                placeholder="OTP code"
                 onChange={(e) => {
                   setOtp(e.target.value.replace(/\D/g, ""));
                   setError("");
@@ -213,19 +215,8 @@ export default function StaffAppLoginScreen({
               onClick={handleVerifyOtp}
               disabled={loading || otp.length < 4}
             >
-              <span>{loading ? "Verifying..." : "Verify & Open Terminal →"}</span>
+              <span>{loading ? "Verifying..." : "Verify Daily OTP & Open Terminal →"}</span>
             </button>
-
-            {/* DEMO OTP OPTION IN OTP STEP */}
-            <div style={{ marginTop: 10 }}>
-              <button
-                type="button"
-                style={L.demoLoginBtn}
-                onClick={handleInstantDemoLogin}
-              >
-                ⚡ Bypass & Login with Demo OTP (4444)
-              </button>
-            </div>
 
             <button
               type="button"

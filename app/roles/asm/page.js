@@ -7,7 +7,14 @@ import { db } from "@/lib/firebaseClient";
 import { CATALOG } from "@/lib/items";
 import SharedScanner from "@/components/SharedScanner";
 import { playNotificationChime, playSuccessChime, playScanSuccess } from "@/lib/soundSystem";
-import { subscribeToEvents, broadcastEvent } from "@/lib/realtimeSync";
+import {
+  subscribeToEvents,
+  broadcastEvent,
+  subscribeToCloudHub,
+  dispatchCloudAction,
+  getCachedCloudHubState,
+} from "@/lib/realtimeSync";
+import { mergeCatalogItems, getDefaultItemStock } from "@/lib/hubState";
 import AuditxLogo from "@/components/AuditxLogo";
 import LiveOrderPipeline from "@/components/LiveOrderPipeline";
 
@@ -16,7 +23,7 @@ const ASM_OFFICIAL_CATALOG = CATALOG.filter(
   (item) => item.category === "Frames" || item.category === "Chocolates"
 ).map((item) => ({
   ...item,
-  units: item.category === "Frames" ? 1 : 5,
+  units: getDefaultItemStock(item),
   unitSpecification: item.category === "Frames" ? "1 unit single" : "5 units fixed",
   weight: item.category === "Frames" ? "1 unit" : "5 units",
 }));
@@ -33,9 +40,22 @@ export default function AssistantStoreManagerApp({ embedded = false }) {
 
   const [activeTab, setActiveTab] = useState("itemHelp"); // itemHelp | soloAudit | putawayBay
   const [catalogItems, setCatalogItems] = useState(ASM_OFFICIAL_CATALOG);
+  const [inventoryStockMap, setInventoryStockMap] = useState({});
+  const [customCatalogItems, setCustomCatalogItems] = useState([]);
+  const [oosList, setOosList] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedItem, setSelectedItem] = useState(ASM_OFFICIAL_CATALOG[0]);
   const [actionSuccess, setActionSuccess] = useState("");
+
+  // Putaway (Dump New Item) Form State
+  const [putawayName, setPutawayName] = useState("");
+  const [putawayCategory, setPutawayCategory] = useState("Chocolates");
+  const [putawayPrice, setPutawayPrice] = useState("");
+  const [putawayMrp, setPutawayMrp] = useState("");
+  const [putawayUnits, setPutawayUnits] = useState("5");
+  const [putawayAisle, setPutawayAisle] = useState("C1 - NEW - 001");
+  const [putawayImage, setPutawayImage] = useState("");
+  const [putawayUploading, setPutawayUploading] = useState(false);
 
   // Solo Inventory Audit states (Dedicated alone to ASM Deepu B)
   const [auditSku, setAuditSku] = useState(ASM_OFFICIAL_CATALOG[0]);
@@ -55,25 +75,58 @@ export default function AssistantStoreManagerApp({ embedded = false }) {
     },
   ]);
 
-  // Sync out-of-stock state from localStorage & BroadcastChannel
+  // Sync live catalog, stock units, Putaway items & OOS across SM Dashboard, ASM & Ordering App
   useEffect(() => {
-    function loadOos() {
-      const rawOos = localStorage.getItem("auditx_oos_items");
-      if (rawOos) {
-        try {
-          const oosList = JSON.parse(rawOos);
-          setCatalogItems((prev) =>
-            prev.map((item) => ({
-              ...item,
-              inStock: !oosList.includes(item.sku),
-            }))
-          );
-        } catch (e) {
-          console.warn(e);
-        }
+    function applyStateSnapshot(invMap = {}, oosArr = [], customArr = []) {
+      setInventoryStockMap(invMap);
+      setOosList(oosArr);
+      setCustomCatalogItems(customArr);
+      const merged = mergeCatalogItems(ASM_OFFICIAL_CATALOG, customArr).map((item) => {
+        const liveUnits =
+          invMap[item.sku] !== undefined ? Number(invMap[item.sku]) : getDefaultItemStock(item);
+        const avail = liveUnits > 0 && !oosArr.includes(item.sku) && !item.soldOut;
+        return {
+          ...item,
+          units: liveUnits,
+          inStock: avail,
+        };
+      });
+      setCatalogItems(merged);
+      setAuditSku((prev) => merged.find((m) => m.sku === prev?.sku) || merged[0]);
+    }
+
+    function loadLocal() {
+      const cached = getCachedCloudHubState();
+      if (cached) {
+        applyStateSnapshot(
+          cached.inventoryStockMap || {},
+          cached.oosList || [],
+          cached.customCatalogItems || []
+        );
+        return;
+      }
+      try {
+        const rawOos = localStorage.getItem("auditx_oos_items");
+        const rawInv = localStorage.getItem("auditx_inventory_units");
+        const rawCustom = localStorage.getItem("auditx_custom_catalog");
+        applyStateSnapshot(
+          rawInv ? JSON.parse(rawInv) : {},
+          rawOos ? JSON.parse(rawOos) : [],
+          rawCustom ? JSON.parse(rawCustom) : []
+        );
+      } catch (e) {
+        console.warn(e);
       }
     }
-    loadOos();
+    loadLocal();
+
+    const unsubCloud = subscribeToCloudHub((cloudState) => {
+      applyStateSnapshot(
+        cloudState.inventoryStockMap || {},
+        cloudState.oosList || [],
+        cloudState.customCatalogItems || []
+      );
+    }, 1800);
 
     const unsubBus = subscribeToEvents((data) => {
       if (data.type === "ITEM_STOCK_TOGGLED" && data.payload) {
@@ -84,32 +137,38 @@ export default function AssistantStoreManagerApp({ embedded = false }) {
       }
     });
 
-    return () => unsubBus();
+    return () => {
+      unsubCloud();
+      unsubBus();
+    };
   }, []);
 
-  function handleToggleStockStatus(sku, currentInStock) {
+  async function handleToggleStockStatus(sku, currentInStock) {
     const nextStatus = !currentInStock;
     const item = catalogItems.find((c) => c.sku === sku);
+    const optimisticUnits =
+      nextStatus && (inventoryStockMap[sku] ?? item?.units ?? 0) <= 0
+        ? getDefaultItemStock(item) || 1
+        : inventoryStockMap[sku] ?? item?.units ?? 0;
 
     setCatalogItems((prev) =>
-      prev.map((it) => (it.sku === sku ? { ...it, inStock: nextStatus } : it))
+      prev.map((it) =>
+        it.sku === sku ? { ...it, inStock: nextStatus, units: optimisticUnits } : it
+      )
     );
 
-    // Save OOS list to localStorage for sync
-    try {
-      const raw = localStorage.getItem("auditx_oos_items");
-      let list = raw ? JSON.parse(raw) : [];
-      if (!nextStatus) {
-        if (!list.includes(sku)) list.push(sku);
-      } else {
-        list = list.filter((s) => s !== sku);
-      }
-      localStorage.setItem("auditx_oos_items", JSON.stringify(list));
-    } catch (e) {
-      console.warn(e);
+    const res = await dispatchCloudAction("TOGGLE_OOS", {
+      sku,
+      inStock: nextStatus,
+      updatedBy: "Deepu B (ASM)",
+    });
+
+    if (res?.ok && res.state) {
+      setInventoryStockMap(res.state.inventoryStockMap || {});
+      setOosList(res.state.oosList || []);
     }
 
-    // Broadcast to Customer Ordering App and SM Dashboard
+    // Broadcast locally as well
     broadcastEvent("ITEM_STOCK_TOGGLED", {
       sku,
       name: item?.name,
@@ -120,12 +179,109 @@ export default function AssistantStoreManagerApp({ embedded = false }) {
 
     if (!nextStatus) {
       playNotificationChime();
-      setActionSuccess(`🚨 Marked "${item?.name}" as NOT AVAILABLE! Immediately synced to Customer Ordering App.`);
+      setActionSuccess(
+        `🚨 Marked "${item?.name}" as NOT AVAILABLE! Immediately synced to Ordering App & SM Dashboard.`
+      );
     } else {
       playSuccessChime();
-      setActionSuccess(`🟢 Marked "${item?.name}" as IN STOCK. Customers can order again.`);
+      setActionSuccess(
+        `🟢 Marked "${item?.name}" as IN STOCK (${optimisticUnits} units). Customers can order again.`
+      );
     }
     setTimeout(() => setActionSuccess(""), 3500);
+  }
+
+  async function handleRestockUnit(sku, delta = 1) {
+    const res = await dispatchCloudAction("UPDATE_STOCK_UNIT", { sku, delta });
+    if (res?.ok && res.state) {
+      setInventoryStockMap(res.state.inventoryStockMap || {});
+      setOosList(res.state.oosList || []);
+      const newQty = res.state.inventoryStockMap?.[sku] ?? 0;
+      playScanSuccess();
+      setActionSuccess(`📦 Updated stock units to ${newQty} — synced live across Ordering, ASM & SM!`);
+      setTimeout(() => setActionSuccess(""), 3000);
+    }
+  }
+
+  function handlePutawayImageUpload(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const maxSide = 420;
+        let { width, height } = img;
+        if (width > height && width > maxSide) {
+          height = Math.round((height * maxSide) / width);
+          width = maxSide;
+        } else if (height > maxSide) {
+          width = Math.round((width * maxSide) / height);
+          height = maxSide;
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, width);
+        canvas.height = Math.max(1, height);
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        const dataUrl = canvas.toDataURL("image/jpeg", 0.74);
+        setPutawayImage(dataUrl);
+      };
+      img.src = String(reader.result || "");
+    };
+    reader.readAsDataURL(file);
+  }
+
+  async function handlePutawaySubmit(e) {
+    e.preventDefault();
+    if (!putawayName.trim() || !Number(putawayPrice)) {
+      alert("Please enter valid Item Name and Selling Price.");
+      return;
+    }
+    setPutawayUploading(true);
+    const parsedUnits = Math.max(1, parseInt(putawayUnits, 10) || (putawayCategory === "Frames" ? 1 : 5));
+    const parsedPrice = Math.max(1, Number(putawayPrice));
+    const parsedMrp = Math.max(parsedPrice, Number(putawayMrp) || parsedPrice);
+
+    const res = await dispatchCloudAction("PUTAWAY_ADD_ITEM", {
+      item: {
+        name: putawayName.trim(),
+        category: putawayCategory,
+        price: parsedPrice,
+        mrp: parsedMrp,
+        units: parsedUnits,
+        aisle:
+          putawayAisle.trim() ||
+          (putawayCategory === "Frames" ? "F1 - NEW - 001" : "C1 - NEW - 001"),
+        image: putawayImage,
+        addedBy: "Deepu B (ASM)",
+      },
+    });
+    setPutawayUploading(false);
+
+    if (res?.ok) {
+      playSuccessChime();
+      setActionSuccess(
+        `📥 Putaway Complete! "${putawayName.trim()}" (${parsedUnits} units @ ₹${parsedPrice}) dumped live to Ordering App & Dashboards!`
+      );
+      setPutawayName("");
+      setPutawayPrice("");
+      setPutawayMrp("");
+      setPutawayUnits(putawayCategory === "Frames" ? "1" : "5");
+      setPutawayImage("");
+      setTimeout(() => setActionSuccess(""), 4500);
+    } else {
+      alert(res?.error || "Failed to dump item. Please try again.");
+    }
+  }
+
+  async function handleRemovePutawayItem(sku, name) {
+    const res = await dispatchCloudAction("PUTAWAY_REMOVE_ITEM", { sku });
+    if (res?.ok) {
+      playNotificationChime();
+      setActionSuccess(`🗑️ Removed custom Putaway item "${name}".`);
+      setTimeout(() => setActionSuccess(""), 3000);
+    }
   }
 
   function handleScanForAudit(code) {
@@ -135,8 +291,11 @@ export default function AssistantStoreManagerApp({ embedded = false }) {
     ) || catalogItems[0];
     if (found) {
       setAuditSku(found);
-      const defaultUnits = found.category === "Frames" ? 1 : 5;
-      setPhysicalCountInput(defaultUnits);
+      const currentUnits =
+        inventoryStockMap[found.sku] !== undefined
+          ? Number(inventoryStockMap[found.sku])
+          : getDefaultItemStock(found);
+      setPhysicalCountInput(currentUnits);
       setActionSuccess(`✅ Barcode Scanned: ${found.name} at Aisle ${found.aisle}`);
       setTimeout(() => setActionSuccess(""), 3000);
     }
@@ -144,7 +303,10 @@ export default function AssistantStoreManagerApp({ embedded = false }) {
 
   function handleSubmitSoloAudit(e) {
     e.preventDefault();
-    const systemQty = auditSku.category === "Frames" ? 1 : 5;
+    const systemQty =
+      inventoryStockMap[auditSku.sku] !== undefined
+        ? Number(inventoryStockMap[auditSku.sku])
+        : getDefaultItemStock(auditSku);
     const physicalQty = parseInt(physicalCountInput) || 0;
     const variance = physicalQty - systemQty;
 
@@ -249,7 +411,13 @@ export default function AssistantStoreManagerApp({ embedded = false }) {
           style={{ ...S.tabBtn, ...(activeTab === "itemHelp" ? S.tabBtnActive : {}) }}
           onClick={() => setActiveTab("itemHelp")}
         >
-          🔍 Item Missing / Visibility Help
+          🔍 Item Missing / Availability ({catalogItems.filter((c) => !c.inStock).length} OOS)
+        </button>
+        <button
+          style={{ ...S.tabBtn, ...(activeTab === "putawayBay" ? S.tabBtnActive : {}) }}
+          onClick={() => setActiveTab("putawayBay")}
+        >
+          📥 Putaway &amp; Dump New Item ({customCatalogItems.length})
         </button>
         <button
           style={{ ...S.tabBtn, ...(activeTab === "soloAudit" ? S.tabBtnActive : {}) }}
@@ -260,6 +428,239 @@ export default function AssistantStoreManagerApp({ embedded = false }) {
       </div>
 
       <main style={S.main}>
+        {/* MODULE 3: PUTAWAY / DUMP NEW ITEMS WITH IMAGE UPLOAD */}
+        {activeTab === "putawayBay" && (
+          <div>
+            <div style={S.panelHeader}>
+              <div>
+                <h2 style={S.panelTitle}>📥 ASM Putaway Desk — Dump New Item to Dark Store</h2>
+                <p style={S.panelSub}>
+                  Add new Chocolates or Wall Frames with item name, price, initial units, and photo. Dumped items appear <b>live immediately</b> on Customer Ordering App, ASM &amp; SM Dashboard across all devices.
+                </p>
+              </div>
+              <div style={S.auditorBadge}>
+                👤 Putaway Operator: <b>Deepu B (ASM)</b>
+              </div>
+            </div>
+
+            <div style={S.auditFormCard}>
+              <form onSubmit={handlePutawaySubmit}>
+                <div style={S.formGrid}>
+                  <div>
+                    <label style={S.label}>Item Name *</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. Lindt Excellence Dark Chocolate 100g"
+                      value={putawayName}
+                      onChange={(e) => setPutawayName(e.target.value)}
+                      style={S.input}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={S.label}>Category *</label>
+                    <select
+                      value={putawayCategory}
+                      onChange={(e) => {
+                        const cat = e.target.value;
+                        setPutawayCategory(cat);
+                        setPutawayUnits(cat === "Frames" ? "1" : "5");
+                        setPutawayAisle(cat === "Frames" ? "F1 - NEW - 001" : "C1 - NEW - 001");
+                      }}
+                      style={S.select}
+                    >
+                      <option value="Chocolates">🍫 Chocolates</option>
+                      <option value="Frames">🖼️ Frames</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label style={S.label}>Selling Price (₹) *</label>
+                    <input
+                      type="number"
+                      min="1"
+                      required
+                      placeholder="e.g. 249"
+                      value={putawayPrice}
+                      onChange={(e) => setPutawayPrice(e.target.value)}
+                      style={S.input}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={S.label}>MRP (₹) (Optional)</label>
+                    <input
+                      type="number"
+                      min="1"
+                      placeholder="e.g. 299"
+                      value={putawayMrp}
+                      onChange={(e) => setPutawayMrp(e.target.value)}
+                      style={S.input}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={S.label}>Putaway Stock Units *</label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="200"
+                      required
+                      value={putawayUnits}
+                      onChange={(e) => setPutawayUnits(e.target.value)}
+                      style={S.input}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={S.label}>Shelf Aisle Location</label>
+                    <input
+                      type="text"
+                      value={putawayAisle}
+                      onChange={(e) => setPutawayAisle(e.target.value)}
+                      style={S.input}
+                    />
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    marginTop: 16,
+                    padding: 14,
+                    borderRadius: 10,
+                    background: "#F8FAFC",
+                    border: "1px dashed #94A3B8",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 16,
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <div
+                    style={{
+                      width: 84,
+                      height: 84,
+                      borderRadius: 10,
+                      background: "#FFFFFF",
+                      border: "1px solid #CBD5E1",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      overflow: "hidden",
+                      flexShrink: 0,
+                    }}
+                  >
+                    <img
+                      src={
+                        putawayImage ||
+                        (putawayCategory === "Frames"
+                          ? "/frames/programming-stickers.jpg"
+                          : "/choclates/beatss.jpg")
+                      }
+                      alt="Putaway preview"
+                      style={{ width: "100%", height: "100%", objectFit: "contain", padding: 4 }}
+                    />
+                  </div>
+                  <div style={{ flex: 1, minWidth: 220 }}>
+                    <label style={S.label}>Upload Item Photo (Camera or Gallery)</label>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handlePutawayImageUpload}
+                      style={{ fontSize: 13, color: "#0F172A" }}
+                    />
+                    <div style={{ fontSize: 11, color: "#64748B", marginTop: 4 }}>
+                      Image auto-compresses for instant cloud sync across all phones &amp; store terminals.
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={putawayUploading}
+                  style={{
+                    ...S.submitAuditBtn,
+                    opacity: putawayUploading ? 0.65 : 1,
+                  }}
+                >
+                  {putawayUploading
+                    ? "⏳ Dumping Item to Dark Store Cloud..."
+                    : "📥 Dump Item Live to Ordering App & Dashboards"}
+                </button>
+              </form>
+            </div>
+
+            {customCatalogItems.length > 0 && (
+              <div style={{ marginTop: 22 }}>
+                <h3 style={S.recentAuditsTitle}>
+                  📦 Live Putaway Items Dumped by ASM ({customCatalogItems.length})
+                </h3>
+                <div style={S.itemsGrid}>
+                  {customCatalogItems.map((cItem) => {
+                    const liveQty =
+                      inventoryStockMap[cItem.sku] !== undefined
+                        ? Number(inventoryStockMap[cItem.sku])
+                        : Number(cItem.units || 0);
+                    const avail = liveQty > 0 && !oosList.includes(cItem.sku);
+                    return (
+                      <div
+                        key={cItem.sku}
+                        style={{
+                          ...S.itemCard,
+                          borderColor: avail ? "#86EFAC" : "#FCA5A5",
+                          background: avail ? "#FFFFFF" : "#FEF2F2",
+                        }}
+                      >
+                        <div style={S.itemCardTop}>
+                          <span style={S.aislePill}>📍 {cItem.aisle}</span>
+                          <span
+                            style={{
+                              ...S.stockPill,
+                              background: avail ? "#065f46" : "#7f1d1d",
+                              color: avail ? "#6ee7b7" : "#fca5a5",
+                            }}
+                          >
+                            {avail ? `${liveQty} UNITS LEFT` : "OUT OF STOCK (0)"}
+                          </span>
+                        </div>
+                        <div style={{ height: 120, display: "flex", alignItems: "center", justifyContent: "center", background: "#f8fafc", borderRadius: 8, marginBottom: 8 }}>
+                          <img
+                            src={cItem.image || (cItem.category === "Frames" ? "/frames/programming-stickers.jpg" : "/choclates/beatss.jpg")}
+                            alt={cItem.name}
+                            style={{ maxHeight: "100%", maxWidth: "100%", objectFit: "contain" }}
+                          />
+                        </div>
+                        <div style={S.itemName}>{cItem.name}</div>
+                        <div style={S.itemCategory}>
+                          {cItem.category} • <b>₹{cItem.price}</b>{" "}
+                          {cItem.mrp > cItem.price && <span style={{ textDecoration: "line-through" }}>₹{cItem.mrp}</span>}
+                        </div>
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <button
+                            type="button"
+                            onClick={() => handleRestockUnit(cItem.sku, 1)}
+                            style={{ ...S.stockToggleBtn, background: "#0C831F", flex: 1 }}
+                          >
+                            +1 Unit
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleRemovePutawayItem(cItem.sku, cItem.name)}
+                            style={{ ...S.stockToggleBtn, background: "#ef4444", flex: 1 }}
+                          >
+                            🗑️ Remove
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* MODULE 1: ITEM NOT FOUND / VISIBILITY HELP & OUT OF STOCK MARKER */}
         {activeTab === "itemHelp" && (
           <div>
@@ -359,20 +760,47 @@ export default function AssistantStoreManagerApp({ embedded = false }) {
                       )}
                     </div>
 
-                    <div style={S.itemName}>{item.name}</div>
+                    <div style={S.itemName}>
+                      {item.name}
+                      {item.isCustomPutaway && (
+                        <span style={{ marginLeft: 6, fontSize: 10, background: "#DBEAFE", color: "#1D4ED8", padding: "2px 6px", borderRadius: 4, fontWeight: 800 }}>
+                          PUTAWAY
+                        </span>
+                      )}
+                    </div>
                     <div style={S.itemCategory}>
-                      {item.category} • ₹{item.price} • <b style={{ color: item.category === "Frames" ? "#2563eb" : "#0c831f" }}>{item.category === "Frames" ? "🖼️ 1 Unit Single" : "🍫 5 Units Fixed"}</b>
+                      {item.category} • ₹{item.price} •{" "}
+                      <b style={{ color: Number(item.units || 0) <= 0 ? "#dc2626" : item.category === "Frames" ? "#2563eb" : "#0c831f" }}>
+                        {Number(item.units || 0) <= 0
+                          ? "🚫 0 Units Left (Auto OOS)"
+                          : `📦 ${item.units} Unit(s) In Shelf`}
+                      </b>
                     </div>
 
-                    <div style={S.itemCardBottom}>
+                    <div style={{ ...S.itemCardBottom, display: "flex", gap: 8 }}>
                       <button
                         style={{
                           ...S.stockToggleBtn,
                           background: inStock ? "#ef4444" : "#10b981",
+                          flex: 1,
                         }}
                         onClick={() => handleToggleStockStatus(item.sku, inStock)}
                       >
-                        {inStock ? "🚨 Mark Item Not Found / Out of Stock" : "🟢 Mark Back In Stock"}
+                        {inStock ? "🚨 Mark OOS" : "🟢 Back In Stock"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleRestockUnit(item.sku, 1)}
+                        style={{
+                          ...S.stockToggleBtn,
+                          background: "#0284c7",
+                          width: "auto",
+                          padding: "8px 10px",
+                          flexShrink: 0,
+                        }}
+                        title="Add +1 Putaway unit"
+                      >
+                        +1 Unit
                       </button>
                     </div>
                   </div>
@@ -461,7 +889,11 @@ export default function AssistantStoreManagerApp({ embedded = false }) {
                         const it = catalogItems.find((c) => c.sku === e.target.value);
                         if (it) {
                           setAuditSku(it);
-                          setPhysicalCountInput(it.category === "Frames" ? 1 : 5);
+                          const liveQty =
+                            inventoryStockMap[it.sku] !== undefined
+                              ? Number(inventoryStockMap[it.sku])
+                              : getDefaultItemStock(it);
+                          setPhysicalCountInput(liveQty);
                         }
                       }}
                       style={S.select}
@@ -483,7 +915,11 @@ export default function AssistantStoreManagerApp({ embedded = false }) {
                     <label style={S.label}>System Ledger Quantity:</label>
                     <input
                       type="text"
-                      value={`${auditSku.category === "Frames" ? "1 unit single" : "5 units fixed"} (System Ledger)`}
+                      value={`${
+                        inventoryStockMap[auditSku.sku] !== undefined
+                          ? Number(inventoryStockMap[auditSku.sku])
+                          : getDefaultItemStock(auditSku)
+                      } unit(s) (Live System Ledger)`}
                       disabled
                       style={S.inputDisabled}
                     />

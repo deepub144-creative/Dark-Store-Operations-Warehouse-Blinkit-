@@ -15,9 +15,21 @@ import {
   updateLiveOrder,
   broadcastEvent,
   clearAllLiveOrders,
+  subscribeToCloudHub,
+  dispatchCloudAction,
+  getCachedCloudHubState,
 } from "@/lib/realtimeSync";
 import { STAFF, STAGE_SEQUENCE, getRandomStagingRack } from "@/lib/roles";
 import { CATALOG } from "@/lib/items";
+import {
+  MAX_DAILY_USER_DEVICES,
+  mergeCatalogItems,
+  computeHubMetrics,
+  getDefaultItemStock,
+  getTodayISTDateKey,
+  getYesterdayISTDateKey,
+  formatISTDisplayDate,
+} from "@/lib/hubState";
 
 // Store Manager Active Inventory: ONLY Frames (1 unit single) and Chocolates (5 units fixed)
 const STORE_MANAGER_CATALOG = CATALOG.filter(
@@ -32,6 +44,7 @@ import {
   playSuccessChime,
   playScanSuccess,
   playOrderAlarm,
+  stopOrderAlarm,
 } from "@/lib/soundSystem";
 import ErdDfdViewer from "@/components/ErdDfdViewer";
 import AuditxLogo from "@/components/AuditxLogo";
@@ -109,35 +122,23 @@ const getInitials = (name) =>
     .slice(0, 2)
     .join("");
 
-const APP_LOGINS_DATA = {
-  total: 142,
-  unique: 118,
-  fresh: 21,
-  hours: [4, 9, 6, 12, 18, 26, 31, 36],
-  labels: ["6a", "8a", "10a", "12p", "2p", "4p", "6p", "8p"],
-};
-
 export default function WarehouseDashboardPage() {
   const [staff, setStaff] = useState(null);
   const [orders, setOrders] = useState([]);
   const [staffStatus, setStaffStatus] = useState([]);
-  const [activeTab, setActiveTab] = useState("overview"); // 'overview' | 'queue' | 'margin' | 'ratings' | 'complaints' | 'inventory' | 'devices' | 'orderCap' | 'erdDfd'
+  const [activeTab, setActiveTab] = useState("overview"); // 'overview' | 'queue' | 'margin' | 'ratings' | 'complaints' | 'inventory' | 'devices' | 'orderCap' | 'erdDfd' | 'history'
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [showLoginsPopover, setShowLoginsPopover] = useState(false);
   const [govTab, setGovTab] = useState("queue"); // 'queue' | 'sku'
   const [themeMode, setThemeMode] = useState("dark"); // 'dark' | 'light'
 
   // Order Cap States
-  const [orderCapLimit, setOrderCapLimit] = useState(400);
+  const [orderCapLimit, setOrderCapLimit] = useState(MAX_DAILY_USER_DEVICES);
   const [autoThrottling, setAutoThrottling] = useState(true);
   const [isStorePaused, setIsStorePaused] = useState(false);
-  const [capLogs, setCapLogs] = useState([
-    { id: 1, time: "17:15:02", msg: "Surge auto-throttle activated at 85% capacity threshold." },
-    { id: 2, time: "16:40:11", msg: "Order cap increased to 400 orders/hr by Bhasker N S (SM)." },
-    { id: 3, time: "15:10:45", msg: "Dark Store Operations initialized - All systems green." },
-  ]);
+  const [capLogs, setCapLogs] = useState([]);
 
-  // Complaints State
+  // Complaints, Inventory, OOS, Putaway & Daily Sync States
   const [complaints, setComplaints] = useState(INITIAL_COMPLAINTS);
   const [actionSuccess, setActionSuccess] = useState("");
   const [pingedDevice, setPingedDevice] = useState("");
@@ -145,8 +146,20 @@ export default function WarehouseDashboardPage() {
   const [skuCategoryFilter, setSkuCategoryFilter] = useState("all"); // 'all' | 'Chocolates' | 'Frames'
   const [queueFilter, setQueueFilter] = useState("all"); // 'all' | 'picking' | 'staged' | 'dispatched' | 'delivered'
 
-  // Inventory Units State (persisted to localStorage)
+  // Inventory Units State (synced with cloud & localStorage)
   const [inventoryStockMap, setInventoryStockMap] = useState({});
+  const [oosList, setOosList] = useState([]);
+  const [customCatalogItems, setCustomCatalogItems] = useState([]);
+
+  // Live Daily Metrics + Cumulative Persistent Revenue/Sales + Archived History
+  const [currentDateKey, setCurrentDateKey] = useState(getTodayISTDateKey());
+  const [loginDevicesToday, setLoginDevicesToday] = useState({});
+  const [ratingsToday, setRatingsToday] = useState([]);
+  const [cumulativeStats, setCumulativeStats] = useState({
+    totalRevenueSaved: 0,
+    totalSalesCount: 0,
+  });
+  const [dailyHistory, setDailyHistory] = useState([]);
 
   // Device Fleet Login Tracking (MOTOROLA for Thrupthi, OPPO for Sinchana)
   const [deviceFleet, setDeviceFleet] = useState({
@@ -249,103 +262,107 @@ export default function WarehouseDashboardPage() {
     };
   }, []);
 
-  // Load and initialize inventory units: strictly 5 units for Chocolates and 1 unit for Frames
+  // Auto ON / Auto OFF SM Dashboard alarm sound tied directly to store toggle
+  useEffect(() => {
+    if (!staff) return;
+    if (isStorePaused) {
+      playOrderAlarm();
+    } else {
+      stopOrderAlarm();
+    }
+    return () => {
+      stopOrderAlarm();
+    };
+  }, [isStorePaused, staff]);
+
+  // Load inventory units without wiping previously deducted / saved stock counts
   useEffect(() => {
     try {
-      const defaultMap = {};
+      const cached = getCachedCloudHubState();
+      const rawSaved = localStorage.getItem("auditx_inventory_units");
+      const existingMap = cached?.inventoryStockMap || (rawSaved ? JSON.parse(rawSaved) : {});
+      const hydratedMap = { ...existingMap };
       STORE_MANAGER_CATALOG.forEach((item) => {
-        // Enforce exact user specification: Frames = 1 unit single, Chocolates = 5 units fixed
-        defaultMap[item.sku] = item.category === "Frames" ? 1 : 5;
+        if (hydratedMap[item.sku] === undefined) {
+          hydratedMap[item.sku] = getDefaultItemStock(item);
+        }
       });
-      localStorage.setItem("auditx_inventory_units", JSON.stringify(defaultMap));
-      setInventoryStockMap(defaultMap);
+      localStorage.setItem("auditx_inventory_units", JSON.stringify(hydratedMap));
+      setInventoryStockMap(hydratedMap);
 
-      // Persist Store Manager active inventory items list matching ordering app
-      const itemsList = STORE_MANAGER_CATALOG.map((item) => ({
-        sku: item.sku,
-        name: item.name,
-        category: item.category,
-        image: item.image,
-        price: item.price,
-        mrp: item.mrp,
-        units: item.category === "Frames" ? 1 : 5,
-        unitSpecification: item.category === "Frames" ? "1 unit single" : "5 units fixed",
-        weight: item.category === "Frames" ? "1 unit" : "5 units",
-        aisle: item.aisle,
-        barcode: item.barcode,
-        qrCode: item.qrCode,
-        zone: item.zone,
-        delivery: item.delivery,
-        inStock: true,
-        updatedAt: new Date().toISOString(),
-      }));
-      localStorage.setItem("auditx_store_manager_inventory", JSON.stringify(itemsList));
+      if (cached) {
+        if (Array.isArray(cached.oosList)) setOosList(cached.oosList);
+        if (Array.isArray(cached.customCatalogItems)) setCustomCatalogItems(cached.customCatalogItems);
+        if (cached.loginDevicesToday) setLoginDevicesToday(cached.loginDevicesToday);
+        if (Array.isArray(cached.ratingsToday)) setRatingsToday(cached.ratingsToday);
+        if (cached.cumulativeStats) setCumulativeStats(cached.cumulativeStats);
+        if (Array.isArray(cached.dailyHistory)) setDailyHistory(cached.dailyHistory);
+        if (cached.dateKey) setCurrentDateKey(cached.dateKey);
+        if (Array.isArray(cached.capLogs)) setCapLogs(cached.capLogs);
+      }
     } catch (e) {
       console.warn("Stock map load error:", e);
     }
   }, []);
 
   // Reset all units to exact defaults: 5 units for Chocolates, 1 unit for Frames
-  function handleResetDefaultUnits() {
+  async function handleResetDefaultUnits() {
     playSuccessChime();
-    const defaultMap = {};
-    STORE_MANAGER_CATALOG.forEach((item) => {
-      defaultMap[item.sku] = item.category === "Frames" ? 1 : 5;
-    });
-    localStorage.setItem("auditx_inventory_units", JSON.stringify(defaultMap));
-    setInventoryStockMap(defaultMap);
+    const res = await dispatchCloudAction("RESET_DEFAULT_UNITS", {});
+    if (res?.ok && res.state) {
+      setInventoryStockMap(res.state.inventoryStockMap || {});
+      setOosList(res.state.oosList || []);
+    } else {
+      const defaultMap = {};
+      mergeCatalogItems(STORE_MANAGER_CATALOG, customCatalogItems).forEach((item) => {
+        defaultMap[item.sku] = getDefaultItemStock(item);
+      });
+      localStorage.setItem("auditx_inventory_units", JSON.stringify(defaultMap));
+      setInventoryStockMap(defaultMap);
+    }
     setActionSuccess("🔄 All units restored to fixed defaults: Chocolates (5 units) & Frames (1 unit)!");
     setTimeout(() => setActionSuccess(""), 3500);
   }
 
-  // Save all warehouse inventory items (Frames & Chocolates)
-  function handleSaveAllInventory() {
+  // Save all warehouse inventory items (Frames & Chocolates + Putaway items)
+  async function handleSaveAllInventory() {
     playSuccessChime();
-    const itemsList = STORE_MANAGER_CATALOG.map((item) => ({
-      sku: item.sku,
-      name: item.name,
-      category: item.category,
-      image: item.image,
-      price: item.price,
-      mrp: item.mrp,
-      units: inventoryStockMap[item.sku] !== undefined ? inventoryStockMap[item.sku] : (item.category === "Frames" ? 1 : 5),
-      unitSpecification: item.category === "Frames" ? "1 unit single" : "5 units fixed",
-      weight: item.category === "Frames" ? "1 unit" : "5 units",
-      aisle: item.aisle,
-      barcode: item.barcode,
-      qrCode: item.qrCode,
-      zone: item.zone,
-      delivery: item.delivery,
-      inStock: true,
-      updatedAt: new Date().toISOString(),
-    }));
+    const res = await dispatchCloudAction("SAVE_INVENTORY", { inventoryStockMap });
+    if (res?.ok && res.state) {
+      setInventoryStockMap(res.state.inventoryStockMap || {});
+      setOosList(res.state.oosList || []);
+    }
     try {
       localStorage.setItem("auditx_inventory_units", JSON.stringify(inventoryStockMap));
-      localStorage.setItem("auditx_store_manager_inventory", JSON.stringify(itemsList));
     } catch (e) {
       console.warn(e);
     }
-    setActionSuccess("✅ Saved 59 warehouse items: Frames (1 unit single) & Chocolates (5 units fixed)!");
+    setActionSuccess("✅ Saved warehouse SKU units & OOS flags live to cloud across SM, ASM & Ordering App!");
     setTimeout(() => setActionSuccess(""), 3500);
   }
 
-  // Update Stock Unit helper
-  function handleUpdateStockUnit(skuId, delta) {
+  // Update Stock Unit helper (auto-marks OOS at 0 units)
+  async function handleUpdateStockUnit(skuId, delta) {
     playNotificationChime();
     setInventoryStockMap((prev) => {
-      const targetItem = STORE_MANAGER_CATALOG.find((c) => c.sku === skuId);
-      const defaultUnit = targetItem?.category === "Frames" ? 1 : 5;
-      const current = prev[skuId] !== undefined ? prev[skuId] : defaultUnit;
+      const targetItem = mergeCatalogItems(STORE_MANAGER_CATALOG, customCatalogItems).find(
+        (c) => c.sku === skuId
+      );
+      const defaultUnit = getDefaultItemStock(targetItem);
+      const current = prev[skuId] !== undefined ? Number(prev[skuId]) : defaultUnit;
       const updated = Math.max(0, current + delta);
       const nextMap = { ...prev, [skuId]: updated };
       try {
         localStorage.setItem("auditx_inventory_units", JSON.stringify(nextMap));
-      } catch (e) {
-        console.warn(e);
-      }
+      } catch (e) {}
       return nextMap;
     });
-    setActionSuccess(`📦 Stock for SKU ${skuId} updated!`);
+    const res = await dispatchCloudAction("UPDATE_STOCK_UNIT", { sku: skuId, delta });
+    if (res?.ok && res.state) {
+      setInventoryStockMap(res.state.inventoryStockMap || {});
+      setOosList(res.state.oosList || []);
+    }
+    setActionSuccess(`📦 Stock for SKU ${skuId} synced live!`);
     setTimeout(() => setActionSuccess(""), 2000);
   }
 
@@ -353,13 +370,29 @@ export default function WarehouseDashboardPage() {
   useEffect(() => {
     if (!staff) return;
 
-    // 1. Initial orders from localStorage
-    const initialOrders = getAllLiveOrders();
-    setOrders(initialOrders);
-
-    // 1b. Initial complaints from localStorage (sanitized, zero demo tickets)
-    const initialComplaints = getAllLiveComplaints();
-    setComplaints(initialComplaints);
+    // 1. Subscribe to live cloud hub state (Orders, Inventory, OOS, Putaway, Logins, Ratings, Cumulative, Daily History)
+    const unsubCloud = subscribeToCloudHub((cloudState) => {
+      if (!cloudState) return;
+      setIsStorePaused(cloudState.isStoreOpen === false);
+      if (Array.isArray(cloudState.orders)) setOrders(sanitizeOrders(cloudState.orders));
+      if (Array.isArray(cloudState.complaints)) setComplaints(sanitizeComplaints(cloudState.complaints));
+      if (cloudState.inventoryStockMap) setInventoryStockMap(cloudState.inventoryStockMap);
+      if (Array.isArray(cloudState.oosList)) setOosList(cloudState.oosList);
+      if (Array.isArray(cloudState.customCatalogItems)) setCustomCatalogItems(cloudState.customCatalogItems);
+      if (cloudState.loginDevicesToday) setLoginDevicesToday(cloudState.loginDevicesToday);
+      if (Array.isArray(cloudState.ratingsToday)) setRatingsToday(cloudState.ratingsToday);
+      if (cloudState.cumulativeStats) setCumulativeStats(cloudState.cumulativeStats);
+      if (Array.isArray(cloudState.dailyHistory)) setDailyHistory(cloudState.dailyHistory);
+      if (cloudState.dateKey) setCurrentDateKey(cloudState.dateKey);
+      if (Array.isArray(cloudState.capLogs)) setCapLogs(cloudState.capLogs);
+      if (Number(cloudState.orderCapLimit) > 0) setOrderCapLimit(Number(cloudState.orderCapLimit));
+      if (cloudState.staffStatus) {
+        setDeviceFleet({
+          thrupthi: cloudState.staffStatus.thrupthi?.deviceStatus || "LOGGED_IN",
+          sinchana: cloudState.staffStatus.sinchana?.deviceStatus || "LOGGED_IN",
+        });
+      }
+    }, 1800);
 
     // 2. Subscribe to real-time live orders broadcast
     const unsubOrders = subscribeToLiveOrders((newOrders) => {
@@ -509,6 +542,7 @@ export default function WarehouseDashboardPage() {
     }
 
     return () => {
+      unsubCloud();
       unsubOrders();
       unsubBus();
       unsub1();
@@ -530,7 +564,7 @@ export default function WarehouseDashboardPage() {
     setTimeout(() => setActionSuccess(""), 3000);
   }
 
-  function handleToggleDuty(staffId) {
+  async function handleToggleDuty(staffId) {
     const isCurrentOn = deviceFleet[staffId] === "LOGGED_IN";
     const nextStatus = isCurrentOn ? "LOGGED_OUT" : "LOGGED_IN";
     const staffName = staffId === "thrupthi" ? "Thrupthi K S" : "Sinchana B R";
@@ -542,6 +576,13 @@ export default function WarehouseDashboardPage() {
     } catch (e) {}
 
     playNotificationChime();
+    await dispatchCloudAction("UPDATE_STAFF_DUTY", {
+      staffId,
+      deviceStatus: nextStatus,
+      staffName,
+      deviceName: staffId === "thrupthi" ? "MOTOROLA" : "OPPO",
+    });
+
     broadcastEvent("STAFF_STATUS_CHANGED", {
       staffId,
       deviceStatus: nextStatus,
@@ -563,13 +604,26 @@ export default function WarehouseDashboardPage() {
     router.push("/login");
   }
 
-  function toggleStorePause() {
+  async function toggleStorePause() {
     const nextPaused = !isStorePaused;
     const nextOpen = !nextPaused;
     setIsStorePaused(nextPaused);
 
+    if (nextPaused) {
+      playOrderAlarm();
+      setActionSuccess(`🛑 STORE CLOSED by ${staff?.name || "Bhaskar N S"}. Ordering app paused.`);
+    } else {
+      stopOrderAlarm();
+      playSuccessChime();
+      setActionSuccess(`🟢 STORE OPENED by ${staff?.name || "Bhaskar N S"}! Alarm auto-stopped. Ordering app is open.`);
+    }
+
     try {
       localStorage.setItem("auditx_store_open", nextOpen ? "true" : "false");
+      await dispatchCloudAction("TOGGLE_STORE", {
+        isOpen: nextOpen,
+        updatedBy: staff?.name || "Bhaskar N S (Store Manager)",
+      });
       broadcastEvent("STORE_STATUS_CHANGED", {
         isOpen: nextOpen,
         updatedBy: staff?.name || "Bhaskar N S (Store Manager)",
@@ -580,14 +634,6 @@ export default function WarehouseDashboardPage() {
       console.warn("Store toggle persist error:", e);
     }
 
-    if (nextPaused) {
-      playOrderAlarm();
-      setActionSuccess(`🛑 STORE CLOSED by ${staff?.name || "Bhaskar N S"}. Ordering app paused.`);
-    } else {
-      playSuccessChime();
-      setActionSuccess(`🟢 STORE OPENED by ${staff?.name || "Bhaskar N S"}! Ordering app is now open for customer orders.`);
-    }
-
     const logMsg = nextPaused
       ? `🛑 STORE CLOSED by ${staff?.name || "Bhaskar N S"} (${staff?.designation || "Store Manager"})`
       : `🟢 STORE OPENED by ${staff?.name || "Bhaskar N S"} (${staff?.designation || "Store Manager"})`;
@@ -595,32 +641,58 @@ export default function WarehouseDashboardPage() {
     setTimeout(() => setActionSuccess(""), 4500);
   }
 
-  function handleCapChange(newLimit) {
+  async function handleCapChange(newLimit) {
     playNotificationChime();
     setOrderCapLimit(newLimit);
+    await dispatchCloudAction("UPDATE_CAP", { orderCapLimit: newLimit });
     const logMsg = `Order cap updated to ${newLimit} orders/hr by ${staff?.name} (${staff?.designation})`;
     setCapLogs((prev) => [{ id: Date.now(), time: new Date().toLocaleTimeString(), msg: logMsg }, ...prev]);
   }
 
-  function handleClearTodayQueue() {
+  async function handleClearTodayQueue() {
     playNotificationChime();
+    await dispatchCloudAction("CLEAR_QUEUE", {});
     clearAllLiveOrders();
     setOrders([]);
     setComplaints([]);
     try {
       localStorage.setItem("auditx_complaints", JSON.stringify([]));
     } catch (e) { }
-    const logMsg = `🧹 TODAY'S QUEUE & QUALITY DESK CLEARED (0 orders, 0 open tickets) by ${staff?.name || "Bhaskar N S"} (${staff?.designation || "Store Manager"})`;
+    const logMsg = `🧹 TODAY'S QUEUE & QUALITY DESK CLEARED (Cumulative Money Saved ₹${cumulativeStats?.totalRevenueSaved || 0} & Sales ${cumulativeStats?.totalSalesCount || 0} kept intact) by ${staff?.name || "Bhaskar N S"}`;
     setCapLogs((prev) => [{ id: Date.now(), time: new Date().toLocaleTimeString(), msg: logMsg }, ...prev]);
-    setActionSuccess(`🧹 Today's Queue & Quality Desk cleared (Zero Orders, Zero Open Complaints)!`);
+    setActionSuccess(`🧹 Today's Queue cleared (Zero Orders today; constant Money & Sales preserved)!`);
     setTimeout(() => setActionSuccess(""), 4000);
   }
 
-  function resolveComplaint(id, refund = false) {
+  async function handleArchiveDayNow() {
+    playSuccessChime();
+    const res = await dispatchCloudAction("ARCHIVE_DAY_NOW", {});
+    if (res?.ok && res.state) {
+      setDailyHistory(res.state.dailyHistory || []);
+      setOrders(res.state.orders || []);
+      setComplaints(res.state.complaints || []);
+      setRatingsToday(res.state.ratingsToday || []);
+      setLoginDevicesToday(res.state.loginDevicesToday || {});
+      setCumulativeStats(res.state.cumulativeStats || cumulativeStats);
+      setActionSuccess("📦 Closed current day into History Archive & reset Today's Queue/Logins/Ratings to 0!");
+      setTimeout(() => setActionSuccess(""), 4500);
+    }
+  }
+
+  async function resolveComplaint(id, refund = false) {
     playSuccessChime();
     const resolutionText = refund
       ? `Refund of ₹${refund} approved & credited to Audit'X Wallet by ${staff?.name || "Bhaskar N S"}`
       : `Complaint reviewed & resolved by ${staff?.name || "Bhaskar N S"}`;
+
+    const resolvedAt = new Date().toLocaleTimeString();
+    await dispatchCloudAction("RESOLVE_COMPLAINT", {
+      id,
+      status: "RESOLVED",
+      resolvedBy: staff?.name || "Bhaskar N S",
+      resolvedAt,
+      response: resolutionText,
+    });
 
     const updatedComplaints = complaints.map((c) => {
       if (c.id === id) {
@@ -628,7 +700,7 @@ export default function WarehouseDashboardPage() {
           ...c,
           status: "RESOLVED",
           resolvedBy: staff?.name || "Bhaskar N S",
-          resolvedAt: new Date().toLocaleTimeString(),
+          resolvedAt,
           response: resolutionText,
         };
       }
@@ -646,7 +718,7 @@ export default function WarehouseDashboardPage() {
       id,
       status: "RESOLVED",
       resolvedBy: staff?.name || "Bhaskar N S",
-      resolvedAt: new Date().toLocaleTimeString(),
+      resolvedAt,
       response: resolutionText,
     });
 
@@ -743,7 +815,7 @@ export default function WarehouseDashboardPage() {
   }
 
   // Quick Action: Simulate Live Customer Order from Dashboard
-  function handleCreateSimulatedOrder() {
+  async function handleCreateSimulatedOrder() {
     playNotificationChime();
     const orderNum = Math.floor(1000 + Math.random() * 9000);
     const rack = getRandomStagingRack();
@@ -792,58 +864,104 @@ export default function WarehouseDashboardPage() {
         },
       ],
     };
-    saveLiveOrder(simOrder);
-    setActionSuccess(`⚡ Live Order #${simOrder.id} created (Chocolates & Frames)! Dispatched to OD Picker Thrupthi K S.`);
+    const placedRes = await dispatchCloudAction("PLACE_ORDER", { order: simOrder });
+    if (placedRes?.ok) {
+      saveLiveOrder(simOrder);
+      setActionSuccess(`⚡ Live Order #${simOrder.id} created (Chocolates & Frames)! Deducted SKU units & synced to OD Picker.`);
+    } else {
+      setActionSuccess(placedRes?.error || "⚠️ Store closed or item out of stock for test order.");
+    }
     setTimeout(() => setActionSuccess(""), 3000);
   }
 
   // Quick Action: Simulate Fast Pick by Thrupthi K S
-  function handleSimulateFastPick(orderId) {
+  async function handleSimulateFastPick(orderId) {
     playSuccessChime();
-    updateLiveOrder(orderId, {
+    const updates = {
       status: "staged",
       stage: "Staged in Rack D5",
       pickTimeSec: 42,
       stagedAt: new Date().toISOString(),
       pickerName: "Thrupthi K S",
-    });
+    };
+    updateLiveOrder(orderId, updates);
+    await dispatchCloudAction("UPDATE_ORDER", { orderId, updates });
     setActionSuccess(`⚡ Order #${orderId} Picked fast in 42s by Thrupthi K S! Staged in Rack D5.`);
     setTimeout(() => setActionSuccess(""), 3000);
   }
 
   // Quick Action: Simulate Pickup Confirmation by Sinchana B R
-  function handleSimulateSinchanaPickup(orderId) {
+  async function handleSimulateSinchanaPickup(orderId) {
     playNotificationChime();
-    updateLiveOrder(orderId, {
+    const updates = {
       status: "dispatched",
       stage: "Out for Delivery",
       dispatchedAt: new Date().toISOString(),
       captainName: "Sinchana B R",
-    });
+    };
+    updateLiveOrder(orderId, updates);
+    await dispatchCloudAction("UPDATE_ORDER", { orderId, updates });
     setActionSuccess(`🛵 Pickup confirmed by Sinchana B R! 8-Min Express Delivery started.`);
     setTimeout(() => setActionSuccess(""), 3000);
   }
 
   // Quick Action: Simulate Fast 3-Min Delivery by Sinchana B R
-  function handleSimulateFastDelivery(orderId) {
+  async function handleSimulateFastDelivery(orderId) {
     playSuccessChime();
-    updateLiveOrder(orderId, {
+    const updates = {
       status: "delivered",
       stage: "Delivered",
       deliveredAt: new Date().toISOString(),
       deliveryDurationSec: 180,
-    });
+    };
+    updateLiveOrder(orderId, updates);
+    await dispatchCloudAction("UPDATE_ORDER", { orderId, updates });
     setActionSuccess(`🎉 Order #${orderId} delivered fast in 3 mins to KFGSC by Sinchana B R!`);
     setTimeout(() => setActionSuccess(""), 3500);
   }
 
   if (!staff) return null;
 
+  // Live Metrics Derived from Hub State (Daily resets at midnight IST; Total Revenue Saved & Total Sales remain constant)
+  const hubMetrics = computeHubMetrics({
+    dateKey: currentDateKey,
+    orders,
+    complaints,
+    ratingsToday,
+    loginDevicesToday,
+    cumulativeStats,
+    dailyHistory,
+  });
+
+  const yesterdayKey = getYesterdayISTDateKey();
+  const yesterdaySnapshot =
+    dailyHistory.find((h) => h.dateKey === yesterdayKey) || dailyHistory[0] || null;
+
   // KPI Calculations
   const currentOrdersCount = orders.length;
   const capacityPercent = Math.min(100, Math.round((currentOrdersCount / orderCapLimit) * 100));
   const openComplaintsCount = complaints.filter((c) => c.status !== "RESOLVED").length;
   const criticalComplaintsCount = complaints.filter((c) => c.severity === "CRITICAL" && c.status !== "RESOLVED").length;
+
+  // Live merged catalog (Official Chocolates & Frames + ASM Putaway custom items)
+  const mergedCatalog = mergeCatalogItems(STORE_MANAGER_CATALOG, customCatalogItems);
+
+  // Category & Unit Sales Totals from Real Today's Orders
+  let chocolateUnitsSoldToday = 0;
+  let frameUnitsSoldToday = 0;
+  orders.forEach((o) => {
+    (o.items || []).forEach((it) => {
+      const qty = Math.max(1, Number(it.qty) || 1);
+      if (it.category === "Frames") frameUnitsSoldToday += qty;
+      else chocolateUnitsSoldToday += qty;
+    });
+  });
+  const totalTodayAov =
+    hubMetrics.todayOrdersCount > 0
+      ? Math.round(hubMetrics.todayRevenue / hubMetrics.todayOrdersCount)
+      : 0;
+  const todayEstProfit = Math.round(hubMetrics.todayRevenue * 0.224);
+  const todayEstCogs = Math.max(0, hubMetrics.todayRevenue - todayEstProfit);
 
   // Real-time Queue Grouping
   const pickingOrders = orders.filter((o) => o.status === "pending" || o.status === "picking");
@@ -873,8 +991,8 @@ export default function WarehouseDashboardPage() {
     };
   });
 
-  // Filtered SKUs for Store Manager: ONLY Frames and Chocolates
-  const filteredSKUs = STORE_MANAGER_CATALOG.filter((s) => {
+  // Filtered SKUs for Store Manager: Chocolates, Frames + ASM Putaway Custom Items
+  const filteredSKUs = mergedCatalog.filter((s) => {
     const matchesCategory =
       skuCategoryFilter === "all" || s.category === skuCategoryFilter;
     const matchesSearch =
@@ -891,14 +1009,14 @@ export default function WarehouseDashboardPage() {
   const activeStagedOrder = stagedOrders[0] || orders.find((o) => o.status === "staged" || o.stage === "Almost Ready");
   const firstPickItem = activePickOrder?.items?.[0] || null;
   const pickItemSku = firstPickItem?.skuId || firstPickItem?.sku || "";
-  const matchedCatalogItem = STORE_MANAGER_CATALOG.find(
+  const matchedCatalogItem = mergedCatalog.find(
     (c) => c.sku === pickItemSku || c.name?.toLowerCase() === firstPickItem?.name?.toLowerCase()
   );
   const pickItemStockUnits = pickItemSku
-    ? (inventoryStockMap[pickItemSku] ?? (matchedCatalogItem?.category === "Frames" ? 1 : 5))
+    ? (inventoryStockMap[pickItemSku] ?? getDefaultItemStock(matchedCatalogItem))
     : 5;
-  const totalDarkStoreUnits = STORE_MANAGER_CATALOG.reduce((acc, it) => {
-    return acc + (inventoryStockMap[it.sku] ?? (it.category === "Frames" ? 1 : 5));
+  const totalDarkStoreUnits = mergedCatalog.reduce((acc, it) => {
+    return acc + (inventoryStockMap[it.sku] !== undefined ? Number(inventoryStockMap[it.sku]) : getDefaultItemStock(it));
   }, 0);
 
   const activeDeliveryOrder = inTransitOrders[0] || orders.find((o) => o.status === "dispatched" || o.stage === "Out for Delivery" || o.stage === "Rider on the way" || (o.handoverToRiderCompleted && o.status !== "delivered"));
@@ -1316,7 +1434,7 @@ export default function WarehouseDashboardPage() {
                   >
                     <WarehouseGlyph name="boxes" size={26} />
                     <span style={{ ...S.launcherBadge, background: "#0c831f" }}>
-                      {STORE_MANAGER_CATALOG.length || 59}
+                      {mergedCatalog.length || 59}
                     </span>
                   </span>
                   <span style={{ ...S.launcherName, color: activeTab === "inventory" ? "#ffffff" : "#cbd5e1" }}>
@@ -1375,10 +1493,10 @@ export default function WarehouseDashboardPage() {
                     <WarehouseGlyph name="margin" size={26} />
                   </span>
                   <span style={{ ...S.launcherName, color: activeTab === "margin" ? "#ffffff" : "#cbd5e1" }}>
-                    Sales margin
+                    Sales &amp; Money
                   </span>
                   <span style={S.launcherVal}>
-                    22.4% <b style={{ color: "#34d399" }}>+0.4%</b>
+                    ₹{hubMetrics.totalRevenueSaved.toLocaleString("en-IN")} <b style={{ color: "#34d399" }}>({hubMetrics.totalSalesCount})</b>
                   </span>
                 </button>
 
@@ -1404,7 +1522,9 @@ export default function WarehouseDashboardPage() {
                   <span style={{ ...S.launcherName, color: activeTab === "ratings" ? "#ffffff" : "#cbd5e1" }}>
                     Customer ratings
                   </span>
-                  <span style={S.launcherVal}>4.9★</span>
+                  <span style={S.launcherVal}>
+                    {hubMetrics.ratingsCountToday > 0 ? `${hubMetrics.avgRatingToday}★` : "0.0★"}
+                  </span>
                 </button>
 
                 {/* Complaints */}
@@ -1429,7 +1549,7 @@ export default function WarehouseDashboardPage() {
                   <span style={{ ...S.launcherName, color: activeTab === "complaints" ? "#ffffff" : "#cbd5e1" }}>
                     Complaints
                   </span>
-                  <span style={S.launcherVal}>0.08%</span>
+                  <span style={S.launcherVal}>{hubMetrics.complaintsPctToday.toFixed(2)}%</span>
                 </button>
               </div>
             </section>
@@ -1536,6 +1656,36 @@ export default function WarehouseDashboardPage() {
                   </span>
                   <span style={{ ...S.launcherName, color: activeTab === "erdDfd" ? "#ffffff" : "#cbd5e1" }}>
                     Measures &amp; DFD
+                  </span>
+                </button>
+
+                {/* Daily History & Yesterday Archive */}
+                <button
+                  type="button"
+                  onClick={() => handleTabChange("history")}
+                  style={S.launcherBtn}
+                  aria-label="Daily History Archive"
+                >
+                  <span
+                    style={{
+                      ...S.launcherTile,
+                      background: "linear-gradient(160deg, #38bdf8, #0284c7)",
+                      boxShadow:
+                        activeTab === "history"
+                          ? "0 0 0 3px #10b981, 0 8px 16px -4px rgba(2,132,199,.7)"
+                          : "0 6px 14px -4px rgba(2,132,199,.55), inset 0 1.5px 0 rgba(255,255,255,.45), inset 0 -2px 0 rgba(0,0,0,.14)",
+                    }}
+                  >
+                    <WarehouseGlyph name="clock" size={26} />
+                    <span style={{ ...S.launcherBadge, background: "#0369a1" }}>
+                      {dailyHistory.length}
+                    </span>
+                  </span>
+                  <span style={{ ...S.launcherName, color: activeTab === "history" ? "#ffffff" : "#cbd5e1" }}>
+                    Daily history
+                  </span>
+                  <span style={S.launcherVal}>
+                    {yesterdaySnapshot ? "Yesterday saved" : "IST Auto 0"}
                   </span>
                 </button>
               </div>
@@ -1909,7 +2059,7 @@ export default function WarehouseDashboardPage() {
                   </button>
                 </div>
 
-                {/* Stat 3: Sales Margin */}
+                {/* Stat 3: Cumulative Money Saved & Total Sales (Constant Across Midnight Resets) */}
                 <div style={S.statCard}>
                   <div>
                     <div style={S.statHeader}>
@@ -1929,20 +2079,20 @@ export default function WarehouseDashboardPage() {
                         >
                           <WarehouseGlyph name="trend" size={20} stroke="#ffffff" />
                         </span>
-                        <span style={S.statTitle}>Sales margin</span>
+                        <span style={S.statTitle}>Money saved &amp; sales</span>
                       </div>
                     </div>
-                    <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 4 }}>
-                      <span style={S.statVal}>22.4%</span>
+                    <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 4, flexWrap: "wrap" }}>
+                      <span style={S.statVal}>₹{hubMetrics.totalRevenueSaved.toLocaleString("en-IN")}</span>
                       <span style={{ fontSize: 12, fontWeight: 800, padding: "3px 9px", borderRadius: 99, background: "#e5f5e8", color: "#0c831f" }}>
-                        +0.4%
+                        {hubMetrics.totalSalesCount} Total Sales
                       </span>
                     </div>
                     <div style={{ fontSize: 12.5, color: "#64748b", marginTop: 8, fontWeight: 600 }}>
-                      Today’s GMV: <b>₹68,450</b> • Target: 22.0%
+                      Today’s Revenue: <b>₹{hubMetrics.todayRevenue.toLocaleString("en-IN")}</b> ({hubMetrics.todayOrdersCount} orders)
                     </div>
                     <div style={S.statSub}>
-                      Above target
+                      Saved money &amp; total sales stay constant daily
                     </div>
                   </div>
                   <button style={S.linkInlineBtn} onClick={() => setActiveTab("margin")}>
@@ -1950,7 +2100,7 @@ export default function WarehouseDashboardPage() {
                   </button>
                 </div>
 
-                {/* Stat 4: Customer Rating */}
+                {/* Stat 4: Today's Customer Rating (Starts at 0 daily) */}
                 <div style={S.statCard}>
                   <div>
                     <div style={S.statHeader}>
@@ -1970,20 +2120,24 @@ export default function WarehouseDashboardPage() {
                         >
                           <WarehouseGlyph name="star" size={20} stroke="#ffffff" />
                         </span>
-                        <span style={S.statTitle}>Customer rating</span>
+                        <span style={S.statTitle}>Today’s rating</span>
                       </div>
                     </div>
                     <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 4 }}>
-                      <span style={S.statVal}>4.9 ★</span>
+                      <span style={S.statVal}>
+                        {hubMetrics.ratingsCountToday > 0 ? `${hubMetrics.avgRatingToday} ★` : "0.0 ★"}
+                      </span>
                       <span style={{ fontSize: 12, fontWeight: 800, padding: "3px 9px", borderRadius: 99, background: "#fef3c7", color: "#b45309" }}>
-                        98.4%
+                        {hubMetrics.ratingsCountToday} Reviews
                       </span>
                     </div>
                     <div style={{ fontSize: 12.5, color: "#64748b", marginTop: 8, fontWeight: 600 }}>
-                      CSAT: <b>98.4%</b> • Complaints: <b>0.08%</b>
+                      CSAT: <b>{hubMetrics.csatPctToday}%</b> • Complaints: <b>{hubMetrics.complaintsPctToday.toFixed(2)}%</b>
                     </div>
                     <div style={S.statSub}>
-                      No open escalations
+                      {hubMetrics.ratingsCountToday === 0
+                        ? "Starts at 0 daily • Resets midnight IST"
+                        : `${openComplaintsCount} open complaint ticket(s)`}
                     </div>
                   </div>
                   <button style={S.linkInlineBtn} onClick={() => setActiveTab("ratings")}>
@@ -1992,7 +2146,7 @@ export default function WarehouseDashboardPage() {
                 </div>
               </div>
 
-              {/* ── CUSTOMER APP LOGINS TODAY CARD ── */}
+              {/* ── CUSTOMER APP LOGINS TODAY CARD (LIVE NUMBER COUNT ONLY, MAX 400 DEVICES) ── */}
               <div
                 style={{
                   background: "#FFFFFF",
@@ -2003,7 +2157,7 @@ export default function WarehouseDashboardPage() {
                   boxShadow: "0 2px 8px rgba(0,0,0,0.03)",
                 }}
               >
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 10 }}>
                   <h2 style={{ margin: 0, fontSize: 15, fontWeight: 800, color: "#0F172A", display: "flex", alignItems: "center", gap: 10 }}>
                     <span
                       style={{
@@ -2019,87 +2173,79 @@ export default function WarehouseDashboardPage() {
                     >
                       <WarehouseGlyph name="phone" size={19} stroke="#ffffff" />
                     </span>
-                    Customer app logins today
+                    No. of user’s login today (Ordering App Live Count)
                   </h2>
-                  <button
-                    style={S.smLinkBtn}
-                    onClick={() => setActiveTab("devices")}
-                    title="View device fleet and traffic breakdown"
-                  >
-                    View details →
-                  </button>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <span
+                      style={{
+                        fontSize: 12,
+                        fontWeight: 800,
+                        color:
+                          hubMetrics.userLoginsTodayCount >= MAX_DAILY_USER_DEVICES
+                            ? "#b91c1c"
+                            : "#0369a1",
+                        background:
+                          hubMetrics.userLoginsTodayCount >= MAX_DAILY_USER_DEVICES
+                            ? "#fee2e2"
+                            : "#e0f2fe",
+                        padding: "4px 10px",
+                        borderRadius: 99,
+                      }}
+                    >
+                      Capacity: {hubMetrics.userLoginsTodayCount} / {MAX_DAILY_USER_DEVICES} devices
+                    </span>
+                    <button
+                      style={S.smLinkBtn}
+                      onClick={() => setActiveTab("history")}
+                      title="View Daily History & Yesterday Archive"
+                    >
+                      Daily History →
+                    </button>
+                  </div>
                 </div>
 
-                <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: 24, alignItems: "end" }}>
-                  {/* Left 4 stats */}
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
-                    <div>
-                      <div style={{ fontSize: 26, fontWeight: 900, color: "#0F172A" }}>{APP_LOGINS_DATA.total}</div>
-                      <div style={{ fontSize: 12, color: "#64748B", fontWeight: 600 }}>Total logins</div>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 20, flexWrap: "wrap" }}>
+                  <div style={{ display: "flex", alignItems: "baseline", gap: 14 }}>
+                    <div style={{ fontSize: 44, fontWeight: 900, color: "#0c831f", lineHeight: 1 }}>
+                      {hubMetrics.userLoginsTodayCount}
                     </div>
                     <div>
-                      <div style={{ fontSize: 26, fontWeight: 900, color: "#0F172A" }}>{APP_LOGINS_DATA.unique}</div>
-                      <div style={{ fontSize: 12, color: "#64748B", fontWeight: 600 }}>Unique customers</div>
-                    </div>
-                    <div>
-                      <div style={{ fontSize: 26, fontWeight: 900, color: "#0F172A" }}>{APP_LOGINS_DATA.fresh}</div>
-                      <div style={{ fontSize: 12, color: "#64748B", fontWeight: 600 }}>New sign-ups</div>
-                    </div>
-                    <div>
-                      <div style={{ fontSize: 26, fontWeight: 900, color: "#0c831f" }}>{orders.length || 8}</div>
-                      <div style={{ fontSize: 12, color: "#64748B", fontWeight: 600 }}>Placed an order</div>
+                      <div style={{ fontSize: 14, fontWeight: 800, color: "#0F172A" }}>
+                        User{hubMetrics.userLoginsTodayCount === 1 ? "" : "s"} Logged In Today
+                      </div>
+                      <div style={{ fontSize: 12, color: "#64748B", fontWeight: 600 }}>
+                        Includes 1-Tap Bypass, Google &amp; Mobile OTP • Resets to 0 daily at 12:00 AM IST
+                      </div>
                     </div>
                   </div>
 
-                  {/* Right 2-hour bar chart from 6 AM to 10 PM */}
-                  <div
-                    style={{
-                      display: "flex",
-                      gap: 8,
-                      height: 84,
-                      alignItems: "flex-end",
-                      background: "#f8fafc",
-                      padding: "8px 12px 4px",
-                      borderRadius: 12,
-                      border: "1px solid #e2e8f0",
-                    }}
-                    aria-label="Logins by 2-hour block, 6 AM to 10 PM"
-                  >
-                    {APP_LOGINS_DATA.hours.map((val, idx) => {
-                      const maxVal = Math.max(...APP_LOGINS_DATA.hours);
-                      const barPct = Math.round((val / maxVal) * 100);
-                      const label = APP_LOGINS_DATA.labels[idx];
-                      return (
-                        <div
-                          key={label}
-                          style={{
-                            flex: 1,
-                            display: "flex",
-                            flexDirection: "column",
-                            alignItems: "center",
-                            justifyContent: "flex-end",
-                            height: "100%",
-                            gap: 4,
-                          }}
-                          title={`${label}: ${val} logins`}
-                        >
-                          <i
-                            style={{
-                              display: "block",
-                              width: "100%",
-                              height: `${barPct}%`,
-                              background: "#0c831f",
-                              borderRadius: "5px 5px 0 0",
-                              minHeight: 4,
-                              transition: "height 0.3s ease",
-                            }}
-                          />
-                          <span style={{ fontSize: 10.5, color: "#64748B", fontWeight: 700 }}>
-                            {label}
-                          </span>
-                        </div>
-                      );
-                    })}
+                  <div style={{ flex: "1 1 260px", maxWidth: 420 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11.5, fontWeight: 700, color: "#475569", marginBottom: 6 }}>
+                      <span>Device Limit (Up to 400 Users/Devices)</span>
+                      <span>
+                        {Math.min(
+                          100,
+                          Math.round((hubMetrics.userLoginsTodayCount / MAX_DAILY_USER_DEVICES) * 100)
+                        )}
+                        % ({MAX_DAILY_USER_DEVICES - hubMetrics.userLoginsTodayCount} left)
+                      </span>
+                    </div>
+                    <div style={{ height: 10, borderRadius: 99, background: "#E2E8F0", overflow: "hidden" }}>
+                      <div
+                        style={{
+                          width: `${Math.min(
+                            100,
+                            Math.round((hubMetrics.userLoginsTodayCount / MAX_DAILY_USER_DEVICES) * 100)
+                          )}%`,
+                          height: "100%",
+                          background:
+                            hubMetrics.userLoginsTodayCount >= MAX_DAILY_USER_DEVICES
+                              ? "#ef4444"
+                              : "#0c831f",
+                          transition: "width 0.3s ease",
+                        }}
+                      />
+                    </div>
                   </div>
                 </div>
               </div>
@@ -2219,7 +2365,35 @@ export default function WarehouseDashboardPage() {
                     complaints={complaints}
                     staff={staff}
                     storeOpen={!isStorePaused}
+                    dateLabel={formatISTDisplayDate(currentDateKey)}
+                    dateTag={currentDateKey}
+                    metricsOverride={{
+                      userLoginsCount: hubMetrics.userLoginsTodayCount,
+                      ratingsCount: hubMetrics.ratingsCountToday,
+                      avgRating: hubMetrics.avgRatingToday,
+                    }}
                   />
+
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab("history")}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
+                      fontWeight: 700,
+                      padding: "9px 14px",
+                      borderRadius: 12,
+                      border: "1px solid #bae6fd",
+                      background: "#e0f2fe",
+                      color: "#0369a1",
+                      cursor: "pointer",
+                      fontSize: 12.5,
+                    }}
+                    title="Open Daily Operations History & download Yesterday's operations"
+                  >
+                    📅 History ({dailyHistory.length})
+                  </button>
                 </div>
 
                 {/* Tabs */}
@@ -2387,9 +2561,18 @@ export default function WarehouseDashboardPage() {
                         glyph: "star",
                         grad: "linear-gradient(160deg, #ffd447, #f2a200)",
                         title: "Customer satisfaction (CSAT)",
-                        sub: "98.4% positive ratings • Zero negative escalations",
-                        badge: "4.9 ★",
-                        status: "CSAT 98.4%",
+                        sub:
+                          hubMetrics.ratingsCountToday > 0
+                            ? `${hubMetrics.csatPctToday}% positive ratings from ${hubMetrics.ratingsCountToday} review(s) today`
+                            : "Starts at 0 daily — awaiting customer reviews today",
+                        badge:
+                          hubMetrics.ratingsCountToday > 0
+                            ? `${hubMetrics.avgRatingToday} ★`
+                            : "0.0 ★",
+                        status:
+                          hubMetrics.ratingsCountToday > 0
+                            ? `CSAT ${hubMetrics.csatPctToday}%`
+                            : "0 TODAY",
                       },
                       {
                         glyph: "crown",
@@ -2632,13 +2815,15 @@ export default function WarehouseDashboardPage() {
             </div>
           )}
 
-          {/* TAB 3: SALES MARGIN & REVENUE */}
+          {/* TAB 3: SALES MARGIN & REVENUE (REAL DAILY + CONSTANT CUMULATIVE) */}
           {activeTab === "margin" && (
             <div style={S.sectionWrap}>
               <div style={S.sectionHeader}>
                 <div>
-                  <h2 style={S.sectionHeading}>💰 Gross Sales Margin &amp; Dark Store Profits</h2>
-                  <p style={S.sectionSub}>Gross margin target governance (22.0%), SKU margin contribution, and GMV financials.</p>
+                  <h2 style={S.sectionHeading}>💰 Cumulative Money Saved, Total Sales &amp; Dark Store Profits</h2>
+                  <p style={S.sectionSub}>
+                    Cumulative Money Saved and Total Sales remain constant across daily midnight resets, while Today’s GMV tracks active day operations ({currentDateKey}).
+                  </p>
                 </div>
               </div>
 
@@ -2646,40 +2831,48 @@ export default function WarehouseDashboardPage() {
               <div style={S.statsGrid}>
                 <div style={S.statCard}>
                   <div style={S.statHeader}>
-                    <span style={S.statIcon}>📈</span>
-                    <span style={S.statTitle}>Gross Margin %</span>
+                    <span style={S.statIcon}>🏦</span>
+                    <span style={S.statTitle}>Cumulative Money Saved</span>
                   </div>
-                  <div style={{ ...S.statVal, color: "#0c831f" }}>22.4%</div>
+                  <div style={{ ...S.statVal, color: "#0c831f" }}>
+                    ₹{hubMetrics.totalRevenueSaved.toLocaleString("en-IN")}
+                  </div>
                   <div style={S.statSub}>
-                    Target Benchmark: <b>22.0%</b> • <span style={{ color: "#0c831f", fontWeight: 800 }}>+0.4% Overperforming</span>
+                    <b>{hubMetrics.totalSalesCount} Total Sales</b> • Constant across all days
                   </div>
                 </div>
 
                 <div style={S.statCard}>
                   <div style={S.statHeader}>
                     <span style={S.statIcon}>💵</span>
-                    <span style={S.statTitle}>Today's GMV</span>
+                    <span style={S.statTitle}>Today's Revenue (GMV)</span>
                   </div>
-                  <div style={S.statVal}>₹68,450</div>
-                  <div style={S.statSub}>Total 284 dark store orders processed today</div>
+                  <div style={S.statVal}>₹{hubMetrics.todayRevenue.toLocaleString("en-IN")}</div>
+                  <div style={S.statSub}>
+                    {hubMetrics.todayOrdersCount} dark store order(s) processed today
+                  </div>
                 </div>
 
                 <div style={S.statCard}>
                   <div style={S.statHeader}>
                     <span style={S.statIcon}>💹</span>
-                    <span style={S.statTitle}>Net Gross Profit</span>
+                    <span style={S.statTitle}>Est. Net Gross Profit Today</span>
                   </div>
-                  <div style={S.statVal}>₹15,332</div>
-                  <div style={S.statSub}>COGS: ₹53,118 • Fulfillment: ₹8.40/order</div>
+                  <div style={S.statVal}>₹{todayEstProfit.toLocaleString("en-IN")}</div>
+                  <div style={S.statSub}>
+                    Est. COGS: ₹{todayEstCogs.toLocaleString("en-IN")} • Target Margin: 22.4%
+                  </div>
                 </div>
 
                 <div style={S.statCard}>
                   <div style={S.statHeader}>
                     <span style={S.statIcon}>🛒</span>
-                    <span style={S.statTitle}>Average Order Value</span>
+                    <span style={S.statTitle}>Today's Avg Order Value</span>
                   </div>
-                  <div style={S.statVal}>₹241</div>
-                  <div style={S.statSub}>Average 4.2 SKUs per customer tote</div>
+                  <div style={S.statVal}>₹{totalTodayAov.toLocaleString("en-IN")}</div>
+                  <div style={S.statSub}>
+                    {chocolateUnitsSoldToday + frameUnitsSoldToday} unit(s) dispatched today
+                  </div>
                 </div>
               </div>
 
@@ -2704,8 +2897,22 @@ export default function WarehouseDashboardPage() {
                     </thead>
                     <tbody>
                       {[
-                        { cat: "Custom Art Frames (1 unit single)", sp: 299, cp: 173.42, margin: "42.0%", vol: "128 units", status: "MAX_MARGIN" },
-                        { cat: "Chocolates & Confectionery (5 units fixed)", sp: 175, cp: 115.50, margin: "34.0%", vol: "410 units", status: "HIGH_PROFIT" },
+                        {
+                          cat: "Custom Art Frames (1 unit single)",
+                          sp: 299,
+                          cp: 173.42,
+                          margin: "42.0%",
+                          vol: `${frameUnitsSoldToday} units`,
+                          status: "MAX_MARGIN",
+                        },
+                        {
+                          cat: "Chocolates & Confectionery (5 units fixed)",
+                          sp: 175,
+                          cp: 115.5,
+                          margin: "34.0%",
+                          vol: `${chocolateUnitsSoldToday} units`,
+                          status: "HIGH_PROFIT",
+                        },
                       ].map((row, idx) => (
                         <tr key={idx} style={S.tr}>
                           <td style={S.td}><b>{row.cat}</b></td>
@@ -2727,13 +2934,15 @@ export default function WarehouseDashboardPage() {
             </div>
           )}
 
-          {/* TAB 4: CUSTOMER RATINGS & REVIEWS */}
+          {/* TAB 4: CUSTOMER RATINGS & REVIEWS (RESETS DAILY AT MIDNIGHT TO 0) */}
           {activeTab === "ratings" && (
             <div style={S.sectionWrap}>
               <div style={S.sectionHeader}>
                 <div>
-                  <h2 style={S.sectionHeading}>⭐ Customer Ratings &amp; Tiptur Feedback</h2>
-                  <p style={S.sectionSub}>Real customer reviews, CSAT score, and operator delivery ratings.</p>
+                  <h2 style={S.sectionHeading}>⭐ Today's Customer Ratings &amp; Tiptur Feedback</h2>
+                  <p style={S.sectionSub}>
+                    Daily ratings start at 0 at midnight IST ({formatISTDisplayDate(currentDateKey)}) and update live as customers submit order ratings.
+                  </p>
                 </div>
               </div>
 
@@ -2742,10 +2951,14 @@ export default function WarehouseDashboardPage() {
                 <div style={S.statCard}>
                   <div style={S.statHeader}>
                     <span style={S.statIcon}>⭐</span>
-                    <span style={S.statTitle}>Overall CSAT Score</span>
+                    <span style={S.statTitle}>Today's Rating Score</span>
                   </div>
-                  <div style={{ ...S.statVal, color: "#f59e0b" }}>4.9 / 5.0</div>
-                  <div style={S.statSub}>Based on 2,148 customer deliveries in Namma Tiptur</div>
+                  <div style={{ ...S.statVal, color: "#f59e0b" }}>
+                    {hubMetrics.ratingsCountToday > 0 ? `${hubMetrics.avgRatingToday} / 5.0` : "0.0 / 5.0"}
+                  </div>
+                  <div style={S.statSub}>
+                    Based on {hubMetrics.ratingsCountToday} live customer rating(s) today
+                  </div>
                 </div>
 
                 <div style={S.statCard}>
@@ -2753,8 +2966,12 @@ export default function WarehouseDashboardPage() {
                     <span style={S.statIcon}>🛵</span>
                     <span style={S.statTitle}>Sinchana B R (Captain)</span>
                   </div>
-                  <div style={{ ...S.statVal, color: "#0c831f" }}>4.95 ★</div>
-                  <div style={S.statSub}>99.4% On-time deliveries • Superfast rider</div>
+                  <div style={{ ...S.statVal, color: "#0c831f" }}>
+                    {hubMetrics.ratingsCountToday > 0 ? `${hubMetrics.avgRatingToday} ★` : "0.0 ★"}
+                  </div>
+                  <div style={S.statSub}>
+                    {hubMetrics.ratingsCountToday > 0 ? "Rated by today's delivered orders" : "No rider ratings today yet"}
+                  </div>
                 </div>
 
                 <div style={S.statCard}>
@@ -2762,48 +2979,61 @@ export default function WarehouseDashboardPage() {
                     <span style={S.statIcon}>📦</span>
                     <span style={S.statTitle}>Thrupthi K S (Picker)</span>
                   </div>
-                  <div style={{ ...S.statVal, color: "#0c831f" }}>4.98 ★</div>
-                  <div style={S.statSub}>99.8% Accuracy • Zero damaged/missing items</div>
+                  <div style={{ ...S.statVal, color: "#0c831f" }}>
+                    {hubMetrics.todayOrdersCount > 0 ? `${deliveredOrders.length} Staged` : "0 Orders"}
+                  </div>
+                  <div style={S.statSub}>Daily warehouse accuracy tracker</div>
                 </div>
 
                 <div style={S.statCard}>
                   <div style={S.statHeader}>
                     <span style={S.statIcon}>❤️</span>
-                    <span style={S.statTitle}>Delight Percentage</span>
+                    <span style={S.statTitle}>Today's CSAT %</span>
                   </div>
-                  <div style={{ ...S.statVal, color: "#10b981" }}>98.4%</div>
-                  <div style={S.statSub}>Net Promoter Score (NPS): +74</div>
+                  <div style={{ ...S.statVal, color: "#10b981" }}>{hubMetrics.csatPctToday}%</div>
+                  <div style={S.statSub}>Starts at 0% daily until customer ratings arrive</div>
                 </div>
               </div>
 
-              {/* Customer Reviews Feed */}
+              {/* Live Customer Reviews Feed */}
               <div style={S.panel}>
                 <div style={S.panelHeader}>
-                  <div style={S.panelTitle}>💬 Recent Customer Reviews from Namma Tiptur</div>
-                  <span style={S.tagGreen}>Live Verified Orders</span>
+                  <div style={S.panelTitle}>💬 Live Customer Ratings Submitted Today ({ratingsToday.length})</div>
+                  <span style={S.tagGreen}>Daily Auto-Reset IST</span>
                 </div>
 
                 <div style={S.reviewsList}>
-                  {CUSTOMER_REVIEWS_DATA.map((rev) => (
-                    <div key={rev.id} style={S.reviewCard}>
-                      <div style={S.reviewTopRow}>
-                        <div>
-                          <span style={S.reviewerName}>{rev.customerName}</span>
-                          <span style={S.reviewerLoc}> • {rev.location}</span>
-                        </div>
-                        <div style={S.starsRow}>
-                          {Array.from({ length: rev.rating }).map((_, i) => (
-                            <span key={i} style={{ color: "#f59e0b", fontSize: 14 }}>★</span>
-                          ))}
-                        </div>
-                      </div>
-                      <div style={S.reviewComment}>"{rev.comment}"</div>
-                      <div style={S.reviewFooter}>
-                        <span>Order #{rev.orderId}</span>
-                        <span>{rev.time}</span>
-                      </div>
+                  {ratingsToday.length === 0 ? (
+                    <div style={{ textAlign: "center", padding: "32px 16px", color: "#64748B", fontWeight: 600 }}>
+                      ⭐ 0 ratings submitted today ({currentDateKey}). Ratings automatically reset to 0 every midnight IST while yesterday’s score is saved in Daily History.
                     </div>
-                  ))}
+                  ) : (
+                    ratingsToday.map((rev, idx) => {
+                      const stars = Math.round(Number(rev.riderRating || rev.avgItemRating || 5));
+                      return (
+                        <div key={`${rev.orderId}-${idx}`} style={S.reviewCard}>
+                          <div style={S.reviewTopRow}>
+                            <div>
+                              <span style={S.reviewerName}>{rev.customerName || "Tiptur Customer"}</span>
+                              <span style={S.reviewerLoc}> • Order #{rev.orderNumber || rev.orderId}</span>
+                            </div>
+                            <div style={S.starsRow}>
+                              {Array.from({ length: Math.max(1, Math.min(5, stars)) }).map((_, i) => (
+                                <span key={i} style={{ color: "#f59e0b", fontSize: 14 }}>★</span>
+                              ))}
+                            </div>
+                          </div>
+                          <div style={S.reviewComment}>
+                            "{rev.feedback || `Rated delivery partner ${rev.riderRating || 5}/5 stars`}"
+                          </div>
+                          <div style={S.reviewFooter}>
+                            <span>Order #{rev.orderId}</span>
+                            <span>{rev.ratedAt ? new Date(rev.ratedAt).toLocaleTimeString("en-IN") : "Today"}</span>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
                 </div>
               </div>
             </div>
@@ -2826,7 +3056,7 @@ export default function WarehouseDashboardPage() {
                     <span style={S.statIcon}>⚠️</span>
                     <span style={S.statTitle}>Complaint Rate</span>
                   </div>
-                  <div style={{ ...S.statVal, color: "#10b981" }}>0.08%</div>
+                  <div style={{ ...S.statVal, color: "#10b981" }}>{hubMetrics.complaintsPctToday.toFixed(2)}%</div>
                   <div style={S.statSub}>
                     Benchmark: <b>&lt; 0.20%</b> • <span style={{ color: "#10b981", fontWeight: 800 }}>Within SLA Target</span>
                   </div>
@@ -2987,21 +3217,21 @@ export default function WarehouseDashboardPage() {
                   style={{ ...S.skuCatPill, ...(skuCategoryFilter === "all" ? S.skuCatPillActive : {}) }}
                   onClick={() => setSkuCategoryFilter("all")}
                 >
-                  All Items ({STORE_MANAGER_CATALOG.length})
+                  All Items ({mergedCatalog.length})
                 </button>
                 <button
                   type="button"
                   style={{ ...S.skuCatPill, ...(skuCategoryFilter === "Chocolates" ? S.skuCatPillActive : {}) }}
                   onClick={() => setSkuCategoryFilter("Chocolates")}
                 >
-                  🍫 Chocolates ({STORE_MANAGER_CATALOG.filter((c) => c.category === "Chocolates").length}) • 5 Units Fixed
+                  🍫 Chocolates ({mergedCatalog.filter((c) => c.category === "Chocolates").length}) • 5 Units Fixed
                 </button>
                 <button
                   type="button"
                   style={{ ...S.skuCatPill, ...(skuCategoryFilter === "Frames" ? S.skuCatPillActive : {}) }}
                   onClick={() => setSkuCategoryFilter("Frames")}
                 >
-                  🖼️ Frames ({STORE_MANAGER_CATALOG.filter((c) => c.category === "Frames").length}) • 1 Unit Single
+                  🖼️ Frames ({mergedCatalog.filter((c) => c.category === "Frames").length}) • 1 Unit Single
                 </button>
 
                 <button
@@ -3034,15 +3264,17 @@ export default function WarehouseDashboardPage() {
               {/* Inventory Grid with All Ordering Images & Unit Editor */}
               <div style={S.skuGrid}>
                 {filteredSKUs.map((sku) => {
-                  const defaultUnit = sku.category === "Frames" ? 1 : 5;
-                  const units = inventoryStockMap[sku.sku] !== undefined ? inventoryStockMap[sku.sku] : defaultUnit;
-                  const isLow = units < (sku.category === "Frames" ? 1 : 2);
-                  const isOut = units === 0;
+                  const defaultUnit = getDefaultItemStock(sku);
+                  const units = inventoryStockMap[sku.sku] !== undefined ? Number(inventoryStockMap[sku.sku]) : defaultUnit;
+                  const isOut = units <= 0 || oosList.includes(sku.sku) || sku.soldOut === true;
+                  const isLow = !isOut && units < (sku.category === "Frames" ? 1 : 2);
 
                   return (
                     <div key={sku.sku || sku.id} style={S.skuCard}>
                       <div style={S.skuHeader}>
-                        <span style={S.skuCode}>{sku.sku}</span>
+                        <span style={S.skuCode}>
+                          {sku.sku} {sku.isCustomPutaway ? "• PUTAWAY" : ""}
+                        </span>
                         <span style={S.skuBin}>{sku.aisle || sku.zone || "Zone C2"}</span>
                       </div>
 
@@ -3287,7 +3519,162 @@ export default function WarehouseDashboardPage() {
             </div>
           )}
 
-          {/* TAB 9: ERD & DFD ARCHITECTURE */}
+          {/* TAB 9: DAILY HISTORY & YESTERDAY ARCHIVE */}
+          {activeTab === "history" && (
+            <div style={S.sectionWrap}>
+              <div style={S.sectionHeader}>
+                <div>
+                  <h2 style={S.sectionHeading}>📅 Daily Operations History &amp; Yesterday Archive</h2>
+                  <p style={S.sectionSub}>
+                    Daily orders, logins, ratings &amp; complaints reset automatically to <b>0 at 12:00 AM IST</b> ({formatISTDisplayDate(currentDateKey)}) while every closed day is saved in History for download. Cumulative Money Saved (<b>₹{hubMetrics.totalRevenueSaved.toLocaleString("en-IN")}</b>) &amp; Total Sales (<b>{hubMetrics.totalSalesCount}</b>) stay constant!
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleArchiveDayNow}
+                  style={{
+                    background: "#0c831f",
+                    color: "#ffffff",
+                    border: "none",
+                    borderRadius: 10,
+                    padding: "10px 16px",
+                    fontSize: 13,
+                    fontWeight: 800,
+                    cursor: "pointer",
+                  }}
+                >
+                  📦 Archive Current Day &amp; Reset to 0
+                </button>
+              </div>
+
+              {/* Yesterday Highlight Card */}
+              <div style={S.panel}>
+                <div style={S.panelHeader}>
+                  <div style={S.panelTitle}>
+                    🕘 Yesterday's Operations Archive {yesterdaySnapshot ? `(${yesterdaySnapshot.dateKey})` : `(${yesterdayKey})`}
+                  </div>
+                  {yesterdaySnapshot && (
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: "#0369a1" }}>
+                        Download Yesterday’s Report →
+                      </span>
+                      <DailyOperationsExportButton
+                        orders={yesterdaySnapshot.orders || []}
+                        complaints={yesterdaySnapshot.complaints || []}
+                        staff={staff}
+                        storeOpen={!isStorePaused}
+                        dateLabel={formatISTDisplayDate(yesterdaySnapshot.dateKey)}
+                        dateTag={yesterdaySnapshot.dateKey}
+                        reportTitle={`Audit'X Operations Archive — ${yesterdaySnapshot.dateKey}`}
+                        metricsOverride={{
+                          userLoginsCount: yesterdaySnapshot.userLoginsCount ?? 0,
+                          ratingsCount: yesterdaySnapshot.ratingsCount ?? 0,
+                          avgRating: yesterdaySnapshot.avgRating ?? 0,
+                        }}
+                      />
+                    </div>
+                  )}
+                </div>
+
+                {!yesterdaySnapshot ? (
+                  <div style={{ padding: "24px 12px", color: "#64748B", fontWeight: 600, fontSize: 13.5 }}>
+                    No archived day yet. At 12:00 AM IST (or when you click “Archive Current Day &amp; Reset to 0”), yesterday’s full ledger automatically saves here with one-click Excel, CSV, HTML, Word &amp; PDF downloads.
+                  </div>
+                ) : (
+                  <div style={S.statsGrid}>
+                    <div style={S.statCard}>
+                      <div style={S.statTitle}>Orders Fulfilled</div>
+                      <div style={S.statVal}>{yesterdaySnapshot.totalOrders || 0}</div>
+                      <div style={S.statSub}>{yesterdaySnapshot.unitsSold || 0} SKU units sold</div>
+                    </div>
+                    <div style={S.statCard}>
+                      <div style={S.statTitle}>Day Revenue (GMV)</div>
+                      <div style={S.statVal}>₹{Number(yesterdaySnapshot.gmv || 0).toLocaleString("en-IN")}</div>
+                      <div style={S.statSub}>
+                        Saved Total: ₹{Number(yesterdaySnapshot.cumulativeRevenueAtClose || hubMetrics.totalRevenueSaved).toLocaleString("en-IN")}
+                      </div>
+                    </div>
+                    <div style={S.statCard}>
+                      <div style={S.statTitle}>User Logins</div>
+                      <div style={S.statVal}>{yesterdaySnapshot.userLoginsCount || 0}</div>
+                      <div style={S.statSub}>Cap: 400 devices/day</div>
+                    </div>
+                    <div style={S.statCard}>
+                      <div style={S.statTitle}>Day Rating &amp; Tickets</div>
+                      <div style={S.statVal}>{yesterdaySnapshot.avgRating || 0} ★</div>
+                      <div style={S.statSub}>
+                        {yesterdaySnapshot.ratingsCount || 0} review(s) • {yesterdaySnapshot.complaintsCount || 0} complaint(s)
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Complete History Archive Ledger */}
+              <div style={S.panel}>
+                <div style={S.panelHeader}>
+                  <div style={S.panelTitle}>📚 Complete Daily Archive Ledger ({dailyHistory.length} Day(s) Saved)</div>
+                  <span style={S.tagBlue}>Midnight IST Auto-Archive</span>
+                </div>
+                {dailyHistory.length === 0 ? (
+                  <div style={{ padding: "20px 10px", color: "#64748B", fontSize: 13 }}>
+                    Waiting for first daily close.
+                  </div>
+                ) : (
+                  <div style={{ overflowX: "auto" }}>
+                    <table style={S.table}>
+                      <thead>
+                        <tr style={S.thRow}>
+                          <th style={S.th}>IST Date</th>
+                          <th style={S.th}>Orders</th>
+                          <th style={S.th}>Units</th>
+                          <th style={S.th}>Day GMV</th>
+                          <th style={S.th}>User Logins</th>
+                          <th style={S.th}>Rating</th>
+                          <th style={S.th}>Complaints</th>
+                          <th style={S.th}>Download Report</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {dailyHistory.map((h) => (
+                          <tr key={h.dateKey} style={S.tr}>
+                            <td style={S.td}>
+                              <b>{h.dateKey}</b>
+                              <div style={{ fontSize: 11, color: "#64748B" }}>{formatISTDisplayDate(h.dateKey)}</div>
+                            </td>
+                            <td style={S.td}>{h.totalOrders || 0}</td>
+                            <td style={S.td}>{h.unitsSold || 0}</td>
+                            <td style={S.td}><b>₹{Number(h.gmv || 0).toLocaleString("en-IN")}</b></td>
+                            <td style={S.td}>{h.userLoginsCount || 0} / 400</td>
+                            <td style={S.td}>{h.avgRating || 0} ★ ({h.ratingsCount || 0})</td>
+                            <td style={S.td}>{h.complaintsCount || 0}</td>
+                            <td style={S.td}>
+                              <DailyOperationsExportButton
+                                orders={h.orders || []}
+                                complaints={h.complaints || []}
+                                staff={staff}
+                                storeOpen={!isStorePaused}
+                                dateLabel={formatISTDisplayDate(h.dateKey)}
+                                dateTag={h.dateKey}
+                                reportTitle={`Audit'X Operations Archive — ${h.dateKey}`}
+                                metricsOverride={{
+                                  userLoginsCount: h.userLoginsCount ?? 0,
+                                  ratingsCount: h.ratingsCount ?? 0,
+                                  avgRating: h.avgRating ?? 0,
+                                }}
+                              />
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* TAB 10: ERD & DFD ARCHITECTURE */}
           {activeTab === "erdDfd" && <ErdDfdViewer />}
         </main>
       </div>

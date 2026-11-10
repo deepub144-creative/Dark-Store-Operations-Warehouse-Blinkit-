@@ -5,7 +5,13 @@ import { useRouter } from "next/navigation";
 import { collection, onSnapshot, query, where, doc, updateDoc } from "firebase/firestore";
 import { db } from "@/lib/firebaseClient";
 import { playNotificationChime } from "@/lib/soundSystem";
-import { subscribeToEvents, getAllLiveComplaints, subscribeToLiveOrders } from "@/lib/realtimeSync";
+import {
+  subscribeToEvents,
+  getAllLiveComplaints,
+  subscribeToLiveOrders,
+  subscribeToCloudHub,
+} from "@/lib/realtimeSync";
+import { computeHubMetrics, MAX_DAILY_USER_DEVICES } from "@/lib/hubState";
 import AuditxLogo from "@/components/AuditxLogo";
 import LiveOrderPipeline from "@/components/LiveOrderPipeline";
 
@@ -23,14 +29,19 @@ export default function ManagingDirectorApp({ embedded = false }) {
   const [activeTab, setActiveTab] = useState("scaleMargin"); // scaleMargin | hubSla | capexGrowth
   const [actionSuccess, setActionSuccess] = useState("");
 
-  // Executive Margin & Scale Metrics for Tiptur HUB KA44
+  // Executive Margin & Scale Metrics for Tiptur HUB KA44 (Daily resets at midnight IST; Money Saved & Sales remain constant)
   const [scaleMetrics, setScaleMetrics] = useState({
-    dailyOrders: 384,
-    targetOrders: 600,
-    grossMerchandiseValue: 148500,
+    dailyOrders: 0,
+    targetOrders: MAX_DAILY_USER_DEVICES,
+    grossMerchandiseValue: 0,
+    totalRevenueSaved: 0,
+    totalSalesCount: 0,
+    userLoginsTodayCount: 0,
+    avgRatingToday: 0,
+    ratingsCountToday: 0,
     grossMarginPct: 22.4, // Target 22%
     netContributionMargin: 16.8,
-    slaCompliancePct: 98.6,
+    slaCompliancePct: 100.0,
     avgPickTimeMins: 1.8, // < 2.0 mins
     avgDeliveryTimeMins: 7.2, // < 8.0 mins
   });
@@ -68,36 +79,48 @@ export default function ManagingDirectorApp({ embedded = false }) {
   useEffect(() => {
     setComplaints(getAllLiveComplaints());
 
+    const unsubCloud = subscribeToCloudHub((cloudState) => {
+      if (!cloudState) return;
+      const m = computeHubMetrics(cloudState);
+      if (Array.isArray(cloudState.complaints)) {
+        setComplaints(cloudState.complaints);
+      }
+      setScaleMetrics((prev) => ({
+        ...prev,
+        dailyOrders: m.todayOrdersCount,
+        grossMerchandiseValue: m.todayRevenue,
+        totalRevenueSaved: m.totalRevenueSaved,
+        totalSalesCount: m.totalSalesCount,
+        userLoginsTodayCount: m.userLoginsTodayCount,
+        avgRatingToday: m.avgRatingToday,
+        ratingsCountToday: m.ratingsCountToday,
+      }));
+    }, 2000);
+
     const unsubBus = subscribeToEvents((data) => {
       if (data.type === "QUEUE_CLEARED") {
         setComplaints([]);
       } else if (data.type === "COMPLAINT_RAISED" && data.payload) {
         setComplaints((prev) => [data.payload, ...prev]);
         playNotificationChime();
-      } else if (data.type === "ORDER_DELIVERED") {
-        setScaleMetrics((prev) => ({
-          ...prev,
-          dailyOrders: prev.dailyOrders + 1,
-          grossMerchandiseValue: prev.grossMerchandiseValue + 240,
-        }));
       }
     });
 
     const unsubOrders = subscribeToLiveOrders((ordersList) => {
       const list = ordersList || [];
-      const deliveredCount = list.filter((o) => o.status === "delivered").length;
       const totalAmount = list.reduce(
         (sum, o) => sum + Number(o.totalAmount || o.grandTotal || o.total || 0),
         0
       );
       setScaleMetrics((prev) => ({
         ...prev,
-        dailyOrders: 384 + deliveredCount,
-        grossMerchandiseValue: 148500 + totalAmount,
+        dailyOrders: list.length,
+        grossMerchandiseValue: totalAmount,
       }));
     });
 
     return () => {
+      unsubCloud();
       unsubBus();
       unsubOrders();
     };
@@ -178,15 +201,17 @@ export default function ManagingDirectorApp({ embedded = false }) {
       {/* Primary KPI Strip */}
       <div style={S.kpiStrip}>
         <div style={S.kpiCard}>
-          <div style={S.kpiLabel}>Daily Order Scale</div>
+          <div style={S.kpiLabel}>Today's Live Order Scale</div>
           <div style={S.kpiVal}>{scaleMetrics.dailyOrders} / {scaleMetrics.targetOrders}</div>
-          <div style={S.kpiSub}>Target: 600 orders/day in Namma Tiptur</div>
+          <div style={S.kpiSub}>Logins today: {scaleMetrics.userLoginsTodayCount} / {MAX_DAILY_USER_DEVICES} devices</div>
         </div>
 
         <div style={{ ...S.kpiCard, borderLeft: "4px solid #10b981" }}>
-          <div style={S.kpiLabel}>Gross Margin %</div>
-          <div style={{ ...S.kpiVal, color: "#10b981" }}>{scaleMetrics.grossMarginPct}%</div>
-          <div style={S.kpiSub}>Target &gt; 22.0% achieved</div>
+          <div style={S.kpiLabel}>Cumulative Money Saved &amp; Sales</div>
+          <div style={{ ...S.kpiVal, color: "#10b981" }}>
+            ₹{Number(scaleMetrics.totalRevenueSaved || 0).toLocaleString("en-IN")}
+          </div>
+          <div style={S.kpiSub}>{scaleMetrics.totalSalesCount} Constant Sales Total</div>
         </div>
 
         <div style={{ ...S.kpiCard, borderLeft: `4px solid ${openComplaintsCount === 0 ? "#10b981" : "#ef4444"}` }}>
@@ -239,15 +264,19 @@ export default function ManagingDirectorApp({ embedded = false }) {
 
             <div style={S.financialGrid}>
               <div style={S.finBox}>
-                <div style={S.finLabel}>Daily Gross Merchandise Value (GMV)</div>
-                <div style={S.finVal}>₹{scaleMetrics.grossMerchandiseValue.toLocaleString()}</div>
-                <div style={S.finSub}>Average basket size: ₹245 per customer</div>
+                <div style={S.finLabel}>Today's Gross Merchandise Value (GMV)</div>
+                <div style={S.finVal}>₹{scaleMetrics.grossMerchandiseValue.toLocaleString("en-IN")}</div>
+                <div style={S.finSub}>
+                  {scaleMetrics.dailyOrders} order(s) today • Constant Saved: ₹{Number(scaleMetrics.totalRevenueSaved || 0).toLocaleString("en-IN")}
+                </div>
               </div>
 
               <div style={S.finBox}>
-                <div style={S.finLabel}>Gross Product Margin</div>
-                <div style={{ ...S.finVal, color: "#10b981" }}>₹33,264 (22.4%)</div>
-                <div style={S.finSub}>Driven by high-margin Tiptur Copra & Coconut Oil</div>
+                <div style={S.finLabel}>Est. Gross Product Margin Today</div>
+                <div style={{ ...S.finVal, color: "#10b981" }}>
+                  ₹{Math.round(scaleMetrics.grossMerchandiseValue * 0.224).toLocaleString("en-IN")} (22.4%)
+                </div>
+                <div style={S.finSub}>Chocolates &amp; Frames dark store basket</div>
               </div>
 
               <div style={S.finBox}>
@@ -304,8 +333,12 @@ export default function ManagingDirectorApp({ embedded = false }) {
                 <b style={{ color: "#38bdf8" }}>9.0 Mins Avg (Target Met)</b>
               </div>
               <div style={S.slaRow}>
-                <span>Customer Satisfaction Score (CSAT)</span>
-                <b style={{ color: "#f59e0b" }}>4.92 / 5.0 ⭐</b>
+                <span>Customer Satisfaction Score (Today)</span>
+                <b style={{ color: "#f59e0b" }}>
+                  {scaleMetrics.ratingsCountToday > 0
+                    ? `${scaleMetrics.avgRatingToday} / 5.0 ⭐ (${scaleMetrics.ratingsCountToday} ratings)`
+                    : "0.0 / 5.0 ⭐ (0 today)"}
+                </b>
               </div>
             </div>
 

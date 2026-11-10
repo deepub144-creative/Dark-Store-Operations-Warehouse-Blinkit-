@@ -21,6 +21,10 @@ export default function DailyOperationsExportButton({
   storeOpen = true,
   className = "",
   style = {},
+  dateLabel = "",
+  dateTag = "",
+  reportTitle = "Audit'X Dark Store Daily Operations",
+  metricsOverride = null,
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -44,13 +48,18 @@ export default function DailyOperationsExportButton({
   }, []);
 
   // Compute operational aggregates
-  const todayStr = new Date().toLocaleDateString("en-IN", {
-    weekday: "long",
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
-  const dateFileTag = new Date().toISOString().slice(0, 10);
+  const todayStr =
+    dateLabel ||
+    new Date().toLocaleDateString("en-IN", {
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
+  const dateFileTag = dateTag || new Date().toISOString().slice(0, 10);
+  const loginsCountVal = metricsOverride?.userLoginsCount ?? null;
+  const ratingsCountVal = metricsOverride?.ratingsCount ?? null;
+  const avgRatingVal = metricsOverride?.avgRating ?? null;
   const smName = staff?.name || "Bhaskar N S (Store Manager)";
 
   const orderList = Array.isArray(orders) ? orders : [];
@@ -445,7 +454,7 @@ export default function DailyOperationsExportButton({
       <div style="font-size: 32px">⚡</div>
       <div>
         <div style="display:flex;align-items:center;gap:8px">
-          <h1>Audit'X Dark Store Daily Operations</h1>
+          <h1>${reportTitle}</h1>
           <span class="hub-pill">TIPTUR HUB KA-44</span>
         </div>
         <p>Official Daily Operations Ledger • ${todayStr} • Authorized by <strong>${smName}</strong></p>
@@ -479,13 +488,31 @@ export default function DailyOperationsExportButton({
       <div class="stat-label">Store Status</div>
       <div class="stat-val" style="color:${storeOpen ? "var(--green)" : "var(--red)"}">${storeOpen ? "OPEN" : "CLOSED"}</div>
       <div class="stat-sub">${storeOpen ? "Accepting Express Orders" : "Paused for Demand Surge"}</div>
-    </div>
+    </div>${
+      loginsCountVal !== null
+        ? `
+    <div class="stat">
+      <div class="stat-label">Customer App Logins</div>
+      <div class="stat-val">${loginsCountVal}</div>
+      <div class="stat-sub">Cap: 400 devices/day</div>
+    </div>`
+        : ""
+    }${
+      ratingsCountVal !== null
+        ? `
+    <div class="stat">
+      <div class="stat-label">Day Rating</div>
+      <div class="stat-val">${avgRatingVal} ★</div>
+      <div class="stat-sub">${ratingsCountVal} Customer Reviews</div>
+    </div>`
+        : ""
+    }
   </div>
 
   <div class="exec-summary">
     <h2>📋 Executive Daily Summary</h2>
     <p>
-      Today at <strong>Tiptur HUB KA-44</strong>, dark store operations fulfilled <strong>${totalOrders} express customer orders</strong>
+      ${dateLabel ? `On <strong>${todayStr}</strong>` : "Today"} at <strong>Tiptur HUB KA-44</strong>, dark store operations fulfilled <strong>${totalOrders} express customer orders</strong>
       representing <strong>${totalUnitSales} units sold</strong> across Chocolates (5 units fixed) and Wall Frames (1 unit single).
       OD Picker Lead <strong>Thrupthi K S</strong> achieved strict warehouse SLA compliance across all 9 staging racks (B7, H2, D5, H4, T1, T6, B5, S4, T4).
       Delivery Captain <strong>Sinchana B R</strong> fulfilled last-mile 8-minute express delivery to KFGSC and Namma Tiptur.
@@ -597,6 +624,24 @@ export default function DailyOperationsExportButton({
         new TableRow({
           children: [cell("Customer Complaints"), cell(String(totalComplaints)), cell("0% Shrinkage Target")],
         }),
+        ...(loginsCountVal !== null
+          ? [
+              new TableRow({
+                children: [cell("Customer App Logins"), cell(String(loginsCountVal)), cell("Max 400 devices/day")],
+              }),
+            ]
+          : []),
+        ...(ratingsCountVal !== null
+          ? [
+              new TableRow({
+                children: [
+                  cell("Daily Customer Rating"),
+                  cell(`${avgRatingVal} ★ (${ratingsCountVal} reviews)`),
+                  cell("4.8+ Target"),
+                ],
+              }),
+            ]
+          : []),
         new TableRow({
           children: [cell("Complaints Resolved"), cell(`${resolvedComplaints} Resolved`), cell("100% Rate")],
         }),

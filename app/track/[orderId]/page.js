@@ -4,7 +4,15 @@ import { useEffect, useState, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { doc, onSnapshot, addDoc, collection } from "firebase/firestore";
 import { db } from "@/lib/firebaseClient";
-import { subscribeToEvents, broadcastEvent, subscribeToLiveOrders, getAllLiveOrders, updateLiveOrder } from "@/lib/realtimeSync";
+import {
+  subscribeToEvents,
+  broadcastEvent,
+  subscribeToLiveOrders,
+  getAllLiveOrders,
+  updateLiveOrder,
+  subscribeToCloudHub,
+  dispatchCloudAction,
+} from "@/lib/realtimeSync";
 import { playSuccessChime, playNotificationChime } from "@/lib/soundSystem";
 import AuditxLogo from "@/components/AuditxLogo";
 import DeliveryReceiptModal from "@/components/DeliveryReceiptModal";
@@ -75,7 +83,12 @@ export default function TrackOrderPage() {
   const [ratingComment, setRatingComment] = useState("");
   const [ratingSubmitted, setRatingSubmitted] = useState(false);
 
-  // Real-time live order subscription & local synchronization
+  const trackingStageRef = useRef("packing");
+  useEffect(() => {
+    trackingStageRef.current = trackingStage;
+  }, [trackingStage]);
+
+  // Real-time live order subscription, cloud sync & local synchronization
   useEffect(() => {
     function processOrderEta(match) {
       if (!match) return;
@@ -83,7 +96,9 @@ export default function TrackOrderPage() {
       if (match.delayMins !== undefined) {
         setPickerDelayMins(match.delayMins);
       }
-      if (match.status === "delivered") {
+      if (match.status === "cancelled") {
+        setIsCancelled(true);
+      } else if (match.status === "delivered") {
         setTrackingStage("delivered");
         setArrivingMinutes(0);
         setRiderProgress(100);
@@ -97,13 +112,18 @@ export default function TrackOrderPage() {
         match.status === "dispatched" ||
         match.handoverToRiderCompleted
       ) {
-        // After OD Picker task handover to rider -> 8-minute delivery SLA
-        setArrivingMinutes(8);
-        setRiderCountdownSec(480);
-        setRiderProgress((prev) => Math.max(prev, 65));
-        setTrackingStage((prev) =>
-          prev === "packing" ? "en_route" : prev
-        );
+        // After OD Picker task handover to rider -> 8-minute delivery SLA anchored to dispatchedAt/stagedAt
+        const startIso = match.dispatchedAt || match.stagedAt;
+        const wallElapsed = startIso
+          ? Math.max(0, Math.min(480, Math.floor((Date.now() - new Date(startIso).getTime()) / 1000)))
+          : 0;
+        const rem = Math.max(0, 480 - wallElapsed);
+        if (trackingStageRef.current === "packing" || trackingStageRef.current === "packed_assigning") {
+          setRiderCountdownSec(rem);
+          setArrivingMinutes(Math.max(1, Math.ceil(rem / 60)));
+          setRiderProgress(Math.max(25, Math.min(96, Math.round((wallElapsed / 480) * 100))));
+          setTrackingStage(rem <= 0 ? "rider_arrived" : rem <= 15 ? "almost_doorstep" : "en_route");
+        }
       } else if (match.dynamicTotalSla) {
         setArrivingMinutes(match.dynamicTotalSla);
       } else if (match.remainingMins) {
@@ -140,6 +160,14 @@ export default function TrackOrderPage() {
       }
     });
 
+    const unsubCloud = subscribeToCloudHub((cloudState) => {
+      const list = cloudState?.orders || [];
+      const match = list.find((o) => o.id === orderId || o.orderId === orderId || o.orderNumber === orderId);
+      if (match) {
+        processOrderEta(match);
+      }
+    }, 1800);
+
     const unsubEvents = subscribeToEvents((data) => {
       const payloadOrderId = data.orderId || data.payload?.orderId || data.payload?.id;
       if (
@@ -160,17 +188,15 @@ export default function TrackOrderPage() {
       ) {
         const p = data.payload || data;
         if (p.delayMins !== undefined) setPickerDelayMins(p.delayMins);
-        // 1. Immediate notification upon handover slider completion
         setTrackingStage("packed_assigning");
         triggerToast("📦 Order is packed! We will assign the rider captain soon...");
         playNotificationChime();
 
-        // 2. Auto update to Delivery Captain Sinchana B R, Rider gets full 8 mins SLA
         setTimeout(() => {
           setArrivingMinutes(8);
           setRiderCountdownSec(480);
           setTrackingStage((prev) => (prev === "delivered" ? "delivered" : "en_route"));
-          setRiderProgress(65);
+          setRiderProgress(25);
           triggerToast("Hi, I'm Sinchana B R, your delivery captain! 🛵 Arriving in 8 mins");
           playNotificationChime();
         }, 2500);
@@ -181,7 +207,7 @@ export default function TrackOrderPage() {
         setArrivingMinutes(8);
         setRiderCountdownSec(480);
         setTrackingStage((prev) => (prev === "delivered" ? "delivered" : "en_route"));
-        setRiderProgress(65);
+        setRiderProgress(25);
       }
       if (data.type === "ORDER_DELIVERED" && (!payloadOrderId || payloadOrderId === orderId)) {
         setOrder((prev) => ({ ...(prev || {}), ...(data.payload || {}), status: "delivered", stage: "Delivered" }));
@@ -194,6 +220,7 @@ export default function TrackOrderPage() {
 
     return () => {
       unsub();
+      unsubCloud();
       unsubEvents();
     };
   }, [orderId]);
@@ -326,12 +353,13 @@ export default function TrackOrderPage() {
       return;
     }
     setIsCancelled(true);
+    dispatchCloudAction("CANCEL_ORDER", { orderId: order?.id || orderId });
     broadcastEvent("ORDER_CANCELLED", {
       orderId: order?.id || orderId,
       customerName: order?.customerName || "Customer",
       reason: "Customer cancelled within 60s window",
     });
-    triggerToast("Order cancelled successfully. Refund initiated to original source.");
+    triggerToast("Order cancelled successfully. Stock restored & refund initiated.");
   }
 
   async function submitComplaint(e) {
@@ -353,6 +381,8 @@ export default function TrackOrderPage() {
       amount: order?.totalAmount || 139,
       createdAt: new Date().toISOString(),
     };
+
+    dispatchCloudAction("FILE_COMPLAINT", { complaint: cmp });
 
     if (db) {
       try {
@@ -423,6 +453,7 @@ export default function TrackOrderPage() {
     const ratingPayload = {
       orderId: activeOrder.id || orderId,
       orderNumber: activeOrder.orderNumber || orderId,
+      customerName: activeOrder.customerName || "Customer",
       riderName: "Sinchana B R",
       riderRating,
       itemRatings,
@@ -459,6 +490,7 @@ export default function TrackOrderPage() {
       riderRating,
       itemRatings,
     });
+    dispatchCloudAction("SUBMIT_RATING", { ratingPayload });
     broadcastEvent("ORDER_DELIVERED", deliveredOrder);
     broadcastEvent("ORDER_RATED", ratingPayload);
     setRatingSubmitted(true);
@@ -510,14 +542,18 @@ export default function TrackOrderPage() {
   if (isDelivered) arrivalTitle = "Delivered to your doorstep";
   if (isCancelled) arrivalTitle = "Order Cancelled";
 
-  const scooterCoords =
+  const routePct =
     isDelivered || trackingStage === "rider_arrived"
-      ? { x: 592, y: 248 }
+      ? 1
       : trackingStage === "almost_doorstep"
-      ? { x: 552, y: 252 }
+      ? 0.94
       : trackingStage === "en_route" || isDispatched || isStaged
-      ? { x: 470, y: 238 }
-      : { x: 336, y: 189 };
+      ? Math.min(0.92, Math.max(0.08, (480 - riderCountdownSec) / 480))
+      : 0.04;
+  const scooterCoords = {
+    x: Math.round(320 + (592 - 320) * routePct),
+    y: Math.round(185 + (248 - 185) * Math.sin((routePct * Math.PI) / 2)),
+  };
 
   return (
     <div style={S.pageBackground}>

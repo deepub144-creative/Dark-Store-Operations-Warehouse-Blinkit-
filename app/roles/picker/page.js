@@ -20,7 +20,10 @@ import {
   updateLiveOrder,
   saveLiveOrder,
   clearAllLiveOrders,
+  subscribeToCloudHub,
+  dispatchCloudAction,
 } from "@/lib/realtimeSync";
+import { getTodayISTDateKey } from "@/lib/hubState";
 import { STAGING_RACKS, getRandomStagingRack } from "@/lib/roles";
 import { CATALOG } from "@/lib/items";
 import AuditxLogo from "@/components/AuditxLogo";
@@ -124,16 +127,45 @@ export default function OdPickerApp() {
     activeOrderRef.current = activeOrder;
   }, [activeOrder]);
 
-  // Restore authenticated session from localStorage if present
+  // Enforce Daily Shift OTP Login (IST Calendar Date) + Cloud Sync across devices
   useEffect(() => {
-    try {
-      if (typeof window !== "undefined" && localStorage.getItem("auditx_picker_authenticated") === "true") {
-        setIsPickerLoggedIn(true);
-        if (localStorage.getItem("auditx_device_thrupthi") === "LOGGED_IN") {
-          setIsOnline(true);
+    const checkDailyOtpAuth = () => {
+      try {
+        if (typeof window === "undefined") return;
+        const todayKey = getTodayISTDateKey();
+        const isAuth = localStorage.getItem("auditx_picker_authenticated") === "true";
+        const authDate = localStorage.getItem("auditx_picker_auth_date") || "";
+        if (isAuth && authDate === todayKey) {
+          setIsPickerLoggedIn(true);
+          if (localStorage.getItem("auditx_device_thrupthi") === "LOGGED_IN") {
+            setIsOnline(true);
+          }
+        } else {
+          if (isAuth && authDate !== todayKey) {
+            localStorage.removeItem("auditx_picker_authenticated");
+            localStorage.removeItem("auditx_picker_auth_date");
+            localStorage.setItem("auditx_device_thrupthi", "LOGGED_OUT");
+          }
+          setIsPickerLoggedIn(false);
+          setIsOnline(false);
         }
+      } catch (e) {}
+    };
+
+    checkDailyOtpAuth();
+    const dayWatcher = setInterval(checkDailyOtpAuth, 30000);
+    const unsubCloud = subscribeToCloudHub((cloudState) => {
+      if (!cloudState) return;
+      const st = cloudState.staffStatus?.thrupthi?.deviceStatus;
+      if (st && localStorage.getItem("auditx_picker_auth_date") === getTodayISTDateKey()) {
+        setIsOnline(st === "LOGGED_IN");
       }
-    } catch (e) {}
+    }, 1800);
+
+    return () => {
+      clearInterval(dayWatcher);
+      unsubCloud();
+    };
   }, []);
 
   function handleToggleDuty() {
@@ -142,6 +174,12 @@ export default function OdPickerApp() {
       try {
         localStorage.setItem("auditx_device_thrupthi", "LOGGED_IN");
       } catch (e) {}
+      dispatchCloudAction("UPDATE_STAFF_DUTY", {
+        staffId: "thrupthi",
+        staffName: "Thrupthi K S",
+        deviceName: "MOTOROLA",
+        deviceStatus: "LOGGED_IN",
+      });
       broadcastEvent("STAFF_STATUS_CHANGED", {
         staffId: "thrupthi",
         staffName: "Thrupthi K S",
@@ -160,6 +198,12 @@ export default function OdPickerApp() {
       try {
         localStorage.setItem("auditx_device_thrupthi", "LOGGED_OUT");
       } catch (e) {}
+      dispatchCloudAction("UPDATE_STAFF_DUTY", {
+        staffId: "thrupthi",
+        staffName: "Thrupthi K S",
+        deviceName: "MOTOROLA",
+        deviceStatus: "LOGGED_OUT",
+      });
       broadcastEvent("STAFF_STATUS_CHANGED", {
         staffId: "thrupthi",
         staffName: "Thrupthi K S",
@@ -336,14 +380,18 @@ export default function OdPickerApp() {
             const delayMins = Math.ceil(delaySec / 60);
             const dynamicTotalSla = 10 + delayMins;
 
-            // Broadcast live delay update every second so Ordering, Tracking & Rider apps increase time dynamically
-            updateLiveOrder(activeOrder.id, {
-              pickTimeSec: next,
-              delaySec,
-              delayMins,
-              dynamicTotalSla,
-              estimatedDeliveryMins: dynamicTotalSla,
-            });
+            // Broadcast live delay update (sync to cloud every 5s cleanly without flooding)
+            updateLiveOrder(
+              activeOrder.id,
+              {
+                pickTimeSec: next,
+                delaySec,
+                delayMins,
+                dynamicTotalSla,
+                estimatedDeliveryMins: dynamicTotalSla,
+              },
+              { skipCloud: next % 5 !== 1 }
+            );
 
             broadcastEvent("PICKER_DELAY_UPDATED", {
               orderId: activeOrder.id,
@@ -895,13 +943,21 @@ export default function OdPickerApp() {
           logo="/thrupthi-logo.png"
           deviceId="MOTOROLA"
           onLoginSuccess={(loginData) => {
+            const todayKey = loginData?.authDate || getTodayISTDateKey();
             setIsPickerLoggedIn(true);
             setIsOnline(true);
             try {
               localStorage.setItem("auditx_picker_authenticated", "true");
+              localStorage.setItem("auditx_picker_auth_date", todayKey);
               localStorage.setItem("auditx_picker_phone", loginData?.phone || "6362435746");
               localStorage.setItem("auditx_device_thrupthi", "LOGGED_IN");
             } catch (e) {}
+            dispatchCloudAction("UPDATE_STAFF_DUTY", {
+              staffId: "thrupthi",
+              staffName: "Thrupthi K S",
+              deviceName: "MOTOROLA",
+              deviceStatus: "LOGGED_IN",
+            });
             broadcastEvent("STAFF_STATUS_CHANGED", {
               staffId: "thrupthi",
               staffName: "Thrupthi K S",
@@ -913,7 +969,7 @@ export default function OdPickerApp() {
               time: new Date().toISOString(),
             });
             playSuccessChime();
-            setActionSuccess("✅ Logged in as Thrupthi K S (MOTOROLA)! Shift is ON DUTY.");
+            setActionSuccess("✅ Daily OTP Verified! Logged in as Thrupthi K S (MOTOROLA).");
             setTimeout(() => setActionSuccess(""), 3500);
           }}
         />
@@ -931,8 +987,15 @@ export default function OdPickerApp() {
               setIsOnline(false);
               try {
                 localStorage.removeItem("auditx_picker_authenticated");
+                localStorage.removeItem("auditx_picker_auth_date");
                 localStorage.setItem("auditx_device_thrupthi", "LOGGED_OUT");
               } catch (e) {}
+              dispatchCloudAction("UPDATE_STAFF_DUTY", {
+                staffId: "thrupthi",
+                staffName: "Thrupthi K S",
+                deviceName: "MOTOROLA",
+                deviceStatus: "LOGGED_OUT",
+              });
               broadcastEvent("STAFF_STATUS_CHANGED", {
                 staffId: "thrupthi",
                 staffName: "Thrupthi K S",

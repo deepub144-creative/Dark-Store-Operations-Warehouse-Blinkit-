@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { STAFF } from "@/lib/roles";
+import { dispatchCloudAction, getOrCreateDeviceUid } from "@/lib/realtimeSync";
 
 export const GOOGLE_CLIENT_ID = "925739101724-pjo6hpncuvgt62ovuqg3splvd3711m0e.apps.googleusercontent.com";
 
@@ -29,6 +30,7 @@ export default function GoogleAuthButton({
   context = "ordering", // 'ordering' | 'staff' | 'picker' | 'rider' | 'warehouse' | 'dashboard'
   roleCode = null, // 'CUSTOMER' | 'SM' | 'ASM' | 'MD' | 'PICKER' | 'DELIVERY'
   onSuccess = null,
+  onError = null,
   theme = "light", // 'light' | 'dark'
   variant = "small-bar", // 'small-bar' | 'pill' | 'standard'
   label = null,
@@ -127,43 +129,61 @@ export default function GoogleAuthButton({
         if (parsed.name && parsed.email) return parsed;
       }
     } catch (e) {}
+    const uid = getOrCreateDeviceUid();
+    const shortTag = uid.slice(-4).toUpperCase();
     return {
-      name: "Deepu B",
-      email: "deepub1235@gmail.com",
+      name: `Customer ${shortTag}`,
+      email: `customer_${shortTag.toLowerCase()}@auditx.app`,
       picture: "https://lh3.googleusercontent.com/a/default-user=s96-c",
-      sub: "google_deepub1235",
+      sub: `google_${uid}`,
       emailVerified: true,
-      provider: "google",
+      provider: "google_bypass",
       authTime: new Date().toISOString(),
     };
   }
 
-  // 3. Finalize Login and immediately return to main ordering catalog in a fraction of a second
-  function finalizeLogin(googleUser, chosenRole = null) {
-    try {
-      localStorage.setItem("auditx_google_user", JSON.stringify(googleUser));
-      localStorage.setItem("auditx_last_google_account", JSON.stringify(googleUser));
-    } catch (e) {
-      console.warn(e);
-    }
-
+  // 3. Finalize Login, register daily device count (400 max), and enter ordering app
+  async function finalizeLogin(googleUser, chosenRole = null) {
     const effectiveRole = chosenRole || roleCode || (context === "ordering" ? "CUSTOMER" : null);
 
     if (effectiveRole === "CUSTOMER" || context === "ordering") {
+      const deviceUid = getOrCreateDeviceUid();
       const custObj = {
-        customerId: `google_${googleUser.sub || (googleUser.email ? googleUser.email.replace(/[^a-zA-Z0-9]/g, "_") : "deepub1235")}`,
-        name: googleUser.name || "Deepu B",
-        email: googleUser.email || "deepub1235@gmail.com",
+        customerId: `google_${googleUser.sub || (googleUser.email ? googleUser.email.replace(/[^a-zA-Z0-9]/g, "_") : deviceUid)}`,
+        deviceUid,
+        name: googleUser.name || `Customer ${deviceUid.slice(-4).toUpperCase()}`,
+        email: googleUser.email || "",
         picture: googleUser.picture || "https://lh3.googleusercontent.com/a/default-user=s96-c",
-        phone: "9845112233",
+        phone: googleUser.phone || "9845112233",
         location: "KFGSC , Tiptur 572201",
         walletBalance: 1000000,
-        provider: "google",
-        loginMethod: "Official Google OAuth 2.0",
+        provider: googleUser.provider || "google",
+        loginMethod:
+          googleUser.provider === "google_bypass"
+            ? "Google Quick Bypass"
+            : "Official Google OAuth 2.0",
         verifiedAt: new Date().toISOString(),
       };
 
+      const regRes = await dispatchCloudAction("REGISTER_LOGIN", {
+        deviceUid,
+        name: custObj.name,
+        email: custObj.email,
+        phone: custObj.phone,
+        loginMethod: custObj.loginMethod,
+      });
+
+      if (regRes && !regRes.ok && regRes.status === 403) {
+        setLoading(false);
+        const msg = regRes.error || "Ordering app reached maximum capacity (400 devices today).";
+        if (onError) onError(msg);
+        else alert(msg);
+        return;
+      }
+
       try {
+        localStorage.setItem("auditx_google_user", JSON.stringify(googleUser));
+        localStorage.setItem("auditx_last_google_account", JSON.stringify(googleUser));
         localStorage.setItem("auditx_customer", JSON.stringify(custObj));
         localStorage.setItem("blinkit_customer", JSON.stringify(custObj));
       } catch (e) {
@@ -173,7 +193,6 @@ export default function GoogleAuthButton({
       setLoading(false);
       if (onSuccess) onSuccess({ ...googleUser, role: "CUSTOMER", customer: custObj });
 
-      // Automatically in a fraction of a second navigate straight to main ordering app catalog
       setTimeout(() => {
         router.push("/ordering");
       }, 100);

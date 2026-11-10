@@ -6,7 +6,17 @@ import { db } from "@/lib/firebaseClient";
 import { playOrderAlarm, stopOrderAlarm, playScanSuccess, playSuccessChime } from "@/lib/soundSystem";
 import SharedScanner from "@/components/SharedScanner";
 import SlideButton from "@/components/SlideButton";
-import { subscribeToEvents, broadcastEvent, subscribeToLiveOrders, updateLiveOrder, clearAllLiveOrders } from "@/lib/realtimeSync";
+import {
+  subscribeToEvents,
+  broadcastEvent,
+  subscribeToLiveOrders,
+  updateLiveOrder,
+  clearAllLiveOrders,
+  saveLiveOrder,
+  subscribeToCloudHub,
+  dispatchCloudAction,
+} from "@/lib/realtimeSync";
+import { getTodayISTDateKey } from "@/lib/hubState";
 import { STAGING_RACKS } from "@/lib/roles";
 import AuditxLogo from "@/components/AuditxLogo";
 import AndroidPhoneShell from "@/components/AndroidPhoneShell";
@@ -15,7 +25,6 @@ import DeliveredSheet from "@/components/ui/DeliveredSheet";
 import StaffAppLoginScreen from "@/components/StaffAppLoginScreen";
 import DutyToggleSwitch from "@/components/DutyToggleSwitch";
 import AuditxSuiteTopBar from "@/components/AuditxSuiteTopBar";
-import { saveLiveOrder } from "@/lib/realtimeSync";
 import {
   IconRealisticScooter,
   IconRealisticSliderArrow,
@@ -38,16 +47,45 @@ export default function DeliveryCaptainApp() {
   const [activeStep, setActiveStep] = useState("awaiting_orders"); // awaiting_orders | rack_verification | en_route | customer_handover | delivered
   const [elapsedSec, setElapsedSec] = useState(0);
 
-  // Restore session on mount
+  // Enforce Daily Shift OTP Login (IST Calendar Date) + Cloud Sync across devices
   useEffect(() => {
-    try {
-      if (typeof window !== "undefined" && localStorage.getItem("auditx_rider_authenticated") === "true") {
-        setIsRiderLoggedIn(true);
-        if (localStorage.getItem("auditx_device_sinchana") === "LOGGED_IN") {
-          setIsCheckedIn(true);
+    const checkDailyOtpAuth = () => {
+      try {
+        if (typeof window === "undefined") return;
+        const todayKey = getTodayISTDateKey();
+        const isAuth = localStorage.getItem("auditx_rider_authenticated") === "true";
+        const authDate = localStorage.getItem("auditx_rider_auth_date") || "";
+        if (isAuth && authDate === todayKey) {
+          setIsRiderLoggedIn(true);
+          if (localStorage.getItem("auditx_device_sinchana") === "LOGGED_IN") {
+            setIsCheckedIn(true);
+          }
+        } else {
+          if (isAuth && authDate !== todayKey) {
+            localStorage.removeItem("auditx_rider_authenticated");
+            localStorage.removeItem("auditx_rider_auth_date");
+            localStorage.setItem("auditx_device_sinchana", "LOGGED_OUT");
+          }
+          setIsRiderLoggedIn(false);
+          setIsCheckedIn(false);
         }
+      } catch (e) {}
+    };
+
+    checkDailyOtpAuth();
+    const dayWatcher = setInterval(checkDailyOtpAuth, 30000);
+    const unsubCloud = subscribeToCloudHub((cloudState) => {
+      if (!cloudState) return;
+      const st = cloudState.staffStatus?.sinchana?.deviceStatus;
+      if (st && localStorage.getItem("auditx_rider_auth_date") === getTodayISTDateKey()) {
+        setIsCheckedIn(st === "LOGGED_IN");
       }
-    } catch (e) {}
+    }, 1800);
+
+    return () => {
+      clearInterval(dayWatcher);
+      unsubCloud();
+    };
   }, []);
 
   function handleToggleDuty() {
@@ -56,6 +94,12 @@ export default function DeliveryCaptainApp() {
       try {
         localStorage.setItem("auditx_device_sinchana", "LOGGED_IN");
       } catch (e) {}
+      dispatchCloudAction("UPDATE_STAFF_DUTY", {
+        staffId: "sinchana",
+        staffName: "Sinchana B R",
+        deviceName: "OPPO",
+        deviceStatus: "LOGGED_IN",
+      });
       broadcastEvent("STAFF_STATUS_CHANGED", {
         staffId: "sinchana",
         staffName: "Sinchana B R",
@@ -74,6 +118,12 @@ export default function DeliveryCaptainApp() {
       try {
         localStorage.setItem("auditx_device_sinchana", "LOGGED_OUT");
       } catch (e) {}
+      dispatchCloudAction("UPDATE_STAFF_DUTY", {
+        staffId: "sinchana",
+        staffName: "Sinchana B R",
+        deviceName: "OPPO",
+        deviceStatus: "LOGGED_OUT",
+      });
       broadcastEvent("STAFF_STATUS_CHANGED", {
         staffId: "sinchana",
         staffName: "Sinchana B R",
@@ -218,7 +268,20 @@ export default function DeliveryCaptainApp() {
           (d) => (d.status === "dispatched" || d.status === "en_route") && (!d.captainId || d.captainId === "sinchana")
         );
         if (resumeTrip) {
+          const dispatchedMs = resumeTrip.dispatchedAt ? new Date(resumeTrip.dispatchedAt).getTime() : Date.now();
+          const wallElapsed = Math.max(0, Math.min(CAPTAIN_SLA_SECONDS, Math.floor((Date.now() - dispatchedMs) / 1000)));
+          const rem = Math.max(0, CAPTAIN_SLA_SECONDS - wallElapsed);
+          const pct = rem <= 0 ? 100 : rem <= 15 ? 96 : Math.min(95, Math.round((wallElapsed / CAPTAIN_SLA_SECONDS) * 100));
+          const wpIdx = rem <= 0 ? 4 : pct < 25 ? 0 : pct < 50 ? 1 : pct < 75 ? 2 : 3;
           setActiveOrder(resumeTrip);
+          setElapsedSec(wallElapsed);
+          setRemainingSec(rem);
+          setArrivingMinutes(Math.max(1, Math.ceil(rem / 60)));
+          setTransitProgress(pct);
+          setCurrentWaypointIdx(wpIdx);
+          setDistanceLeftKm(rem <= 0 ? 0 : Math.max(0.1, Number((1.5 * (1 - pct / 100)).toFixed(1))));
+          if (rem > 0 && rem <= 15) setDoorstepSeconds(rem);
+          else if (rem === 0) setRiderArrivedBar(true);
           setActiveStep("en_route");
         }
       }
@@ -260,35 +323,44 @@ export default function DeliveryCaptainApp() {
     };
   }, [activeOrder, isCheckedIn]);
 
-  // 8-Minute Normal Countdown & Auto-Reducing Bar (like Ordering App Tracking Page)
+  // Real-Time 8-Minute (480s) Countdown & Synchronized GPS Waypoint Progression (No instant 100% bypass)
   useEffect(() => {
     if (activeOrder && activeStep === "en_route") {
       timerRef.current = setInterval(() => {
         setElapsedSec((prev) => prev + 1);
         setRemainingSec((prev) => {
           const next = prev > 0 ? prev - 1 : 0;
+          const elapsedNow = Math.max(0, CAPTAIN_SLA_SECONDS - next);
           setArrivingMinutes(Math.max(1, Math.ceil(next / 60)));
+
           if (next === 15) {
             setDoorstepSeconds(15);
           }
+
+          if (next > 15) {
+            // Normal running time smoothly advances 0% -> 95% across Waypoints 0..3 over real 465 seconds
+            const realPct = Math.min(95, Math.round((elapsedNow / CAPTAIN_SLA_SECONDS) * 100));
+            const wpIdx = realPct < 25 ? 0 : realPct < 50 ? 1 : realPct < 75 ? 2 : 3;
+            const kmLeft = Math.max(0.1, Number((1.5 * (1 - realPct / 100)).toFixed(1)));
+            setTransitProgress(realPct);
+            setCurrentWaypointIdx(wpIdx);
+            setDistanceLeftKm(kmLeft);
+          } else if (next > 0) {
+            // Final 15 seconds doorstep approach (96% -> 99%)
+            const approachPct = Math.min(99, 96 + Math.round(((15 - next) / 15) * 3));
+            setTransitProgress(approachPct);
+            setCurrentWaypointIdx(3);
+            setDistanceLeftKm(0.1);
+          } else {
+            // Exact timer completion (0s left -> 100% Customer Doorstep)
+            setTransitProgress(100);
+            setCurrentWaypointIdx(TIPTUR_WAYPOINTS.length - 1);
+            setDistanceLeftKm(0);
+          }
+
           return next;
         });
       }, 1000);
-
-      // Simulate moving across Tiptur landmarks & reducing 1.5 km distance
-      transitRef.current = setInterval(() => {
-        setTransitProgress((prev) => {
-          const next = Math.min(100, prev + 2.5);
-          const nextIdx = Math.min(
-            TIPTUR_WAYPOINTS.length - 1,
-            Math.floor((next / 100) * TIPTUR_WAYPOINTS.length)
-          );
-          setCurrentWaypointIdx(nextIdx);
-          const nextDist = Math.max(0.1, Number((1.5 * (1 - next / 100)).toFixed(1)));
-          setDistanceLeftKm(next >= 100 ? 0 : nextDist);
-          return next;
-        });
-      }, 2000);
     } else {
       if (timerRef.current) clearInterval(timerRef.current);
       if (transitRef.current) clearInterval(transitRef.current);
@@ -517,13 +589,21 @@ export default function DeliveryCaptainApp() {
           logo="/sinchana-logo.png"
           deviceId="OPPO"
           onLoginSuccess={(loginData) => {
+            const todayKey = loginData?.authDate || getTodayISTDateKey();
             setIsRiderLoggedIn(true);
             setIsCheckedIn(true);
             try {
               localStorage.setItem("auditx_rider_authenticated", "true");
+              localStorage.setItem("auditx_rider_auth_date", todayKey);
               localStorage.setItem("auditx_rider_phone", loginData?.phone || "8088553237");
               localStorage.setItem("auditx_device_sinchana", "LOGGED_IN");
             } catch (e) {}
+            dispatchCloudAction("UPDATE_STAFF_DUTY", {
+              staffId: "sinchana",
+              staffName: "Sinchana B R",
+              deviceName: "OPPO",
+              deviceStatus: "LOGGED_IN",
+            });
             broadcastEvent("STAFF_STATUS_CHANGED", {
               staffId: "sinchana",
               staffName: "Sinchana B R",
@@ -535,7 +615,7 @@ export default function DeliveryCaptainApp() {
               time: new Date().toISOString(),
             });
             playSuccessChime();
-            setActionSuccess("✅ Logged in as Sinchana B R (OPPO)! Shift is ON DUTY.");
+            setActionSuccess("✅ Daily OTP Verified! Logged in as Sinchana B R (OPPO).");
             setTimeout(() => setActionSuccess(""), 3500);
           }}
         />
@@ -564,8 +644,15 @@ export default function DeliveryCaptainApp() {
               setIsCheckedIn(false);
               try {
                 localStorage.removeItem("auditx_rider_authenticated");
+                localStorage.removeItem("auditx_rider_auth_date");
                 localStorage.setItem("auditx_device_sinchana", "LOGGED_OUT");
               } catch (e) {}
+              dispatchCloudAction("UPDATE_STAFF_DUTY", {
+                staffId: "sinchana",
+                staffName: "Sinchana B R",
+                deviceName: "OPPO",
+                deviceStatus: "LOGGED_OUT",
+              });
               broadcastEvent("STAFF_STATUS_CHANGED", {
                 staffId: "sinchana",
                 staffName: "Sinchana B R",
@@ -1016,14 +1103,16 @@ export default function DeliveryCaptainApp() {
                       type="button"
                       style={S.fastTransitBtn}
                       onClick={() => {
-                        setRemainingSec(180);
+                        setRemainingSec(15);
                         setElapsedSec(180);
-                        setTransitProgress(100);
-                        setCurrentWaypointIdx(TIPTUR_WAYPOINTS.length - 1);
+                        setDoorstepSeconds(15);
+                        setTransitProgress(96);
+                        setCurrentWaypointIdx(3);
+                        setDistanceLeftKm(0.1);
                         playSuccessChime();
-                        setActionSuccess("⚡ Fast 3-min transit speed recorded! Arrived at KFGSC doorstep.");
+                        setActionSuccess("⚡ Fast 3-min approach recorded! 15s to Customer Doorstep.");
                       }}
-                      title="Simulate superfast 3-minute delivery"
+                      title="Advance to 15-second final doorstep approach"
                     >
                       ⚡ Fast 3-Min Arrival
                     </button>
