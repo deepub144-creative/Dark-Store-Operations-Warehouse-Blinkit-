@@ -53,6 +53,7 @@ import DutyToggleSwitch from "@/components/DutyToggleSwitch";
 import DailyOperationsExportButton from "@/components/DailyOperationsExportButton";
 import ManagingDirectorApp from "@/app/roles/md/page";
 import AssistantStoreManagerApp from "@/app/roles/asm/page";
+import WarehouseLoginGate from "@/components/WarehouseLoginGate";
 import {
   IconRealisticScooter,
   IconRealisticPickerTrolley,
@@ -123,10 +124,14 @@ const getInitials = (name) =>
     .join("");
 
 export default function WarehouseDashboardPage() {
+  const [authChecked, setAuthChecked] = useState(false);
+  const [whSession, setWhSession] = useState(null);
+  const [loginNotice, setLoginNotice] = useState("");
+  const [logoutBlockedModal, setLogoutBlockedModal] = useState(false);
   const [staff, setStaff] = useState(null);
   const [orders, setOrders] = useState([]);
   const [staffStatus, setStaffStatus] = useState([]);
-  const [activeTab, setActiveTab] = useState("overview"); // 'overview' | 'queue' | 'margin' | 'ratings' | 'complaints' | 'inventory' | 'devices' | 'orderCap' | 'erdDfd' | 'history'
+  const [activeTab, setActiveTab] = useState("overview"); // 'overview' | 'queue' | 'margin' | 'ratings' | 'complaints' | 'inventory' | 'devices' | 'orderCap' | 'erdDfd' | 'history' | 'asmDesk'
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [showLoginsPopover, setShowLoginsPopover] = useState(false);
   const [govTab, setGovTab] = useState("queue"); // 'queue' | 'sku'
@@ -182,56 +187,56 @@ export default function WarehouseDashboardPage() {
 
   const router = useRouter();
 
-  // Load initial staff (Only SM, ASM, or MD for Dashboard Command Tower)
+  // Daily Warehouse Authentication Enforcement (Requires WarehouseLoginGate once per IST day for SM / ASM / MD)
   useEffect(() => {
-    const defaultSM = DASHBOARD_MANAGERS.find((s) => s.id === "bhaskar") || DASHBOARD_MANAGERS[0];
-    
-    // Check if role was requested via URL query (e.g. /dashboard?role=md or ?role=asm)
-    if (typeof window !== "undefined") {
-      const params = new URLSearchParams(window.location.search);
-      const reqRole = (params.get("role") || params.get("profile") || "").toLowerCase();
-      if (reqRole === "md" || reqRole === "harshitha") {
-        const target = DASHBOARD_MANAGERS.find((s) => s.roleCode === "MD" || s.id === "harshitha");
-        if (target) {
-          localStorage.setItem("auditx_staff", JSON.stringify(target));
-          setStaff(target);
-          return;
-        }
-      } else if (reqRole === "asm" || reqRole === "deepu") {
-        const target = DASHBOARD_MANAGERS.find((s) => s.roleCode === "ASM" || s.id === "deepu");
-        if (target) {
-          localStorage.setItem("auditx_staff", JSON.stringify(target));
-          setStaff(target);
-          return;
-        }
-      } else if (reqRole === "sm" || reqRole === "bhaskar") {
-        const target = DASHBOARD_MANAGERS.find((s) => s.roleCode === "SM" || s.id === "bhaskar");
-        if (target) {
-          localStorage.setItem("auditx_staff", JSON.stringify(target));
-          setStaff(target);
-          return;
-        }
-      }
-    }
-
-    const raw = localStorage.getItem("auditx_staff");
-    if (!raw) {
-      localStorage.setItem("auditx_staff", JSON.stringify(defaultSM));
-      setStaff(defaultSM);
-    } else {
+    function validateDailyWarehouseSession() {
+      const todayKey = getTodayISTDateKey();
       try {
-        const parsed = JSON.parse(raw);
-        if (parsed.id === "thrupthi" || parsed.id === "sinchana" || !DASHBOARD_MANAGERS.some((m) => m.id === parsed.id)) {
-          localStorage.setItem("auditx_staff", JSON.stringify(defaultSM));
-          setStaff(defaultSM);
-        } else {
-          setStaff(parsed);
+        const rawSess = localStorage.getItem("auditx_wh_session");
+        if (rawSess) {
+          const parsed = JSON.parse(rawSess);
+          const manager = DASHBOARD_MANAGERS.find(
+            (m) => m.id === parsed?.id || m.roleCode === parsed?.roleCode
+          );
+          if (manager && parsed?.authDate === todayKey) {
+            setWhSession(parsed);
+            setStaff(manager);
+            localStorage.setItem("auditx_staff", JSON.stringify(manager));
+            setAuthChecked(true);
+            return;
+          }
+          // Session expired from previous IST day -> force fresh daily login
+          localStorage.removeItem("auditx_wh_session");
+          localStorage.removeItem("auditx_staff");
+          sessionStorage.removeItem("wh_user");
+          setLoginNotice("Daily shift rollover: Please verify credentials for today.");
         }
       } catch (e) {
-        setStaff(defaultSM);
+        console.warn("Warehouse session check error:", e);
       }
+      setWhSession(null);
+      setStaff(null);
+      setAuthChecked(true);
     }
+
+    validateDailyWarehouseSession();
+    const iv = setInterval(validateDailyWarehouseSession, 30000);
+    return () => clearInterval(iv);
   }, []);
+
+  function handleWarehouseAuthenticated(sess) {
+    const manager =
+      DASHBOARD_MANAGERS.find((m) => m.id === sess.id || m.roleCode === sess.roleCode) ||
+      DASHBOARD_MANAGERS[0];
+    try {
+      localStorage.setItem("auditx_staff", JSON.stringify(manager));
+    } catch {}
+    setWhSession(sess);
+    setStaff(manager);
+    setLoginNotice("");
+    setActiveTab("overview");
+    playSuccessChime();
+  }
 
   // Load and sync store status (Store Manager toggle for Ordering App)
   useEffect(() => {
@@ -265,9 +270,12 @@ export default function WarehouseDashboardPage() {
     };
   }, []);
 
-  // Auto ON / Auto OFF SM Dashboard alarm sound tied directly to store toggle
+  // Auto ON / Auto OFF SM Dashboard alarm sound tied directly to store toggle (only while logged in)
   useEffect(() => {
-    if (!staff) return;
+    if (!staff || !whSession) {
+      stopOrderAlarm();
+      return;
+    }
     if (isStorePaused) {
       playOrderAlarm();
     } else {
@@ -276,7 +284,7 @@ export default function WarehouseDashboardPage() {
     return () => {
       stopOrderAlarm();
     };
-  }, [isStorePaused, staff]);
+  }, [isStorePaused, staff, whSession]);
 
   // Load inventory units without wiping previously deducted / saved stock counts
   useEffect(() => {
@@ -607,8 +615,27 @@ export default function WarehouseDashboardPage() {
   }
 
   function logout() {
-    localStorage.removeItem("auditx_staff");
-    router.push("/login");
+    // Responsibility Rule: Warehouse managers (SM, ASM, MD) MUST close store toggle OFF before logging out
+    if (!isStorePaused) {
+      playNotificationChime();
+      setLogoutBlockedModal(true);
+      setActionSuccess(
+        `🛑 Store is OPEN! ${staff?.name || "Warehouse Manager"} must turn Store Toggle OFF (STORE CLOSED) before logging out.`
+      );
+      setTimeout(() => setActionSuccess(""), 5000);
+      return;
+    }
+
+    stopOrderAlarm();
+    try {
+      localStorage.removeItem("auditx_wh_session");
+      localStorage.removeItem("auditx_staff");
+      sessionStorage.removeItem("wh_user");
+    } catch {}
+    setLogoutBlockedModal(false);
+    setWhSession(null);
+    setStaff(null);
+    setLoginNotice("Store Closed & Daily Session Logged Out. Enter credentials to log back in.");
   }
 
   async function toggleStorePause() {
@@ -929,7 +956,16 @@ export default function WarehouseDashboardPage() {
     setTimeout(() => setActionSuccess(""), 3500);
   }
 
-  if (!staff) return null;
+  if (!authChecked) return null;
+
+  if (!whSession || !staff) {
+    return (
+      <WarehouseLoginGate
+        initialNotice={loginNotice}
+        onAuthenticated={handleWarehouseAuthenticated}
+      />
+    );
+  }
 
   // Live Metrics Derived from Hub State (Daily resets at midnight IST; Total Revenue Saved, Total Sales & Total Logins stay saved)
   const hubMetrics = computeHubMetrics({
@@ -1221,7 +1257,7 @@ export default function WarehouseDashboardPage() {
           </button>
 
           <div style={S.staffSwitcherBlock}>
-            <span style={S.switcherLabel}>Personnel:</span>
+            <span style={S.switcherLabel}>Signed In:</span>
             <div style={S.activeStaffPill}>
               {staff.logo ? (
                 <img src={staff.logo} alt={staff.name} style={{ width: 22, height: 22, borderRadius: "50%", objectFit: "cover" }} />
@@ -1234,21 +1270,27 @@ export default function WarehouseDashboardPage() {
               </div>
             </div>
 
-            <select
-              style={S.switchSelect}
-              value={staff.id}
-              onChange={(e) => {
-                const target = DASHBOARD_MANAGERS.find((s) => s.id === e.target.value);
-                if (target) switchStaff(target);
-              }}
-            >
-              <option disabled>Switch Profile:</option>
-              {DASHBOARD_MANAGERS.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.avatar} {s.name} ({s.designation})
-                </option>
-              ))}
-            </select>
+            {/* Give ASM (Deepu B) and SM (Bhaskar N S) 1-click toggle between SM Command Tower & ASM Putaway Desk */}
+            {(staff?.id === "deepu" || staff?.roleCode === "ASM" || staff?.id === "bhaskar" || staff?.roleCode === "SM") && (
+              <button
+                type="button"
+                onClick={() => handleTabChange(activeTab === "asmDesk" ? "overview" : "asmDesk")}
+                style={{
+                  background: activeTab === "asmDesk" ? "#0C831F" : "#1E293B",
+                  color: "#ffffff",
+                  border: "1px solid #334155",
+                  borderRadius: 8,
+                  padding: "6px 10px",
+                  fontSize: 11.5,
+                  fontWeight: 800,
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                }}
+                title="Switch between SM Dashboard & ASM Putaway Desk"
+              >
+                {activeTab === "asmDesk" ? "📊 SM Command Tower" : "📥 ASM Putaway Desk"}
+              </button>
+            )}
           </div>
 
           <button style={S.logoutBtn} onClick={logout}>
@@ -1260,11 +1302,111 @@ export default function WarehouseDashboardPage() {
       {actionSuccess && <div style={S.actionAlert}>{actionSuccess}</div>}
       {pingedDevice && <div style={S.pingAlert}>🔔 Pinging terminal "{pingedDevice}"... Chime dispatched to device speaker!</div>}
 
-      {/* ── DYNAMIC ROLE WORKSPACE (ACCORDING TO SWITCH PROFILE DROPDOWN: SM, ASM, MD) ── */}
+      {/* Mandatory Close-Store-Before-Logout Responsibility Modal */}
+      {logoutBlockedModal && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 9999,
+            background: "rgba(15, 23, 42, 0.72)",
+            backdropFilter: "blur(4px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+          }}
+        >
+          <div
+            style={{
+              width: "100%",
+              maxWidth: 440,
+              background: "#FFFFFF",
+              borderRadius: 18,
+              border: "2px solid #ef4444",
+              padding: "24px 22px",
+              boxShadow: "0 24px 60px rgba(0,0,0,0.45)",
+              color: "#0F172A",
+            }}
+          >
+            <div style={{ fontSize: 18, fontWeight: 900, color: "#b91c1c", marginBottom: 8 }}>
+              🛑 Store Must Be Closed Before Logout
+            </div>
+            <p style={{ fontSize: 13.5, color: "#475569", lineHeight: 1.55, margin: "0 0 16px" }}>
+              Warehouse Manager Responsibility (<b>{staff.name} • {staff.roleCode}</b>): Store is currently{" "}
+              <b style={{ color: isStorePaused ? "#dc2626" : "#0c831f" }}>
+                {isStorePaused ? "CLOSED (OFF)" : "OPEN (ON)"}
+              </b>
+              . You cannot log out or close daily operations until you turn the Store Toggle to <b>STORE CLOSED (OFF)</b>.
+            </p>
+
+            <div
+              style={{
+                background: "#F8FAFC",
+                border: "1px solid #E2E8F0",
+                borderRadius: 12,
+                padding: "12px 14px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 12,
+                marginBottom: 18,
+              }}
+            >
+              <span style={{ fontSize: 13, fontWeight: 800, color: "#0F172A" }}>
+                Store Master Toggle:
+              </span>
+              <StoreToggleSwitch
+                isOpen={!isStorePaused}
+                onToggle={toggleStorePause}
+                width={175}
+                height={36}
+                ariaLabel="Close store toggle before logout"
+              />
+            </div>
+
+            <div style={{ display: "flex", gap: 10 }}>
+              <button
+                type="button"
+                onClick={() => setLogoutBlockedModal(false)}
+                style={{
+                  flex: 1,
+                  padding: "10px 14px",
+                  borderRadius: 10,
+                  border: "1px solid #CBD5E1",
+                  background: "#FFFFFF",
+                  color: "#334155",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={!isStorePaused}
+                onClick={() => logout()}
+                style={{
+                  flex: 1.4,
+                  padding: "10px 14px",
+                  borderRadius: 10,
+                  border: "none",
+                  background: isStorePaused ? "#dc2626" : "#cbd5e1",
+                  color: "#FFFFFF",
+                  fontWeight: 800,
+                  cursor: isStorePaused ? "pointer" : "not-allowed",
+                }}
+              >
+                {isStorePaused ? "🔒 Confirm Logout Now" : "Close Store First to Logout"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── DYNAMIC ROLE WORKSPACE (SM & ASM share full SM Dashboard permission + ASM Putaway Desk; MD gets MD Command) ── */}
       {staff?.id === "harshitha" || staff?.roleCode === "MD" ? (
         <ManagingDirectorApp embedded={true} />
-      ) : staff?.id === "deepu" || staff?.roleCode === "ASM" ? (
-        <AssistantStoreManagerApp embedded={true} />
       ) : (
         /* ── SM STORE MANAGER WORKSPACE ── */
         <div style={S.workspaceLayout}>
@@ -1715,6 +1857,31 @@ export default function WarehouseDashboardPage() {
                   <span style={S.launcherVal}>
                     {yesterdaySnapshot ? "Yesterday saved" : "IST Auto 0"}
                   </span>
+                </button>
+
+                {/* ASM Putaway & Audit Desk */}
+                <button
+                  type="button"
+                  onClick={() => handleTabChange("asmDesk")}
+                  style={S.launcherBtn}
+                  aria-label="ASM Putaway and Audit Desk"
+                >
+                  <span
+                    style={{
+                      ...S.launcherTile,
+                      background: "linear-gradient(160deg, #10b981, #047857)",
+                      boxShadow:
+                        activeTab === "asmDesk"
+                          ? "0 0 0 3px #10b981, 0 8px 16px -4px rgba(4,120,87,.7)"
+                          : "0 6px 14px -4px rgba(4,120,87,.55), inset 0 1.5px 0 rgba(255,255,255,.45), inset 0 -2px 0 rgba(0,0,0,.14)",
+                    }}
+                  >
+                    <WarehouseGlyph name="shield" size={26} />
+                  </span>
+                  <span style={{ ...S.launcherName, color: activeTab === "asmDesk" ? "#ffffff" : "#cbd5e1" }}>
+                    ASM Putaway
+                  </span>
+                  <span style={S.launcherVal}>Deepu B • Desk</span>
                 </button>
               </div>
             </section>
@@ -3742,7 +3909,14 @@ export default function WarehouseDashboardPage() {
             </div>
           )}
 
-          {/* TAB 10: ERD & DFD ARCHITECTURE */}
+          {/* TAB 10: ASM PUTAWAY & SOLO AUDIT DESK (Accessible to ASM & SM) */}
+          {activeTab === "asmDesk" && (
+            <div style={S.sectionWrap}>
+              <AssistantStoreManagerApp embedded={true} />
+            </div>
+          )}
+
+          {/* TAB 11: ERD & DFD ARCHITECTURE */}
           {activeTab === "erdDfd" && <ErdDfdViewer />}
         </main>
       </div>
