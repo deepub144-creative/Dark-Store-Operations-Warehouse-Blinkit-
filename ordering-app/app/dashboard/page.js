@@ -1296,6 +1296,8 @@ export default function WarehouseDashboardPage() {
           <button style={S.logoutBtn} onClick={logout}>
             Exit Portal
           </button>
+
+          <LiveHeaderClock />
         </div>
       </header>
 
@@ -4100,6 +4102,115 @@ function WarehouseGlyph({ name, size = 26, stroke = "#ffffff" }) {
   );
 }
 
+/**
+ * Second-aligned live digital clock for the SM Dashboard top bar right side.
+ */
+function LiveHeaderClock() {
+  const [clock, setClock] = useState({ hour: "--", minute: "--", second: "--", dayPeriod: "--" });
+
+  useEffect(() => {
+    const TZ = undefined; // undefined = this device's time zone
+    const fmt = new Intl.DateTimeFormat("en-US", {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: true,
+      timeZone: TZ,
+    });
+    let timer;
+
+    const renderClock = () => {
+      const next = { hour: "--", minute: "--", second: "--", dayPeriod: "--" };
+      fmt.formatToParts(new Date()).forEach((part) => {
+        if (part.type in next) next[part.type] = part.value;
+      });
+      setClock((prev) =>
+        prev.hour === next.hour &&
+        prev.minute === next.minute &&
+        prev.second === next.second &&
+        prev.dayPeriod === next.dayPeriod
+          ? prev
+          : next
+      );
+    };
+
+    const loop = () => {
+      clearTimeout(timer);
+      renderClock();
+      timer = setTimeout(loop, 1004 - new Date().getMilliseconds());
+    };
+
+    const onVisibilityChange = () => {
+      if (!document.hidden) loop();
+    };
+
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    loop();
+
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, []);
+
+  return (
+    <>
+      <style>{`
+        .sm-live-clock {
+          --clock-color: #f8fafc;
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          color: var(--clock-color);
+          background: #1e293b;
+          border: 1px solid #334155;
+          border-radius: 10px;
+          padding: 6px 12px;
+          font: 500 16px/1 "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif;
+          font-variant-numeric: tabular-nums;
+          white-space: nowrap;
+          user-select: none;
+        }
+        .sm-live-clock svg {
+          width: 20px;
+          height: 20px;
+          flex: none;
+          color: #10b981;
+        }
+        .sm-live-clock .sm-sec {
+          display: inline-block;
+        }
+        .sm-live-clock .sm-sec.sm-tick {
+          animation: smClockTick 0.35s ease-out;
+        }
+        @keyframes smClockTick {
+          from { opacity: 0; transform: translateY(60%); }
+          to { opacity: 1; transform: none; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .sm-live-clock .sm-sec.sm-tick { animation: none; }
+        }
+      `}</style>
+      <div className="sm-live-clock" role="timer" aria-label="Current time">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="10" />
+          <polyline points="12 6 12 12 16 14" />
+        </svg>
+        <span>
+          <span>{clock.hour}</span>:<span>{clock.minute}</span>:
+          <span
+            key={clock.second}
+            className={clock.second !== "--" ? "sm-sec sm-tick" : "sm-sec"}
+          >
+            {clock.second}
+          </span>{" "}
+          <span>{clock.dayPeriod}</span>
+        </span>
+      </div>
+    </>
+  );
+}
+
 const S = {
   wrap: { minHeight: "100vh", background: "#F1F5F9", fontFamily: "system-ui, -apple-system, sans-serif" },
   header: { background: "#0F172A", borderBottom: "1px solid #1E293B", padding: "12px 20px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 },
@@ -4110,7 +4221,7 @@ const S = {
   pauseBadge: { fontSize: 11, fontWeight: 900, color: "#FFFFFF", padding: "3px 8px", borderRadius: 6 },
   audioBadgeBtn: { background: "rgba(16, 185, 129, 0.15)", border: "1px solid rgba(16, 185, 129, 0.4)", color: "#10B981", fontSize: 11, fontWeight: 800, padding: "3px 8px", borderRadius: 6, cursor: "pointer" },
   subText: { fontSize: 12, color: "#94A3B8" },
-  headerRight: { display: "flex", alignItems: "center", gap: 16 },
+  headerRight: { display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", justifyContent: "flex-end" },
   staffSwitcherBlock: { display: "flex", alignItems: "center", gap: 10, background: "#1E293B", padding: "6px 12px", borderRadius: 12, border: "1px solid #334155" },
   switcherLabel: { fontSize: 11, color: "#94A3B8", fontWeight: 700 },
   activeStaffPill: { display: "flex", alignItems: "center", gap: 8 },
