@@ -60,6 +60,15 @@ export default function DeliveryCaptainApp() {
           setIsRiderLoggedIn(true);
           if (localStorage.getItem("auditx_device_sinchana") === "LOGGED_IN") {
             setIsCheckedIn(true);
+            if (!Number(localStorage.getItem("auditx_device_sinchana_updated_at") || 0)) {
+              recordLocalStaffDuty({
+                staffId: "sinchana",
+                staffName: "Sinchana B R",
+                deviceName: "OPPO",
+                deviceStatus: "LOGGED_IN",
+                statusUpdatedAt: Date.now(),
+              });
+            }
           }
         } else {
           if (isAuth && authDate !== todayKey) {
@@ -75,12 +84,39 @@ export default function DeliveryCaptainApp() {
 
     checkDailyOtpAuth();
     const dayWatcher = setInterval(checkDailyOtpAuth, 30000);
+    let lastHealAt = 0;
     const unsubCloud = subscribeToCloudHub((cloudState) => {
       if (!cloudState) return;
-      const st = cloudState.staffStatus?.sinchana?.deviceStatus;
-      if (st && localStorage.getItem("auditx_rider_auth_date") === getTodayISTDateKey()) {
-        setIsCheckedIn(st === "LOGGED_IN");
-      }
+      // Only the Rider app user controls Duty ON/OFF via the slider or Exit;
+      // never let a stale/cold cloud poll turn an active ON DUTY toggle back OFF.
+      try {
+        const isTodayAuth =
+          localStorage.getItem("auditx_rider_authenticated") === "true" &&
+          localStorage.getItem("auditx_rider_auth_date") === getTodayISTDateKey();
+        const localDuty = localStorage.getItem("auditx_device_sinchana");
+        const cloudDuty = cloudState.staffStatus?.sinchana?.deviceStatus;
+
+        if (isTodayAuth && localDuty === "LOGGED_IN" && cloudDuty !== "LOGGED_IN") {
+          const now = Date.now();
+          if (now - lastHealAt > 4000) {
+            lastHealAt = now;
+            recordLocalStaffDuty({
+              staffId: "sinchana",
+              staffName: "Sinchana B R",
+              deviceName: "OPPO",
+              deviceStatus: "LOGGED_IN",
+              statusUpdatedAt: now,
+            });
+            dispatchCloudAction("UPDATE_STAFF_DUTY", {
+              staffId: "sinchana",
+              staffName: "Sinchana B R",
+              deviceName: "OPPO",
+              deviceStatus: "LOGGED_IN",
+              statusUpdatedAt: now,
+            });
+          }
+        }
+      } catch (e) {}
     }, 1800);
 
     return () => {

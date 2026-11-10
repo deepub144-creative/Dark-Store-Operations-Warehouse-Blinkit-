@@ -140,6 +140,15 @@ export default function OdPickerApp() {
           setIsPickerLoggedIn(true);
           if (localStorage.getItem("auditx_device_thrupthi") === "LOGGED_IN") {
             setIsOnline(true);
+            if (!Number(localStorage.getItem("auditx_device_thrupthi_updated_at") || 0)) {
+              recordLocalStaffDuty({
+                staffId: "thrupthi",
+                staffName: "Thrupthi K S",
+                deviceName: "MOTOROLA",
+                deviceStatus: "LOGGED_IN",
+                statusUpdatedAt: Date.now(),
+              });
+            }
           }
         } else {
           if (isAuth && authDate !== todayKey) {
@@ -155,12 +164,39 @@ export default function OdPickerApp() {
 
     checkDailyOtpAuth();
     const dayWatcher = setInterval(checkDailyOtpAuth, 30000);
+    let lastHealAt = 0;
     const unsubCloud = subscribeToCloudHub((cloudState) => {
       if (!cloudState) return;
-      const st = cloudState.staffStatus?.thrupthi?.deviceStatus;
-      if (st && localStorage.getItem("auditx_picker_auth_date") === getTodayISTDateKey()) {
-        setIsOnline(st === "LOGGED_IN");
-      }
+      // Only the OD Picker app user controls Duty ON/OFF via the slider or Exit;
+      // never let a stale/cold cloud poll turn an active ON DUTY toggle back OFF.
+      try {
+        const isTodayAuth =
+          localStorage.getItem("auditx_picker_authenticated") === "true" &&
+          localStorage.getItem("auditx_picker_auth_date") === getTodayISTDateKey();
+        const localDuty = localStorage.getItem("auditx_device_thrupthi");
+        const cloudDuty = cloudState.staffStatus?.thrupthi?.deviceStatus;
+
+        if (isTodayAuth && localDuty === "LOGGED_IN" && cloudDuty !== "LOGGED_IN") {
+          const now = Date.now();
+          if (now - lastHealAt > 4000) {
+            lastHealAt = now;
+            recordLocalStaffDuty({
+              staffId: "thrupthi",
+              staffName: "Thrupthi K S",
+              deviceName: "MOTOROLA",
+              deviceStatus: "LOGGED_IN",
+              statusUpdatedAt: now,
+            });
+            dispatchCloudAction("UPDATE_STAFF_DUTY", {
+              staffId: "thrupthi",
+              staffName: "Thrupthi K S",
+              deviceName: "MOTOROLA",
+              deviceStatus: "LOGGED_IN",
+              statusUpdatedAt: now,
+            });
+          }
+        }
+      } catch (e) {}
     }, 1800);
 
     return () => {
