@@ -1607,7 +1607,12 @@ export default function OrderingAppPage() {
       playedOrderPlacedIds.current.add(orderId);
       setPlacedOrderAnimation({
         orderId,
-        etaMinutes: 10,
+        etaMinutes:
+          cloudRes?.order?.etaMinutes ||
+          cloudRes?.etaMinutes ||
+          createdOrder?.estimatedDeliveryMins ||
+          createdOrder?.remainingMins ||
+          10,
         itemCount: currentItemCount,
         total: currentTotal,
       });
@@ -1825,6 +1830,21 @@ export default function OrderingAppPage() {
         dataDfx="page"
         header={orderingHeaderElement}
         tabBar={orderingTabBarElement}
+        overlay={
+          placedOrderAnimation ? (
+            <OrderPlacedSheet
+              orderId={placedOrderAnimation.orderId}
+              etaMinutes={placedOrderAnimation.etaMinutes}
+              itemCount={placedOrderAnimation.itemCount}
+              total={placedOrderAnimation.total}
+              onDone={() => {
+                const destId = placedOrderAnimation.orderId;
+                setPlacedOrderAnimation(null);
+                router.push(`/track/${destId}`);
+              }}
+            />
+          ) : null
+        }
         onRefresh={() => {
           dispatchCloudAction("HEARTBEAT", { deviceUid: getOrCreateDeviceUid() });
         }}
@@ -1963,21 +1983,6 @@ export default function OrderingAppPage() {
               }}
             />
           </div>
-        )}
-
-        {/* ── FULL-SCREEN ORDER PLACED CELEBRATION SHEET OVERLAY ── */}
-        {placedOrderAnimation && (
-          <OrderPlacedSheet
-            orderId={placedOrderAnimation.orderId}
-            etaMinutes={placedOrderAnimation.etaMinutes}
-            itemCount={placedOrderAnimation.itemCount}
-            total={placedOrderAnimation.total}
-            onDone={() => {
-              const destId = placedOrderAnimation.orderId;
-              setPlacedOrderAnimation(null);
-              router.push(`/track/${destId}`);
-            }}
-          />
         )}
 
       {/* ═══════════════════════════════════════════════════════════
