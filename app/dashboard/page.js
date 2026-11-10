@@ -2780,9 +2780,9 @@ export default function WarehouseDashboardPage() {
                           </span>
                         </div>
 
-                        {/* Customer & Address */}
+                        {/* Customer & Address (Phone hidden for privacy) */}
                         <div style={S.queueCustomerRow}>
-                          <div>👤 <b>{ord.customerName || "Customer (Namma Tiptur)"}</b> ({ord.customerPhone || "9845112233"})</div>
+                          <div>👤 <b>{ord.customerName || "Customer (Namma Tiptur)"}</b></div>
                           <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>📍 {ord.customerAddress || "Kalpataru First Grade Science (KFGSC), Tiptur"}</div>
                         </div>
 
@@ -3227,7 +3227,7 @@ export default function WarehouseDashboardPage() {
 
                       <div style={S.cMetaGrid}>
                         <div>Customer: <b>{c.customerName}</b></div>
-                        <div>Phone: <b>{c.phone}</b></div>
+                        <div>Contact: <b>Private (Masked)</b></div>
                         <div>Category: <b>{c.category}</b></div>
                         <div>Assigned: <b>{c.assignedTo}</b></div>
                       </div>
@@ -3446,7 +3446,7 @@ export default function WarehouseDashboardPage() {
                             )}
                             <div>
                               <b>{p.name}</b>
-                              <div style={{ fontSize: 11, color: "#64748b" }}>{p.phone}</div>
+                              <div style={{ fontSize: 11, color: "#64748b" }}>🔒 Private (Masked)</div>
                             </div>
                           </div>
                         </td>

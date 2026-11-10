@@ -85,7 +85,7 @@ export default function DeliveryReceiptModal({
       doc.setFontSize(8);
       doc.text("Tiptur KA-44 Hub", 40, 17, { align: "center" });
       doc.text("KFGSC, Tiptur 572201", 40, 21, { align: "center" });
-      doc.text("Telp. +916364150847", 40, 25, { align: "center" });
+      doc.text("Support Desk: Private", 40, 25, { align: "center" });
 
       doc.text("* * * * * * * * * * * * * * * * * * * *", 40, 30, { align: "center" });
 
@@ -99,7 +99,7 @@ export default function DeliveryReceiptModal({
 
       doc.text(`Order: ${orderId}`, 6, 45);
       doc.text(`Date: ${formattedDate}`, 6, 49);
-      doc.text(`Name: ${customerName} (${customerPhone})`, 6, 53);
+      doc.text(`Name: ${customerName}`, 6, 53);
       doc.text(`Deliver to: ${deliveryAddress.slice(0, 30)}`, 6, 57);
 
       doc.text("* * * * * * * * * * * * * * * * * * * *", 40, 62, { align: "center" });
@@ -329,7 +329,7 @@ export default function DeliveryReceiptModal({
               <br />
               KFGSC, Tiptur 572201
               <br />
-              Telp. +916364150847
+              Support Desk: Private
             </p>
           </div>
 
@@ -379,7 +379,7 @@ export default function DeliveryReceiptModal({
             <br />
             Date: {formattedDate}
             <br />
-            Name: {customerName} ({customerPhone})
+            Name: {customerName}
             <br />
             Deliver to: {deliveryAddress}
           </div>

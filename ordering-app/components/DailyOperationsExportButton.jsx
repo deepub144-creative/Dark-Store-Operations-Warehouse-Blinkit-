@@ -113,7 +113,7 @@ export default function DailyOperationsExportButton({
     const amount = Number(o.totalAmount || o.grandTotal || o.total || 0);
     const orderNo = o.orderNumber || o.id || `ORD-${idx + 1}`;
     const cust = o.customerName || "Customer";
-    const phone = o.customerPhone || "N/A";
+    const phone = "Private (Masked)";
     const addr = o.customerAddress || o.address || "KFGSC, Tiptur 572201";
     const status = o.status || "pending";
     const picker = o.pickerName || "Thrupthi K S";

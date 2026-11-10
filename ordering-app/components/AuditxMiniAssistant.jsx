@@ -140,23 +140,23 @@ export function buildTeamAndAuthorsText() {
     "AUDIT'X was designed and built by a 5-member BCA (Data Science, 2024-27) team at Kalpataru First Grade Science College (KFGSC), Tiptur for Namma Tiptur Hub KA-44:",
     "",
     "1) Deepu B - Assistant Store Manager (ASM) & Lead Full-Stack Developer",
-    "Role Code: ASM | Contact: 8050475078 | Zone: Aisle Audit & Shelf Verification",
+    "Role Code: ASM | Contact: Private (Masked) | Zone: Aisle Audit & Shelf Verification",
     "Contributions: Architected the Next.js 16 multi-terminal ecosystem, real-time BroadcastChannel and Firestore sync engine, Customer Ordering App, Rs. 10,00,000 Demo Wallet, ASM floor scanner desk, and real-time Out-of-Stock (OOS) synchronization.",
     "",
     "2) Bhaskar N S - Store Manager (SM) & Operations Lead",
-    "Role Code: SM | Contact: 8431453058 | Zone: Store Control Tower",
+    "Role Code: SM | Contact: Private (Masked) | Zone: Store Control Tower",
     "Contributions: Leads overall dark store governance, live store open/close switch, 10-minute SLA compliance tracking, expiry quarantine, shrinkage control, and the 5-minute customer complaint resolution desk.",
     "",
     "3) A B Harshitha - Managing Director (MD) & Inventory Lead",
-    "Role Code: MD | Contact: 8971720997 | Zone: Executive Ops Command",
+    "Role Code: MD | Contact: Private (Masked) | Zone: Executive Ops Command",
     "Contributions: Engineered the 59-SKU warehouse catalog, Goods Receipt Note (GRN) inwarding workflow, Damaged and Disposed (DAD) audit ledger, gross margin analytics, and the 8-table ERD and DFD Level 0/1/2 models.",
     "",
     "4) Thrupthi K S - OD Picker Lead (Inside Warehouse)",
-    "Role Code: PICKER | Contact: 6362435746 | Zone: Inside Warehouse Aisles",
+    "Role Code: PICKER | Contact: Private (Masked) | Zone: Inside Warehouse Aisles",
     "Contributions: Designed the 2-minute strict SLA picking workflow, aisle and bin path navigation, item barcode scanner verification, and handover staging across the 9 warehouse bays.",
     "",
     "5) Sinchana B R - Order Captain & Last-Mile Delivery Lead",
-    "Role Code: DELIVERY | Contact: 8088553237 | Zone: Staging Bay & Namma Tiptur Fleet",
+    "Role Code: DELIVERY | Contact: Private (Masked) | Zone: Staging Bay & Namma Tiptur Fleet",
     "Contributions: Built the Rider App dispatch flow, staging rack QR pickup verification, 1.5 km live GPS route progression, 6-minute auto-reducing transit timer, doorstep QR handover, and post-delivery rating flow.",
     "",
     "Would you like me to explain how these five roles coordinate during a live 10-minute order?",
@@ -780,7 +780,7 @@ export default function AuditxMiniAssistant({ isStoreOpen = true, customer = nul
         writeSectionHeading("2) Team and Responsibilities (All Five Members)");
         STAFF.forEach((s, idx) => {
           writeParagraph(
-            `${idx + 1}. ${s.name} - ${s.designation} (${s.roleCode}) | Zone: ${s.zone} | Contact: ${s.phone}\nResponsibilities: ${(s.responsibilities || []).join(", ")}`,
+            `${idx + 1}. ${s.name} - ${s.designation} (${s.roleCode}) | Zone: ${s.zone} | Contact: Private (Masked)\nResponsibilities: ${(s.responsibilities || []).join(", ")}`,
             2
           );
         });

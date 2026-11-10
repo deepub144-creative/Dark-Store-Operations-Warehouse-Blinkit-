@@ -4185,7 +4185,7 @@ export default function OrderingAppPage() {
               </div>
               <div style={S.profileHeroInfo}>
                 <div style={S.profileHeroName}>{customer?.name || "Customer"}</div>
-                <div style={S.profileHeroPhone}>+91 {customer?.phone || "9845112233"}</div>
+                <div style={S.profileHeroPhone}>🔒 +91 •••••••••• (Private)</div>
                 <div style={S.profileHeroBadge}>
                   <span>Verified Dark Store Customer</span>
                 </div>

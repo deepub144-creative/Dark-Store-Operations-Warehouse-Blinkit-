@@ -184,15 +184,15 @@ export async function POST(req) {
     doc.setFontSize(9.5);
     doc.setTextColor(30, 41, 59);
     doc.setFont("helvetica", "normal");
-    doc.text("• Store Manager (SM): Bhaskar N S (Phone: 8431453058) — Store Control Tower & Queue Governance", 14, y);
+    doc.text("• Store Manager (SM): Bhaskar N S (Contact: Private) — Store Control Tower & Queue Governance", 14, y);
     y += 5.5;
-    doc.text("• Assistant Store Manager (ASM): Deepu B (Phone: 8050475078) — Solo Physical Inventory Audit & Shelving", 14, y);
+    doc.text("• Assistant Store Manager (ASM): Deepu B (Contact: Private) — Solo Physical Inventory Audit & Shelving", 14, y);
     y += 5.5;
-    doc.text("• Managing Director (MD): A B Harshitha (Phone: 8971720997) — Scale, Margin (22.4%) & Zero Complaints", 14, y);
+    doc.text("• Managing Director (MD): A B Harshitha (Contact: Private) — Scale, Margin (22.4%) & Zero Complaints", 14, y);
     y += 5.5;
-    doc.text("• OD Picker Lead: Thrupthi K S (Phone: 6362435746) — Inside Aisles Picking (2:00 min SLA)", 14, y);
+    doc.text("• OD Picker Lead: Thrupthi K S (Contact: Private) — Inside Aisles Picking (2:00 min SLA)", 14, y);
     y += 5.5;
-    doc.text("• Order Captain Delivery: Sinchana B R (Phone: 8088553237) — Last-Mile Express Fleet (8:00 min SLA)", 14, y);
+    doc.text("• Order Captain Delivery: Sinchana B R (Contact: Private) — Last-Mile Express Fleet (8:00 min SLA)", 14, y);
 
     // Section 2: Margin & Financial Economics
     y += 10;

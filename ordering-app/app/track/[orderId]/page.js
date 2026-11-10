@@ -791,14 +791,17 @@ export default function TrackOrderPage() {
                 </div>
               </div>
 
-              {/* Call Phone Button */}
-              <a
-                href="tel:8088553237"
-                style={S.phoneActionBtn}
-                title="Call Delivery Partner"
+              {/* Call Phone Button (Masked Relay for Rider Privacy) */}
+              <button
+                type="button"
+                onClick={() => {
+                  alert("📞 AUDIT'X Privacy Relay: Connecting safely to Sinchana B R without exposing personal numbers.");
+                }}
+                style={{ ...S.phoneActionBtn, cursor: "pointer", border: "none" }}
+                title="Private Delivery Partner Relay"
               >
                 <IconPhone size={18} color="#0C831F" />
-              </a>
+              </button>
             </div>
 
             {/* Status / Message Bubble */}

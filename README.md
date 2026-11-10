@@ -58,13 +58,13 @@ Built with modern Web & Cloud technologies, mimicking the enterprise tech stack 
 
 ### 👥 Registered Staff Directory
 
-| Mobile Number | Name | Designation | Operational Access |
+| Mobile Privacy | Name | Designation | Operational Access |
 | :--- | :--- | :--- | :--- |
-| `8431453058` | **Bhaskar N S** | Store Manager (SM) | Full Manager Dashboard, Live Metrics, Staff Audit |
-| `8050475078` | **Deepu B** | Associate Store Manager (ASM) | Manager Dashboard, All Warehouse Stage Overrides |
-| `8971720997` | **A B Harshitha** | Managing Director (MD) | Executive Overview, Expiry & Inventory Audit |
-| `6362435746` | **Thrupthi K S** | On-Demand (OD) Picker | Zone Picking (`Aisle: A01-01-A-1000`), Barcode Scan |
-| `8088553237` | **Sinchana B R** | OD Picker & Delivery Captain | Item Packing, Dispatch, Customer Delivery (`⚡ 14 Mins`) |
+| `🔒 Masked (Private)` | **Bhaskar N S** | Store Manager (SM) | Full Manager Dashboard, Live Metrics, Staff Audit |
+| `🔒 Masked (Private)` | **Deepu B** | Associate Store Manager (ASM) | Manager Dashboard, All Warehouse Stage Overrides |
+| `🔒 Masked (Private)` | **A B Harshitha** | Managing Director (MD) | Executive Overview, Expiry & Inventory Audit |
+| `🔒 Masked (Private)` | **Thrupthi K S** | On-Demand (OD) Picker | Zone Picking (`Aisle: A01-01-A-1000`), Barcode Scan |
+| `🔒 Masked (Private)` | **Sinchana B R** | OD Picker & Delivery Captain | Item Packing, Dispatch, Customer Delivery (`⚡ 8 Mins Delivery / 10 Mins SLA`) |
 
 ---
 

@@ -203,7 +203,9 @@ export default function CustomerInteractiveLoginPage() {
               <div style={styles.phoneWrap}>
                 <span style={styles.phonePrefix}>+91</span>
                 <input
-                  type="tel"
+                  type="password"
+                  inputMode="numeric"
+                  autoComplete="off"
                   maxLength={10}
                   placeholder="10-digit mobile number (optional for bypass)"
                   value={phoneInput}
@@ -244,7 +246,7 @@ export default function CustomerInteractiveLoginPage() {
           ) : (
             <div style={styles.otpBox}>
               <div style={styles.otpMeta}>
-                <span>OTP sent to +91 {phoneInput}</span>
+                <span>OTP sent to +91 ••••••••••</span>
                 <button
                   type="button"
                   onClick={() => setOtpInput(demoOtp)}

@@ -86,7 +86,7 @@ export default function LoginPage() {
     const foundAuth = AUTHORIZED_STAFF_NUMBERS.find((s) => s.phone === cleanPhone);
     if (!foundAuth) {
       setError(
-        `❌ Access Denied: +91 ${cleanPhone} is not registered. Only authorized Dark Store staff can log in (SM: 8431453058, ASM: 6364150847, MD: 8971720997, Picker: 6362435746, Rider: 8088553237).`
+        "❌ Access Denied: Entered number is not registered. Only authorized Dark Store staff can log in."
       );
       return;
     }
@@ -280,7 +280,7 @@ export default function LoginPage() {
                             </span>
                           </div>
                           <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>
-                            +91 <b style={{ color: "#f8fafc" }}>{staffItem.phone}</b> • {staffItem.desk}
+                            +91 <b style={{ color: "#f8fafc" }}>••••••••••</b> • {staffItem.desk}
                           </div>
                         </div>
                         {isSelected && (
@@ -291,13 +291,15 @@ export default function LoginPage() {
                   })}
                 </div>
 
-                {/* Mobile Input Row */}
+                {/* Mobile Input Row (Masked for screen privacy while preserving stored phone) */}
                 <div style={{ ...S.formGroup, marginTop: 14 }}>
                   <label style={S.label}>Enter Registered Mobile Number</label>
                   <div style={S.phoneRow}>
                     <span style={S.prefix}>🇮🇳 +91</span>
                     <input
-                      type="tel"
+                      type="password"
+                      inputMode="numeric"
+                      autoComplete="off"
                       maxLength={10}
                       placeholder="Enter 10-digit registered number"
                       value={phone}
@@ -400,7 +402,7 @@ export default function LoginPage() {
               <div>
                 <div style={S.otpBanner}>
                   <div>
-                    📲 SMS OTP sent to <b>+91 {phone}</b>
+                    📲 SMS OTP sent to <b>+91 ••••••••••</b>
                   </div>
                   {matchedStaff && (
                     <div style={{ fontSize: 11, color: "#cbd5e1", marginTop: 3 }}>

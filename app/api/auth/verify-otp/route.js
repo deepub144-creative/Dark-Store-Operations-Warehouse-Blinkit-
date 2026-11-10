@@ -69,7 +69,7 @@ export async function POST(req) {
     const customer = {
       customerId: `cust_${phone}`,
       phone,
-      name: `Customer ${phone}`,
+      name: "Verified Customer",
       walletBalance: 1000000,
     };
 

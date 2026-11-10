@@ -55,7 +55,7 @@ export async function POST(req) {
     smsSent,
     otpToken,
     demoOtp: otp, // For instant fallback button if TRAI DND blocks promo SMS
-    message: `OTP dispatched via SMS to +91 ${phone}`,
+    message: "OTP dispatched via SMS (Number masked for privacy)",
   });
 
   res.cookies.set("blinkit_otp_token", otpToken, {

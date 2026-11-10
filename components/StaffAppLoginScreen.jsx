@@ -31,7 +31,7 @@ export default function StaffAppLoginScreen({
 
     if (!isAuthorized) {
       setError(
-        `❌ Access Denied: Only registered phone or ASM Emergency number (+91 ${EMERGENCY_ASM_PHONE}) can log in.`
+        "❌ Access Denied: Only registered staff phone or authorized ASM Emergency number can log in."
       );
       return;
     }
@@ -139,7 +139,9 @@ export default function StaffAppLoginScreen({
               <div style={L.phoneRow}>
                 <span style={L.prefix}>🇮🇳 +91</span>
                 <input
-                  type="tel"
+                  type="password"
+                  inputMode="numeric"
+                  autoComplete="off"
                   maxLength={10}
                   value={phone}
                   onChange={(e) => {
@@ -180,7 +182,7 @@ export default function StaffAppLoginScreen({
         ) : (
           <div>
             <div style={L.otpNotice}>
-              <div>📲 Daily Shift SMS OTP sent to <b>+91 {phone}</b></div>
+              <div>📲 Daily Shift SMS OTP sent to <b>+91 ••••••••••</b></div>
               <div style={L.demoOtpRow}>
                 <span>⚡ OTP Code: <b>{generatedOtp}</b></span>
                 <button
