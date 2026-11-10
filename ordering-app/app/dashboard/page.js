@@ -49,7 +49,6 @@ import {
 import ErdDfdViewer from "@/components/ErdDfdViewer";
 import AuditxLogo from "@/components/AuditxLogo";
 import StoreToggleSwitch from "@/components/StoreToggleSwitch";
-import DutyToggleSwitch from "@/components/DutyToggleSwitch";
 import DailyOperationsExportButton from "@/components/DailyOperationsExportButton";
 import ManagingDirectorApp from "@/app/roles/md/page";
 import AssistantStoreManagerApp from "@/app/roles/asm/page";
@@ -577,41 +576,6 @@ export default function WarehouseDashboardPage() {
     }
     setActionSuccess(`Switched personnel profile to ${member.name} (${member.designation})`);
     setTimeout(() => setActionSuccess(""), 3000);
-  }
-
-  async function handleToggleDuty(staffId) {
-    const isCurrentOn = deviceFleet[staffId] === "LOGGED_IN";
-    const nextStatus = isCurrentOn ? "LOGGED_OUT" : "LOGGED_IN";
-    const staffName = staffId === "thrupthi" ? "Thrupthi K S" : "Sinchana B R";
-    const deviceName = staffId === "thrupthi" ? "MOTOROLA Terminal" : "OPPO Smartphone";
-
-    setDeviceFleet((prev) => ({ ...prev, [staffId]: nextStatus }));
-    try {
-      localStorage.setItem(`auditx_device_${staffId}`, nextStatus);
-    } catch (e) {}
-
-    playNotificationChime();
-    await dispatchCloudAction("UPDATE_STAFF_DUTY", {
-      staffId,
-      deviceStatus: nextStatus,
-      staffName,
-      deviceName: staffId === "thrupthi" ? "MOTOROLA" : "OPPO",
-    });
-
-    broadcastEvent("STAFF_STATUS_CHANGED", {
-      staffId,
-      deviceStatus: nextStatus,
-      staffName,
-      deviceName,
-      timestamp: Date.now(),
-    });
-
-    setActionSuccess(
-      nextStatus === "LOGGED_IN"
-        ? `🟢 ${staffName} (${deviceName}) turned ON DUTY!`
-        : `🔴 ${staffName} (${deviceName}) turned OFF DUTY!`
-    );
-    setTimeout(() => setActionSuccess(""), 4000);
   }
 
   function logout() {
@@ -1988,12 +1952,23 @@ export default function WarehouseDashboardPage() {
                   </div>
 
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <DutyToggleSwitch
-                      isOn={deviceFleet.thrupthi === "LOGGED_IN"}
-                      onToggle={() => handleToggleDuty("thrupthi")}
-                      ariaLabel="Thrupthi K S Duty status"
-                      size="compact"
-                    />
+                    <span
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 6,
+                        padding: "5px 11px",
+                        borderRadius: 99,
+                        fontSize: 11,
+                        fontWeight: 900,
+                        letterSpacing: "0.4px",
+                        background: deviceFleet.thrupthi === "LOGGED_IN" ? "rgba(16, 185, 129, 0.16)" : "rgba(239, 68, 68, 0.16)",
+                        color: deviceFleet.thrupthi === "LOGGED_IN" ? "#34d399" : "#f87171",
+                        border: deviceFleet.thrupthi === "LOGGED_IN" ? "1px solid rgba(16, 185, 129, 0.4)" : "1px solid rgba(239, 68, 68, 0.4)",
+                      }}
+                    >
+                      {deviceFleet.thrupthi === "LOGGED_IN" ? "● ON DUTY" : "● OFF DUTY"}
+                    </span>
                   </div>
                 </div>
 
@@ -2001,7 +1976,7 @@ export default function WarehouseDashboardPage() {
                 {deviceFleet.thrupthi === "LOGGED_OUT" ? (
                   <div style={{ flex: 1, minHeight: 90, display: "flex", flexDirection: "column", justifyContent: "center", background: "rgba(239, 68, 68, 0.08)", border: "1px dashed rgba(239, 68, 68, 0.35)", borderRadius: 8, padding: "12px 14px", marginTop: 8 }}>
                     <div style={{ fontSize: 12, fontWeight: 800, color: "#f87171" }}>🔴 Off Duty</div>
-                    <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>Terminal offline • Ready to switch on duty</div>
+                    <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>Terminal offline • Staff is currently Off Duty</div>
                   </div>
                 ) : activePickOrder ? (
                   <div style={{ flex: 1, minHeight: 90, display: "flex", flexDirection: "column", justifyContent: "center", background: "rgba(16, 185, 129, 0.09)", border: "1px solid rgba(16, 185, 129, 0.35)", borderRadius: 8, padding: "10px 12px", marginTop: 8 }}>
@@ -2093,12 +2068,23 @@ export default function WarehouseDashboardPage() {
                   </div>
 
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <DutyToggleSwitch
-                      isOn={deviceFleet.sinchana === "LOGGED_IN"}
-                      onToggle={() => handleToggleDuty("sinchana")}
-                      ariaLabel="Sinchana B R Duty status"
-                      size="compact"
-                    />
+                    <span
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 6,
+                        padding: "5px 11px",
+                        borderRadius: 99,
+                        fontSize: 11,
+                        fontWeight: 900,
+                        letterSpacing: "0.4px",
+                        background: deviceFleet.sinchana === "LOGGED_IN" ? "rgba(16, 185, 129, 0.16)" : "rgba(239, 68, 68, 0.16)",
+                        color: deviceFleet.sinchana === "LOGGED_IN" ? "#34d399" : "#f87171",
+                        border: deviceFleet.sinchana === "LOGGED_IN" ? "1px solid rgba(16, 185, 129, 0.4)" : "1px solid rgba(239, 68, 68, 0.4)",
+                      }}
+                    >
+                      {deviceFleet.sinchana === "LOGGED_IN" ? "● ON DUTY" : "● OFF DUTY"}
+                    </span>
                   </div>
                 </div>
 
@@ -2106,7 +2092,7 @@ export default function WarehouseDashboardPage() {
                 {deviceFleet.sinchana === "LOGGED_OUT" ? (
                   <div style={{ flex: 1, minHeight: 90, display: "flex", flexDirection: "column", justifyContent: "center", background: "rgba(239, 68, 68, 0.08)", border: "1px dashed rgba(239, 68, 68, 0.35)", borderRadius: 8, padding: "12px 14px", marginTop: 8 }}>
                     <div style={{ fontSize: 12, fontWeight: 800, color: "#f87171" }}>🔴 Off Duty</div>
-                    <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>Terminal offline • Ready to switch on duty</div>
+                    <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>Terminal offline • Staff is currently Off Duty</div>
                   </div>
                 ) : activeDeliveryOrder ? (
                   <div style={{ flex: 1, minHeight: 90, display: "flex", flexDirection: "column", justifyContent: "center", background: "rgba(245, 158, 11, 0.09)", border: "1px solid rgba(245, 158, 11, 0.35)", borderRadius: 8, padding: "10px 12px", marginTop: 8 }}>
@@ -3493,14 +3479,15 @@ export default function WarehouseDashboardPage() {
                         </td>
                         <td style={S.td}>
                           {p.id === "thrupthi" || p.id === "sinchana" ? (
-                            <div style={{ display: "inline-block" }}>
-                              <DutyToggleSwitch
-                                isOn={deviceFleet[p.id] === "LOGGED_IN"}
-                                onToggle={() => handleToggleDuty(p.id)}
-                                ariaLabel={`${p.name} Duty status`}
-                                size="compact"
-                              />
-                            </div>
+                            <span
+                              style={{
+                                fontSize: 11,
+                                fontWeight: 900,
+                                color: deviceFleet[p.id] === "LOGGED_IN" ? "#10B981" : "#ef4444",
+                              }}
+                            >
+                              ● {deviceFleet[p.id] === "LOGGED_IN" ? "ON DUTY" : "OFF DUTY"}
+                            </span>
                           ) : (
                             <span style={S.onlineBadge}>● {p.online ? "ONLINE" : "OFFLINE"}</span>
                           )}
@@ -3617,10 +3604,7 @@ export default function WarehouseDashboardPage() {
             <div style={S.sectionWrap}>
               <div style={S.sectionHeader}>
                 <div>
-                  <h2 style={S.sectionHeading}>📅 Daily Operations History &amp; Yesterday Archive</h2>
-                  <p style={S.sectionSub}>
-                    Daily orders, logins, ratings &amp; complaints reset automatically to <b>0 at 12:00 AM IST</b> ({formatISTDisplayDate(currentDateKey)}) while every closed day is saved in History for download. Cumulative Money Saved (<b>₹{hubMetrics.totalRevenueSaved.toLocaleString("en-IN")}</b>) &amp; Total Sales (<b>{hubMetrics.totalSalesCount}</b>) stay constant!
-                  </p>
+                  <h2 style={S.sectionHeading}>Daily History</h2>
                 </div>
                 <button
                   type="button"
@@ -3644,13 +3628,10 @@ export default function WarehouseDashboardPage() {
               <div style={S.panel}>
                 <div style={S.panelHeader}>
                   <div style={S.panelTitle}>
-                    🕘 Yesterday's Operations Archive {yesterdaySnapshot ? `(${yesterdaySnapshot.dateKey})` : `(${yesterdayKey})`}
+                    Yesterday's Operations ({yesterdaySnapshot ? yesterdaySnapshot.dateKey : yesterdayKey})
                   </div>
                   {yesterdaySnapshot && (
                     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: "#0369a1" }}>
-                        Download Yesterday’s Report →
-                      </span>
                       <DailyOperationsExportButton
                         orders={yesterdaySnapshot.orders || []}
                         complaints={yesterdaySnapshot.complaints || []}
@@ -3670,8 +3651,8 @@ export default function WarehouseDashboardPage() {
                 </div>
 
                 {!yesterdaySnapshot ? (
-                  <div style={{ padding: "24px 12px", color: "#64748B", fontWeight: 600, fontSize: 13.5 }}>
-                    No archived day yet. At 12:00 AM IST (or when you click “Archive Current Day &amp; Reset to 0”), yesterday’s full ledger automatically saves here with one-click Excel, CSV, HTML, Word &amp; PDF downloads.
+                  <div style={{ padding: "18px 12px", color: "#64748B", fontWeight: 600, fontSize: 13 }}>
+                    No archived day yet.
                   </div>
                 ) : (
                   <div style={S.statsGrid}>
@@ -3706,17 +3687,12 @@ export default function WarehouseDashboardPage() {
                 )}
               </div>
 
-              {/* Complete History Archive Ledger */}
-              <div style={S.panel}>
-                <div style={S.panelHeader}>
-                  <div style={S.panelTitle}>📚 Complete Daily Archive Ledger ({dailyHistory.length} Day(s) Saved)</div>
-                  <span style={S.tagBlue}>Midnight IST Auto-Archive</span>
-                </div>
-                {dailyHistory.length === 0 ? (
-                  <div style={{ padding: "20px 10px", color: "#64748B", fontSize: 13 }}>
-                    Waiting for first daily close.
+              {/* Saved Archive Table */}
+              {dailyHistory.length > 0 && (
+                <div style={S.panel}>
+                  <div style={S.panelHeader}>
+                    <div style={S.panelTitle}>Saved Days ({dailyHistory.length})</div>
                   </div>
-                ) : (
                   <div style={{ overflowX: "auto" }}>
                     <table style={S.table}>
                       <thead>
@@ -3765,8 +3741,8 @@ export default function WarehouseDashboardPage() {
                       </tbody>
                     </table>
                   </div>
-                )}
-              </div>
+                </div>
+              )}
             </div>
           )}
 
