@@ -148,13 +148,13 @@ export default function DeliveryReceiptModal({
       doc.text("* * * * * * * * * * * * * * * * * * * *", 40, curY, { align: "center" });
       curY += 5;
 
-      doc.text(`OD Picker Lead: ${pickerName}`, 6, curY);
+      doc.text(`Packed by: ${pickerName}`, 6, curY);
       curY += 4;
-      doc.text(`Pick SLA: ${pickSla}`, 6, curY);
+      doc.text(`Pack time: ${pickSla}`, 6, curY);
       curY += 4;
-      doc.text(`Order Captain: ${captainName}`, 6, curY);
+      doc.text(`Rider: ${captainName}`, 6, curY);
       curY += 4;
-      doc.text(`Delivery SLA: ${deliverySla}`, 6, curY);
+      doc.text(`Delivery time: ${deliverySla}`, 6, curY);
 
       curY += 5;
       doc.text("* * * * * * * * * * * * * * * * * * * *", 40, curY, { align: "center" });
@@ -503,13 +503,13 @@ export default function DeliveryReceiptModal({
           </div>
 
           <div style={{ fontSize: 12, lineHeight: 1.55 }}>
-            OD Picker Lead: {pickerName}
+            Packed by: {pickerName}
             <br />
-            Pick SLA: {pickSla}
+            Pack time: {pickSla}
             <br />
-            Order Captain: {captainName}
+            Rider: {captainName}
             <br />
-            Delivery SLA: {deliverySla}
+            Delivery time: {deliverySla}
           </div>
 
           <div

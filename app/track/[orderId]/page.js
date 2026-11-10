@@ -520,27 +520,25 @@ export default function TrackOrderPage() {
 
   const isRatingDone = ratingSubmitted || !!activeOrder.customerRatingSubmitted;
 
-  // Clean customer-facing status text for top green header (background countdowns stay invisible)
-  let phaseText = "Packing your order";
-  if (isDelivered) phaseText = "Order delivered";
-  else if (trackingStage === "rider_arrived") phaseText = "Delivery partner at your doorstep";
-  else if (trackingStage === "almost_doorstep") phaseText = "Reaching your doorstep";
-  else if (trackingStage === "packed_assigning") phaseText = "Order is packed!";
+  // Single status line (Packing / On the way / Arriving / Delivered)
+  let phaseText = "Packing";
+  if (isCancelled) phaseText = "Cancelled";
+  else if (isDelivered) phaseText = "Delivered";
+  else if (trackingStage === "rider_arrived" || trackingStage === "almost_doorstep") phaseText = "Arriving";
   else if (trackingStage === "en_route" || isStaged || activeOrder.status === "picked" || isDispatched)
-    phaseText = "Order on the way";
+    phaseText = "On the way";
+  else if (trackingStage === "packed_assigning") phaseText = "Packed";
 
-  let arrivalTitle = `Arriving in ${arrivingMinutes} ${arrivingMinutes === 1 ? "minute" : "minutes"}`;
-  if (trackingStage === "packing" && pickerDelayMins > 0) {
-    arrivalTitle = `Arriving in ${arrivingMinutes} mins (+${pickerDelayMins}m delay)`;
-  } else if (trackingStage === "packed_assigning") {
-    arrivalTitle = "We will assign the rider captain soon...";
+  let arrivalTitle = `Arriving in ${arrivingMinutes} ${arrivingMinutes === 1 ? "min" : "mins"}`;
+  if (trackingStage === "packed_assigning") {
+    arrivalTitle = "Assigning rider";
   } else if (trackingStage === "almost_doorstep") {
-    arrivalTitle = `Almost to your doorstep • ${doorstepCountdownSec}s`;
+    arrivalTitle = `Arriving in ${doorstepCountdownSec}s`;
   } else if (trackingStage === "rider_arrived") {
-    arrivalTitle = "Rider arrived to your location";
+    arrivalTitle = "Arrived at doorstep";
   }
-  if (isDelivered) arrivalTitle = "Delivered to your doorstep";
-  if (isCancelled) arrivalTitle = "Order Cancelled";
+  if (isDelivered) arrivalTitle = "Order delivered";
+  if (isCancelled) arrivalTitle = "Order cancelled";
 
   const routePct =
     isDelivered || trackingStage === "rider_arrived"
@@ -595,20 +593,18 @@ export default function TrackOrderPage() {
           </div>
         </header>
 
-        {/* Dynamic Picking Overrun Alert Notice if OD Picker Thrupthi delays picking */}
+        {/* Single concise delay line under header when packing exceeds initial window */}
         {trackingStage === "packing" && pickerDelayMins > 0 && (
           <div style={{
-            background: "#fef2f2",
-            borderBottom: "1px solid #fecaca",
-            padding: "8px 16px",
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
+            background: "#fffbeb",
+            borderBottom: "1px solid #fde68a",
+            padding: "6px 16px",
+            fontSize: 12,
+            color: "#92400e",
+            fontWeight: 700,
+            textAlign: "center",
           }}>
-            <span style={{ fontSize: 16 }}>⚠️</span>
-            <div style={{ fontSize: 11, color: "#991b1b", fontWeight: 700, lineHeight: 1.3 }}>
-              OD Picker <b>Thrupthi K S</b> is taking extra time picking items (+{pickerDelayMins}m delay). Total delivery SLA dynamically increased from 10m to <b>{arrivingMinutes} MINS</b>.
-            </div>
+            Picking is taking slightly longer (+{pickerDelayMins} min)
           </div>
         )}
 
@@ -653,60 +649,36 @@ export default function TrackOrderPage() {
                 fill="none"
               />
 
-              {/* ── TIPTUR HUB KA44 (DARK STORE DISPATCH POINT) ── */}
+              {/* ── STORE PIN ── */}
               <g transform="translate(320, 185)">
-                {/* Hub pulse */}
-                <circle cx="0" cy="0" r="15" fill="rgba(12, 131, 31, 0.3)">
-                  <animate attributeName="r" values="10;20;10" dur="2s" repeatCount="indefinite" />
-                  <animate attributeName="opacity" values="0.8;0.1;0.8" dur="2s" repeatCount="indefinite" />
-                </circle>
                 <circle cx="0" cy="0" r="10" fill="#0c831f" stroke="#ffffff" strokeWidth="2" />
                 <text x="0" y="3.5" textAnchor="middle" fontSize="9" fill="#ffffff" fontWeight="bold">🏬</text>
-                <rect x="-44" y="-24" width="88" height="15" rx="4" fill="#0f172a" opacity="0.92" />
-                <text x="0" y="-13" textAnchor="middle" fontSize="7.5" fill="#ffffff" fontWeight="800">
-                  Tiptur HUB KA44
-                </text>
               </g>
 
-              {/* ── KFGSC DESTINATION PIN (PULSING RED MARKER) ── */}
+              {/* ── DESTINATION PIN (SINGLE ADDRESS LABEL) ── */}
               <g transform="translate(598, 246)">
-                {/* Destination pulse ring */}
                 <circle cx="0" cy="0" r="14" fill="rgba(220, 38, 38, 0.35)">
                   <animate attributeName="r" values="8;18;8" dur="2s" repeatCount="indefinite" />
                   <animate attributeName="opacity" values="0.8;0.2;0.8" dur="2s" repeatCount="indefinite" />
                 </circle>
                 <circle cx="0" cy="0" r="4.5" fill="#dc2626" stroke="#ffffff" strokeWidth="1.5" />
-                {/* Destination Badge */}
-                <rect x="-52" y="8" width="104" height="16" rx="4" fill="#1e293b" opacity="0.94" />
+                <rect x="-48" y="8" width="96" height="16" rx="4" fill="#1e293b" opacity="0.94" />
                 <text x="0" y="19" textAnchor="middle" fontSize="7" fill="#f8fafc" fontWeight="bold">
-                  📍 KFGSC , Tiptur 572201
+                  KFGSC, Tiptur 572201
                 </text>
               </g>
 
-              {/* ── LIVE ANIMATED DELIVERY RIDER SCOOTER ── */}
+              {/* ── LIVE DELIVERY SCOOTER ── */}
               <g transform={`translate(${scooterCoords.x}, ${scooterCoords.y})`}>
-                {/* Pulsing radar */}
-                <circle cx="0" cy="0" r="16" fill="rgba(16, 185, 129, 0.35)">
-                  <animate attributeName="r" values="12;22;12" dur="1.6s" repeatCount="indefinite" />
-                  <animate attributeName="opacity" values="0.7;0.1;0.7" dur="1.6s" repeatCount="indefinite" />
-                </circle>
                 <circle cx="0" cy="-2" r="12" fill="#0f172a" stroke="#10b981" strokeWidth="2" />
                 <text x="0" y="2.5" textAnchor="middle" fontSize="11">🛵</text>
-                <rect x="-32" y="-22" width="64" height="13" rx="4" fill="#0c831f" />
-                <text x="0" y="-13" textAnchor="middle" fontSize="6.5" fill="#ffffff" fontWeight="800">
-                  {trackingStage === "rider_arrived" || isDelivered
-                    ? "📍 At Doorstep"
-                    : trackingStage === "almost_doorstep"
-                    ? "⚡ Almost Here"
-                    : `⚡ ${arrivingMinutes} ${arrivingMinutes === 1 ? "Min" : "Mins"}`}
-                </text>
               </g>
             </svg>
 
             {/* Live Route Info Strip */}
             <div style={S.mapLiveRouteBadge}>
               <span style={S.mapLiveGreenDot} />
-              <span><b>Live Tracking:</b> Tiptur Hub KA44 → <b>KFGSC, Tiptur 572201</b></span>
+              <span><b>Live tracking</b></span>
             </div>
 
             {/* Google Watermark Logo on bottom-left */}
@@ -716,7 +688,7 @@ export default function TrackOrderPage() {
             <button
               type="button"
               style={S.mapRecenterBtn}
-              onClick={() => triggerToast("Map re-centered to KFGSC, Tiptur 572201")}
+              onClick={() => triggerToast("Map centered")}
               title="Re-center map"
             >
               <IconTarget size={16} color="#0c831f" />
@@ -724,53 +696,56 @@ export default function TrackOrderPage() {
           </div>
         </section>
 
-        {/* ── 3. PAYMENT / COD CARD (EXACT SCREENSHOT) ── */}
-        <section style={S.cardContainer}>
-          <div style={S.paymentActionCard}>
-            <div style={S.paymentCardLeft}>
-              <div style={S.cardIconCircle}>
-                {activeOrder.paymentMethod?.includes("Wallet") || activeOrder.paymentMethod?.includes("Audit'X") || isPaidOnline ? (
-                  <IconRealLogoAuditxWallet size={26} />
-                ) : (
-                  <IconCreditCard size={20} color="#64748B" />
-                )}
+        {/* ── 3. PAYMENT / COD CARD ── */}
+        {(() => {
+          const isPaid = Boolean(
+            activeOrder.paymentMethod?.includes("Wallet") ||
+              activeOrder.paymentMethod?.includes("Audit'X") ||
+              isPaidOnline
+          );
+          return (
+            <section style={S.cardContainer}>
+              <div style={S.paymentActionCard}>
+                <div style={{ ...S.paymentCardLeft, width: "100%", justifyContent: "space-between" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    <div style={S.cardIconCircle}>
+                      {isPaid ? (
+                        <IconRealLogoAuditxWallet size={26} />
+                      ) : (
+                        <IconCreditCard size={20} color="#64748B" />
+                      )}
+                    </div>
+                    <h3 style={S.paymentCardTitle}>
+                      {isPaid
+                        ? `Paid ₹${grandTotalAmount}`
+                        : `Pay ₹${grandTotalAmount} on delivery`}
+                    </h3>
+                  </div>
+                  {!isPaid && (
+                    <button
+                      type="button"
+                      style={{ ...S.payOnlineTextBtn, minHeight: 44, padding: "0 10px" }}
+                      onClick={() => setShowPayModal(true)}
+                    >
+                      Pay Online
+                    </button>
+                  )}
+                </div>
               </div>
-              <div style={S.paymentTextGroup}>
-                <h3 style={S.paymentCardTitle}>
-                  {activeOrder.paymentMethod?.includes("Wallet") || activeOrder.paymentMethod?.includes("Audit'X") || isPaidOnline
-                    ? `Paid ₹${grandTotalAmount} via Audit'X Demo Wallet`
-                    : `Pay ₹${grandTotalAmount} before or on delivery`}
-                </h3>
-                <p style={S.paymentCardSub}>
-                  {activeOrder.paymentMethod?.includes("Wallet") || activeOrder.paymentMethod?.includes("Audit'X") || isPaidOnline
-                    ? "Safe, contactless 1-click payment confirmed. No cash needed at your doorstep."
-                    : `Please keep a change of ₹${grandTotalAmount} handy or avoid the hassle by paying online`}
-                </p>
-                {!(activeOrder.paymentMethod?.includes("Wallet") || activeOrder.paymentMethod?.includes("Audit'X") || isPaidOnline) && (
-                  <button
-                    type="button"
-                    style={S.payOnlineTextBtn}
-                    onClick={() => setShowPayModal(true)}
-                  >
-                    Pay Online →
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-        </section>
+            </section>
+          );
+        })()}
 
-        {/* ── 4. DELIVERY PARTNER CARD (EXACT SCREENSHOT) ── */}
+        {/* ── 4. DELIVERY PARTNER CARD ── */}
         <section style={S.cardContainer}>
           <div style={S.partnerMainCard}>
             {/* Partner Header Row */}
             <div style={S.partnerHeader}>
               <div style={S.partnerLeftProfile}>
-                {/* Sinchana B R Official Rider Captain Logo */}
                 <div style={S.partnerAvatarBadge}>
                   <img
                     src="/sinchana-logo.png"
-                    alt="Sinchana B R - Rider Captain Logo"
+                    alt="Sinchana B R"
                     style={{
                       width: "100%",
                       height: "100%",
@@ -783,10 +758,10 @@ export default function TrackOrderPage() {
 
                 <div style={S.partnerNameBlock}>
                   <div style={S.partnerNameLine}>
-                    I'm your <b>Delivery Partner, Sinchana B R</b>
+                    <b>Sinchana B R</b>
                   </div>
                   <div style={S.partnerSubLine}>
-                    Rider Captain • KA44 Express Fleet • 4.9 <IconStar size={11} color="#F59E0B" />
+                    KA44 Fleet • 4.9 <IconStar size={11} color="#F59E0B" />
                   </div>
                 </div>
               </div>
@@ -795,38 +770,32 @@ export default function TrackOrderPage() {
               <button
                 type="button"
                 onClick={() => {
-                  alert("📞 AUDIT'X Privacy Relay: Connecting safely to Sinchana B R without exposing personal numbers.");
+                  alert("Connecting safely to Sinchana B R via privacy relay.");
                 }}
-                style={{ ...S.phoneActionBtn, cursor: "pointer", border: "none" }}
-                title="Private Delivery Partner Relay"
+                style={{ ...S.phoneActionBtn, minWidth: 44, minHeight: 44, cursor: "pointer", border: "none" }}
+                title="Call rider"
               >
                 <IconPhone size={18} color="#0C831F" />
               </button>
             </div>
 
-            {/* Status / Message Bubble */}
-            <div style={S.partnerMessageBubble}>
-              {isDelivered
-                ? "I've delivered your order safely to your doorstep. Thank you!"
-                : trackingStage === "rider_arrived"
-                ? "I have arrived at your doorstep with your order bag!"
-                : trackingStage === "almost_doorstep"
-                ? "Almost at your gate! Please be ready to receive your order."
-                : trackingStage === "en_route" || isDispatched
-                ? "Hi, I'm Sinchana B R, your delivery captain! 🛵 Out for delivery to your doorstep."
-                : trackingStage === "packed_assigning"
-                ? "Order is packed! Sinchana B R will be assigned shortly."
-                : (pickerDelayMins > 0
-                    ? `⚠️ OD Picker Thrupthi K S picking overtime (+${pickerDelayMins}m delay). Total delivery SLA scaled to ${arrivingMinutes} mins.`
-                    : "Thrupthi K S is packing your order under 2-min SLA at Tiptur HUB")}
-            </div>
-
-            {/* Tipping & Happiness Section */}
-            <div style={S.tippingContainer}>
-              <div style={S.tippingTextCol}>
-                <h4 style={S.tippingTitle}>Delivering happiness at your doorstep!</h4>
-                <p style={S.tippingSub}>Thank them by leaving a tip</p>
+            {(isDelivered || trackingStage === "rider_arrived" || trackingStage === "almost_doorstep" || trackingStage === "en_route" || isDispatched) && (
+              <div style={S.partnerMessageBubble}>
+                {isDelivered
+                  ? "Delivered at your doorstep."
+                  : trackingStage === "rider_arrived"
+                  ? "Arrived at your doorstep."
+                  : trackingStage === "almost_doorstep"
+                  ? "Almost at your doorstep."
+                  : "On the way with your order."}
               </div>
+            )}
+
+            {/* Compact Tip Section */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginTop: 12, flexWrap: "wrap" }}>
+              <span style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>
+                Tip your rider
+              </span>
             </div>
 
             {/* Quick Tip Chips */}
@@ -883,10 +852,9 @@ export default function TrackOrderPage() {
               <div>
                 <h4 style={S.summaryOrderNum}>Order #{activeOrder.orderNumber || orderId}</h4>
                 <div style={S.summaryHubTag}>
-                  Placed Today at {orderPlacedTime || "10:45 AM"} • Tiptur HUB - KA44
+                  Today, {orderPlacedTime || "10:45 AM"}
                 </div>
               </div>
-              <span style={S.summaryGrandTotal}>₹{activeOrder.totalAmount}</span>
             </div>
 
             <div style={S.itemsList}>
@@ -906,43 +874,62 @@ export default function TrackOrderPage() {
             {/* Bill Summary Breakdown */}
             <div style={S.trackBillBox}>
               <div style={S.trackBillRow}>
-                <span style={S.trackBillLabel}>Items Subtotal</span>
+                <span style={S.trackBillLabel}>Items subtotal</span>
                 <span style={S.trackBillVal}>₹{itemsSubtotal}</span>
               </div>
               <div style={S.trackBillRow}>
-                <span style={S.trackBillLabel}>
-                  Delivery Charges
-                  <span style={S.trackFreeDeliveryPill}>FREE (₹1+ orders)</span>
-                </span>
+                <span style={S.trackBillLabel}>Delivery</span>
                 <span style={S.trackBillFree}>FREE</span>
               </div>
               <div style={S.trackBillRow}>
-                <span style={S.trackBillLabel}>
-                  Handling Charges
-                  {hasFramesInOrder ? (
-                    <span style={S.trackFramesBadge}>Frames Special Care</span>
-                  ) : (
-                    <span style={S.trackFreeDeliveryPill}>FREE for Chocolates</span>
-                  )}
-                </span>
+                <span style={S.trackBillLabel}>Handling fee</span>
                 <span style={handlingFee === 0 ? S.trackBillFree : S.trackBillVal}>
                   {handlingFee === 0 ? "FREE" : `₹${handlingFee}`}
                 </span>
               </div>
               <div style={S.trackBillDivider} />
               <div style={S.trackBillGrandRow}>
-                <span style={S.trackBillGrandLabel}>Total Paid / To Pay</span>
+                <span style={{ ...S.trackBillGrandLabel, display: "inline-flex", alignItems: "center", gap: 6 }}>
+                  <span>Total</span>
+                  <span
+                    style={{
+                      fontSize: 10,
+                      fontWeight: 800,
+                      padding: "2px 6px",
+                      borderRadius: 4,
+                      background:
+                        activeOrder.paymentMethod?.includes("Wallet") ||
+                        activeOrder.paymentMethod?.includes("Audit'X") ||
+                        isPaidOnline
+                          ? "#dcfce7"
+                          : "#fef3c7",
+                      color:
+                        activeOrder.paymentMethod?.includes("Wallet") ||
+                        activeOrder.paymentMethod?.includes("Audit'X") ||
+                        isPaidOnline
+                          ? "#166534"
+                          : "#92400e",
+                    }}
+                  >
+                    {activeOrder.paymentMethod?.includes("Wallet") ||
+                    activeOrder.paymentMethod?.includes("Audit'X") ||
+                    isPaidOnline
+                      ? "Paid"
+                      : "To pay"}
+                  </span>
+                </span>
                 <span style={S.trackBillGrandVal}>₹{grandTotalAmount}</span>
               </div>
 
-              {/* Delivery Receipt Action Button */}
-              <div style={{ marginTop: 14 }}>
-                {isDelivered ? (
+              {/* Delivery Receipt Action Button (Only shown after delivery) */}
+              {isDelivered && (
+                <div style={{ marginTop: 14 }}>
                   <button
                     type="button"
                     onClick={() => setShowReceiptModal(true)}
                     style={{
                       width: "100%",
+                      minHeight: 44,
                       padding: "12px 16px",
                       borderRadius: 12,
                       border: "1.5px solid #0c831f",
@@ -955,31 +942,12 @@ export default function TrackOrderPage() {
                       alignItems: "center",
                       justifyContent: "center",
                       gap: 8,
-                      boxShadow: "0 2px 8px rgba(12, 131, 31, 0.15)",
                     }}
                   >
-                    🧾 View &amp; Download Delivery Receipt (PDF)
+                    Download receipt
                   </button>
-                ) : (
-                  <div
-                    style={{
-                      padding: "10px 14px",
-                      borderRadius: 10,
-                      border: "1px dashed #cbd5e1",
-                      background: "#f8fafc",
-                      color: "#64748b",
-                      fontSize: 12,
-                      fontWeight: 700,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      gap: 6,
-                    }}
-                  >
-                    <span>🔒 Delivery receipt will be available to download once order is delivered</span>
-                  </div>
-                )}
-              </div>
+                </div>
+              )}
             </div>
           </div>
         </section>
@@ -1279,14 +1247,14 @@ export default function TrackOrderPage() {
               boxShadow: "0 4px 12px rgba(12, 131, 31, 0.25)",
             }}
           >
-            <span>← Return to Dark Store Catalog</span>
+            <span>Back to store</span>
           </button>
         </div>
 
-        <div style={{ height: 96 }} />
+        <div style={{ height: (isDelivered || trackingStage === "rider_arrived" || trackingStage === "almost_doorstep") && !isRatingDone ? 96 : 24 }} />
 
-        {/* ── LIVE STICKY BOTTOM STATUS BAR ON TRACKING PAGE (DISAPPEARS ONCE RATED) ── */}
-        {!isCancelled && !isRatingDone && (
+        {/* ── ACTION BAR ONLY WHEN ARRIVED / DELIVERED FOR RATING ── */}
+        {!isCancelled && !isRatingDone && (isDelivered || trackingStage === "rider_arrived" || trackingStage === "almost_doorstep") && (
           <div
             style={{
               position: "fixed",
@@ -1295,11 +1263,7 @@ export default function TrackOrderPage() {
               transform: "translateX(-50%)",
               width: "calc(100% - 24px)",
               maxWidth: 416,
-              background: isDelivered
-                ? "linear-gradient(135deg, #065f46 0%, #047857 100%)"
-                : trackingStage === "rider_arrived"
-                ? "linear-gradient(135deg, #0c831f 0%, #15803d 100%)"
-                : "linear-gradient(135deg, #0f172a 0%, #1e293b 100%)",
+              background: "linear-gradient(135deg, #065f46 0%, #047857 100%)",
               borderRadius: 14,
               padding: "11px 14px",
               display: "flex",
@@ -1311,25 +1275,8 @@ export default function TrackOrderPage() {
               zIndex: 60,
             }}
           >
-            <div style={{ minWidth: 0, flex: 1 }}>
-              <div style={{ fontSize: 13, fontWeight: 900, color: "#ffffff" }}>
-                {isDelivered
-                  ? "⭐ Rate Rider & Ordered Items"
-                  : trackingStage === "rider_arrived"
-                  ? "🛵 Rider arrived to your location"
-                  : trackingStage === "almost_doorstep"
-                  ? "⚡ Almost to your doorstep"
-                  : trackingStage === "one_minute"
-                  ? "⚡ Arriving in 1 minute"
-                  : `📦 Arriving in ${arrivingMinutes} ${arrivingMinutes === 1 ? "minute" : "minutes"}`}
-              </div>
-              <div style={{ fontSize: 11, color: "#bbf7d0", fontWeight: 600 }}>
-                {isDelivered
-                  ? "Order delivered! Tap Rate Now to review your order"
-                  : trackingStage === "rider_arrived"
-                  ? "Please submit the rating form below to complete delivery"
-                  : "Your order is on the way to your doorstep"}
-              </div>
+            <div style={{ fontSize: 13, fontWeight: 900, color: "#ffffff" }}>
+              {isDelivered ? "Rate your order" : "Almost at your doorstep"}
             </div>
             <button
               type="button"
@@ -1343,15 +1290,16 @@ export default function TrackOrderPage() {
                 color: "#0c831f",
                 border: "none",
                 borderRadius: 8,
-                padding: "7px 12px",
-                fontSize: 11.5,
+                minHeight: 44,
+                padding: "7px 14px",
+                fontSize: 12,
                 fontWeight: 900,
                 cursor: "pointer",
                 whiteSpace: "nowrap",
                 flexShrink: 0,
               }}
             >
-              {isDelivered ? "Rate Now" : (trackingStage === "rider_arrived" || trackingStage === "almost_doorstep") ? "Rate to Deliver" : "Track"}
+              {isDelivered ? "Rate now" : "Rate to deliver"}
             </button>
           </div>
         )}

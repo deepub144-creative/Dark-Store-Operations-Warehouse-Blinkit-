@@ -373,6 +373,10 @@ export default function OrderingAppPage() {
       !showIntroOverlay &&
       !placedOrderAnimation &&
       !isCheckoutView &&
+      !showProfileModal &&
+      !showLoginModal &&
+      !showPaymentModal &&
+      !showComplaintModal &&
       activeBottomTab === "home"
   );
 
@@ -723,7 +727,7 @@ export default function OrderingAppPage() {
           triggerToast(`Stock Alert: "${data.payload.name}" marked Out of Stock by ASM Deepu B.`);
         } else {
           setOosList((prev) => prev.filter((s) => s !== data.payload.sku));
-          triggerToast(`In Stock: "${data.payload.name}" is now available at Dark Store!`);
+          triggerToast(`"${data.payload.name}" is back in stock`);
         }
       }
       if (data.type === "PICKER_DELAY_UPDATED") {
@@ -732,8 +736,8 @@ export default function OrderingAppPage() {
         setPickerDelayMins(delayM);
         const dynamicSec = 480 + (p.delaySec || delayM * 60);
         setDeliveryCountdownSec(dynamicSec);
-        setCustomFloatingTitle(`Order Placed • Arriving in ${10 + delayM} minutes`);
-        setCustomFloatingSub(`⚠️ Picking delay (+${delayM}m) • OD Picker Thrupthi K S packing items`);
+        setCustomFloatingTitle(`Arriving in ${10 + delayM} mins`);
+        setCustomFloatingSub(`Picking is taking slightly longer (+${delayM} min)`);
       }
       if (
         data.type === "ORDER_CREATED" ||
@@ -752,29 +756,27 @@ export default function OrderingAppPage() {
         ) {
           const p = data.payload || data;
           if (p.delayMins !== undefined) setPickerDelayMins(p.delayMins);
-          // 1. Immediate message upon OD Picker handover slider completion
           setOrderingStage("packed_assigning");
-          setCustomFloatingTitle("Order is packed!");
-          setCustomFloatingSub("We will assign the rider captain soon...");
-          setCustomFloatingBadge("📦 Packed");
+          setCustomFloatingTitle("Order packed");
+          setCustomFloatingSub("Assigning rider");
+          setCustomFloatingBadge("Packed");
           playNotificationChime();
-          triggerToast("📦 Order is packed! We will assign the rider captain soon...");
+          triggerToast("Order packed! Assigning rider soon.");
 
-          // 2. Auto update to Delivery Captain Sinchana B R, Rider gets full 8 mins SLA
           setTimeout(() => {
             setOrderingStage("rider_assigned");
             setDeliveryCountdownSec(480);
-            setCustomFloatingTitle("Hi, I'm Sinchana B R, your delivery captain! 🛵");
-            setCustomFloatingSub("Out for Delivery • On the way to your doorstep (8 mins SLA)");
+            setCustomFloatingTitle("On the way");
+            setCustomFloatingSub("Sinchana B R is heading to you");
             setCustomFloatingBadge("");
             playNotificationChime();
-            triggerToast("Hi, I'm Sinchana B R, your delivery captain! 🛵 Arriving in 8 mins");
+            triggerToast("Sinchana B R is on the way (8 mins)");
           }, 2500);
         } else if (data.type === "FAST_DELIVERY_STARTED") {
           setOrderingStage("rider_assigned");
           setDeliveryCountdownSec(480);
-          setCustomFloatingTitle("Hi, I'm Sinchana B R, your delivery captain! 🛵");
-          setCustomFloatingSub("Out for Delivery • On the way to your doorstep (8 mins SLA)");
+          setCustomFloatingTitle("On the way");
+          setCustomFloatingSub("Sinchana B R is heading to you");
           setCustomFloatingBadge("");
         }
         if (data.type === "ORDER_DELIVERED") {
@@ -1318,8 +1320,8 @@ export default function OrderingAppPage() {
     setOrderingStage("picking");
     setPickerDelayMins(0);
     setDeliveryCountdownSec(600);
-    setCustomFloatingTitle("Order Placed • Arriving in 10 minutes");
-    setCustomFloatingSub("Assigned to OD Picker: Thrupthi K S (Warehouse Staging)");
+    setCustomFloatingTitle("Order placed");
+    setCustomFloatingSub("Packing your order");
     setCustomFloatingBadge("");
     setPlacingOrder(false);
 
@@ -1525,7 +1527,7 @@ export default function OrderingAppPage() {
                   ) : orderingStage === "delivered" && !rateCompleted ? (
                     <>Delivered • <span style={S.etaMinutes}>RATE RIDER & ITEMS</span></>
                   ) : activeDeliveryOrder && orderingStage === "picking" && pickerDelayMins > 0 ? (
-                    <>Delivery in <span style={S.etaMinutes}>{10 + pickerDelayMins} MINS</span> <span style={{ fontSize: 11, color: "#dc2626", fontWeight: 800, marginLeft: 4 }}>(+{pickerDelayMins}m delay)</span></>
+                    <>Delivery in <span style={S.etaMinutes}>{10 + pickerDelayMins} MINS</span></>
                   ) : activeDeliveryOrder && deliveryCountdownSec > 0 ? (
                     <>Delivery in <span style={S.etaMinutes}>{Math.max(1, Math.ceil(deliveryCountdownSec / 60))} {Math.max(1, Math.ceil(deliveryCountdownSec / 60)) === 1 ? "MIN" : "MINS"}</span></>
                   ) : (
@@ -1833,24 +1835,12 @@ export default function OrderingAppPage() {
                 )}
 
                 <div style={S.billRow}>
-                  <span style={S.billLabel}>
-                    Delivery Fee
-                    <span style={S.freeDeliveryPill}>FREE on ₹1+ orders</span>
-                  </span>
-                  <span style={S.billFreeHighlight}>
-                    FREE
-                  </span>
+                  <span style={S.billLabel}>Delivery</span>
+                  <span style={S.billFreeHighlight}>FREE</span>
                 </div>
 
                 <div style={S.billRow}>
-                  <span style={S.billLabel}>
-                    Handling Fee
-                    {hasFramesInCart ? (
-                      <span style={S.framesHandlingBadge}>Frames Special Care</span>
-                    ) : (
-                      <span style={S.freeDeliveryPill}>FREE for Chocolates</span>
-                    )}
-                  </span>
+                  <span style={S.billLabel}>Handling fee</span>
                   <span style={handlingFee === 0 ? S.billFreeHighlight : S.billValue}>
                     {handlingFee === 0 ? "FREE" : `₹${handlingFee}`}
                   </span>
@@ -1859,12 +1849,7 @@ export default function OrderingAppPage() {
                 <div style={S.billDivider} />
 
                 <div style={S.billGrandTotalRow}>
-                  <div>
-                    <span style={S.grandTotalLabel}>To Pay</span>
-                    <div style={S.taxInclusiveSub}>
-                      Incl. all dark store taxes & hub fees
-                    </div>
-                  </div>
+                  <span style={S.grandTotalLabel}>Total</span>
                   <span style={S.grandTotalAmount}>₹{grandTotal}</span>
                 </div>
               </div>
@@ -2803,7 +2788,7 @@ export default function OrderingAppPage() {
                   padding: "3px 8px",
                   borderRadius: 6,
                 }}>
-                  SLA PREP
+                  SOON
                 </span>
               </div>
 
@@ -3209,11 +3194,11 @@ export default function OrderingAppPage() {
               ))}
             </div>
 
-            {/* ── 5. OPERATIONS & DARK STORE HUB HIGHLIGHTS ── */}
+            {/* ── 5. EXPRESS DELIVERY HIGHLIGHTS ── */}
             <div style={{ marginTop: 10 }}>
               <div style={S.sectionHeadingRow}>
-                <h3 style={S.sectionSubTitle}>Dark Store Fulfillment</h3>
-                <span style={S.sectionSubCount}>Dark Store SLA</span>
+                <h3 style={S.sectionSubTitle}>Express delivery</h3>
+                <span style={S.sectionSubCount}>Local store</span>
               </div>
               <div style={S.tipturHighlightsGrid}>
                 <div style={S.tipturHighlightCard}>
@@ -3221,7 +3206,7 @@ export default function OrderingAppPage() {
                     <IconShieldCheck size={18} color="#0c831f" />
                   </div>
                   <div>
-                    <h4 style={S.highlightTitle}>APMC Yard Procurement</h4>
+                    <h4 style={S.highlightTitle}>Fresh local sourcing</h4>
                   </div>
                 </div>
 
@@ -3230,7 +3215,7 @@ export default function OrderingAppPage() {
                     <IconLightning size={18} color="#d97706" />
                   </div>
                   <div>
-                    <h4 style={S.highlightTitle}>10 Minute Dark Store SLA</h4>
+                    <h4 style={S.highlightTitle}>10-min delivery</h4>
                   </div>
                 </div>
 
@@ -3239,7 +3224,7 @@ export default function OrderingAppPage() {
                     <IconMapPin size={18} color="#2563eb" />
                   </div>
                   <div>
-                    <h4 style={S.highlightTitle}>Dark Store Operations</h4>
+                    <h4 style={S.highlightTitle}>Tiptur local dispatch</h4>
                   </div>
                 </div>
               </div>
@@ -3408,18 +3393,18 @@ export default function OrderingAppPage() {
                 >
                   {customFloatingTitle ||
                     (activeDeliveryOrder.status === "delivered" || orderingStage === "delivered"
-                      ? "Rate Rider & Ordered Items"
+                      ? "Rate your order"
                       : orderingStage === "rider_arrived"
-                      ? "Rider arrived to your location"
+                      ? "Arrived at doorstep"
                       : orderingStage === "almost_doorstep"
-                      ? "Almost to your doorstep"
+                      ? "Almost at your doorstep"
                       : orderingStage === "packed_assigning"
-                      ? "Order is packed!"
+                      ? "Order packed"
                       : orderingStage === "rider_assigned"
-                      ? "Hi, I'm Sinchana B R, your delivery captain! 🛵"
+                      ? "On the way"
                       : orderingStage === "picking"
-                      ? (pickerDelayMins > 0 ? `Order Placed • Arriving in ${10 + pickerDelayMins} minutes` : "Order Placed • Arriving in 10 minutes")
-                      : "Out for Delivery")}
+                      ? "Packing your order"
+                      : "On the way")}
                 </span>
                 <span
                   style={{
@@ -3433,18 +3418,14 @@ export default function OrderingAppPage() {
                 >
                   {customFloatingBadge ||
                     (activeDeliveryOrder.status === "delivered" || orderingStage === "delivered"
-                      ? "⭐ Doorstep Complete"
+                      ? "Delivered"
                       : orderingStage === "rider_arrived"
-                      ? "🛵 At Doorstep"
+                      ? "Doorstep"
                       : orderingStage === "almost_doorstep"
-                      ? `⚡ ${deliveryCountdownSec}s`
+                      ? `${deliveryCountdownSec}s`
                       : orderingStage === "packed_assigning"
-                      ? "📦 Packed"
-                      : orderingStage === "picking"
-                      ? (pickerDelayMins > 0
-                          ? `⚠️ +${pickerDelayMins}m (${Math.floor(deliveryCountdownSec / 60)}:${deliveryCountdownSec % 60 < 10 ? "0" : ""}${deliveryCountdownSec % 60})`
-                          : `⏱️ ${Math.floor(deliveryCountdownSec / 60)}:${deliveryCountdownSec % 60 < 10 ? "0" : ""}${deliveryCountdownSec % 60}`)
-                      : `⏱️ ${Math.floor(deliveryCountdownSec / 60)}:${deliveryCountdownSec % 60 < 10 ? "0" : ""}${deliveryCountdownSec % 60}`)}
+                      ? "Packed"
+                      : `${Math.floor(deliveryCountdownSec / 60)}:${deliveryCountdownSec % 60 < 10 ? "0" : ""}${deliveryCountdownSec % 60}`)}
                 </span>
               </div>
               <div
@@ -3459,20 +3440,18 @@ export default function OrderingAppPage() {
               >
                 {customFloatingSub ||
                   (activeDeliveryOrder.status === "delivered" || orderingStage === "delivered"
-                    ? "Delivered • Tap to rate rider & items"
+                    ? "Tap to rate rider & items"
                     : orderingStage === "rider_arrived"
-                    ? "Rider Sinchana B R is at your doorstep with your bag"
+                    ? "Sinchana B R is at your doorstep"
                     : orderingStage === "almost_doorstep"
-                    ? "Sinchana B R is reaching your gate in seconds"
+                    ? "Sinchana B R is reaching now"
                     : orderingStage === "packed_assigning"
-                    ? "We will assign the rider captain soon..."
+                    ? "Assigning rider"
                     : orderingStage === "rider_assigned"
-                    ? "Picked from Warehouse Staging • Out for Delivery"
-                    : orderingStage === "picking"
-                    ? (pickerDelayMins > 0
-                        ? `⚠️ Picking overtime (+${pickerDelayMins}m delay) • OD Picker: Thrupthi K S`
-                        : "Assigned to OD Picker Lead: Thrupthi K S (Warehouse Staging)")
-                    : "Your order is on the way to your doorstep")}
+                    ? "Sinchana B R is heading to you"
+                    : orderingStage === "picking" && pickerDelayMins > 0
+                    ? `Picking is taking slightly longer (+${pickerDelayMins} min)`
+                    : "Track order")}
               </div>
             </div>
           </div>
@@ -4164,8 +4143,8 @@ export default function OrderingAppPage() {
                 >
                   <span>
                     {placingOrder
-                      ? "Dispatching to OD Picker..."
-                      : `Pay ₹${grandTotal} via ${selectedPaymentMethod === "wallet" ? "Audit'X Demo Wallet" : "Cash on Delivery"}`}
+                      ? "Placing order..."
+                      : `Pay ₹${grandTotal} (${selectedPaymentMethod === "wallet" ? "Wallet" : "Cash on Delivery"})`}
                   </span>
                   <IconArrowRight size={18} color="#ffffff" />
                 </button>
@@ -4184,11 +4163,10 @@ export default function OrderingAppPage() {
             <div style={S.modalHeader}>
               <div>
                 <h3 style={S.modalTitle}>Customer Account</h3>
-                <div style={S.modalSubtitle}>AUDIT'X Dark Store</div>
               </div>
               <button
                 type="button"
-                style={S.modalCloseBtn}
+                style={{ ...S.modalCloseBtn, minWidth: 44, minHeight: 44 }}
                 onClick={() => setShowProfileModal(false)}
               >
                 <IconClose size={20} color="#64748b" />
@@ -4201,41 +4179,42 @@ export default function OrderingAppPage() {
                 {customer?.name ? customer.name.charAt(0).toUpperCase() : "U"}
               </div>
               <div style={S.profileHeroInfo}>
-                <div style={S.profileHeroName}>{customer?.name || "Customer"}</div>
-                <div style={S.profileHeroPhone}>🔒 +91 •••••••••• (Private)</div>
-                <div style={S.profileHeroBadge}>
-                  <span>Verified Dark Store Customer</span>
+                <div style={{ ...S.profileHeroName, display: "flex", alignItems: "center", gap: 6 }}>
+                  <span>{customer?.name || "Customer"}</span>
+                  <span
+                    title="Verified customer"
+                    style={{
+                      display: "inline-grid",
+                      placeItems: "center",
+                      width: 16,
+                      height: 16,
+                      borderRadius: "50%",
+                      background: "#dcfce7",
+                    }}
+                  >
+                    <IconCheck size={10} color="#0c831f" />
+                  </span>
                 </div>
+                <div style={S.profileHeroPhone}>🔒 +91 ••••••••••</div>
               </div>
             </div>
 
-            {/* Delivery Location Display */}
+            {/* Delivery Location Display (single concise address line) */}
             <div style={S.profileSectionBox}>
               <div style={S.profileSectionHeading}>
                 <IconMapPin size={14} color="#0c831f" />
-                <span>Delivery Location</span>
-
+                <span>Delivery location</span>
               </div>
               <div style={S.profileAddressText}>
-                <b style={{ color: "#0f172a" }}>KFGSC Campus</b>
-                <p style={{ margin: "3px 0 0", color: "#475569", fontSize: 13, fontWeight: 700 }}>
-                  KFGSC , Tiptur 572201
-                </p>
-                <p style={{ margin: "5px 0 0", color: "#0c831f", fontSize: 11, fontWeight: 700 }}>
-                  ⚡ Guaranteed 10-minute express dark store delivery point (2m Pick + 8m Rider)
-                </p>
+                <b style={{ color: "#0f172a" }}>KFGSC Campus, Tiptur 572201</b>
               </div>
             </div>
 
-            {/* Wallet & Quick Stats */}
+            {/* Compact Wallet Row */}
             <div style={S.profileStatsRow}>
               <div style={S.profileStatCol}>
-                <span style={S.statLabel}>Express Wallet</span>
+                <span style={S.statLabel}>Wallet</span>
                 <span style={S.statValue}>₹{(customer?.walletBalance || 999850).toLocaleString("en-IN")}</span>
-              </div>
-              <div style={S.profileStatCol}>
-                <span style={S.statLabel}>Delivery Zone</span>
-                <span style={S.statValue}>Express 572201</span>
               </div>
             </div>
 
@@ -4243,31 +4222,19 @@ export default function OrderingAppPage() {
             <div style={S.profileActionsCol}>
               <button
                 type="button"
-                style={S.profileEditBtn}
+                style={{ ...S.profileEditBtn, minHeight: 44 }}
                 onClick={() => {
                   setShowProfileModal(false);
                   setShowLoginModal(true);
                 }}
               >
-                <span>Switch Google Account</span>
+                <span>Switch account</span>
                 <IconArrowRight size={14} color="#0c831f" />
               </button>
 
               <button
                 type="button"
-                style={S.profileDedicatedPageBtn}
-                onClick={() => {
-                  setShowProfileModal(false);
-                  router.push("/ordering/login");
-                }}
-              >
-                <span>Open Dedicated Login Page</span>
-                <IconArrowRight size={14} color="#334155" />
-              </button>
-
-              <button
-                type="button"
-                style={S.profileLogoutBtn}
+                style={{ ...S.profileLogoutBtn, minHeight: 44 }}
                 onClick={() => {
                   localStorage.removeItem("auditx_customer");
                   localStorage.removeItem("blinkit_customer");
@@ -4277,7 +4244,7 @@ export default function OrderingAppPage() {
                   router.replace("/ordering/login");
                 }}
               >
-                <span>Log Out</span>
+                <span>Log out</span>
               </button>
             </div>
           </div>
@@ -4713,7 +4680,7 @@ export default function OrderingAppPage() {
                       lineHeight: 1.45,
                     }}
                   >
-                    🛡️ <b>Audit'X Quick Commerce Guarantee:</b> Issues filed here are transmitted instantly to Store Manager <b>Bhaskar N S</b> and Assistant Store Manager <b>Deepu B</b>. Resolution SLA: <b>&lt; 5 minutes</b> with instant wallet refunds or priority replacement!
+                    Issues reported here go directly to our store team for fast resolution.
                   </div>
 
                   {/* Order Reference */}
@@ -4779,7 +4746,7 @@ export default function OrderingAppPage() {
                     >
                       <option value="Missing Item">Missing Item in Delivery Bag</option>
                       <option value="Damaged Goods">Damaged / Melted Packaging</option>
-                      <option value="Delivery Delay / SLA Exceeded">Delivery Delay / 10-Min SLA Exceeded</option>
+                      <option value="Delivery Delay">Delivery delay</option>
                       <option value="Wrong Item Received">Wrong Item Received</option>
                       <option value="Billing / Wallet Issue">Billing / Wallet Issue</option>
                       <option value="Quality Issue">Quality / Freshness Issue</option>
@@ -4870,7 +4837,7 @@ export default function OrderingAppPage() {
                       <span style={{ fontSize: 36, display: "block", marginBottom: 8 }}>🎉</span>
                       <div style={{ fontWeight: 800, fontSize: 14, color: "#0f172a" }}>No Complaints on Record</div>
                       <div style={{ fontSize: 12, marginTop: 4 }}>
-                        All orders delivered seamlessly under 10-minute SLA!
+                        All orders delivered on time!
                       </div>
                     </div>
                   ) : (

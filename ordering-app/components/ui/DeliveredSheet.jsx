@@ -658,8 +658,8 @@ export default function DeliveredSheet({
           <span>{isWithinSla ? "⚡" : "⚠️"}</span>
           <span>
             {isWithinSla
-              ? "Within 10-min SLA"
-              : `SLA missed by ${formatMinSec(slaDiffSec)}`}
+              ? "Delivered on time"
+              : `Late by ${formatMinSec(slaDiffSec)}`}
           </span>
         </div>
       </div>
