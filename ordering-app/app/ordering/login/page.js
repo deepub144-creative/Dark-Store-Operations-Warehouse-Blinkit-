@@ -39,11 +39,11 @@ export default function CustomerInteractiveLoginPage() {
           />
         </div>
 
-        {/* Brand & Hub Info */}
+        {/* Brand Info */}
         <div style={styles.headerBlock}>
           <div style={styles.hubBadge}>
-            <span style={{ fontSize: 13 }}>📍</span>
-            <span>TIPTUR HUB KA-44 • DARK STORE</span>
+            <span style={{ fontSize: 13 }}>⚡</span>
+            <span>10-MIN EXPRESS DARK STORE</span>
           </div>
         </div>
 

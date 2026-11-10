@@ -838,7 +838,7 @@ export default function OdPickerApp() {
 
   return (
     <AndroidPhoneShell
-      appName="MOTOROLA • TIPTUR KA44"
+      appName="MOTOROLA"
       statusBarBg="#ffffff"
       statusBarColor="#0f172a"
       homeRoute="/picker"
@@ -1455,7 +1455,7 @@ export default function OdPickerApp() {
                 <div style={{ ...S.designatedRackCode, color: assignedRack.color }}>
                   RACK {assignedRack.id}
                 </div>
-                <div style={S.designatedRackZone}>{assignedRack.zone} • Tiptur HUB KA44</div>
+                <div style={S.designatedRackZone}>{assignedRack.zone}</div>
                 
                 {/* PROMINENT HANDOVER QR CODE DISPLAY */}
                 <div style={S.qrContainerBox}>

@@ -54,7 +54,7 @@ const SAVED_ADDRESSES = [
     id: "addr_kfgsc",
     type: "KFGSC Delivery Point",
     title: "KFGSC Delivery Point",
-    flat: "KFGSC Campus Hub",
+    flat: "KFGSC Campus",
     address: "KFGSC , Tiptur 572201",
     tag: "Fixed Location",
     iconType: "home",
@@ -65,7 +65,7 @@ const AVAILABLE_COUPONS = [
   {
     code: "TIPTUR10",
     label: "10% Instant Discount",
-    description: "Save 10% up to ₹50 on authentic Tiptur Hub KA - 44 orders",
+    description: "Save 10% up to ₹50 on authentic dark store orders",
     minOrder: 149,
     discountPct: 10,
     maxDiscount: 50,
@@ -80,7 +80,7 @@ const AVAILABLE_COUPONS = [
   {
     code: "KA44EXPRESS",
     label: "FREE Delivery & Handling",
-    description: "100% Free delivery & ₹0 platform fee across Tiptur Hub KA - 44",
+    description: "100% Free delivery & ₹0 platform fee across all dark store orders",
     minOrder: 99,
     freeDelivery: true,
     freeHandling: true,
@@ -525,7 +525,7 @@ export default function OrderingAppPage() {
           triggerToast(`Stock Alert: "${data.payload.name}" marked Out of Stock by ASM Deepu B.`);
         } else {
           setOosList((prev) => prev.filter((s) => s !== data.payload.sku));
-          triggerToast(`In Stock: "${data.payload.name}" is now available at Tiptur HUB!`);
+          triggerToast(`In Stock: "${data.payload.name}" is now available at Dark Store!`);
         }
       }
       if (
@@ -984,8 +984,8 @@ export default function OrderingAppPage() {
           : selectedPaymentMethod === "card"
           ? "Saved Credit Card"
           : "Cash on Delivery",
-      storeId: "TIPTUR-HUB-KA44",
-      storeName: "Tiptur HUB - KA44",
+      storeId: "TIPTUR-DARK-STORE",
+      storeName: "AUDIT'X Dark Store",
       estimatedDeliveryMins: 10,
       createdAt: new Date().toISOString(),
       qrCode: `AUDITX-ORD-${orderId}-CUSTOMER-QR`,
@@ -1164,8 +1164,10 @@ export default function OrderingAppPage() {
                     <>Arriving in <span style={S.etaMinutes}>1 MIN</span></>
                   ) : orderingStage === "delivered" && !rateCompleted ? (
                     <>Delivered • <span style={S.etaMinutes}>RATE RIDER & ITEMS</span></>
+                  ) : activeDeliveryOrder && deliveryCountdownSec > 0 ? (
+                    <>Delivery in <span style={S.etaMinutes}>{Math.max(1, Math.ceil(deliveryCountdownSec / 60))} {Math.max(1, Math.ceil(deliveryCountdownSec / 60)) === 1 ? "MIN" : "MINS"}</span></>
                   ) : (
-                    <>Delivery in <span style={S.etaMinutes}>6 MINS</span></>
+                    <>Delivery in <span style={S.etaMinutes}>10 MINS</span></>
                   )}
                 </div>
               </div>
@@ -1265,7 +1267,7 @@ export default function OrderingAppPage() {
                 <div style={S.checkoutEtaLeft}>
                   <div style={S.checkoutEtaPill}>
                     <IconLightning size={16} color="#000000" />
-                    <span style={S.checkoutEtaTime}>Delivery in 8 MINS</span>
+                    <span style={S.checkoutEtaTime}>Delivery in 10 MINS</span>
                   </div>
                   <div style={S.checkoutAddressSub}>
                     KFGSC , Tiptur 572201
@@ -1984,7 +1986,7 @@ export default function OrderingAppPage() {
                           ) : (
                             <div style={S.etaBadgeOverlay}>
                               <IconLightning size={12} color="#000000" />
-                              <span>8 MINS</span>
+                              <span>10 MINS</span>
                             </div>
                           )}
                           {!isSoldOut && isOos && (
@@ -2831,7 +2833,7 @@ export default function OrderingAppPage() {
             {/* ── 5. OPERATIONS & DARK STORE HUB HIGHLIGHTS ── */}
             <div style={{ marginTop: 10 }}>
               <div style={S.sectionHeadingRow}>
-                <h3 style={S.sectionSubTitle}>Tiptur Hub KA44 Fulfillment</h3>
+                <h3 style={S.sectionSubTitle}>Dark Store Fulfillment</h3>
                 <span style={S.sectionSubCount}>Dark Store SLA</span>
               </div>
               <div style={S.tipturHighlightsGrid}>
@@ -2849,7 +2851,7 @@ export default function OrderingAppPage() {
                     <IconLightning size={18} color="#d97706" />
                   </div>
                   <div>
-                    <h4 style={S.highlightTitle}>8 Minute Dark Store SLA</h4>
+                    <h4 style={S.highlightTitle}>10 Minute Dark Store SLA</h4>
                   </div>
                 </div>
 
@@ -2858,7 +2860,7 @@ export default function OrderingAppPage() {
                     <IconMapPin size={18} color="#2563eb" />
                   </div>
                   <div>
-                    <h4 style={S.highlightTitle}>KA44 Dark Store Hub</h4>
+                    <h4 style={S.highlightTitle}>Dark Store Operations</h4>
                   </div>
                 </div>
               </div>
@@ -3293,7 +3295,7 @@ export default function OrderingAppPage() {
                   />
                   <div>
                     <div style={{ fontSize: 13, fontWeight: 800, color: "#0f172a" }}>Rider: Sinchana B R</div>
-                    <div style={{ fontSize: 11, color: "#64748b" }}>Order Captain • Tiptur KA-44</div>
+                    <div style={{ fontSize: 11, color: "#64748b" }}>Order Captain</div>
                   </div>
                 </div>
                 <div style={{ display: "flex", gap: 3 }}>
@@ -3798,7 +3800,7 @@ export default function OrderingAppPage() {
             <div style={S.modalHeader}>
               <div>
                 <h3 style={S.modalTitle}>Customer Account</h3>
-                <div style={S.modalSubtitle}>AUDIT'X Dark Store • Tiptur HUB KA44</div>
+                <div style={S.modalSubtitle}>AUDIT'X Dark Store</div>
               </div>
               <button
                 type="button"
@@ -3831,7 +3833,7 @@ export default function OrderingAppPage() {
 
               </div>
               <div style={S.profileAddressText}>
-                <b style={{ color: "#0f172a" }}>KFGSC Campus Hub</b>
+                <b style={{ color: "#0f172a" }}>KFGSC Campus</b>
                 <p style={{ margin: "3px 0 0", color: "#475569", fontSize: 13, fontWeight: 700 }}>
                   KFGSC , Tiptur 572201
                 </p>
@@ -3848,8 +3850,8 @@ export default function OrderingAppPage() {
                 <span style={S.statValue}>₹{(customer?.walletBalance || 999850).toLocaleString("en-IN")}</span>
               </div>
               <div style={S.profileStatCol}>
-                <span style={S.statLabel}>Active Hub</span>
-                <span style={S.statValue}>Tiptur KA-44</span>
+                <span style={S.statLabel}>Delivery Zone</span>
+                <span style={S.statValue}>Express 572201</span>
               </div>
             </div>
 
@@ -3977,7 +3979,7 @@ export default function OrderingAppPage() {
               <div>
                 <h3 style={S.modalTitle}>Choose Delivery Address</h3>
                 <div style={S.modalSubtitle}>
-                  Fulfilled directly from <b>Tiptur HUB - KA44</b>
+                  Fulfilled directly from <b>Dark Store Facility</b>
                 </div>
               </div>
               <button
@@ -4027,7 +4029,7 @@ export default function OrderingAppPage() {
             <div style={S.customAddressBox}>
               <input
                 type="text"
-                placeholder="Or type custom street / landmark in Tiptur Hub KA - 44..."
+                placeholder="Or type custom street / landmark in Tiptur..."
                 value={customAddressInput}
                 onChange={(e) => setCustomAddressInput(e.target.value)}
                 style={S.customInput}
@@ -4042,7 +4044,7 @@ export default function OrderingAppPage() {
                       type: "Custom",
                       title: "Custom Location",
                       flat: "Doorstep",
-                      address: `${customAddressInput.trim()}, Tiptur Hub KA - 44 - 572201`,
+                      address: `${customAddressInput.trim()}, Tiptur 572201`,
                       tag: "Custom",
                       iconType: "other",
                     };
@@ -4121,7 +4123,7 @@ export default function OrderingAppPage() {
                 <span style={{ fontSize: "1.2rem" }}>📢</span>
                 <div>
                   <div style={{ fontWeight: 800, fontSize: "0.95rem", color: "#0f172a" }}>Groceries Coming Soon in Namma Tiptur KA 44</div>
-                  <div style={{ fontSize: "0.75rem", color: "#64748b" }}>AUDIT'X Dark Store Operations Hub (572201)</div>
+                  <div style={{ fontSize: "0.75rem", color: "#64748b" }}>AUDIT'X Dark Store Operations (572201)</div>
                 </div>
               </div>
               <button
@@ -4623,7 +4625,7 @@ export default function OrderingAppPage() {
               }}
             >
               <span style={{ fontSize: 11, color: "#64748b" }}>
-                Tiptur Hub KA - 44 Operations Desk
+                AUDIT'X Operations Desk
               </span>
               <button
                 type="button"

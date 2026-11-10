@@ -31,7 +31,7 @@ import {
 export default function DeliveryCaptainApp() {
   const [isRiderLoggedIn, setIsRiderLoggedIn] = useState(false);
   const [isCheckedIn, setIsCheckedIn] = useState(false);
-  const [geoLoc, setGeoLoc] = useState({ lat: 13.2584, lng: 76.4787, status: "GPS Live - Tiptur HUB KA44" });
+  const [geoLoc, setGeoLoc] = useState({ lat: 13.2584, lng: 76.4787, status: "GPS Live - Dark Store Base" });
   const [incomingAssignedOrders, setIncomingAssignedOrders] = useState([]);
   const [stagedOrders, setStagedOrders] = useState([]);
   const [activeOrder, setActiveOrder] = useState(null);
@@ -125,7 +125,7 @@ export default function DeliveryCaptainApp() {
   
   // Simulated Tiptur Road Landmarks
   const TIPTUR_WAYPOINTS = [
-    { label: "Tiptur HUB - KA44 (Staging Bay)", pct: 0 },
+    { label: "Dark Store Staging Bay", pct: 0 },
     { label: "Kalpataru College Road", pct: 25 },
     { label: "Gandhi Circle & Clock Tower", pct: 50 },
     { label: "B.H. Road Main Crossing", pct: 75 },
@@ -330,9 +330,9 @@ export default function DeliveryCaptainApp() {
       captainName: "Sinchana B R",
       captainPhone: "8088553237",
       captainMessage: "Hi I am Sinchana B R, your order captain on the way coming soon!",
-      remainingMins: 1,
-      estimatedDeliveryMins: 1,
-      riderEtaMins: 6,
+      remainingMins: 8,
+      estimatedDeliveryMins: 8,
+      riderEtaMins: 8,
       distanceKm: 1.5,
       dispatchedAt: new Date().toISOString(),
     };
@@ -344,9 +344,9 @@ export default function DeliveryCaptainApp() {
       captainName: "Sinchana B R",
       captainPhone: "8088553237",
       captainMessage: "Hi I am Sinchana B R, your order captain on the way coming soon!",
-      remainingMins: 1,
-      estimatedDeliveryMins: 1,
-      riderEtaMins: 6,
+      remainingMins: 8,
+      estimatedDeliveryMins: 8,
+      riderEtaMins: 8,
       distanceKm: 1.5,
       dispatchedAt: new Date().toISOString(),
     });
@@ -355,8 +355,8 @@ export default function DeliveryCaptainApp() {
       orderId: targetOrder.id,
       orderNumber: targetOrder.orderNumber || targetOrder.id,
       captainName: "Sinchana B R",
-      remainingMins: 1,
-      riderEtaMins: 6,
+      remainingMins: 8,
+      riderEtaMins: 8,
       distanceKm: 1.5,
     });
 
@@ -439,7 +439,7 @@ export default function DeliveryCaptainApp() {
     setShowDeliveredSheet(false);
     setActiveOrder(null);
     setActiveStep("awaiting_orders");
-    setArrivingMinutes(6);
+    setArrivingMinutes(8);
     setDistanceLeftKm(1.5);
     setDoorstepSeconds(null);
     setRiderArrivedBar(false);
@@ -448,7 +448,7 @@ export default function DeliveryCaptainApp() {
     if (typeof window !== "undefined") {
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
-    setActionSuccess(`🎉 Handover complete! Order delivered safely. Returning to HUB • Searching live tasks...`);
+    setActionSuccess(`🎉 Handover complete! Order delivered safely. Ready for next delivery • Searching live tasks...`);
     setTimeout(() => setActionSuccess(""), 4000);
 
     // 2. Fire-and-forget Firestore update without blocking local state reset
@@ -470,7 +470,7 @@ export default function DeliveryCaptainApp() {
     }
     setActiveOrder(null);
     setActiveStep("awaiting_orders");
-    setArrivingMinutes(6);
+    setArrivingMinutes(8);
     setDistanceLeftKm(1.5);
     setDoorstepSeconds(null);
     setRiderArrivedBar(false);
@@ -483,7 +483,7 @@ export default function DeliveryCaptainApp() {
 
   return (
     <AndroidPhoneShell
-      appName="OPPO • TIPTUR KA44"
+      appName="OPPO"
       statusBarBg="#ffffff"
       statusBarColor="#0f172a"
       homeRoute="/rider"
@@ -579,14 +579,16 @@ export default function DeliveryCaptainApp() {
                         <>Rider <span style={S.etaMinutes}>ARRIVED AT LOCATION</span></>
                       ) : doorstepSeconds !== null ? (
                         <>Almost to doorstep • <span style={S.etaMinutes}>{doorstepSeconds}s</span></>
-                      ) : (
+                      ) : activeOrder && arrivingMinutes ? (
                         <>Delivery in <span style={S.etaMinutes}>{arrivingMinutes} {arrivingMinutes === 1 ? "MIN" : "MINS"}</span></>
+                      ) : (
+                        <>Delivery in <span style={S.etaMinutes}>8 MINS</span></>
                       )}
                     </div>
                   </div>
                   <div style={S.addressSnippetRow}>
                     <span>
-                      🛵 {riderArrivedBar ? "Arrived at Customer Location" : activeOrder ? `${distanceLeftKm} kms left to destination • Tiptur Fleet KA44` : "Stationed at Tiptur Hub KA44 • Fleet Ready"}
+                      🛵 {riderArrivedBar ? "Arrived at Customer Location" : activeOrder ? `${distanceLeftKm} kms left to destination` : "Fleet Ready"}
                     </span>
                   </div>
                 </div>
@@ -849,7 +851,7 @@ export default function DeliveryCaptainApp() {
 
                           <div style={{ marginTop: 14 }}>
                             <SlideButton
-                              text={`SLIDE TO CONFIRM PICKUP & START 6-MIN DELIVERY (RACK ${rackId})`}
+                              text={`SLIDE TO CONFIRM PICKUP & START 8-MIN DELIVERY (RACK ${rackId})`}
                               color="#0c831f"
                               icon={<IconRealisticScooter size={26} color="#ffffff" />}
                               onSlideComplete={() => handleConfirmPickupAndStartDelivery(ord)}
@@ -930,7 +932,7 @@ export default function DeliveryCaptainApp() {
                     <span style={S.gpsLiveDot} />
                     <div>
                       <div style={S.gpsNavTitle}>📍 LIVE GOOGLE MAPS TWO-WHEELER ROUTE</div>
-                      <div style={S.gpsNavSub}>Madihalli Hub → Kalpataru First Grade Science (KFGSC)</div>
+                      <div style={S.gpsNavSub}>Dark Store Facility → Kalpataru First Grade Science (KFGSC)</div>
                     </div>
                   </div>
                   <div style={S.gpsBadge}>3 min (1.7 km)</div>
@@ -1086,7 +1088,7 @@ export default function DeliveryCaptainApp() {
                         Sinchana B R Wallet — Gig Payout Form
                       </div>
                       <div style={{ fontSize: 11.5, color: "#15803d", fontWeight: 700 }}>
-                        Order #{activeOrder?.orderNumber || activeOrder?.id} • Namma Tiptur KA-44
+                        Order #{activeOrder?.orderNumber || activeOrder?.id}
                       </div>
                     </div>
                   </div>
@@ -1239,7 +1241,7 @@ export default function DeliveryCaptainApp() {
               </div>
 
               <button style={S.nextDeliveryBtn} onClick={handleResetForNextDelivery}>
-                Return to Tiptur HUB for Next Delivery →
+                Ready for Next Delivery →
               </button>
             </div>
           )}

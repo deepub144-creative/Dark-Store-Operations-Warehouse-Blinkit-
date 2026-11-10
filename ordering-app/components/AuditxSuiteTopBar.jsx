@@ -13,7 +13,6 @@ import AuditxLogo from "./AuditxLogo";
  */
 export default function AuditxSuiteTopBar({
   variant = "ordering", // "picker" | "rider" | "ordering"
-  hubText = "KA-44 Hub",
   isStoreOpen = true,
   isDutyOn = true,
   onDutyToggle,

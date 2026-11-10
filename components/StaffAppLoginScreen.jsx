@@ -106,7 +106,6 @@ export default function StaffAppLoginScreen({
       {/* Brand Header */}
       <div style={L.brandCol}>
         <AuditxLogo height={32} href="/" />
-        <span style={L.hubPill}>TIPTUR HUB KA-44</span>
       </div>
 
       {/* Staff Card */}
@@ -244,7 +243,7 @@ export default function StaffAppLoginScreen({
       </div>
 
       <div style={L.footerNotice}>
-        AUDIT'X Dark Store In-Store App • Tumkur KA44
+        AUDIT'X Express Dark Store Operations
       </div>
     </div>
   );

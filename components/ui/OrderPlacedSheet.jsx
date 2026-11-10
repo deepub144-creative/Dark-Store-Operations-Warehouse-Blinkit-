@@ -149,7 +149,7 @@ export default function OrderPlacedSheet({
       >
         <span>AUDIT&#39;X</span>
         <span>•</span>
-        <span>TIPTUR HUB KA-44</span>
+        <span>EXPRESS DARK STORE</span>
       </div>
 
       {/* Center Animation Stage: Rings, Green Circle, Drawn Checkmark, Sparkles */}
