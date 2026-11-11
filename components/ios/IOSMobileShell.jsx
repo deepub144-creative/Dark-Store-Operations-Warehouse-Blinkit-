@@ -138,6 +138,40 @@ export default function IOSMobileShell({
     return () => rootEl.removeEventListener("scroll", onScroll);
   }, []);
 
+  // Desktop keyboard & focus support (Arrow keys, Page Up/Down, Space, Home/End)
+  useEffect(() => {
+    try {
+      scrollRef.current?.focus({ preventScroll: true });
+    } catch {}
+  }, [tabBar]);
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      const tag = document.activeElement?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || document.activeElement?.isContentEditable) {
+        return;
+      }
+      const el = scrollRef.current;
+      if (!el) return;
+      const pageScroll = window.innerHeight * 0.8;
+      if (e.key === "ArrowDown") {
+        el.scrollBy({ top: 80, behavior: "smooth" });
+      } else if (e.key === "ArrowUp") {
+        el.scrollBy({ top: -80, behavior: "smooth" });
+      } else if (e.key === "PageDown" || (e.key === " " && !e.shiftKey)) {
+        el.scrollBy({ top: pageScroll, behavior: "smooth" });
+      } else if (e.key === "PageUp" || (e.key === " " && e.shiftKey)) {
+        el.scrollBy({ top: -pageScroll, behavior: "smooth" });
+      } else if (e.key === "Home") {
+        el.scrollTo({ top: 0, behavior: "smooth" });
+      } else if (e.key === "End") {
+        el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
   const scrollToTop = useCallback(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTo({ top: 0, behavior: "smooth" });
@@ -256,11 +290,25 @@ export default function IOSMobileShell({
           width: "100%",
           height: "100dvh",
           maxHeight: "100dvh",
-          overflow: "hidden",
+          overflowY: "auto",
+          overflowX: "hidden",
           background: "var(--ios-bg)",
           display: "flex",
           justifyContent: "center",
           position: "relative",
+        }}
+        onWheel={(e) => {
+          if (scrollRef.current && e.target && !scrollRef.current.contains(e.target)) {
+            scrollRef.current.scrollTop += e.deltaY;
+          }
+        }}
+        onClick={() => {
+          const tag = document.activeElement?.tagName;
+          if (scrollRef.current && !["INPUT", "TEXTAREA", "SELECT"].includes(tag) && !document.activeElement?.isContentEditable) {
+            try {
+              scrollRef.current.focus({ preventScroll: true });
+            } catch {}
+          }
         }}
       >
         <div
@@ -315,7 +363,12 @@ export default function IOSMobileShell({
           {header}
 
           {/* Inner Momentum Scroll Area */}
-          <div ref={scrollRef} className="ios-scroll-area">
+          <div
+            ref={scrollRef}
+            className="ios-scroll-area"
+            tabIndex={0}
+            style={{ outline: "none", minHeight: 0 }}
+          >
             {/* Pull-to-Refresh Spinner */}
             {(pullDist > 0 || refreshing) && (
               <div

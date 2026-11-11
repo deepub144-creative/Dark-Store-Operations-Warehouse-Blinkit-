@@ -47,8 +47,8 @@ def rewrite_with_history(
             for m in history[-6:]
             if m.get("role") == "user" and m.get("content", "").strip() != clean
         ]
-        word_count = len(clean.split())
-        if recent_user_turns and (word_count <= 4 or bool(FOLLOWUP_PRONOUNS.search(clean))):
+        is_followup = bool(FOLLOWUP_PRONOUNS.search(clean)) or clean.lower() in ("why", "why?", "explain more", "can you explain that more?")
+        if recent_user_turns and is_followup:
             anchor = recent_user_turns[-1]
             anchor_words = " ".join(anchor.split()[:10])
             rewritten = f"{clean} {anchor_words}".strip()

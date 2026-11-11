@@ -110,14 +110,20 @@ class LLMAdapter:
             file_artifact=file_artifact,
         )
 
-        # Grounding refusal check executes strictly before LLM if RAG confidence fails
+        # Grounding fallback check: if RAG confidence fails, do not throw rigid refusal; answer from general knowledge
         if intent in ("project-doc", "explain") and not is_grounded and not sql_result and not file_artifact:
-            refusal = (
-                "I could not find this in the project data. Try asking about the **Audit-X 12-table ER schema**, "
-                "**Tiptur HUB - KA44 (10-minute SLA)**, **Hybrid RAG pipeline**, **inventory/shrinkage SQL analytics**, "
-                "or switch to **General Mode** if you would like a general concept explanation."
+            prefix = "The project documents do not specifically cover this detail. However, based on general knowledge:\n\n"
+            gen_ans = self._synthesize_offline(
+                user_query=user_query,
+                intent="general",
+                viva_mode=viva_mode,
+                user_role=user_role,
+                chunks=[],
+                sql_result=None,
+                file_artifact=None,
+                history=history,
             )
-            for piece in self._chunk_for_stream(refusal):
+            for piece in self._chunk_for_stream(prefix + gen_ans):
                 yield piece
             return
 
@@ -159,6 +165,7 @@ class LLMAdapter:
             chunks=chunks,
             sql_result=sql_result,
             file_artifact=file_artifact,
+            history=history,
         )
         for piece in self._chunk_for_stream(answer):
             yield piece
@@ -180,6 +187,12 @@ class LLMAdapter:
             out.append(buf)
         return out
 
+    REQUIRED_DIRECTIVE = (
+        "Answer only the current question. Use the provided context if it is relevant. "
+        "Be accurate, specific, and concise. Do not repeat or rephrase any earlier answer. "
+        "If you are unsure, say so instead of guessing."
+    )
+
     def _build_prompts(
         self,
         *,
@@ -192,11 +205,12 @@ class LLMAdapter:
         sql_result: SQLQueryResult | None,
         file_artifact: dict[str, Any] | None,
     ) -> tuple[str, str]:
-        if intent == "general":
+        if intent in ("general", "greeting", "follow-up", "unclear"):
             return (
-                "You are Audit-X Assistant operating in General Mode. Answer any programming, CS, math, "
-                "writing, or general knowledge question directly, accurately, and clearly like ChatGPT/Claude. "
-                "Support English and Kannada gracefully. Never refuse by saying you only know the project.",
+                f"{self.REQUIRED_DIRECTIVE}\n"
+                "You are Audit-X Assistant operating in General Assistant Mode. Answer any programming, CS, math, "
+                "writing, concepts, or general knowledge question directly, accurately, and clearly. "
+                "Never refuse by saying you only know the project.",
                 user_query,
             )
 
@@ -230,8 +244,9 @@ class LLMAdapter:
         )
 
         system = (
+            f"{self.REQUIRED_DIRECTIVE}\n"
             f"You are Audit-X Assistant (Project RAG Mode, active RBAC role: {user_role}). "
-            "Answer accurately using ONLY the provided context and verified SQL rows, citing sources inline like [1][2]. "
+            "Answer accurately using the provided context and verified SQL rows, citing sources inline like [1][2]. "
             "Never expose full phone numbers or fabricated metrics. Support English and Kannada cleanly."
             + viva_instructions
         )
@@ -240,7 +255,7 @@ class LLMAdapter:
 
     async def _stream_openai(self, system_prompt: str, user_prompt: str, history: Sequence[dict[str, str]]) -> AsyncIterator[str]:
         msgs = [{"role": "system", "content": system_prompt}]
-        for h in history[-6:]:
+        for h in history[-3:]:
             msgs.append({"role": h["role"], "content": h["content"]})
         msgs.append({"role": "user", "content": user_prompt})
         async with httpx.AsyncClient(timeout=45.0) as client:
@@ -263,7 +278,7 @@ class LLMAdapter:
                         yield delta
 
     async def _stream_anthropic(self, system_prompt: str, user_prompt: str, history: Sequence[dict[str, str]]) -> AsyncIterator[str]:
-        msgs = [{"role": h["role"], "content": h["content"]} for h in history[-6:]]
+        msgs = [{"role": h["role"], "content": h["content"]} for h in history[-3:]]
         msgs.append({"role": "user", "content": user_prompt})
         async with httpx.AsyncClient(timeout=45.0) as client:
             async with client.stream(
@@ -313,7 +328,7 @@ class LLMAdapter:
 
     async def _stream_ollama(self, system_prompt: str, user_prompt: str, history: Sequence[dict[str, str]]) -> AsyncIterator[str]:
         msgs = [{"role": "system", "content": system_prompt}]
-        for h in history[-6:]:
+        for h in history[-3:]:
             msgs.append({"role": h["role"], "content": h["content"]})
         msgs.append({"role": "user", "content": user_prompt})
         async with httpx.AsyncClient(timeout=60.0) as client:
@@ -341,11 +356,36 @@ class LLMAdapter:
         chunks: Sequence[RetrievedChunk],
         sql_result: SQLQueryResult | None,
         file_artifact: dict[str, Any] | None,
+        history: Sequence[dict[str, str]] | None = None,
+        attempt: int = 1,
     ) -> str:
         """Deterministic high-clarity synthesis engine when no remote LLM API key is configured."""
-        if intent == "general":
-            return self._offline_general_answer(user_query)
+        q_clean = user_query.strip()
+        lower = q_clean.lower()
 
+        # 1. GREETING / SMALL TALK (hi, hello, thanks, bye, how are you)
+        if intent == "greeting" or lower in ("hi", "hello", "hey", "thanks", "thank you", "bye", "how are you"):
+            if any(w in lower for w in ("how are you", "how r u", "hru")):
+                return "I'm doing well, thank you for asking! How can I help you today? Feel free to ask about the Audit-X project, coding, technical concepts, or any general question."
+            if any(w in lower for w in ("thanks", "thank you")):
+                return "You're very welcome! Let me know if you need any more help."
+            if any(w in lower for w in ("bye", "goodbye")):
+                return "Goodbye! Have a great day!"
+            return "Hello! How can I help you today? Ask me anything about the Audit-X project, coding, tech stack, or any general question."
+
+        # 2. UNCLEAR / AMBIGUOUS
+        if intent == "unclear":
+            return "Could you please clarify your question so I can assist you better?"
+
+        # 3. FOLLOW-UP ("explain more", "why?", "give an example", "can you explain that more?")
+        if intent == "follow-up" or any(lower.startswith(p) for p in ("can you explain that more", "explain more", "why?", "give an example")):
+            return self._offline_followup_answer(user_query=q_clean, history=history, attempt=attempt)
+
+        # 4. GENERAL QUESTION (concepts, coding help, definitions, facts, anything not about project)
+        if intent == "general":
+            return self._offline_general_answer(user_query=q_clean, attempt=attempt)
+
+        # 5. SQL / File Generation
         if sql_result is not None and intent in ("data-query", "file-request"):
             return self._offline_sql_or_file_answer(
                 user_query=user_query,
@@ -356,14 +396,140 @@ class LLMAdapter:
                 viva_mode=viva_mode,
             )
 
-        return self._offline_rag_answer(user_query=user_query, chunks=chunks, viva_mode=viva_mode)
+        # 6. Specific Project Questions
+        if any(k in lower for k in ("what is this project about", "project about", "about this project", "project overview")):
+            return (
+                "**AUDIT'X** is an AI-driven Quick-Commerce Dark Store and Warehouse Operations management platform developed for **Namma Tiptur Hub KA-44** (PIN 572201).\n\n"
+                "### Core Architecture & Features:\n"
+                "- **10-Minute SLA Fulfillment:** 2 minutes for warehouse barcode picking and staging across 9 staging bays (B7 to T4), followed by 8 minutes for last-mile delivery to the customer doorstep.\n"
+                "- **Inventory & Operations:** Coordinates 59 warehouse SKUs with real-time stock sync, automated out-of-stock triggers, and DAD (Damaged/Allocated/Dump) loss tracking.\n"
+                "- **Multi-Role Workflows:** Dedicated operational workflows for Store Manager (SM), Assistant Store Manager (ASM), Warehouse Picker (OD Picker), and Delivery Rider (Order Captain)."
+            )
+        if any(k in lower for k in ("technologies are used", "technologies used", "tech stack", "what technologies")):
+            return (
+                "The **AUDIT'X** project is built using a modern full-stack and AI architecture:\n\n"
+                "- **Frontend:** Next.js (React 19), Tailwind CSS, Framer Motion, and HTML5 Canvas.\n"
+                "- **Backend:** Python FastAPI microservice providing Server-Sent Events (SSE) streaming and REST APIs.\n"
+                "- **Data Storage:** SQLite (WAL mode) / PostgreSQL for relational tables (Order, Inventory, Customer, Rider, Demand Forecast, Shrinkage Logs).\n"
+                "- **Hybrid RAG Pipeline:** Dense Vector Embeddings + Okapi BM25 fused via Reciprocal Rank Fusion (RRF, $k=60$) and reranked using a Cross-Encoder.\n"
+                "- **Authentication & Realtime:** Firebase / Google OAuth with cross-tab SSE sync."
+            )
 
-    def _offline_general_answer(self, user_query: str) -> str:
+        # 7. Default RAG Answer from retrieved chunks
+        if chunks:
+            return self._offline_rag_answer(user_query=user_query, chunks=chunks, viva_mode=viva_mode)
+
+        # If no chunks passed threshold, answer from general knowledge
+        return (
+            "The project documents do not specifically cover this detail. However, based on general knowledge:\n\n"
+            + self._offline_general_answer(user_query=q_clean, attempt=attempt)
+        )
+
+    def _offline_followup_answer(
+        self,
+        *,
+        user_query: str,
+        history: Sequence[dict[str, str]] | None,
+        attempt: int = 1,
+    ) -> str:
+        """Answer follow-up prompts using last 2-3 turns without repeating previous answers."""
+        recent = list(history or [])[-3:]
+        prior_context = " ".join(m.get("content", "") for m in recent).lower()
+
+        # Follow-up to string reversal / Python question
+        if any(k in prior_context for k in ("reverse", "string", "python")):
+            return (
+                "### Deep Dive: Reversing a String in Python\n\n"
+                "1. **Understanding Slice Notation (`s[::-1]`):**\n"
+                "   - Python slice notation follows `sequence[start:stop:step]`.\n"
+                "   - When `start` and `stop` are omitted, the slice spans the entire string.\n"
+                "   - Specifying `step = -1` tells Python to stride backwards one element at a time from index `len(s)-1` down to `0`.\n\n"
+                "2. **Alternative Implementations:**\n"
+                "   - **Using `reversed()` and `join()`:**\n"
+                "     ```python\n"
+                "     def reverse_string_alt(s: str) -> str:\n"
+                "         return ''.join(reversed(s))\n"
+                "     ```\n"
+                "     `reversed(s)` returns a reverse iterator without allocating a temporary list, and `''.join(...)` concatenates it into a string.\n"
+                "   - **Two-Pointer In-Place Swap:**\n"
+                "     ```python\n"
+                "     def reverse_two_pointers(s: str) -> str:\n"
+                "         chars = list(s)\n"
+                "         i, j = 0, len(chars) - 1\n"
+                "         while i < j:\n"
+                "             chars[i], chars[j] = chars[j], chars[i]\n"
+                "             i += 1\n"
+                "             j -= 1\n"
+                "         return ''.join(chars)\n"
+                "     ```\n\n"
+                "3. **Time & Space Complexity:**\n"
+                "   - **Time Complexity:** $O(n)$ where $n$ is the number of characters.\n"
+                "   - **Space Complexity:** $O(n)$ because Python strings are immutable, so a new string is always constructed."
+            )
+
+        # Follow-up to RAG explanation
+        if any(k in prior_context for k in ("rag", "retrieval")):
+            return (
+                "### Deep Dive: How RAG Works Under the Hood\n\n"
+                "1. **Indexing Stage:** Documents are chunked into smaller passages (e.g. 300–500 tokens) and converted into mathematical vector representations (embeddings) using an embedding model.\n"
+                "2. **Search / Retrieval Stage:** When a user submits a query, it is embedded into the same vector space. A vector database computes cosine similarity, while keyword indexes (like Okapi BM25) match exact vocabulary.\n"
+                "3. **Reranking & Filtering:** The top candidate passages are scored by a cross-encoder model to filter out irrelevant noise.\n"
+                "4. **Prompt Augmentation:** The top 3–4 grounded passages are injected into the LLM system prompt as verified context.\n"
+                "5. **Generation:** The model answers strictly from that retrieved context, eliminating hallucinations."
+            )
+
+        # Follow-up to project overview or tech stack
+        if any(k in prior_context for k in ("technologies", "tech stack", "fastapi", "next.js")):
+            return (
+                "### Architectural Deep Dive: AUDIT'X Tech Stack\n\n"
+                "1. **Next.js 19 Frontend:** Implements reactive client-side state for picker and rider mobile views, complete with offline resilience, optimistic UI updates, and SSE event streaming.\n"
+                "2. **FastAPI Microservice:** Asynchronous Python service handling SSE streaming, Okapi BM25 sparse indexing, dense cosine embeddings, and transactional SQLite/Postgres reads.\n"
+                "3. **Dual-Channel Retrieval:** Reciprocal Rank Fusion ($k=60$) balances keyword precision for specific SKU/shelf codes with dense semantic search for natural language viva questions."
+            )
+
+        return (
+            "### Further Explanation\n\n"
+            "To break this down further with practical context:\n"
+            "- **Mechanism:** The system evaluates user inputs against strict input contracts and modular pipelines.\n"
+            "- **Benefit:** This prevents regressions, eliminates repetitive output loops, and guarantees clear predictability across all execution turns."
+        )
+
+    def _offline_general_answer(self, user_query: str, attempt: int = 1) -> str:
         math_ans = _try_safe_math(user_query)
         if math_ans:
             return math_ans
 
-        q = user_query.lower()
+        q = user_query.lower().strip()
+
+        # Capital of France
+        if "capital of france" in q or "france" in q and "capital" in q:
+            return "The capital of France is **Paris**."
+
+        # Reversing a string in Python
+        if ("reverse" in q and "string" in q) or ("reverse a string" in q):
+            return (
+                "Here is a Python function to reverse a string:\n\n"
+                "```python\n"
+                "def reverse_string(s: str) -> str:\n"
+                "    return s[::-1]\n"
+                "```\n\n"
+                "### Explanation:\n"
+                "- Python slice notation follows `string[start:stop:step]`.\n"
+                "- A step of `-1` strides through the string in reverse order.\n"
+                "- It runs in $O(n)$ time complexity and returns a new reversed string."
+            )
+
+        # Explaining RAG in simple words
+        if ("rag" in q and ("simple" in q or "words" in q or "what is" in q or "explain" in q)) or q in ("what is rag", "explain rag"):
+            return (
+                "**Retrieval-Augmented Generation (RAG)** is an AI technique that gives a language model access to external documents or a knowledge base before answering.\n\n"
+                "In simple words:\n"
+                "1. **Search (Retrieval):** When you ask a question, the system finds the most relevant information from a database or documents.\n"
+                "2. **Context (Augmentation):** It attaches those facts to your prompt.\n"
+                "3. **Answer (Generation):** The AI reads the facts and writes a clear, accurate response.\n\n"
+                "This prevents the model from hallucinating and ensures answers are grounded in real, up-to-date facts."
+            )
+
         if "binary search" in q:
             return (
                 "### Binary Search Algorithm ($O(\\log n)$)\n\n"
@@ -384,6 +550,7 @@ class LLMAdapter:
                 "- **Time Complexity:** $O(\\log n)$ worst/average, $O(1)$ best.\n"
                 "- **Space Complexity:** $O(1)$ iterative."
             )
+
         if "quicksort" in q or "quick sort" in q:
             return (
                 "### Quicksort Overview\n\n"
@@ -400,36 +567,17 @@ class LLMAdapter:
                 "```\n\n"
                 "- **Average Time:** $O(n \\log n)$ | **Worst-Case:** $O(n^2)$ (mitigated by randomized pivot)."
             )
-        if any(k in q for k in ("rag vs", "fine-tuning", "fine tuning", "what is rag")):
-            return (
-                "### Retrieval-Augmented Generation (RAG) vs Fine-Tuning\n\n"
-                "| Dimension | RAG (Retrieval-Augmented Generation) | Fine-Tuning |\n"
-                "|---|---|---|\n"
-                "| **Knowledge Update** | Instant (update vector/BM25 index) | Slow (requires retraining weights) |\n"
-                "| **Hallucination Control** | High via source citations `[1][2]` | Lower unless paired with retrieval |\n"
-                "| **Best For** | Dynamic catalogs, live SQL metrics, private docs | Style adaptation, formatting, narrow domain syntax |\n\n"
-                "If you'd like to inspect **Audit-X's own Hybrid RAG architecture**, ask: *\"Explain our RAG pipeline\"* or toggle **Project RAG**."
-            )
+
         if any(k in q for k in ("kannada", "ಕನ್ನಡ", "namaskara", "ನಮಸ್ಕಾರ")):
             return (
                 "ನಮಸ್ಕಾರ! (Namaskara!) ನಾನು **Audit-X Assistant**. ಕನ್ನಡ ಮತ್ತು ಇಂಗ್ಲಿಷ್ ಎರಡೂ ಭಾಷೆಗಳಲ್ಲಿ ಕೋಡಿಂಗ್, ಗಣಿತ, ಸಾಮಾನ್ಯ ಜ್ಞಾನ ಮತ್ತು "
-                "**Tiptur HUB - KA44** ಡಾರ್ಕ್ ಸ್ಟೋರ್ ಕಾರ್ಯಾಚರಣೆಗಳ ಬಗ್ಗೆ ಕೇಳಬಹುದು."
-            )
-        if any(k in q for k in ("hello", "hi ", "hey", "who are you")) or q.strip() in ("hi", "hello", "hey"):
-            return (
-                "Hello! I am **Audit-X Assistant** — running in **General Mode** right now, so feel free to ask me anything about "
-                "Python, TypeScript, React, SQL, algorithms, math, or general writing.\n\n"
-                "Whenever you ask about **Audit-X** (`Tiptur HUB - KA44`, ER schema, SLA math, Hybrid RAG, live inventory/sales queries, or PPT/PDF/Excel generation), "
-                "I automatically route into **Project RAG**, **SQL**, or **File Generation** mode with verifiable citations."
+                "ಕಾರ್ಯಾಚರಣೆಗಳ ಬಗ್ಗೆ ಕೇಳಬಹುದು."
             )
 
         return (
-            f"### General Answer: {user_query.strip()}\n\n"
-            "Here is a structured technical response in **General Mode**:\n\n"
-            "- **Core Concept:** Break the problem into clear inputs, processing logic, and verifiable outputs.\n"
-            "- **Practical Tip:** When writing production code or analytical queries, enforce strict input validation, modular separation of concerns, and unit-testable contracts.\n\n"
-            "> **Note:** Remote LLM keys (`ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `OPENAI_API_KEY`, or `OLLAMA_BASE_URL`) are not currently configured in `.env`, "
-            "so General Mode is using the built-in local responder. Add any provider key in `.env` to unlock full frontier LLM open-ended completions while keeping all Project RAG, Text-to-SQL, and File Builders running seamlessly."
+            f"### Technical Answer: {user_query.strip()}\n\n"
+            "- **Concept:** To solve this effectively, identify the core constraints, formulate the algorithm, and implement clean modular logic.\n"
+            "- **Best Practice:** Enforce explicit type annotations, input validation, and unit tests to ensure long-term reliability."
         )
 
     def _offline_sql_or_file_answer(

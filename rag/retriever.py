@@ -146,7 +146,7 @@ class HybridRetriever:
         self,
         query: str,
         history: Sequence[dict[str, str]] | None = None,
-        top_k: int = 5,
+        top_k: int = 4,
         candidate_pool: int = 20,
     ) -> RetrievalResult:
         t0 = time.perf_counter()

@@ -153,6 +153,98 @@ export default function WarehouseDashboardPage() {
     }
   }, [activeTab]);
 
+  // Desktop scrolling & floating scroll button support
+  const mainScrollRef = useRef(null);
+  const wrapRef = useRef(null);
+  const [dashboardScrolled, setDashboardScrolled] = useState(false);
+
+  useEffect(() => {
+    const checkScroll = () => {
+      const scroller = typeof document !== "undefined" ? (document.scrollingElement || document.documentElement || document.body) : null;
+      const top = (typeof window !== "undefined" ? window.scrollY || window.pageYOffset : 0) || (scroller ? scroller.scrollTop : 0);
+      const docHeight = Math.max(
+        document.documentElement?.scrollHeight || 0,
+        document.body?.scrollHeight || 0,
+        mainScrollRef.current?.scrollHeight || 0
+      );
+      const winHeight = typeof window !== "undefined" ? window.innerHeight : 800;
+      const maxScroll = docHeight - winHeight;
+      const isAtBottom = maxScroll > 0 && top >= maxScroll - 30;
+      setDashboardScrolled(top > 80 || isAtBottom);
+    };
+
+    window.addEventListener("scroll", checkScroll, { passive: true });
+    document.addEventListener("scroll", checkScroll, { passive: true });
+    const main = mainScrollRef.current;
+    if (main) main.addEventListener("scroll", checkScroll, { passive: true });
+
+    return () => {
+      window.removeEventListener("scroll", checkScroll);
+      document.removeEventListener("scroll", checkScroll);
+      if (main) main.removeEventListener("scroll", checkScroll);
+    };
+  }, []);
+
+  const handleFloatingScrollClick = useCallback(() => {
+    const scroller = typeof document !== "undefined" ? (document.scrollingElement || document.documentElement || document.body) : null;
+    const currentY = (typeof window !== "undefined" ? window.scrollY || window.pageYOffset : 0) || (scroller ? scroller.scrollTop : 0);
+    if (dashboardScrolled || currentY > 100) {
+      if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
+      if (scroller) scroller.scrollTo({ top: 0, behavior: "smooth" });
+      if (mainScrollRef.current) mainScrollRef.current.scrollTo({ top: 0, behavior: "smooth" });
+    } else {
+      if (typeof window !== "undefined") window.scrollBy({ top: 600, behavior: "smooth" });
+      if (scroller) scroller.scrollBy({ top: 600, behavior: "smooth" });
+      if (mainScrollRef.current) mainScrollRef.current.scrollBy({ top: 600, behavior: "smooth" });
+    }
+  }, [dashboardScrolled]);
+
+  useEffect(() => {
+    try {
+      mainScrollRef.current?.focus({ preventScroll: true });
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      const tag = document.activeElement?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || document.activeElement?.isContentEditable) {
+        return;
+      }
+      const pageScroll = typeof window !== "undefined" ? window.innerHeight * 0.75 : 400;
+      const scroller = typeof document !== "undefined" ? (document.scrollingElement || document.documentElement || document.body) : null;
+
+      if (e.key === "ArrowDown" || e.key === "Down") {
+        if (typeof window !== "undefined") window.scrollBy({ top: 140, behavior: "smooth" });
+        if (scroller) scroller.scrollBy({ top: 140, behavior: "smooth" });
+        if (mainScrollRef.current && mainScrollRef.current.scrollHeight > mainScrollRef.current.clientHeight) {
+          mainScrollRef.current.scrollBy({ top: 140, behavior: "smooth" });
+        }
+      } else if (e.key === "ArrowUp" || e.key === "Up") {
+        if (typeof window !== "undefined") window.scrollBy({ top: -140, behavior: "smooth" });
+        if (scroller) scroller.scrollBy({ top: -140, behavior: "smooth" });
+        if (mainScrollRef.current && mainScrollRef.current.scrollHeight > mainScrollRef.current.clientHeight) {
+          mainScrollRef.current.scrollBy({ top: -140, behavior: "smooth" });
+        }
+      } else if (e.key === "PageDown" || (e.key === " " && !e.shiftKey)) {
+        if (typeof window !== "undefined") window.scrollBy({ top: pageScroll, behavior: "smooth" });
+        if (scroller) scroller.scrollBy({ top: pageScroll, behavior: "smooth" });
+      } else if (e.key === "PageUp" || (e.key === " " && e.shiftKey)) {
+        if (typeof window !== "undefined") window.scrollBy({ top: -pageScroll, behavior: "smooth" });
+        if (scroller) scroller.scrollBy({ top: -pageScroll, behavior: "smooth" });
+      } else if (e.key === "Home") {
+        if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
+        if (scroller) scroller.scrollTo({ top: 0, behavior: "smooth" });
+      } else if (e.key === "End") {
+        const fullHeight = document.documentElement?.scrollHeight || document.body?.scrollHeight || 5000;
+        if (typeof window !== "undefined") window.scrollTo({ top: fullHeight, behavior: "smooth" });
+        if (scroller) scroller.scrollTo({ top: fullHeight, behavior: "smooth" });
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
   // Order Cap States
   const [orderCapLimit, setOrderCapLimit] = useState(MAX_DAILY_USER_DEVICES);
   const [autoThrottling, setAutoThrottling] = useState(true);
@@ -952,6 +1044,9 @@ export default function WarehouseDashboardPage() {
   function handleTabChange(tabId) {
     playNotificationChime();
     setActiveTab(tabId);
+    try {
+      mainScrollRef.current?.focus({ preventScroll: true });
+    } catch {}
   }
 
   // Quick Action: Simulate Live Customer Order from Dashboard
@@ -1182,7 +1277,7 @@ export default function WarehouseDashboardPage() {
   const isRiderAtDoorstep = activeDeliveryOrder?.stage === "rider_arrived" || activeDeliveryOrder?.status === "rider_arrived";
 
   return (
-    <div style={{ ...S.wrap, background: themeMode === "dark" ? "#0b0f17" : "#F4F5F0" }}>
+    <div ref={wrapRef} style={{ ...S.wrap, background: themeMode === "dark" ? "#0b0f17" : "#F4F5F0" }}>
       {/* ── TOP HEADER / MANAGEMENT BAR ── */}
       <header style={S.header}>
         <div style={S.brandCol}>
@@ -2000,7 +2095,15 @@ export default function WarehouseDashboardPage() {
         </aside>
 
         {/* ── 2. MAIN WORKSPACE CONTENT ── */}
-        <main style={{ ...S.mainContent, background: themeMode === "dark" ? "#0b0f17" : "#F4F5F0" }}>
+        <main
+          ref={mainScrollRef}
+          tabIndex={0}
+          style={{
+            ...S.mainContent,
+            outline: "none",
+            background: themeMode === "dark" ? "#0b0f17" : "#F4F5F0",
+          }}
+        >
           {/* ── TOP HORIZONTAL WORKSPACE TABS WITH SCROLL BUTTONS & ARROW LINE ── */}
           <div
             style={{
@@ -2157,7 +2260,7 @@ export default function WarehouseDashboardPage() {
                 marginTop: 8,
                 paddingTop: 6,
                 borderTop: themeMode === "dark" ? "1px solid #1e293b" : "1px solid #f1f5f9",
-                color: themeMode === "dark" ? "#64748b" : "#94a3b8",
+                color: themeMode === "dark" ? "#94a3b8" : "#475569",
                 fontSize: 11,
                 fontWeight: 700,
                 letterSpacing: "0.5px",
@@ -3969,6 +4072,36 @@ export default function WarehouseDashboardPage() {
         </main>
       </div>
       )}
+
+      {/* ── FLOATING SCROLL BUTTON (44px Round, #10b981 accent) ── */}
+      <button
+        type="button"
+        onClick={handleFloatingScrollClick}
+        aria-label={dashboardScrolled ? "Scroll to top" : "Scroll down"}
+        style={{
+          position: "fixed",
+          bottom: 24,
+          right: 24,
+          width: 44,
+          height: 44,
+          borderRadius: "50%",
+          background: "#0f172a",
+          color: "#10b981",
+          border: "2px solid #10b981",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontSize: 16,
+          fontWeight: "bold",
+          boxShadow: "0 6px 20px rgba(0, 0, 0, 0.4), 0 0 12px rgba(16, 185, 129, 0.35)",
+          cursor: "pointer",
+          zIndex: 9999,
+          transition: "all 0.2s ease",
+          outline: "none",
+        }}
+      >
+        {dashboardScrolled ? "▲" : "▼"}
+      </button>
     </div>
   );
 }
@@ -4258,8 +4391,8 @@ function LiveHeaderClock() {
 }
 
 const S = {
-  wrap: { minHeight: "100vh", background: "#F1F5F9", fontFamily: "system-ui, -apple-system, sans-serif" },
-  header: { background: "#0F172A", borderBottom: "1px solid #1E293B", padding: "12px 20px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 },
+  wrap: { minHeight: "100vh", width: "100%", background: "#F1F5F9", fontFamily: "system-ui, -apple-system, sans-serif" },
+  header: { position: "sticky", top: 0, zIndex: 60, flexShrink: 0, background: "#0F172A", borderBottom: "1px solid #1E293B", padding: "12px 20px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 },
   brandCol: { display: "flex", flexDirection: "column", gap: 6 },
   logoRow: { display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" },
   sidebarToggleBtn: { background: "#1e293b", color: "#f8fafc", border: "1px solid #334155", padding: "6px 12px", borderRadius: 8, fontSize: 12, fontWeight: 800, cursor: "pointer" },
@@ -4279,8 +4412,8 @@ const S = {
   pingAlert: { background: "#0284C7", color: "#FFFFFF", padding: "10px 20px", fontWeight: 800, fontSize: 13, textAlign: "center" },
 
   // Workspace Layout
-  workspaceLayout: { display: "flex", minHeight: "calc(100vh - 80px)" },
-  sidebarWrap: { background: "#0F172A", borderRight: "1px solid #1E293B", flexDirection: "column", flexShrink: 0, padding: "16px 14px", boxSizing: "border-box", transition: "all 0.25s ease" },
+  workspaceLayout: { display: "flex", minHeight: "calc(100vh - 72px)" },
+  sidebarWrap: { position: "sticky", top: 72, height: "calc(100vh - 72px)", overflowY: "auto", background: "#0F172A", borderRight: "1px solid #1E293B", flexDirection: "column", flexShrink: 0, padding: "16px 14px", boxSizing: "border-box", transition: "all 0.25s ease" },
   sidebarHeader: { borderBottom: "1px solid #1E293B", paddingBottom: 12, marginBottom: 12 },
   sidebarTitleRow: { display: "flex", justifyContent: "space-between", alignItems: "center" },
   storePill: { fontSize: 10, fontWeight: 900, background: "#1e3a8a", color: "#93c5fd", padding: "2px 6px", borderRadius: 4 },
@@ -4354,7 +4487,7 @@ const S = {
     marginTop: 1,
   },
 
-  mainContent: { flex: 1, padding: "24px 28px", maxWidth: 1400, overflowY: "auto" },
+  mainContent: { flex: 1, padding: "24px 28px", maxWidth: 1400, minHeight: "calc(100vh - 72px)" },
 
   // Stats Grid - Equal Height & Unified Cards
   statsGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))", gap: 16, marginBottom: 20, alignItems: "stretch" },

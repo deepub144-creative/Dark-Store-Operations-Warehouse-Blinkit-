@@ -3120,8 +3120,8 @@ const S = {
   },
   itemName: {
     fontSize: 14,
-    fontWeight: 800,
-    color: "#0f172a",
+    fontWeight: 600,
+    color: "var(--ios-label, #0f172a)",
     lineHeight: 1.3,
   },
   itemMetaRow: {
@@ -3129,13 +3129,13 @@ const S = {
     alignItems: "center",
     gap: 6,
     fontSize: 11,
-    color: "#64748b",
+    color: "var(--ios-label-2, #64748b)",
   },
   itemCategory: {
-    color: "#64748b",
+    color: "var(--ios-label-2, #64748b)",
   },
   barcodeText: {
-    color: "#475569",
+    color: "var(--ios-label-2, #475569)",
   },
   barcodeSnippet: {
     background: "#f1f5f9",

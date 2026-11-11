@@ -1888,11 +1888,12 @@ const S = {
   },
   custName: {
     fontSize: 14,
-    color: "#0f172a",
+    fontWeight: 600,
+    color: "var(--ios-label, #0f172a)",
   },
   custAddress: {
     fontSize: 12,
-    color: "#64748b",
+    color: "var(--ios-label-2, #64748b)",
   },
   qtyBadge: {
     fontSize: 12,
@@ -1918,7 +1919,7 @@ const S = {
     display: "flex",
     justifyContent: "space-between",
     fontSize: 12,
-    color: "#334155",
+    color: "var(--ios-label, #334155)",
     padding: "2px 0",
   },
   quickSelectBtn: {

@@ -496,6 +496,7 @@ const OrderingProductCard = memo(function OrderingProductCard({
           }}
           style={{
             ...S.productImg,
+            objectFit: "contain",
             ...(isOos ? { filter: "grayscale(35%)" } : {}),
           }}
         />
@@ -7017,14 +7018,14 @@ const S = {
   },
   itemTitle: {
     fontSize: 13,
-    fontWeight: 700,
-    color: "#1E293B",
+    fontWeight: 600,
+    color: "var(--ios-label, #1E293B)",
     margin: 0,
     lineHeight: 1.3,
   },
   itemWeight: {
     fontSize: 11,
-    color: "#64748B",
+    color: "var(--ios-label-2, #64748B)",
   },
   itemPriceRow: {
     display: "flex",
@@ -7035,7 +7036,7 @@ const S = {
   itemFinalPrice: {
     fontSize: 13,
     fontWeight: 800,
-    color: "#0F172A",
+    color: "var(--ios-label, #0F172A)",
   },
   itemMrpStrike: {
     fontSize: 11,
@@ -7609,8 +7610,8 @@ const S = {
   },
   productName: {
     fontSize: 12,
-    fontWeight: 700,
-    color: "#1E293B",
+    fontWeight: 600,
+    color: "var(--ios-label, #1E293B)",
     lineHeight: 1.3,
     margin: "0 0 2px",
     height: 32,
@@ -7618,7 +7619,7 @@ const S = {
   },
   productWeight: {
     fontSize: 11,
-    color: "#64748B",
+    color: "var(--ios-label-2, #64748B)",
     marginBottom: 8,
   },
   productActionRow: {
@@ -7629,7 +7630,7 @@ const S = {
   productFinalPrice: {
     fontSize: 13,
     fontWeight: 900,
-    color: "#0F172A",
+    color: "var(--ios-label, #0F172A)",
     marginRight: 4,
   },
   productMrpStrike: {

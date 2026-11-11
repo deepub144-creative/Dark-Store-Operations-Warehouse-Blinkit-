@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import time
 import uuid
 from datetime import datetime, timezone
@@ -182,7 +183,7 @@ class ChatOrchestrator:
                 content=req.message,
             )
 
-        decision = classify_intent(req.message, requested_mode=req.mode, viva_mode=req.viva_mode)
+        decision = classify_intent(req.message, requested_mode=req.mode, viva_mode=req.viva_mode, history=history[-3:])
         role_enum = normalize_role(req.user_role)
 
         yield _sse(
@@ -226,7 +227,7 @@ class ChatOrchestrator:
         # Step 2: Hybrid RAG for project-doc / explain / file-request (context)
         if decision.intent in ("project-doc", "explain", "file-request"):
             yield _sse("stage", {"stage": "retrieving", "label": "Searching knowledge base", "detail": "Dense vector + Okapi BM25 + RRF", "status": "running", "ms": 0})
-            retrieval = self.retriever.retrieve(req.message, history=history, top_k=5)
+            retrieval = self.retriever.retrieve(req.message, history=history[-3:], top_k=4)
             chunks = retrieval.chunks
             rewritten_query = retrieval.rewritten_query
             expanded_queries = retrieval.expanded_queries
@@ -337,7 +338,7 @@ class ChatOrchestrator:
             intent=decision.intent,
             viva_mode=req.viva_mode,
             user_role=role_enum.value,
-            history=history,
+            history=history[-3:],
             chunks=chunks,
             is_grounded=is_grounded,
             sql_result=sql_res,
@@ -348,6 +349,36 @@ class ChatOrchestrator:
             await asyncio.sleep(0.012)
 
         final_answer = "".join(full_tokens)
+
+        # Repetition Guard:
+        # If new answer is identical or very similar (>0.80) to previous answer and question was different,
+        # regenerate once with higher temperature / anti-repetition directive
+        last_asst_msgs = [m["content"] for m in history if m.get("role") == "assistant"]
+        last_user_msgs = [m["content"] for m in history if m.get("role") == "user"]
+        is_different_query = not last_user_msgs or last_user_msgs[-1].strip().lower() != req.message.strip().lower()
+
+        if last_asst_msgs and is_different_query:
+            prev_answer = last_asst_msgs[-1]
+            toks_curr = set(re.findall(r"\w+", final_answer.lower()))
+            toks_prev = set(re.findall(r"\w+", prev_answer.lower()))
+            sim = len(toks_curr & toks_prev) / len(toks_curr | toks_prev) if (toks_curr and toks_prev) else 0.0
+            if sim > 0.80 or final_answer.strip() == prev_answer.strip():
+                alt_tokens: list[str] = []
+                async for chunk_tok in self.llm.stream_answer(
+                    user_query=f"{req.message}\n(Answer differently without repeating earlier response)",
+                    intent=decision.intent,
+                    viva_mode=req.viva_mode,
+                    user_role=role_enum.value,
+                    history=history[-3:],
+                    chunks=chunks,
+                    is_grounded=is_grounded,
+                    sql_result=sql_res,
+                    file_artifact=file_card,
+                ):
+                    alt_tokens.append(chunk_tok)
+                if alt_tokens:
+                    final_answer = "".join(alt_tokens)
+
         gen_ms = max(1, int((time.perf_counter() - t_gen0) * 1000))
         st_llm = await emit_stage("llm", "Writing answer", f"Streamed via {self.llm.active_provider()}", gen_ms)
         yield _sse("stage", st_llm)

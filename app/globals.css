@@ -15,8 +15,8 @@
   --ios-fill: rgba(120, 120, 128, 0.16);
   --ios-fill-secondary: rgba(120, 120, 128, 0.10);
   --ios-label: #000000;
-  --ios-label-2: rgba(60, 60, 67, 0.6);
-  --ios-label-3: rgba(60, 60, 67, 0.36);
+  --ios-label-2: rgba(60, 60, 67, 0.88);
+  --ios-label-3: rgba(60, 60, 67, 0.85);
   --ios-sep: rgba(60, 60, 67, 0.29);
   --ios-chrome-bg: rgba(249, 249, 251, 0.82);
   --ios-card-shadow: 0 2px 12px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.04);
@@ -68,8 +68,8 @@
     --ios-fill: rgba(120, 120, 128, 0.32);
     --ios-fill-secondary: rgba(120, 120, 128, 0.22);
     --ios-label: #FFFFFF;
-    --ios-label-2: rgba(235, 235, 245, 0.6);
-    --ios-label-3: rgba(235, 235, 245, 0.35);
+    --ios-label-2: rgba(235, 235, 245, 0.88);
+    --ios-label-3: rgba(235, 235, 245, 0.85);
     --ios-sep: rgba(84, 84, 88, 0.6);
     --ios-chrome-bg: rgba(28, 28, 30, 0.84);
     --ios-card-shadow: none;
@@ -93,35 +93,84 @@
 html {
   scroll-behavior: smooth;
   -webkit-text-size-adjust: 100%;
-  height: 100%;
-  overscroll-behavior: none;
 }
 
 html, body {
   max-width: 100vw;
-  overflow-x: hidden;
   font-family: var(--ios-font);
   color: var(--ios-label);
   background-color: var(--ios-bg);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  user-select: none;
-  -webkit-user-select: none;
-  touch-action: manipulation;
-  overscroll-behavior-y: none;
 }
 
-/* Native iOS shell lock: page outer shell is fixed 100dvh, only inner areas scroll */
-html.ios-shell-locked,
-html.ios-shell-locked body,
-html:has(.ios-phone-frame),
-html:has(.ios-phone-frame) body {
-  height: 100dvh;
-  overflow: hidden !important;
-  overscroll-behavior: none !important;
-  position: fixed;
-  width: 100%;
-  inset: 0;
+/* Native iOS shell lock: page outer shell is fixed 100dvh on mobile, only inner areas scroll */
+@media (max-width: 480px) {
+  html {
+    height: 100%;
+    overscroll-behavior: none;
+  }
+  html.ios-shell-locked,
+  html.ios-shell-locked body,
+  html:has(.ios-phone-frame),
+  html:has(.ios-phone-frame) body {
+    height: 100dvh;
+    overflow: hidden !important;
+    overscroll-behavior: none !important;
+    position: fixed;
+    width: 100%;
+    inset: 0;
+  }
+
+  /* Hide scrollbars cleanly on mobile screens */
+  ::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
+  }
+  * {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+}
+
+@media (min-width: 481px) {
+  html {
+    height: auto;
+    min-height: 100%;
+    overflow-y: scroll !important;
+    overflow-x: hidden;
+    scroll-behavior: smooth;
+  }
+
+  body {
+    height: auto;
+    min-height: 100%;
+    overflow-x: hidden;
+    overflow-y: visible;
+  }
+
+  /* Sleek modern desktop scrollbar so mouse cursor can grab & scroll */
+  ::-webkit-scrollbar {
+    display: block !important;
+    width: 12px !important;
+    height: 12px !important;
+  }
+  ::-webkit-scrollbar-track {
+    background: #0b0f17 !important;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #334155 !important;
+    border-radius: 6px !important;
+    border: 2px solid #0b0f17 !important;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #10b981 !important;
+  }
+  * {
+    scrollbar-width: thin !important;
+    scrollbar-color: #334155 #0b0f17 !important;
+  }
 }
 
 /* Allow text selection where expected and prevent iOS auto-zoom on focus */
@@ -134,16 +183,7 @@ input, textarea, select {
   font-size: 16px;
 }
 
-/* Hide scrollbars cleanly across all containers */
-::-webkit-scrollbar {
-  display: none;
-  width: 0;
-  height: 0;
-}
-* {
-  scrollbar-width: none;
-  -ms-overflow-style: none;
-}
+
 
 /* Touch responsiveness & micro-interactions */
 button, a, input, select, textarea {
