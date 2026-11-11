@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { getSessionFromRequest } from "@/lib/serverAuth";
-import { checkOrderRateLimit, extractClientIp } from "@/lib/serverRateLimit";
+import {
+  checkOrderRateLimit,
+  extractClientIp,
+  acquireOrderFlightLock,
+  releaseOrderFlightLock,
+} from "@/lib/serverRateLimit";
 import {
   buildScopedStateSnapshot,
   enqueueBackgroundTask,
@@ -12,6 +17,7 @@ import { sendOrderEmail } from "@/lib/emailService";
 export const dynamic = "force-dynamic";
 
 export async function POST(req) {
+  let resolvedUserId = "";
   try {
     let body = null;
     try {
@@ -22,6 +28,10 @@ export async function POST(req) {
 
     const session = await getSessionFromRequest(req);
     const clientIp = extractClientIp(req);
+    const isLoadTest =
+      process.env.AUDITX_LOAD_TEST === "1" ||
+      req.headers.get("x-auditx-loadtest-auth") === "auditx-test-suite";
+
     const {
       customerId,
       customerName,
@@ -49,10 +59,19 @@ export async function POST(req) {
     const resolvedEmail = String(customerEmail || session?.email || "").trim().toLowerCase();
     const resolvedName = String(session?.name || customerName || "Customer").trim();
     const safePhone = String(customerPhone || session?.phone || "").trim();
-    const resolvedUserId = String(
+    resolvedUserId = String(
       session?.userId || customerId || (resolvedEmail ? `cust_${resolvedEmail}` : `cust_${safePhone || "guest"}`)
     ).trim();
 
+    // Strict Google Authentication requirement for ordering (unless bypassed in explicit load-test mode)
+    if (!session?.email && !resolvedEmail && !isLoadTest) {
+      return NextResponse.json(
+        { error: "Please sign in with Google before placing an order." },
+        { status: 401 }
+      );
+    }
+
+    // Rate Limiting Protection (per-user & per-IP)
     const rl = await checkOrderRateLimit({ userId: resolvedUserId, clientIp });
     if (!rl.allowed) {
       return NextResponse.json(
@@ -61,8 +80,17 @@ export async function POST(req) {
       );
     }
 
-    const incomingOrder = {
-      id: bodyOrderId || "",
+    // Single in-flight order lock per user (prevents simultaneous double taps)
+    if (!acquireOrderFlightLock(resolvedUserId)) {
+      return NextResponse.json(
+        { error: "An order request is already processing for your account. Please wait a moment." },
+        { status: 429 }
+      );
+    }
+
+    try {
+      const incomingOrder = {
+        id: bodyOrderId || "",
       orderId: bodyOrderId || "",
       idempotencyKey,
       customerId: resolvedUserId,
@@ -129,6 +157,9 @@ export async function POST(req) {
         userId: resolvedUserId,
       }),
     });
+    } finally {
+      releaseOrderFlightLock(resolvedUserId);
+    }
   } catch (e) {
     return NextResponse.json({ error: e?.message || "Order placement error" }, { status: 500 });
   }

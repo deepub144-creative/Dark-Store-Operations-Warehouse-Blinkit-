@@ -114,45 +114,145 @@ export async function checkRateLimit({
   return checkMemoryBucket(fullKey, limit, windowMs);
 }
 
+const inFlightUserLocks =
+  globalThis.__auditxInFlightUserOrders ||
+  (globalThis.__auditxInFlightUserOrders = new Set());
+
+const globalBlocklist =
+  globalThis.__auditxBlocklist ||
+  (globalThis.__auditxBlocklist = new Map());
+
+const violationCounters =
+  globalThis.__auditxViolations ||
+  (globalThis.__auditxViolations = new Map());
+
 /**
- * Per-user (10 orders/min) + generous protective per-IP guard (allows 2000+ simulated users
- * from a shared NAT/office/load-test IP while stopping flooding).
+ * Single in-flight order lock per user.
+ * Returns true if lock was acquired, false if an order request is already processing.
+ */
+export function acquireOrderFlightLock(userId) {
+  if (!userId) return true;
+  const key = String(userId).trim();
+  if (!key) return true;
+  if (inFlightUserLocks.has(key)) {
+    return false;
+  }
+  inFlightUserLocks.add(key);
+  return true;
+}
+
+/**
+ * Release in-flight order lock for a user.
+ */
+export function releaseOrderFlightLock(userId) {
+  if (!userId) return;
+  const key = String(userId).trim();
+  if (key) {
+    inFlightUserLocks.delete(key);
+  }
+}
+
+function checkBlocklist(key) {
+  const now = Date.now();
+  const blockedUntil = globalBlocklist.get(key);
+  if (blockedUntil) {
+    if (now < blockedUntil) {
+      return {
+        blocked: true,
+        retryAfterSec: Math.max(1, Math.ceil((blockedUntil - now) / 1000)),
+      };
+    }
+    globalBlocklist.delete(key);
+  }
+  return { blocked: false, retryAfterSec: 0 };
+}
+
+function recordViolation(key, threshold = 3, blockMs = 300_000) {
+  const now = Date.now();
+  let v = violationCounters.get(key);
+  if (!v || now > v.resetAt) {
+    v = { count: 1, resetAt: now + 60_000 };
+    violationCounters.set(key, v);
+    return;
+  }
+  v.count += 1;
+  if (v.count >= threshold) {
+    globalBlocklist.set(key, now + blockMs);
+    violationCounters.delete(key);
+  }
+}
+
+/**
+ * Per-user (default 3 orders/min) + per-IP (default 20 orders/min) protective rate limit.
+ * Return friendly "Please wait a moment" messages and auto-blocks repeated abuse for 5 minutes.
  */
 export async function checkOrderRateLimit({ userId, clientIp }) {
+  const isLoadTest = process.env.AUDITX_LOAD_TEST === "1";
+  if (isLoadTest) {
+    return { allowed: true, retryAfterSec: 0 };
+  }
+
   const ip = String(clientIp || "127.0.0.1");
   const uid = String(userId || "").trim();
 
+  // Check 5-minute temporary blocklist first
   if (uid) {
-    const userLimit = Number(process.env.AUDITX_ORDER_RATE_PER_USER || 10);
-    const userRes = await checkRateLimit({
-      namespace: "order_user",
-      key: uid,
-      limit: userLimit > 0 ? userLimit : 10,
-      windowMs: 60_000,
-    });
-    if (!userRes.allowed) {
+    const userBlock = checkBlocklist(`user:${uid}`);
+    if (userBlock.blocked) {
       return {
         allowed: false,
         scope: "user",
-        retryAfterSec: userRes.retryAfterSec,
-        message: `You're placing orders too fast. Please wait ${userRes.retryAfterSec}s before trying again.`,
+        retryAfterSec: userBlock.retryAfterSec,
+        message: `Please wait a moment. Your account is temporarily on hold due to repeated requests. Retry in ${userBlock.retryAfterSec}s.`,
       };
     }
   }
 
-  const ipLimit = Number(process.env.AUDITX_ORDER_RATE_PER_IP || 3000);
+  const ipBlock = checkBlocklist(`ip:${ip}`);
+  if (ipBlock.blocked) {
+    return {
+      allowed: false,
+      scope: "ip",
+      retryAfterSec: ipBlock.retryAfterSec,
+      message: `Please wait a moment. High order traffic detected from your network. Retry in ${ipBlock.retryAfterSec}s.`,
+    };
+  }
+
+  // 1. Per-User rate limit (default 3/min)
+  if (uid) {
+    const userLimit = Number(process.env.AUDITX_ORDER_RATE_PER_USER || 3);
+    const userRes = await checkRateLimit({
+      namespace: "order_user",
+      key: uid,
+      limit: userLimit > 0 ? userLimit : 3,
+      windowMs: 60_000,
+    });
+    if (!userRes.allowed) {
+      recordViolation(`user:${uid}`);
+      return {
+        allowed: false,
+        scope: "user",
+        retryAfterSec: userRes.retryAfterSec,
+        message: `Please wait a moment before placing another order. Retry in ${userRes.retryAfterSec}s.`,
+      };
+    }
+  }
+
+  // 2. Per-IP rate limit (default 20/min)
+  const ipLimit = Number(process.env.AUDITX_ORDER_RATE_PER_IP || 20);
   const ipRes = await checkRateLimit({
     namespace: "order_ip",
     key: ip,
-    limit: ipLimit > 0 ? ipLimit : 3000,
+    limit: ipLimit > 0 ? ipLimit : 20,
     windowMs: 60_000,
   });
   if (!ipRes.allowed) {
+    recordViolation(`ip:${ip}`);
     return {
       allowed: false,
       scope: "ip",
       retryAfterSec: ipRes.retryAfterSec,
-      message: `High traffic from this network. Please retry in ${ipRes.retryAfterSec}s.`,
+      message: `Please wait a moment. High order traffic detected from your network. Retry in ${ipRes.retryAfterSec}s.`,
     };
   }
 

@@ -719,13 +719,6 @@ export default function OrderingAppPage() {
     setPastOrders(safeArr(safeStorage.getJson("auditx_customer_past_orders", [])));
   }, []);
 
-  // Auto-close payment sheet if cart becomes empty
-  useEffect(() => {
-    if (cartItemsList.length === 0 && showPaymentModal) {
-      setShowPaymentModal(false);
-    }
-  }, [cartItemsList.length, showPaymentModal]);
-
   // Hydrate persisted cart, address, coupon, instructions, payment method, and checkout step cleanly on load
   useEffect(() => {
     const savedCart = safeStorage.getJson("auditx_ordering_cart", null);
@@ -1772,6 +1765,14 @@ export default function OrderingAppPage() {
       })
       .filter(Boolean);
   }, [cartEntries, effectiveCatalog]);
+
+  // Auto-close payment sheet and reset checkout view if cart becomes empty
+  useEffect(() => {
+    if (cartItemsList.length === 0) {
+      if (showPaymentModal) setShowPaymentModal(false);
+      if (isCheckoutView) setIsCheckoutView(false);
+    }
+  }, [cartItemsList.length, showPaymentModal, isCheckoutView]);
 
   const itemTotalMrp = useMemo(() => {
     return cartItemsList.reduce((s, item) => s + safeNum(item.mrp, safeNum(item.price, 0)) * item.qty, 0);
@@ -5204,7 +5205,7 @@ export default function OrderingAppPage() {
           6. PAYMENT GATEWAY SELECTION BOTTOM SHEET
           ═══════════════════════════════════════════════════════════ */}
       <IOSBottomSheet
-        isOpen={showPaymentModal}
+        isOpen={Boolean(showPaymentModal && cartItemsList.length > 0 && grandTotal > 0)}
         onClose={handleCancelPaymentModal}
         title="Select Payment Method"
         subtitle={`Amount Payable: ₹${grandTotal}`}

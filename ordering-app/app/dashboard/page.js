@@ -1410,6 +1410,10 @@ export default function WarehouseDashboardPage() {
             🔄 Switch MD / ASM
           </button>
 
+          <button style={S.logoutBtn} onClick={logout}>
+            Exit Portal
+          </button>
+
           {/* Active Ordering App Customer Logins Live Pill (Positioned Right, Dynamic Popover Align) */}
           <div style={{ position: "relative" }} ref={loginsBtnRef}>
             <button
@@ -1453,10 +1457,10 @@ export default function WarehouseDashboardPage() {
               <div
                 style={{
                   position: "absolute",
-                  ...(popoverAlign === "left" ? { left: 0 } : { right: 0 }),
+                  right: 0,
                   top: 48,
                   width: 310,
-                  maxWidth: "calc(100vw - 32px)",
+                  maxWidth: "calc(100vw - 24px)",
                   background: "#1E293B",
                   border: "1px solid #334155",
                   borderRadius: 16,
@@ -1495,10 +1499,6 @@ export default function WarehouseDashboardPage() {
               </div>
             )}
           </div>
-
-          <button style={S.logoutBtn} onClick={logout}>
-            Exit Portal
-          </button>
 
           <LiveHeaderClock />
         </div>

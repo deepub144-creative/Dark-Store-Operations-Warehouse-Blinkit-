@@ -324,6 +324,20 @@ export async function POST(req) {
                   delete safeUpdates.status;
                   delete safeUpdates.stage;
                 }
+
+                // Atomic Claim: Prevent two pickers from claiming the same order
+                if (targetStatus === "picking" && safeUpdates.pickerId) {
+                  if (ord.pickerId && ord.pickerId !== safeUpdates.pickerId && (ord.status === "picking" || ord.status === "staged")) {
+                    return ord;
+                  }
+                }
+
+                // Atomic Claim: Prevent two riders from claiming the same order
+                if ((targetStatus === "dispatched" || targetStatus === "out for delivery") && safeUpdates.captainId) {
+                  if (ord.captainId && ord.captainId !== safeUpdates.captainId && (ord.status === "dispatched" || ord.status === "delivered")) {
+                    return ord;
+                  }
+                }
               }
 
               updatedOrder = {
