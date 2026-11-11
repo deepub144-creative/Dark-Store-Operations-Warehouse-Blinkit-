@@ -580,6 +580,21 @@ export default function WarehouseDashboardPage() {
       } catch (e) {}
       return nextMap;
     });
+    setStockBySku((prev) => {
+      const prevRec = prev?.[skuId];
+      const curUnits = prevRec && Number.isFinite(Number(prevRec.unitsInStock)) ? Number(prevRec.unitsInStock) : 5;
+      const updated = Math.max(0, curUnits + delta);
+      const reserved = prevRec?.reservedUnits || 0;
+      return {
+        ...prev,
+        [skuId]: {
+          ...(prevRec || {}),
+          skuId,
+          unitsInStock: updated,
+          availableUnits: Math.max(0, updated - reserved),
+        },
+      };
+    });
     const res = await dispatchCloudAction("UPDATE_STOCK_UNIT", { sku: skuId, delta });
     if (res?.ok && res.state) {
       setInventoryStockMap(res.state.inventoryStockMap || {});

@@ -20,6 +20,7 @@ const REASON_LABELS = {
 const StockRowCard = memo(function StockRowCard({
   item,
   record,
+  overrideStock,
   isOos,
   onAdjust,
   onGrn,
@@ -28,7 +29,9 @@ const StockRowCard = memo(function StockRowCard({
 }) {
   const defaultUnit = getDefaultItemStock(item);
   const unitsInStock =
-    record && Number.isFinite(Number(record.unitsInStock))
+    overrideStock !== undefined && Number.isFinite(Number(overrideStock))
+      ? Number(overrideStock)
+      : record && Number.isFinite(Number(record.unitsInStock))
       ? Number(record.unitsInStock)
       : defaultUnit;
   const reservedUnits =
@@ -660,6 +663,7 @@ export default function StockMonitorPanel({
             key={item.sku}
             item={item}
             record={stockBySku?.[item.sku]}
+            overrideStock={inventoryStockMap?.[item.sku]}
             isOos={oosSet.has(item.sku)}
             onAdjust={(sku, delta) => onAdjustStock?.(sku, delta)}
             onGrn={(sku, delta) => onGrnInward?.(sku, delta)}

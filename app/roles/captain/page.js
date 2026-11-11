@@ -1103,7 +1103,7 @@ export default function DeliveryCaptainApp() {
                               marginBottom: 8,
                             }}
                           >
-                            <span className="ios-footnote" style={{ fontWeight: 700, color: "var(--ios-label)" }}>
+                            <span className="ios-footnote" style={{ fontWeight: 800, color: "#0f172a" }}>
                               🏪 Rack {rackId} → 📍 {ord.customerAddress || "Tiptur - 572201"}
                             </span>
                             <span
@@ -1896,39 +1896,42 @@ const S = {
   },
   custName: {
     fontSize: 14,
-    fontWeight: 600,
-    color: "var(--ios-label, #0f172a)",
+    fontWeight: 800,
+    color: "#0f172a",
   },
   custAddress: {
     fontSize: 12,
-    color: "var(--ios-label-2, #64748b)",
+    fontWeight: 700,
+    color: "#334155",
   },
   qtyBadge: {
     fontSize: 12,
-    color: "#d97706",
-    fontWeight: 700,
+    color: "#b45309",
+    fontWeight: 800,
     marginTop: 2,
   },
   skuListBox: {
-    background: "#f8fafc",
+    background: "#f1f5f9",
     borderRadius: 8,
     padding: "10px 12px",
     margin: "10px 0",
-    border: "1px solid #e2e8f0",
+    border: "1px solid #cbd5e1",
   },
   skuListTitle: {
     fontSize: 11,
-    fontWeight: 800,
-    color: "#64748b",
-    marginBottom: 4,
+    fontWeight: 900,
+    color: "#0f172a",
+    marginBottom: 6,
     textTransform: "uppercase",
+    letterSpacing: "0.5px",
   },
   skuItemLine: {
     display: "flex",
     justifyContent: "space-between",
-    fontSize: 12,
-    color: "var(--ios-label, #334155)",
-    padding: "2px 0",
+    fontSize: 12.5,
+    fontWeight: 700,
+    color: "#0f172a",
+    padding: "3px 0",
   },
   quickSelectBtn: {
     width: "100%",

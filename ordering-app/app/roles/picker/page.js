@@ -2999,13 +2999,13 @@ const S = {
   },
   pickListTitle: {
     fontSize: 15,
-    fontWeight: 800,
-    color: "#0f172a",
+    fontWeight: 900,
+    color: "var(--ios-label, #ffffff)",
     margin: 0,
   },
   pickListSub: {
     fontSize: 11,
-    color: "#64748b",
+    color: "#94a3b8",
     marginTop: 2,
   },
   bypassSmallBtn: {

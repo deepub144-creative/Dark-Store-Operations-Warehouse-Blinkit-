@@ -189,13 +189,39 @@ export default function AssistantStoreManagerApp({ embedded = false, sharedCloud
   }
 
   async function handleRestockUnit(sku, delta = 1) {
+    playNotificationChime();
+    setInventoryStockMap((prev) => {
+      const current = prev[sku] !== undefined ? Number(prev[sku]) : 5;
+      const updated = Math.max(0, current + delta);
+      const nextMap = { ...prev, [sku]: updated };
+      try {
+        localStorage.setItem("auditx_inventory_units", JSON.stringify(nextMap));
+      } catch (e) {}
+      return nextMap;
+    });
+    setStockBySku((prev) => {
+      const prevRec = prev?.[sku];
+      const curUnits = prevRec && Number.isFinite(Number(prevRec.unitsInStock)) ? Number(prevRec.unitsInStock) : 5;
+      const updated = Math.max(0, curUnits + delta);
+      const reserved = prevRec?.reservedUnits || 0;
+      return {
+        ...prev,
+        [sku]: {
+          ...(prevRec || {}),
+          skuId: sku,
+          unitsInStock: updated,
+          availableUnits: Math.max(0, updated - reserved),
+        },
+      };
+    });
     const res = await dispatchCloudAction("UPDATE_STOCK_UNIT", { sku, delta });
     if (res?.ok && res.state) {
       setInventoryStockMap(res.state.inventoryStockMap || {});
+      if (res.state.stockBySku) setStockBySku(res.state.stockBySku);
       setOosList(res.state.oosList || []);
       const newQty = res.state.inventoryStockMap?.[sku] ?? 0;
       playScanSuccess();
-      setActionSuccess(`📦 Updated stock units to ${newQty} — synced live across Ordering, ASM & SM!`);
+      setActionSuccess(`📦 Stock for SKU ${sku} updated to ${newQty} units!`);
       setTimeout(() => setActionSuccess(""), 3000);
     }
   }
@@ -673,20 +699,45 @@ export default function AssistantStoreManagerApp({ embedded = false, sharedCloud
                           {cItem.category} • <b>₹{cItem.price}</b>{" "}
                           {cItem.mrp > cItem.price && <span style={{ textDecoration: "line-through" }}>₹{cItem.mrp}</span>}
                         </div>
-                        <div style={{ display: "flex", gap: 8 }}>
+                        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                          <button
+                            type="button"
+                            disabled={liveQty <= 0}
+                            onClick={() => handleRestockUnit(cItem.sku, -1)}
+                            style={{
+                              ...S.stockToggleBtn,
+                              background: liveQty <= 0 ? "#94a3b8" : "#f59e0b",
+                              cursor: liveQty <= 0 ? "not-allowed" : "pointer",
+                              padding: "6px 12px",
+                              fontSize: 14,
+                              fontWeight: 900,
+                            }}
+                            title="Decrease stock by 1 unit"
+                          >
+                            – 1
+                          </button>
                           <button
                             type="button"
                             onClick={() => handleRestockUnit(cItem.sku, 1)}
-                            style={{ ...S.stockToggleBtn, background: "#0C831F", flex: 1 }}
+                            style={{
+                              ...S.stockToggleBtn,
+                              background: "#0C831F",
+                              padding: "6px 10px",
+                              fontSize: 12.5,
+                              fontWeight: 900,
+                              flex: 1,
+                            }}
+                            title="Add 1 unit to stock"
                           >
-                            +1 Unit
+                            + 1 Unit
                           </button>
                           <button
                             type="button"
                             onClick={() => handleRemovePutawayItem(cItem.sku, cItem.name)}
-                            style={{ ...S.stockToggleBtn, background: "#ef4444", flex: 1 }}
+                            style={{ ...S.stockToggleBtn, background: "#ef4444", padding: "6px 8px" }}
+                            title="Delete custom putaway SKU"
                           >
-                            🗑️ Remove
+                            🗑️
                           </button>
                         </div>
                       </div>

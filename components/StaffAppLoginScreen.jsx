@@ -181,16 +181,21 @@ export default function StaffAppLoginScreen({
               <div style={L.phoneRow}>
                 <span style={L.prefix}>🇮🇳 +91</span>
                 <input
-                  type="password"
+                  type="tel"
                   inputMode="numeric"
-                  autoComplete="off"
+                  autoComplete="tel-national"
                   maxLength={10}
+                  placeholder="Enter 10-digit number"
                   value={phone}
                   onChange={(e) => {
                     setPhone(e.target.value.replace(/\D/g, ""));
                     setError("");
                   }}
-                  style={L.input}
+                  style={{
+                    ...L.input,
+                    color: "#0f172a",
+                    WebkitTextFillColor: "#0f172a",
+                  }}
                 />
               </div>
 
@@ -336,7 +341,7 @@ const L = {
     gap: 12,
     marginBottom: 16,
     paddingBottom: 14,
-    borderBottom: "1px solid #f1f5f9",
+    borderBottom: "1px solid var(--ios-sep, rgba(255,255,255,0.12))",
   },
   avatarWrap: {
     width: 52,
@@ -356,18 +361,18 @@ const L = {
   roleTag: {
     fontSize: 10,
     fontWeight: 800,
-    color: "#0c831f",
+    color: "#22c55e",
     letterSpacing: "0.4px",
   },
   staffName: {
     margin: "2px 0 0",
-    fontSize: 17,
-    fontWeight: 800,
-    color: "#0f172a",
+    fontSize: 18,
+    fontWeight: 900,
+    color: "var(--ios-label, #ffffff)",
   },
   deviceTag: {
     fontSize: 11,
-    color: "#64748b",
+    color: "#94a3b8",
     marginTop: 2,
     fontWeight: 700,
   },
@@ -397,8 +402,8 @@ const L = {
   label: {
     display: "block",
     fontSize: 12,
-    fontWeight: 700,
-    color: "#334155",
+    fontWeight: 800,
+    color: "var(--ios-secondary-label, #cbd5e1)",
     marginBottom: 6,
   },
   phoneRow: {
@@ -411,9 +416,9 @@ const L = {
   prefix: {
     padding: "10px 12px",
     background: "#f1f5f9",
-    color: "#334155",
+    color: "#0f172a",
     fontSize: 13,
-    fontWeight: 700,
+    fontWeight: 800,
     borderRight: "1px solid #cbd5e1",
   },
   input: {
@@ -423,8 +428,9 @@ const L = {
     fontSize: 16,
     fontWeight: 700,
     outline: "none",
-    background: "transparent",
-    color: "var(--ios-label)",
+    background: "#ffffff",
+    color: "#0f172a",
+    caretColor: "#0c831f",
   },
   hintRow: {
     display: "flex",
