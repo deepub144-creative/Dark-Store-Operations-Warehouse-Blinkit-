@@ -1,242 +1,70 @@
 import { NextResponse } from "next/server";
-import fs from "fs";
-import { adminDb } from "@/lib/firebaseAdmin";
+import { checkRoleAndStoreScope, getSessionFromRequest } from "@/lib/serverAuth";
+import { normalizeStoreId } from "@/lib/serverPricing";
+import { checkOrderRateLimit, extractClientIp } from "@/lib/serverRateLimit";
 import {
-  MAX_DAILY_USER_DEVICES,
-  applyOrderInventoryAndStats,
-  buildDaySnapshot,
   buildDefaultInventoryMap,
   buildDefaultOosList,
-  createInitialHubState,
-  getActiveBaseCatalog,
-  getDefaultItemStock,
-  getTodayISTDateKey,
-  mergeCatalogItems,
+  buildDefaultStockBySku,
+  buildDaySnapshot,
   mergeHubStates,
-  normalizeHubState,
-  rolloverStateIfNewDay,
 } from "@/lib/hubState";
+import {
+  SERVER_BOOT_ID,
+  adjustStockUnitInState,
+  buildScopedStateSnapshot,
+  cancelOrderAndRestoreInState,
+  computeStateReconciliation,
+  executeAtomicPlaceOrderInState,
+  getPersistenceMode,
+  loadAndReapState,
+  mutateHubStateAtomically,
+  pickerMarkItemOosInState,
+  releaseReservationInState,
+  reserveStockInState,
+  upsertUserLoginInState,
+} from "@/lib/serverStateEngine";
 
 export const dynamic = "force-dynamic";
 
-const SERVER_BOOT_ID =
-  globalThis.__auditxServerBootId ||
-  (globalThis.__auditxServerBootId = `boot_${Date.now()}_${Math.random()
-    .toString(36)
-    .slice(2, 8)}`);
+const SM_GOVERNANCE_ACTIONS = new Set([
+  "TOGGLE_STORE",
+  "CLEAR_QUEUE",
+  "ARCHIVE_DAY_NOW",
+  "UPDATE_CAP",
+  "RESOLVE_COMPLAINT",
+]);
 
-const TMP_STATE_FILE = "/tmp/auditx-tiptur-ka44-hub-state.json";
-const STATE_KEY = "auditx:tiptur_ka44:hub_state_v2";
-const FIRESTORE_COLLECTION = "auditx_state";
-const FIRESTORE_DOC = "tiptur_ka44";
-const processedIdemKeys =
-  globalThis.__auditxProcessedIdemKeys ||
-  (globalThis.__auditxProcessedIdemKeys = new Set());
-
-async function fetchWithTimeout(url, options = {}, timeoutMs = 4500) {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort("timeout"), timeoutMs);
-  try {
-    return await fetch(url, { ...options, signal: ctrl.signal });
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-function getRedisCreds() {
-  const url =
-    process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL || "";
-  const token =
-    process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN || "";
-  return url && token ? { url: url.replace(/\/$/, ""), token } : null;
-}
-
-function getFirebaseRtdbCreds() {
-  const url =
-    process.env.FIREBASE_DATABASE_URL ||
-    process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL ||
-    "";
-  const secret = process.env.FIREBASE_DATABASE_SECRET || "";
-  if (!url || url.includes("demo")) return null;
-  return { url: url.replace(/\/$/, ""), secret };
-}
-
-function getPersistenceMode() {
-  if (adminDb) return "firestore";
-  if (getRedisCreds()) return "redis";
-  if (getFirebaseRtdbCreds()) return "firebase-rtdb";
-  return "memory";
-}
-
-function sanitizeHistorySnapshotForStorage(snap) {
-  if (!snap) return snap;
-  return {
-    ...snap,
-    orders: (snap.orders || []).slice(0, 100).map((o) => ({
-      ...o,
-      items: (o.items || []).map(({ image, ...rest }) => rest),
-    })),
-  };
-}
-
-async function readRawState() {
-  // 1. Firebase Firestore via Admin SDK
-  if (adminDb) {
-    try {
-      const snap = await adminDb
-        .collection(FIRESTORE_COLLECTION)
-        .doc(FIRESTORE_DOC)
-        .get();
-      if (snap.exists) {
-        return snap.data();
-      }
-    } catch (e) {
-      console.warn("Firestore read fallback:", e?.message);
-    }
-  }
-
-  // 2. Upstash / Vercel KV Redis REST
-  const redis = getRedisCreds();
-  if (redis) {
-    try {
-      const res = await fetchWithTimeout(
-        `${redis.url}/get/${encodeURIComponent(STATE_KEY)}`,
-        {
-          headers: { Authorization: `Bearer ${redis.token}` },
-          cache: "no-store",
-        }
-      );
-      if (res.ok) {
-        const json = await res.json();
-        if (json?.result) {
-          return typeof json.result === "string"
-            ? JSON.parse(json.result)
-            : json.result;
-        }
-      }
-    } catch (e) {
-      console.warn("Redis read fallback:", e?.message);
-    }
-  }
-
-  // 3. Firebase Realtime Database REST (optional env fallback)
-  const rtdb = getFirebaseRtdbCreds();
-  if (rtdb) {
-    try {
-      const authQ = rtdb.secret ? `?auth=${encodeURIComponent(rtdb.secret)}` : "";
-      const res = await fetchWithTimeout(
-        `${rtdb.url}/${FIRESTORE_COLLECTION}/${FIRESTORE_DOC}.json${authQ}`,
-        { cache: "no-store" }
-      );
-      if (res.ok) {
-        const json = await res.json();
-        if (json && typeof json === "object") {
-          return json;
-        }
-      }
-    } catch (e) {
-      console.warn("Firebase RTDB read fallback:", e?.message);
-    }
-  }
-
-  // 4. In-memory + /tmp fallback
-  if (globalThis.__auditxCloudHubState) {
-    return globalThis.__auditxCloudHubState;
-  }
-
-  try {
-    if (fs.existsSync(TMP_STATE_FILE)) {
-      const parsed = JSON.parse(fs.readFileSync(TMP_STATE_FILE, "utf8"));
-      globalThis.__auditxCloudHubState = parsed;
-      return parsed;
-    }
-  } catch (e) {
-    // ignore /tmp error
-  }
-
-  return createInitialHubState(getTodayISTDateKey());
-}
-
-async function writeState(state) {
-  const toSave = {
-    ...state,
-    dailyHistory: (state.dailyHistory || [])
-      .slice(0, 45)
-      .map(sanitizeHistorySnapshotForStorage),
-    updatedAt: new Date().toISOString(),
-  };
-
-  globalThis.__auditxCloudHubState = toSave;
-
-  try {
-    fs.writeFileSync(TMP_STATE_FILE, JSON.stringify(toSave), "utf8");
-  } catch (e) {
-    // /tmp optional
-  }
-
-  if (adminDb) {
-    try {
-      await adminDb
-        .collection(FIRESTORE_COLLECTION)
-        .doc(FIRESTORE_DOC)
-        .set(toSave);
-    } catch (e) {
-      console.warn("Firestore write note:", e?.message);
-    }
-  }
-
-  const redis = getRedisCreds();
-  if (redis) {
-    try {
-      await fetchWithTimeout(`${redis.url}/set/${encodeURIComponent(STATE_KEY)}`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${redis.token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(toSave),
-      });
-    } catch (e) {
-      console.warn("Redis write note:", e?.message);
-    }
-  }
-
-  const rtdb = getFirebaseRtdbCreds();
-  if (rtdb) {
-    try {
-      const authQ = rtdb.secret ? `?auth=${encodeURIComponent(rtdb.secret)}` : "";
-      await fetchWithTimeout(
-        `${rtdb.url}/${FIRESTORE_COLLECTION}/${FIRESTORE_DOC}.json${authQ}`,
-        {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(toSave),
-        }
-      );
-    } catch (e) {
-      console.warn("Firebase RTDB write note:", e?.message);
-    }
-  }
-
-  return toSave;
-}
-
-async function loadCurrentStateWithRollover() {
-  const raw = await readRawState();
-  const { state, rolledOver } = rolloverStateIfNewDay(raw, getTodayISTDateKey());
-  globalThis.__auditxCloudHubState = state;
-  if (rolledOver) {
-    await writeState(state);
-  }
-  return state;
-}
+const INVENTORY_MANAGEMENT_ACTIONS = new Set([
+  "PUTAWAY_ADD_ITEM",
+  "PUTAWAY_REMOVE_ITEM",
+  "TOGGLE_OOS",
+  "UPDATE_STOCK_UNIT",
+  "RESET_DEFAULT_UNITS",
+  "SAVE_INVENTORY",
+  "GRN_INWARD",
+  "AUDIT_ADJUSTMENT",
+  "RUN_RECONCILIATION",
+]);
 
 export async function GET(req) {
   try {
-    const state = await loadCurrentStateWithRollover();
     const url = new URL(req.url);
     const clientRev = url.searchParams.get("rev");
     const clientDate = url.searchParams.get("date");
+    const scope = String(url.searchParams.get("scope") || "full").toLowerCase();
+    const targetStore = normalizeStoreId(url.searchParams.get("storeId") || "TIPTUR-HUB-KA44");
+    const session = await getSessionFromRequest(req);
+
+    // Server-side RBAC check when requesting scoped SM/ASM dashboard state
+    if ((scope === "sm" || scope === "asm") && session) {
+      const rbac = checkRoleAndStoreScope(session, ["SM", "ASM", "MD"], targetStore);
+      if (!rbac.ok) {
+        return NextResponse.json({ error: rbac.error }, { status: rbac.status });
+      }
+    }
+
+    const state = await loadAndReapState();
 
     if (
       clientRev &&
@@ -246,15 +74,22 @@ export async function GET(req) {
       return NextResponse.json({
         unchanged: true,
         revision: state.revision,
+        stockVersion: state.stockVersion,
         dateKey: state.dateKey,
         persistenceMode: getPersistenceMode(),
         serverBootId: SERVER_BOOT_ID,
       });
     }
 
+    const scopedState = buildScopedStateSnapshot(state, {
+      scope,
+      userId: session?.userId || "",
+    });
+
     return NextResponse.json({
-      state,
+      state: scopedState,
       revision: state.revision,
+      stockVersion: state.stockVersion,
       dateKey: state.dateKey,
       persistenceMode: getPersistenceMode(),
       serverBootId: SERVER_BOOT_ID,
@@ -275,673 +110,615 @@ export async function POST(req) {
     } catch {
       return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
     }
+
     const action = typeof body?.action === "string" ? body.action.trim() : "";
     const payload =
       body?.payload && typeof body.payload === "object" && !Array.isArray(body.payload)
         ? body.payload
         : {};
+
     if (!action) {
       return NextResponse.json({ error: "Missing action" }, { status: 400 });
     }
 
+    const session = await getSessionFromRequest(req);
+    const clientIp = extractClientIp(req);
+    const targetStoreId = normalizeStoreId(payload.storeId || "TIPTUR-HUB-KA44");
     const idemKey = String(
       req.headers.get("x-idempotency-key") || payload.idempotencyKey || ""
     ).trim();
 
-    let state = await loadCurrentStateWithRollover();
-    if (
-      idemKey &&
-      processedIdemKeys.has(`${action}:${idemKey}`) &&
-      ["PLACE_ORDER", "UPDATE_ORDER", "SUBMIT_RATING"].includes(action)
-    ) {
-      return NextResponse.json({
-        success: true,
-        deduped: true,
-        state: normalizeHubState(state),
-        revision: state.revision,
-        persistenceMode: getPersistenceMode(),
-        serverBootId: SERVER_BOOT_ID,
-      });
+    // Enforce SM / ASM / MD server-side RBAC on warehouse & stock mutations
+    if (SM_GOVERNANCE_ACTIONS.has(action)) {
+      const rbac = checkRoleAndStoreScope(session, ["SM", "MD"], targetStoreId);
+      if (!rbac.ok) {
+        return NextResponse.json({ error: rbac.error }, { status: rbac.status });
+      }
+    } else if (INVENTORY_MANAGEMENT_ACTIONS.has(action)) {
+      const rbac = checkRoleAndStoreScope(session, ["SM", "ASM", "MD"], targetStoreId);
+      if (!rbac.ok) {
+        return NextResponse.json({ error: rbac.error }, { status: rbac.status });
+      }
+    } else if (action === "PICKER_MARK_ITEM_OOS") {
+      const rbac = checkRoleAndStoreScope(session, ["PICKER", "SM", "ASM", "MD"], targetStoreId);
+      if (!rbac.ok) {
+        return NextResponse.json({ error: rbac.error }, { status: rbac.status });
+      }
     }
-    let next = normalizeHubState(state);
+
+    if (action === "PLACE_ORDER" || action === "RESERVE_STOCK") {
+      const orderUserId = String(
+        session?.userId ||
+          payload?.order?.customerId ||
+          payload?.order?.customerPhone ||
+          payload?.userId ||
+          ""
+      ).trim();
+      const rl = await checkOrderRateLimit({ userId: orderUserId, clientIp });
+      if (!rl.allowed) {
+        return NextResponse.json(
+          { error: rl.message, retryAfterSec: rl.retryAfterSec },
+          { status: 429 }
+        );
+      }
+    }
+
+    const actorName = session?.name || payload.updatedBy || payload.addedBy || "System";
+    const actorRole = session?.roleCode || "SYSTEM";
+
     let extraResult = {};
 
-    switch (action) {
-      case "REGISTER_LOGIN": {
-        const deviceUid = String(
-          payload.deviceUid || payload.customerId || ""
-        ).trim();
-        const rawEmail = String(payload.email || "").trim().toLowerCase();
-        const isRealGoogleEmail =
-          rawEmail && rawEmail.includes("@") && !rawEmail.endsWith("@auditx.app");
-        const customerKey = isRealGoogleEmail ? `email:${rawEmail}` : deviceUid;
-
-        if (!customerKey) {
-          return NextResponse.json(
-            { error: "Device ID required" },
-            { status: 400 }
-          );
-        }
-        const devices = { ...(next.loginDevicesToday || {}) };
-        const existingCount = Object.keys(devices).length;
-
-        if (!devices[customerKey] && existingCount >= MAX_DAILY_USER_DEVICES) {
-          return NextResponse.json(
-            {
-              error: `Device login capacity full: Maximum ${MAX_DAILY_USER_DEVICES} user devices logged in today.`,
-              capacityFull: true,
-              count: existingCount,
-              maxCapacity: MAX_DAILY_USER_DEVICES,
-              state: next,
-            },
-            { status: 403 }
-          );
-        }
-
-        const nowIso = new Date().toISOString();
-        devices[customerKey] = {
-          deviceUid: customerKey,
-          rawDeviceUid: deviceUid,
-          customerName: payload.name || devices[customerKey]?.customerName || "Customer",
-          phone: payload.phone || devices[customerKey]?.phone || "",
-          email: rawEmail || devices[customerKey]?.email || "",
-          loginMethod:
-            payload.loginMethod ||
-            devices[customerKey]?.loginMethod ||
-            "Ordering App Login",
-          firstSeenAt: devices[customerKey]?.firstSeenAt || nowIso,
-          lastSeenAt: nowIso,
-        };
-        next.loginDevicesToday = devices;
-
-        const allDevices = { ...(next.allCustomerDevices || {}) };
-        const signupsToday = { ...(next.newSignupsToday || {}) };
-        const prevEntry = allDevices[customerKey] || allDevices[deviceUid];
-        const prevDates = Array.isArray(prevEntry?.loginDates) ? prevEntry.loginDates : [];
-        const loginDates = prevDates.includes(next.dateKey)
-          ? prevDates
-          : [...prevDates, next.dateKey];
-
-        if (!prevEntry) {
-          allDevices[customerKey] = {
-            deviceUid: customerKey,
-            rawDeviceUid: deviceUid,
-            customerName: devices[customerKey].customerName,
-            phone: devices[customerKey].phone,
-            email: devices[customerKey].email,
-            loginMethod: devices[customerKey].loginMethod,
-            firstDateKey: next.dateKey,
-            lastDateKey: next.dateKey,
-            firstSeenAt: nowIso,
-            lastSeenAt: nowIso,
-            loginDates,
-            daysLoggedCount: loginDates.length,
-          };
-          signupsToday[customerKey] = {
-            deviceUid: customerKey,
-            customerName: devices[customerKey].customerName,
-            loginMethod: devices[customerKey].loginMethod,
-            firstSeenAt: nowIso,
-          };
-        } else {
-          allDevices[customerKey] = {
-            ...prevEntry,
-            deviceUid: customerKey,
-            customerName: payload.name || prevEntry.customerName || "Customer",
-            phone: payload.phone || prevEntry.phone || "",
-            email: rawEmail || prevEntry.email || "",
-            lastDateKey: next.dateKey,
-            lastSeenAt: nowIso,
-            loginDates,
-            daysLoggedCount: loginDates.length,
-          };
-          if (customerKey !== deviceUid && allDevices[deviceUid]) {
-            delete allDevices[deviceUid];
-            if (signupsToday[deviceUid]) {
-              signupsToday[customerKey] = signupsToday[deviceUid];
-              delete signupsToday[deviceUid];
-            }
+    const mutRes = await mutateHubStateAtomically((next) => {
+      switch (action) {
+        case "REGISTER_LOGIN": {
+          const rawEmail = String(payload.email || "").trim().toLowerCase();
+          const deviceUid = String(payload.deviceUid || payload.customerId || "").trim();
+          if (!rawEmail && !deviceUid) {
+            return { abort: { status: 400, body: { error: "Device ID required" } } };
           }
-          if (prevEntry.firstDateKey === next.dateKey && !signupsToday[customerKey]) {
-            signupsToday[customerKey] = {
-              deviceUid: customerKey,
-              customerName: allDevices[customerKey].customerName,
-              loginMethod: prevEntry.loginMethod || devices[customerKey].loginMethod,
-              firstSeenAt: prevEntry.firstSeenAt || nowIso,
-            };
-          }
-        }
-
-        next.allCustomerDevices = allDevices;
-        next.newSignupsToday = signupsToday;
-        next.cumulativeStats = {
-          ...(next.cumulativeStats || {}),
-          totalLoginsCount: Object.keys(allDevices).length,
-        };
-        extraResult.userLoginsTodayCount = Object.keys(devices).length;
-        extraResult.newSignupsTodayCount = Object.keys(signupsToday).length;
-        extraResult.totalLoginsCount = Object.keys(allDevices).length;
-        break;
-      }
-
-      case "TOGGLE_STORE": {
-        const incomingTs = Number(payload.statusUpdatedAt || Date.now());
-        const currentTs = Number(next.storeStatusUpdatedAt || 0);
-        if (incomingTs >= currentTs) {
-          next.isStoreOpen = payload.isOpen !== false;
-          next.storeStatusUpdatedAt = incomingTs;
-        }
-        const actor = payload.updatedBy || "Bhaskar N S";
-        const msg = next.isStoreOpen
-          ? `🟢 STORE OPENED by ${actor} — synced across all apps.`
-          : `🛑 STORE CLOSED by ${actor} — ordering app paused.`;
-        next.capLogs = [
-          { id: Date.now(), time: new Date().toLocaleTimeString("en-IN"), msg },
-          ...(next.capLogs || []).slice(0, 29),
-        ];
-        break;
-      }
-
-      case "PLACE_ORDER": {
-        const incoming = payload.order;
-        if (!incoming || !(incoming.id || incoming.orderId)) {
-          return NextResponse.json({ error: "Invalid order" }, { status: 400 });
-        }
-        if (!next.isStoreOpen) {
-          return NextResponse.json(
-            {
-              error: "Store is closed right now, ordering soon!",
-              storeClosed: true,
-              state: next,
-            },
-            { status: 409 }
-          );
-        }
-
-        const oid = incoming.id || incoming.orderId;
-        const reqIdemKey =
-          payload.idempotencyKey ||
-          incoming.idempotencyKey ||
-          req.headers.get("x-idempotency-key") ||
-          "";
-        const alreadyExists = (next.orders || []).find(
-          (o) =>
-            (o.id || o.orderId) === oid ||
-            (reqIdemKey && o.idempotencyKey === reqIdemKey)
-        );
-        if (alreadyExists) {
-          extraResult.order = alreadyExists;
-        } else {
-          // Verify stock for all requested items before accepting
-          const allItems = mergeCatalogItems(
-            getActiveBaseCatalog(),
-            next.customCatalogItems
-          );
-          const oosSet = new Set(next.oosList || []);
-          for (const reqItem of Array.isArray(incoming.items) ? incoming.items : []) {
-            if (!reqItem || typeof reqItem !== "object") continue;
-            const sku = reqItem.skuId || reqItem.sku;
-            if (!sku) continue;
-            const catalogEntry = allItems.find((c) => c.sku === sku);
-            const fallbackQty = getDefaultItemStock(catalogEntry || reqItem);
-            const avail =
-              next.inventoryStockMap?.[sku] !== undefined && Number.isFinite(Number(next.inventoryStockMap[sku]))
-                ? Number(next.inventoryStockMap[sku])
-                : fallbackQty;
-            const parsedNeed = Number(reqItem.qty);
-            const needed = Number.isFinite(parsedNeed) && parsedNeed > 0 ? Math.floor(parsedNeed) : 1;
-            if (oosSet.has(sku) || avail < needed) {
-              return NextResponse.json(
-                {
-                  error: `"${reqItem.name || sku}" only has ${Math.max(0, avail)} unit(s) available right now.`,
-                  outOfStock: true,
-                  sku,
-                  available: Math.max(0, avail),
-                  state: next,
-                },
-                { status: 409 }
-              );
-            }
-          }
-
-          const processedOrder = applyOrderInventoryAndStats(next, {
-            ...incoming,
-            id: oid,
-            orderId: oid,
-            idempotencyKey: reqIdemKey || incoming.idempotencyKey || "",
-            createdAt: incoming.createdAt || new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
+          const out = upsertUserLoginInState(next, {
+            sub: payload.sub || "",
+            email: rawEmail,
+            deviceUid,
+            name: payload.name || "Customer",
+            phone: payload.phone || "",
+            picture: payload.picture || "",
+            loginMethod: payload.loginMethod || "Ordering App Login",
+            roleCode: "CUSTOMER",
           });
-          next.orders = [processedOrder, ...(next.orders || [])];
-          extraResult.order = processedOrder;
+          extraResult = out;
+          return {
+            result: out,
+            sseEvent: {
+              type: "CUSTOMER_LOGIN_COUNT_UPDATED",
+              storeId: next.hubId,
+            },
+          };
         }
-        break;
-      }
 
-      case "UPDATE_ORDER": {
-        const orderId = payload.orderId;
-        const updates = payload.updates || {};
-        if (!orderId) break;
-        let matched = false;
-        next.orders = (next.orders || []).map((ord) => {
-          if (
-            ord.id === orderId ||
-            ord.orderId === orderId ||
-            ord.orderNumber === orderId
-          ) {
-            matched = true;
-            const merged = {
-              ...ord,
-              ...updates,
-              updatedAt: new Date().toISOString(),
-            };
-            return applyOrderInventoryAndStats(next, merged);
-          }
-          return ord;
-        });
-
-        if (!matched && updates && Object.keys(updates).length > 0) {
-          const fallbackOrder = applyOrderInventoryAndStats(next, {
-            id: orderId,
-            orderId,
-            ...updates,
-            createdAt: updates.createdAt || new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
+        case "RESERVE_STOCK": {
+          const out = reserveStockInState(next, {
+            idempotencyKey: idemKey || payload.idempotencyKey || "",
+            reservationId: payload.reservationId || "",
+            items: payload.items || [],
+            userId: session?.userId || payload.userId || "customer",
+            storeId: targetStoreId,
+            ttlMs: payload.ttlMs,
           });
-          next.orders.unshift(fallbackOrder);
+          if (!out.abort) extraResult = out.result || {};
+          return out;
         }
-        break;
-      }
 
-      case "CANCEL_ORDER": {
-        const orderId = payload.orderId;
-        next.orders = (next.orders || []).map((ord) => {
-          if (
-            ord.id === orderId ||
-            ord.orderId === orderId ||
-            ord.orderNumber === orderId
-          ) {
-            const updatedOrd = {
-              ...ord,
-              status: "cancelled",
-              stage: "Cancelled",
-              updatedAt: new Date().toISOString(),
-            };
-            if (ord.stockDeducted && !ord.stockRestored) {
-              const inv = { ...(next.inventoryStockMap || {}) };
-              const oosSet = new Set(next.oosList || []);
-              for (const item of ord.items || []) {
-                const sku = item.skuId || item.sku;
-                if (!sku) continue;
-                const qty = Math.max(1, Number(item.qty) || 1);
-                inv[sku] = Math.max(0, Number(inv[sku] || 0) + qty);
-                if (inv[sku] > 0) oosSet.delete(sku);
-              }
-              next.inventoryStockMap = inv;
-              next.oosList = Array.from(oosSet);
-              updatedOrd.stockRestored = true;
-            }
-            if (ord.countedInTotals && !ord.totalsReverted) {
-              const amt = Number(ord.totalAmount || ord.grandTotal || 0);
-              next.cumulativeStats = {
-                totalRevenueSaved: Math.max(
-                  0,
-                  Number(next.cumulativeStats?.totalRevenueSaved || 0) - amt
-                ),
-                totalSalesCount: Math.max(
-                  0,
-                  Number(next.cumulativeStats?.totalSalesCount || 0) - 1
-                ),
+        case "RELEASE_RESERVATION": {
+          const out = releaseReservationInState(next, {
+            reservationId: payload.reservationId || "",
+            idempotencyKey: idemKey || payload.idempotencyKey || "",
+            reason: payload.reason || "release",
+            actor: actorName,
+            actorRole: session?.roleCode || "CUSTOMER",
+          });
+          if (!out.abort) extraResult = out.result || {};
+          return out;
+        }
+
+        case "PLACE_ORDER": {
+          const out = executeAtomicPlaceOrderInState(next, {
+            incomingOrder: payload.order,
+            idempotencyKey: idemKey,
+            reservationId: payload.reservationId || payload.order?.reservationId || "",
+            actorId: session?.userId || payload.order?.customerId || "",
+            actorRole: session?.roleCode || "CUSTOMER",
+          });
+          if (!out.abort) extraResult = out.result || {};
+          return out;
+        }
+
+        case "CANCEL_ORDER":
+        case "PAYMENT_FAILED": {
+          const out = cancelOrderAndRestoreInState(next, {
+            orderId: payload.orderId,
+            reason: action === "PAYMENT_FAILED" ? "payment_failed" : payload.reason || "cancel",
+            actor: actorName,
+            actorRole: session?.roleCode || "CUSTOMER",
+            enforceWindow: action === "CANCEL_ORDER" && (!session || session.roleCode === "CUSTOMER"),
+            callerUserId: session?.userId || "",
+          });
+          if (!out.abort) extraResult = out.result || {};
+          return out;
+        }
+
+        case "PICKER_MARK_ITEM_OOS": {
+          const out = pickerMarkItemOosInState(next, {
+            orderId: payload.orderId,
+            skuId: payload.skuId || payload.sku,
+            actor: actorName,
+            actorRole,
+          });
+          if (!out.abort) extraResult = out.result || {};
+          return out;
+        }
+
+        case "UPDATE_ORDER": {
+          const orderId = payload.orderId;
+          const updates = payload.updates || {};
+          if (!orderId) return { skipRevisionBump: true };
+          let updatedOrder = null;
+          next.orders = (next.orders || []).map((ord) => {
+            if (
+              ord.id === orderId ||
+              ord.orderId === orderId ||
+              ord.orderNumber === orderId
+            ) {
+              // Preserve server-computed financials and stock flags safely
+              const {
+                items: _ignoreItems,
+                totalAmount: _ignoreTotal,
+                itemTotal: _ignoreItemTotal,
+                stockDeducted: _ignoreDeduct,
+                stockRestored: _ignoreRestore,
+                ...safeUpdates
+              } = updates;
+              updatedOrder = {
+                ...ord,
+                ...safeUpdates,
+                updatedAt: new Date().toISOString(),
               };
-              updatedOrd.totalsReverted = true;
+              return updatedOrder;
             }
-            return updatedOrd;
+            return ord;
+          });
+          if (!updatedOrder) {
+            return { skipRevisionBump: true };
           }
-          return ord;
-        });
-        break;
-      }
+          return {
+            result: { order: updatedOrder },
+            sseEvent: {
+              type: "ORDER_UPDATED",
+              storeId: updatedOrder.storeId || next.hubId,
+              order: updatedOrder,
+            },
+          };
+        }
 
-      case "SUBMIT_RATING": {
-        const r = payload.ratingPayload;
-        if (!r || !r.orderId) break;
-        const existingRatings = (next.ratingsToday || []).filter(
-          (item) => item.orderId !== r.orderId
-        );
-        next.ratingsToday = [
-          { ...r, ratedAt: r.ratedAt || new Date().toISOString() },
-          ...existingRatings,
-        ];
-        next.orders = (next.orders || []).map((ord) => {
-          if (
+        case "TOGGLE_STORE": {
+          const incomingTs = Number(payload.statusUpdatedAt || Date.now());
+          const currentTs = Number(next.storeStatusUpdatedAt || 0);
+          if (incomingTs >= currentTs) {
+            next.isStoreOpen = payload.isOpen !== false;
+            next.storeStatusUpdatedAt = incomingTs;
+          }
+          const msg = next.isStoreOpen
+            ? `🟢 STORE OPENED by ${actorName} — synced across all apps.`
+            : `🛑 STORE CLOSED by ${actorName} — ordering app paused.`;
+          next.capLogs = [
+            { id: Date.now(), time: new Date().toLocaleTimeString("en-IN"), msg },
+            ...(next.capLogs || []).slice(0, 29),
+          ];
+          return {
+            sseEvent: {
+              type: "STORE_STATUS",
+              storeId: next.hubId,
+            },
+          };
+        }
+
+        case "UPDATE_STOCK_UNIT":
+        case "GRN_INWARD":
+        case "AUDIT_ADJUSTMENT": {
+          const out = adjustStockUnitInState(next, {
+            sku: payload.sku,
+            delta: payload.delta,
+            setUnits: payload.setUnits,
+            reason:
+              action === "GRN_INWARD"
+                ? "grn_inward"
+                : action === "AUDIT_ADJUSTMENT"
+                ? "audit_adjustment"
+                : "manual_adjustment",
+            actor: actorName,
+            actorRole,
+            storeId: targetStoreId,
+          });
+          if (!out.abort) extraResult = out.result || {};
+          return out;
+        }
+
+        case "TOGGLE_OOS": {
+          const sku = payload.sku;
+          if (!sku) return { skipRevisionBump: true };
+          const inStock = payload.inStock !== false;
+          const prevRec = next.stockBySku?.[sku];
+          const curUnits = prevRec ? Number(prevRec.unitsInStock || 0) : Number(next.inventoryStockMap?.[sku] || 0);
+          if (inStock && curUnits <= 0) {
+            const out = adjustStockUnitInState(next, {
+              sku,
+              setUnits: 5,
+              reason: "manual_adjustment",
+              actor: actorName,
+              actorRole,
+              storeId: targetStoreId,
+            });
+            return out;
+          } else if (!inStock) {
+            const oosSet = new Set(next.oosList || []);
+            oosSet.add(sku);
+            next.oosList = Array.from(oosSet);
+            next.stockVersion = Number(next.stockVersion || 1) + 1;
+            return {
+              sseEvent: {
+                type: "STOCK_DELTA",
+                storeId: targetStoreId,
+                changedSkus: [sku],
+                oosList: next.oosList,
+                inventoryStockMapPatch: { [sku]: 0 },
+              },
+            };
+          } else {
+            const oosSet = new Set(next.oosList || []);
+            oosSet.delete(sku);
+            next.oosList = Array.from(oosSet);
+            next.stockVersion = Number(next.stockVersion || 1) + 1;
+            return {
+              sseEvent: {
+                type: "STOCK_DELTA",
+                storeId: targetStoreId,
+                changedSkus: [sku],
+                oosList: next.oosList,
+                inventoryStockMapPatch: { [sku]: curUnits },
+              },
+            };
+          }
+        }
+
+        case "SAVE_INVENTORY": {
+          const patch = payload.inventoryStockMap;
+          if (patch && typeof patch === "object" && !Array.isArray(patch)) {
+            const changedSkus = [];
+            const movements = [];
+            for (const [sku, v] of Object.entries(patch)) {
+              const numV = Number(v);
+              if (!Number.isFinite(numV)) continue;
+              const prevUnits = Number(next.stockBySku?.[sku]?.unitsInStock ?? next.inventoryStockMap?.[sku] ?? 0);
+              const nextUnits = Math.max(0, Math.floor(numV));
+              if (prevUnits !== nextUnits) {
+                const adj = adjustStockUnitInState(next, {
+                  sku,
+                  setUnits: nextUnits,
+                  reason: "manual_adjustment",
+                  actor: actorName,
+                  actorRole,
+                  storeId: targetStoreId,
+                });
+                if (adj?.result?.movement) movements.push(adj.result.movement);
+                changedSkus.push(sku);
+              }
+            }
+            return {
+              sseEvent: {
+                type: "STOCK_DELTA",
+                storeId: targetStoreId,
+                changedSkus,
+                stockBySkuPatch: Object.fromEntries(changedSkus.map((s) => [s, next.stockBySku[s]])),
+                inventoryStockMapPatch: Object.fromEntries(changedSkus.map((s) => [s, next.inventoryStockMap[s]])),
+                oosList: next.oosList,
+                movements,
+              },
+            };
+          }
+          return { skipRevisionBump: true };
+        }
+
+        case "RESET_DEFAULT_UNITS": {
+          const defInv = buildDefaultInventoryMap(next.customCatalogItems);
+          const defStock = buildDefaultStockBySku(next.customCatalogItems, defInv, null);
+          next.inventoryStockMap = defInv;
+          next.stockBySku = defStock;
+          next.activeReservations = [];
+          next.oosList = buildDefaultOosList(defInv, next.customCatalogItems);
+          next.stockVersion = Number(next.stockVersion || 1) + 1;
+          next.ledgerSummaryBySku = Object.fromEntries(
+            Object.entries(defStock).map(([sku, rec]) => [
+              sku,
+              { openingUnits: rec.unitsInStock, netUnitsDelta: 0, movementCount: 0 },
+            ])
+          );
+          return {
+            sseEvent: {
+              type: "STOCK_RESET",
+              storeId: targetStoreId,
+              oosList: next.oosList,
+            },
+          };
+        }
+
+        case "PUTAWAY_ADD_ITEM": {
+          const item = payload.item;
+          if (!item || !item.name || !Number(item.price)) {
+            return { abort: { status: 400, body: { error: "Item name and price are required" } } };
+          }
+          const cat = item.category === "Frames" ? "Frames" : "Chocolates";
+          const defaultUnits = cat === "Frames" ? 1 : 5;
+          const rawUnits = Number(item.units);
+          const units = Math.max(
+            0,
+            item.units !== undefined && Number.isFinite(rawUnits) ? Math.floor(rawUnits) : defaultUnits
+          );
+          const sku =
+            item.sku ||
+            `PUTAWAY-${cat === "Frames" ? "FRM" : "CHC"}-${Date.now().toString().slice(-6)}`;
+          const newItem = {
+            sku,
+            name: String(item.name).trim(),
+            category: cat,
+            price: Math.max(1, Number(item.price)),
+            mrp: Math.max(Number(item.price), Number(item.mrp) || Number(item.price)),
+            weight: item.weight || (cat === "Frames" ? "1 unit" : `${units || 5} units`),
+            zone: cat === "Frames" ? "Zone F1 (Custom Frames)" : "Zone C1 (Chocolates Bay)",
+            aisle: item.aisle || (cat === "Frames" ? "F1 - NEW - 001" : "C1 - NEW - 001"),
+            barcode: item.barcode || `89044${Date.now().toString().slice(-6)}`,
+            qrCode: `QR-${sku}`,
+            image:
+              item.image ||
+              (cat === "Frames" ? "/frames/programming-stickers.jpg" : "/choclates/beatss.jpg"),
+            delivery: "10 mins",
+            inStock: units > 0,
+            comingSoon: false,
+            units,
+            isCustomPutaway: true,
+            addedBy: actorName,
+            description:
+              item.description ||
+              `Added via ASM Putaway Desk (${cat}) at Tiptur HUB - KA44.`,
+            createdAt: new Date().toISOString(),
+          };
+          next.customCatalogItems = [
+            newItem,
+            ...(next.customCatalogItems || []).filter((c) => c.sku !== sku),
+          ];
+          const adj = adjustStockUnitInState(next, {
+            sku,
+            setUnits: units,
+            reason: "grn_inward",
+            actor: actorName,
+            actorRole,
+            storeId: targetStoreId,
+          });
+          next.capLogs = [
+            {
+              id: Date.now(),
+              time: new Date().toLocaleTimeString("en-IN"),
+              msg: `📥 ASM Putaway (${actorName}): "${newItem.name}" (₹${newItem.price}, ${units} units) live to store.`,
+            },
+            ...(next.capLogs || []).slice(0, 29),
+          ];
+          extraResult.addedItem = newItem;
+          return adj;
+        }
+
+        case "PUTAWAY_REMOVE_ITEM": {
+          const sku = payload.sku;
+          if (!sku) return { skipRevisionBump: true };
+          next.customCatalogItems = (next.customCatalogItems || []).filter((c) => c.sku !== sku);
+          if (next.stockBySku?.[sku]) {
+            const copy = { ...next.stockBySku };
+            delete copy[sku];
+            next.stockBySku = copy;
+          }
+          if (next.inventoryStockMap && sku in next.inventoryStockMap) {
+            const copy = { ...next.inventoryStockMap };
+            delete copy[sku];
+            next.inventoryStockMap = copy;
+          }
+          next.oosList = (next.oosList || []).filter((s) => s !== sku);
+          next.stockVersion = Number(next.stockVersion || 1) + 1;
+          return {
+            sseEvent: {
+              type: "STOCK_DELTA",
+              storeId: targetStoreId,
+              changedSkus: [sku],
+              oosList: next.oosList,
+            },
+          };
+        }
+
+        case "SUBMIT_RATING": {
+          const r = payload.ratingPayload;
+          if (!r || !r.orderId) return { skipRevisionBump: true };
+          const existingRatings = (next.ratingsToday || []).filter(
+            (item) => item.orderId !== r.orderId
+          );
+          next.ratingsToday = [
+            { ...r, ratedAt: r.ratedAt || new Date().toISOString() },
+            ...existingRatings,
+          ];
+          next.orders = (next.orders || []).map((ord) =>
             ord.id === r.orderId ||
             ord.orderId === r.orderId ||
             ord.orderNumber === r.orderNumber
-          ) {
-            return {
-              ...ord,
-              status: "delivered",
-              stage: "Delivered",
-              customerRatingSubmitted: true,
-              riderRating: r.riderRating,
-              itemRatings: r.itemRatings,
+              ? {
+                  ...ord,
+                  status: "delivered",
+                  stage: "Delivered",
+                  customerRatingSubmitted: true,
+                  riderRating: r.riderRating,
+                  itemRatings: r.itemRatings,
+                }
+              : ord
+          );
+          return {};
+        }
+
+        case "FILE_COMPLAINT": {
+          const c = payload.complaint;
+          if (!c || !c.id) return { skipRevisionBump: true };
+          next.complaints = [c, ...(next.complaints || []).filter((x) => x.id !== c.id)];
+          return {};
+        }
+
+        case "RESOLVE_COMPLAINT": {
+          const { id, resolvedAt, response, status } = payload;
+          next.complaints = (next.complaints || []).map((c) =>
+            c.id === id
+              ? {
+                  ...c,
+                  status: status || "RESOLVED",
+                  resolvedBy: actorName,
+                  resolvedAt: resolvedAt || new Date().toLocaleTimeString("en-IN"),
+                  response: response || `Resolved by ${actorName}`,
+                }
+              : c
+          );
+          return {};
+        }
+
+        case "UPDATE_STAFF_DUTY": {
+          const { staffId, deviceStatus, staffName, deviceName } = payload;
+          if (!staffId) return { skipRevisionBump: true };
+          const incomingTs = Number(payload.statusUpdatedAt || Date.now());
+          const currentTs = Number(next.staffStatus?.[staffId]?.statusUpdatedAt || 0);
+          if (incomingTs >= currentTs) {
+            next.staffStatus = {
+              ...(next.staffStatus || {}),
+              [staffId]: {
+                staffId,
+                staffName:
+                  staffName ||
+                  (staffId === "thrupthi" ? "Thrupthi K S" : "Sinchana B R"),
+                deviceName:
+                  deviceName || (staffId === "thrupthi" ? "MOTOROLA" : "OPPO"),
+                deviceStatus: deviceStatus === "LOGGED_IN" ? "LOGGED_IN" : "LOGGED_OUT",
+                statusUpdatedAt: incomingTs,
+                updatedAt: new Date().toISOString(),
+              },
             };
           }
-          return ord;
-        });
-        break;
-      }
-
-      case "FILE_COMPLAINT": {
-        const c = payload.complaint;
-        if (!c || !c.id) break;
-        next.complaints = [
-          c,
-          ...(next.complaints || []).filter((x) => x.id !== c.id),
-        ];
-        break;
-      }
-
-      case "RESOLVE_COMPLAINT": {
-        const { id, resolvedBy, resolvedAt, response, status } = payload;
-        next.complaints = (next.complaints || []).map((c) =>
-          c.id === id
-            ? {
-                ...c,
-                status: status || "RESOLVED",
-                resolvedBy: resolvedBy || "Bhaskar N S",
-                resolvedAt: resolvedAt || new Date().toLocaleTimeString("en-IN"),
-                response: response || "Resolved by Store Manager",
-              }
-            : c
-        );
-        break;
-      }
-
-      case "PUTAWAY_ADD_ITEM": {
-        const item = payload.item;
-        if (!item || !item.name || !Number(item.price)) {
-          return NextResponse.json(
-            { error: "Item name and price are required" },
-            { status: 400 }
-          );
+          return {
+            sseEvent: { type: "STAFF_DUTY_UPDATED", storeId: targetStoreId },
+          };
         }
-        const cat = item.category === "Frames" ? "Frames" : "Chocolates";
-        const defaultUnits = cat === "Frames" ? 1 : 5;
-        const rawUnits = Number(item.units);
-        const units = Math.max(
-          0,
-          item.units !== undefined && Number.isFinite(rawUnits) ? Math.floor(rawUnits) : defaultUnits
-        );
-        const sku =
-          item.sku ||
-          `PUTAWAY-${cat === "Frames" ? "FRM" : "CHC"}-${Date.now()
-            .toString()
-            .slice(-6)}`;
-        const newItem = {
-          sku,
-          name: String(item.name).trim(),
-          category: cat,
-          price: Math.max(1, Number(item.price)),
-          mrp: Math.max(
-            Number(item.price),
-            Number(item.mrp) || Number(item.price)
-          ),
-          weight:
-            item.weight ||
-            (cat === "Frames" ? "1 unit" : `${units || 5} units`),
-          zone:
-            cat === "Frames"
-              ? "Zone F1 (Custom Frames)"
-              : "Zone C1 (Chocolates Bay)",
-          aisle:
-            item.aisle ||
-            (cat === "Frames" ? "F1 - NEW - 001" : "C1 - NEW - 001"),
-          barcode: item.barcode || `89044${Date.now().toString().slice(-6)}`,
-          qrCode: `QR-${sku}`,
-          image:
-            item.image ||
-            (cat === "Frames"
-              ? "/frames/programming-stickers.jpg"
-              : "/choclates/beatss.jpg"),
-          delivery: "10 mins",
-          inStock: units > 0,
-          comingSoon: false,
-          units,
-          isCustomPutaway: true,
-          addedBy: item.addedBy || "Deepu B (ASM)",
-          description:
-            item.description ||
-            `Added via ASM Putaway Desk (${cat}) at Tiptur HUB - KA44.`,
-          createdAt: new Date().toISOString(),
-        };
 
-        next.customCatalogItems = [
-          newItem,
-          ...(next.customCatalogItems || []).filter((c) => c.sku !== sku),
-        ];
-        next.inventoryStockMap = {
-          ...(next.inventoryStockMap || {}),
-          [sku]: units,
-        };
-        const oosSet = new Set(next.oosList || []);
-        if (units <= 0) oosSet.add(sku);
-        else oosSet.delete(sku);
-        next.oosList = Array.from(oosSet);
-
-        next.capLogs = [
-          {
-            id: Date.now(),
-            time: new Date().toLocaleTimeString("en-IN"),
-            msg: `📥 ASM Putaway: "${newItem.name}" (₹${newItem.price}, ${units} units) dumped live to store.`,
-          },
-          ...(next.capLogs || []).slice(0, 29),
-        ];
-        extraResult.addedItem = newItem;
-        break;
-      }
-
-      case "PUTAWAY_REMOVE_ITEM": {
-        const sku = payload.sku;
-        if (!sku) break;
-        next.customCatalogItems = (next.customCatalogItems || []).filter(
-          (c) => c.sku !== sku
-        );
-        if (next.inventoryStockMap && sku in next.inventoryStockMap) {
-          const copy = { ...next.inventoryStockMap };
-          delete copy[sku];
-          next.inventoryStockMap = copy;
-        }
-        next.oosList = (next.oosList || []).filter((s) => s !== sku);
-        break;
-      }
-
-      case "TOGGLE_OOS": {
-        const sku = payload.sku;
-        const inStock = payload.inStock !== false;
-        if (!sku) break;
-        const oosSet = new Set(next.oosList || []);
-        const inv = { ...(next.inventoryStockMap || {}) };
-        if (inStock) {
-          oosSet.delete(sku);
-          if (Number(inv[sku] || 0) <= 0) {
-            const allItems = mergeCatalogItems(
-              getActiveBaseCatalog(),
-              next.customCatalogItems
-            );
-            const item = allItems.find((c) => c.sku === sku);
-            inv[sku] = getDefaultItemStock(item) || 1;
+        case "SYNC_REHYDRATE_STATE": {
+          // Only rehydrate store/staff telemetry cleanly without letting unauthenticated clients reset inventory
+          if (payload?.state && typeof payload.state === "object" && session && ["SM", "ASM", "MD"].includes(session.roleCode)) {
+            const merged = mergeHubStates(next, payload.state, { preferLocalOnCold: false });
+            Object.assign(next, merged);
+            return {};
           }
-        } else {
-          oosSet.add(sku);
+          return { skipRevisionBump: true };
         }
-        next.inventoryStockMap = inv;
-        next.oosList = Array.from(oosSet);
-        break;
-      }
 
-      case "UPDATE_STOCK_UNIT": {
-        const { sku, delta, setUnits } = payload;
-        if (!sku) break;
-        const allItems = mergeCatalogItems(
-          getActiveBaseCatalog(),
-          next.customCatalogItems
-        );
-        const target = allItems.find((c) => c.sku === sku);
-        const fallback = getDefaultItemStock(target);
-        const rawCur = next.inventoryStockMap?.[sku];
-        const cur =
-          rawCur !== undefined && Number.isFinite(Number(rawCur))
-            ? Number(rawCur)
-            : fallback;
-        let updated = cur;
-        if (setUnits !== undefined && Number.isFinite(Number(setUnits))) {
-          updated = Math.max(0, Math.floor(Number(setUnits)));
-        } else if (delta !== undefined && Number.isFinite(Number(delta))) {
-          updated = Math.max(0, Math.floor(cur + Number(delta)));
+        case "RUN_RECONCILIATION": {
+          const report = computeStateReconciliation(next);
+          extraResult = { report };
+          return { result: { report } };
         }
-        next.inventoryStockMap = {
-          ...(next.inventoryStockMap || {}),
-          [sku]: updated,
-        };
-        const oosSet = new Set(next.oosList || []);
-        if (updated <= 0) oosSet.add(sku);
-        else oosSet.delete(sku);
-        next.oosList = Array.from(oosSet);
-        break;
-      }
 
-      case "RESET_DEFAULT_UNITS": {
-        const defInv = buildDefaultInventoryMap(next.customCatalogItems);
-        next.inventoryStockMap = defInv;
-        next.oosList = buildDefaultOosList(defInv, next.customCatalogItems);
-        break;
-      }
-
-      case "SAVE_INVENTORY": {
-        if (
-          payload.inventoryStockMap &&
-          typeof payload.inventoryStockMap === "object" &&
-          !Array.isArray(payload.inventoryStockMap)
-        ) {
-          const cleanPatch = {};
-          for (const [k, v] of Object.entries(payload.inventoryStockMap)) {
-            const numV = Number(v);
-            if (Number.isFinite(numV)) {
-              cleanPatch[k] = Math.max(0, Math.floor(numV));
+        case "CLEAR_QUEUE": {
+          // Restore stock for unfulfilled active orders when queue is manually cleared by SM/MD
+          const restockSkus = [];
+          for (const ord of next.orders || []) {
+            const st = String(ord.status || "").toLowerCase();
+            if (ord.stockDeducted && !ord.stockRestored && st !== "delivered" && st !== "cancelled") {
+              cancelOrderAndRestoreInState(next, {
+                orderId: ord.id || ord.orderId,
+                reason: "cancel",
+                actor: actorName,
+                actorRole,
+                enforceWindow: false,
+              });
+              restockSkus.push(...(ord.items || []).map((i) => i.skuId || i.sku).filter(Boolean));
             }
           }
-          next.inventoryStockMap = {
-            ...(next.inventoryStockMap || {}),
-            ...cleanPatch,
-          };
-          const oosSet = new Set(next.oosList || []);
-          for (const [k, v] of Object.entries(next.inventoryStockMap)) {
-            if (Number.isFinite(Number(v)) && Number(v) <= 0) oosSet.add(k);
-            else oosSet.delete(k);
-          }
-          next.oosList = Array.from(oosSet);
-        }
-        break;
-      }
-
-      case "UPDATE_STAFF_DUTY": {
-        const { staffId, deviceStatus, staffName, deviceName } = payload;
-        if (!staffId) break;
-        const incomingTs = Number(payload.statusUpdatedAt || Date.now());
-        const currentTs = Number(next.staffStatus?.[staffId]?.statusUpdatedAt || 0);
-        if (incomingTs >= currentTs) {
-          next.staffStatus = {
-            ...(next.staffStatus || {}),
-            [staffId]: {
-              staffId,
-              staffName:
-                staffName ||
-                (staffId === "thrupthi" ? "Thrupthi K S" : "Sinchana B R"),
-              deviceName:
-                deviceName || (staffId === "thrupthi" ? "MOTOROLA" : "OPPO"),
-              deviceStatus: deviceStatus === "LOGGED_IN" ? "LOGGED_IN" : "LOGGED_OUT",
-              statusUpdatedAt: incomingTs,
-              updatedAt: new Date().toISOString(),
+          next.orders = [];
+          next.complaints = [];
+          next.capLogs = [
+            {
+              id: Date.now(),
+              time: new Date().toLocaleTimeString("en-IN"),
+              msg: `🧹 Live queue cleared by ${actorName} (unfulfilled stock restored, saved metrics intact).`,
+            },
+            ...(next.capLogs || []).slice(0, 29),
+          ];
+          return {
+            sseEvent: {
+              type: "QUEUE_CLEARED",
+              storeId: targetStoreId,
+              changedSkus: Array.from(new Set(restockSkus)),
+              oosList: next.oosList,
             },
           };
         }
-        break;
-      }
 
-      case "SYNC_REHYDRATE_STATE": {
-        if (payload?.state && typeof payload.state === "object") {
-          next = mergeHubStates(next, payload.state, {
-            preferLocalOnCold: false,
-          });
+        case "UPDATE_CAP": {
+          if (Number(payload.orderCapLimit) > 0) {
+            next.orderCapLimit = Number(payload.orderCapLimit);
+          }
+          return {};
         }
-        break;
-      }
 
-      case "CLEAR_QUEUE": {
-        next.orders = [];
-        next.complaints = [];
-        next.capLogs = [
-          {
-            id: Date.now(),
-            time: new Date().toLocaleTimeString("en-IN"),
-            msg: `🧹 Today's live queue cleared (Cumulative saved money ₹${next.cumulativeStats?.totalRevenueSaved || 0} & sales ${next.cumulativeStats?.totalSalesCount || 0} kept intact).`,
-          },
-          ...(next.capLogs || []).slice(0, 29),
-        ];
-        break;
-      }
-
-      case "UPDATE_CAP": {
-        if (Number(payload.orderCapLimit) > 0) {
-          next.orderCapLimit = Number(payload.orderCapLimit);
+        case "ARCHIVE_DAY_NOW": {
+          const snap = buildDaySnapshot(next, next.dateKey);
+          const restHist = (next.dailyHistory || []).filter(
+            (h) => h && h.dateKey !== snap.dateKey
+          );
+          next.dailyHistory = [snap, ...restHist].slice(0, 45);
+          next.orders = [];
+          next.complaints = [];
+          next.ratingsToday = [];
+          next.loginDevicesToday = {};
+          next.newSignupsToday = {};
+          next.dayResetUpdatedAt = Date.now();
+          next.capLogs = [
+            {
+              id: Date.now(),
+              time: new Date().toLocaleTimeString("en-IN"),
+              msg: `📦 Closed & archived ${snap.dateKey} by ${actorName} (${snap.totalOrders} orders, ₹${snap.gmv}).`,
+            },
+            ...(next.capLogs || []).slice(0, 29),
+          ];
+          return { sseEvent: { type: "DAY_ARCHIVED", storeId: targetStoreId } };
         }
-        break;
+
+        default:
+          return { skipRevisionBump: true };
       }
+    });
 
-      case "ARCHIVE_DAY_NOW": {
-        const snap = buildDaySnapshot(next, next.dateKey);
-        const restHist = (next.dailyHistory || []).filter(
-          (h) => h && h.dateKey !== snap.dateKey
-        );
-        next.dailyHistory = [snap, ...restHist].slice(0, 45);
-        next.orders = [];
-        next.complaints = [];
-        next.ratingsToday = [];
-        next.loginDevicesToday = {};
-        next.newSignupsToday = {};
-        next.dayResetUpdatedAt = Date.now();
-        next.capLogs = [
-          {
-            id: Date.now(),
-            time: new Date().toLocaleTimeString("en-IN"),
-            msg: `📦 Closed & archived ${snap.dateKey} (${snap.totalOrders} orders, ₹${snap.gmv}) into Daily History. Today counters reset to 0.`,
-          },
-          ...(next.capLogs || []).slice(0, 29),
-        ];
-        break;
-      }
-
-      default:
-        break;
-    }
-
-    next.revision = (next.revision || 1) + 1;
-    next.updatedAt = new Date().toISOString();
-
-    const saved = await writeState(next);
-    if (idemKey) {
-      if (processedIdemKeys.size >= 500) {
-        const firstKey = processedIdemKeys.values().next().value;
-        processedIdemKeys.delete(firstKey);
-      }
-      processedIdemKeys.add(`${action}:${idemKey}`);
+    if (!mutRes.ok) {
+      return NextResponse.json(mutRes.body || { error: "Conflict" }, {
+        status: mutRes.status || 409,
+      });
     }
 
     return NextResponse.json({
       success: true,
-      state: saved,
-      revision: saved.revision,
+      deduped: Boolean(extraResult?.deduped),
+      state: buildScopedStateSnapshot(mutRes.state, {
+        scope: session?.roleCode === "CUSTOMER" ? "customer" : "full",
+        userId: session?.userId || "",
+      }),
+      revision: mutRes.state.revision,
+      stockVersion: mutRes.state.stockVersion,
       persistenceMode: getPersistenceMode(),
       serverBootId: SERVER_BOOT_ID,
       ...extraResult,
@@ -953,4 +730,3 @@ export async function POST(req) {
     );
   }
 }
-

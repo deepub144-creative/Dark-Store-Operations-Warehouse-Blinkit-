@@ -1,7 +1,18 @@
 import { NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebaseAdmin";
+import {
+  attachSessionCookies,
+  createSessionTokens,
+  verifyEdgeJwt,
+} from "@/lib/edgeSession";
+import { checkAuthRateLimit, extractClientIp } from "@/lib/serverRateLimit";
+import {
+  enqueueBackgroundTask,
+  mutateHubStateAtomically,
+  upsertUserLoginInState,
+} from "@/lib/serverStateEngine";
 
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
 const mockOtps = globalThis._mockOtps || (globalThis._mockOtps = new Map());
 
@@ -15,35 +26,48 @@ export async function POST(req) {
     }
     const phone = String(body?.phone || "").replace(/\D/g, "");
     const otp = String(body?.otp || "").trim();
+    const customerNameInput = String(body?.name || "").trim();
+    const deviceUid = String(body?.deviceUid || "").trim();
     const bodyToken = typeof body?.otpToken === "string" ? body.otpToken : "";
     if (!phone || !otp) {
-      return NextResponse.json({ error: "Phone number and OTP are required" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Phone number and OTP are required" },
+        { status: 400 }
+      );
+    }
+
+    const clientIp = extractClientIp(req);
+    const rl = await checkAuthRateLimit({
+      scope: "verify_otp",
+      key: `${clientIp}:${phone}`,
+      limit: 12,
+      windowMs: 600_000,
+    });
+    if (!rl.allowed) {
+      return NextResponse.json({ error: rl.message }, { status: 429 });
     }
 
     let isValid = false;
+    const allowDemoOtp = process.env.AUDITX_STRICT_OTP !== "1";
 
-    // 0. Master verification codes for TRAI DND / carrier blocked SMS / demo testing
-    if (otp === "123456" || otp === "000000" || otp === "4444" || otp === "1234") {
+    // Demo fallback codes allowed unless strict production SMS mode requested
+    if (allowDemoOtp && ["123456", "000000", "4444", "1234"].includes(otp)) {
       isValid = true;
     }
 
-    // 1. Stateless token verification (from payload or cookie)
+    // 1. Cryptographically signed challenge token check
     if (!isValid) {
       const cookieToken = req.cookies.get("blinkit_otp_token")?.value;
       const token = bodyToken || cookieToken;
-
       if (token) {
-        try {
-          const decoded = Buffer.from(token, "base64").toString("utf-8");
-          const [tokPhone, tokOtp, tokExp] = decoded.split(":");
-          if (tokPhone === phone && tokOtp === otp && Date.now() <= parseInt(tokExp, 10)) {
-            isValid = true;
-          }
-        } catch (e) {}
+        const claims = await verifyEdgeJwt(token);
+        if (claims?.kind === "otp_challenge" && claims.phone === phone && claims.otp === otp) {
+          isValid = true;
+        }
       }
     }
 
-    // 2. In-memory map verification
+    // 2. Server memory challenge check
     if (!isValid) {
       const stored = mockOtps.get(phone);
       if (stored && stored.otp === otp && Date.now() <= stored.expiresAt) {
@@ -51,7 +75,7 @@ export async function POST(req) {
       }
     }
 
-    // 3. Firestore verification fallback
+    // 3. Firestore OTP check
     if (!isValid && adminDb) {
       try {
         const doc = await adminDb.collection("customer_otps").doc(phone).get();
@@ -61,7 +85,7 @@ export async function POST(req) {
             isValid = true;
           }
         }
-      } catch (e) {}
+      } catch {}
     }
 
     if (!isValid) {
@@ -71,24 +95,60 @@ export async function POST(req) {
       );
     }
 
-    // Clean up OTP state
+    // Consume OTP so it cannot be replayed
     mockOtps.delete(phone);
 
     const customer = {
       customerId: `cust_${phone}`,
       phone,
-      name: "Verified Customer",
+      name: customerNameInput || "Verified Customer",
       walletBalance: 1000000,
+      roleCode: "CUSTOMER",
+      storeId: "TIPTUR-HUB-KA44",
+      areaId: "SOUTH-TUMKUR-AREA",
     };
 
-    if (adminDb) {
-      try {
-        await adminDb.collection("customers").doc(phone).set(customer, { merge: true });
-      } catch (e) {}
-    }
+    const mutRes = await mutateHubStateAtomically((next) => {
+      const upsertOut = upsertUserLoginInState(next, {
+        deviceUid: deviceUid || customer.customerId,
+        name: customer.name,
+        phone,
+        provider: "otp",
+        loginMethod: "Phone OTP",
+        roleCode: "CUSTOMER",
+      });
+      return {
+        result: upsertOut,
+      };
+    });
 
-    const res = NextResponse.json({ success: true, customer });
+    enqueueBackgroundTask("otp_cleanup_and_user", async () => {
+      if (adminDb) {
+        try {
+          await adminDb.collection("customer_otps").doc(phone).delete();
+        } catch {}
+        try {
+          await adminDb.collection("customers").doc(phone).set(customer, { merge: true });
+        } catch {}
+      }
+    });
+
+    const { accessToken, refreshToken } = await createSessionTokens({
+      userId: mutRes.ok ? mutRes.result.user.userId : customer.customerId,
+      phone,
+      name: customer.name,
+      roleCode: "CUSTOMER",
+      storeId: "TIPTUR-HUB-KA44",
+      areaId: "SOUTH-TUMKUR-AREA",
+      allowedStoreIds: ["TIPTUR-HUB-KA44"],
+    });
+
+    const res = NextResponse.json({
+      success: true,
+      customer,
+    });
     res.cookies.delete("blinkit_otp_token");
+    attachSessionCookies(res, accessToken, refreshToken, req);
     return res;
   } catch (e) {
     return NextResponse.json({ error: e.message }, { status: 500 });

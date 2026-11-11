@@ -1,8 +1,13 @@
 import { NextResponse } from "next/server";
-import { adminDb } from "@/lib/firebaseAdmin";
-import { CATALOG } from "@/lib/items";
+import { getSessionFromRequest } from "@/lib/serverAuth";
+import { checkOrderRateLimit, extractClientIp } from "@/lib/serverRateLimit";
+import {
+  buildScopedStateSnapshot,
+  executeAtomicPlaceOrderInState,
+  mutateHubStateAtomically,
+} from "@/lib/serverStateEngine";
 
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
 export async function POST(req) {
   try {
@@ -12,130 +17,100 @@ export async function POST(req) {
     } catch {
       return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
     }
-    const { customerId, customerName, customerPhone, cart, location, idempotencyKey: bodyIdemKey } = body || {};
-    const idempotencyKey = String(bodyIdemKey || req.headers.get("x-idempotency-key") || "").trim();
 
-    if (!Array.isArray(cart) || cart.length === 0) {
+    const session = await getSessionFromRequest(req);
+    const clientIp = extractClientIp(req);
+    const {
+      customerId,
+      customerName,
+      customerPhone,
+      cart,
+      items,
+      location,
+      appliedCoupon,
+      reservationId,
+      idempotencyKey: bodyIdemKey,
+      orderId: bodyOrderId,
+      storeId,
+    } = body || {};
+
+    const idempotencyKey = String(
+      bodyIdemKey || req.headers.get("x-idempotency-key") || ""
+    ).trim();
+    const requestedItems = Array.isArray(items) && items.length > 0 ? items : cart;
+
+    if (!Array.isArray(requestedItems) || requestedItems.length === 0) {
       return NextResponse.json({ error: "Cart is empty" }, { status: 400 });
     }
 
-    const safePhone = String(customerPhone || "9000000000").trim() || "9000000000";
+    const safePhone = String(customerPhone || session?.phone || "9000000000").trim() || "9000000000";
+    const resolvedUserId = String(
+      session?.userId || customerId || `cust_${safePhone}`
+    ).trim();
 
-    // Idempotency replay check by X-Idempotency-Key
-    if (adminDb && idempotencyKey) {
-      try {
-        const dupSnap = await adminDb
-          .collection("orders")
-          .where("idempotencyKey", "==", idempotencyKey)
-          .limit(1)
-          .get();
-        if (!dupSnap.empty) {
-          const existing = dupSnap.docs[0].data();
-          return NextResponse.json({
-            success: true,
-            deduped: true,
-            orderId: existing.orderId || dupSnap.docs[0].id,
-            order: existing,
-          });
-        }
-      } catch (err) {
-        console.warn("API idempotency lookup note:", err?.message);
-      }
+    const rl = await checkOrderRateLimit({ userId: resolvedUserId, clientIp });
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { error: rl.message, retryAfterSec: rl.retryAfterSec },
+        { status: 429 }
+      );
     }
 
-    // STRICT CONCURRENT ORDER LOCK: If an order is already actively in transit, prevent ordering another item
-    if (adminDb) {
-      try {
-        const ongoingSnap = await adminDb
-          .collection("orders")
-          .where("customerPhone", "==", safePhone)
-          .where("status", "in", ["pending", "placed", "ASSIGNED", "picking", "picked", "staged", "dispatched", "en_route"])
-          .limit(1)
-          .get();
-
-        if (!ongoingSnap.empty) {
-          const ongoing = ongoingSnap.docs[0].data();
-          return NextResponse.json(
-            {
-              error: `Order #${ongoing.orderId || ongoing.id} is actively being tracked. You cannot place a new order until delivery is completed.`,
-              activeOrderId: ongoing.orderId || ongoing.id,
-            },
-            { status: 409 }
-          );
-        }
-      } catch (err) {
-        console.warn("API active order check note:", err?.message);
-      }
-    }
-
-    const items = cart
-      .filter((entry) => entry && typeof entry === "object" && entry.sku)
-      .map((entry) => {
-        const sku = String(entry.sku);
-        const rawQty = Number(entry.qty);
-        const qty = Number.isFinite(rawQty) && rawQty > 0 ? Math.floor(rawQty) : 1;
-        const catItem = CATALOG.find((c) => c.sku === sku) || {};
-        return {
-          sku,
-          name: catItem.name || sku,
-          qty,
-          price: Number.isFinite(Number(catItem.price)) ? Number(catItem.price) : 0,
-          mrp: Number.isFinite(Number(catItem.mrp)) ? Number(catItem.mrp) : 0,
-          weight: catItem.weight || "",
-          zone: catItem.zone || "CR",
-          aisle: catItem.aisle || "Aisle: A01-01-A-1000",
-          barcode: catItem.barcode || sku,
-          image: catItem.image || "",
-          scanned: false,
-        };
-      });
-
-    if (items.length === 0) {
-      return NextResponse.json({ error: "No valid cart items" }, { status: 400 });
-    }
-
-    const hasFrames = items.some((i) => String(i.sku || "").startsWith("FRAME-") || String(i.name || "").toLowerCase().includes("frame"));
-    const handlingFee = hasFrames ? 10 : 0;
-    const deliveryFee = 0;
-    const itemTotal = items.reduce((s, i) => s + i.price * i.qty, 0);
-    const totalAmount = itemTotal + handlingFee + deliveryFee;
-    const orderId = `ORD-${Date.now().toString().slice(-6)}-${Math.random().toString(36).slice(2, 5).toUpperCase()}`;
-
-    const orderData = {
-      orderId,
-      idempotencyKey: idempotencyKey || "",
-      customerId: customerId || `cust_${safePhone}`,
-      customerName: customerName || "Customer",
+    const incomingOrder = {
+      id: bodyOrderId || "",
+      orderId: bodyOrderId || "",
+      idempotencyKey,
+      customerId: resolvedUserId,
+      customerName: customerName || session?.name || "Customer",
       customerPhone: safePhone,
-      items,
-      itemTotal,
-      handlingFee,
-      deliveryFee,
-      totalAmount,
-      paymentMethod: "Blinkit Wallet",
-      stage: "Picking", // Assigned to OD Picker (Thrupthi K S)
-      status: "ASSIGNED",
+      customerAddress:
+        location?.address ||
+        (typeof location === "string" ? location : "KFGSC , Tiptur 572201"),
+      location:
+        typeof location === "object" && location
+          ? location
+          : { address: "KFGSC , Tiptur 572201" },
+      items: requestedItems,
+      appliedCoupon: appliedCoupon || null,
+      storeId: storeId || "TIPTUR-HUB-KA44",
+      paymentMethod: body?.paymentMethod || "Blinkit Wallet",
+      stage: "Awaiting OD Picker",
+      status: "placed",
       assignedStaffId: "thrupthi",
       assignedStaffName: "Thrupthi K S (OD Picker)",
       deliveryCaptainId: "sinchana",
       deliveryCaptainName: "Sinchana B R (OD Delivery)",
       deliveryCaptainPhone: "8088553237",
-      estimatedDeliveryMins: 14,
-      location: location || { address: "Muniswamappa Layout, Bengaluru" },
+      estimatedDeliveryMins: 10,
       createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
     };
 
-    if (adminDb) {
-      await adminDb.collection("orders").doc(orderId).set(orderData);
+    const mutRes = await mutateHubStateAtomically((next) =>
+      executeAtomicPlaceOrderInState(next, {
+        incomingOrder,
+        idempotencyKey,
+        reservationId: String(reservationId || "").trim(),
+        actorId: resolvedUserId,
+        actorRole: session?.roleCode || "CUSTOMER",
+      })
+    );
+
+    if (!mutRes.ok) {
+      return NextResponse.json(mutRes.body, { status: mutRes.status || 409 });
     }
 
+    const order = mutRes.result.order;
     return NextResponse.json({
       success: true,
-      orderId,
-      order: orderData,
+      deduped: Boolean(mutRes.result.deduped),
+      orderId: order.orderId,
+      order,
+      state: buildScopedStateSnapshot(mutRes.state, {
+        scope: "customer",
+        userId: resolvedUserId,
+      }),
     });
   } catch (e) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return NextResponse.json({ error: e?.message || "Order placement error" }, { status: 500 });
   }
 }
