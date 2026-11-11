@@ -373,14 +373,22 @@ export default function OdPickerApp() {
   useEffect(() => {
     if (!isOnline) {
       stopOrderAlarm();
-      return;
     }
 
     const unsub = subscribeToLiveOrders((liveOrders) => {
-      if (!isOnlineRef.current) return;
       const list = safeArr(liveOrders);
-      const pendingDocs = list.filter((d) => d && (d.status === "pending" || d.status === "ASSIGNED"));
+      const isPendingStatus = (s) => {
+        const lower = String(s || "").toLowerCase();
+        return lower === "pending" || lower === "placed" || lower === "assigned";
+      };
+      const pendingDocs = list.filter((d) => d && isPendingStatus(d.status));
       setUnassignedOrders(pendingDocs);
+
+      if (isOnlineRef.current && pendingDocs.length > 0 && !activeOrderRef.current) {
+        playOrderAlarm();
+      } else {
+        stopOrderAlarm();
+      }
 
       if (list.length === 0) {
         setUnassignedOrders([]);
@@ -392,7 +400,12 @@ export default function OdPickerApp() {
       }
 
       if (!activeOrderRef.current) {
-        const resume = list.find((d) => d && d.status === "picking" && d.pickerId === "thrupthi");
+        const resume = list.find(
+          (d) =>
+            d &&
+            String(d.status || "").toLowerCase() === "picking" &&
+            (!d.pickerId || d.pickerId === "thrupthi")
+        );
         if (resume) {
           activeOrderRef.current = resume;
           handleAcceptOrder(resume);
@@ -453,6 +466,7 @@ export default function OdPickerApp() {
     if (!ordId || activeStep === "accept" || activeStep === "complete") return;
     safeStorage.setJson("auditx_picker_active_progress", {
       orderId: ordId,
+      activeStep,
       pickedItemsMap,
       barcodeScannedMap,
       aisleScannedMap,
@@ -554,7 +568,7 @@ export default function OdPickerApp() {
       setAisleScannedMap(isResumingSaved ? savedProg.aisleScannedMap || {} : {});
       setSelectedItemIdx(isResumingSaved ? safeNum(savedProg.selectedItemIdx, 0) : 0);
       setCaptainScannedRack(false);
-      setActiveStep("picking");
+      setActiveStep(isResumingSaved && savedProg.activeStep ? savedProg.activeStep : "picking");
       setPickerTab("in_progress");
       try {
         navigator.vibrate?.(12);

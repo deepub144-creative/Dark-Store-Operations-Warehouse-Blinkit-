@@ -296,12 +296,16 @@ export default function DeliveryCaptainApp() {
   useEffect(() => {
     const unsub = subscribeToLiveOrders((liveOrders) => {
       const ordersList = safeArr(liveOrders);
-      const inPrep = ordersList.filter(
-        (d) => d && (d.status === "pending" || d.status === "picking" || d.status === "ASSIGNED")
-      );
+      const isPrepStatus = (s) => {
+        const lower = String(s || "").toLowerCase();
+        return lower === "pending" || lower === "placed" || lower === "picking" || lower === "assigned";
+      };
+      const inPrep = ordersList.filter((d) => d && isPrepStatus(d.status));
       setIncomingAssignedOrders(inPrep);
 
-      const readyDocs = ordersList.filter((d) => d && (d.status === "staged" || d.status === "Staged"));
+      const readyDocs = ordersList.filter(
+        (d) => d && (String(d.status || "").toLowerCase() === "staged" || String(d.stage || "").toLowerCase().includes("staged"))
+      );
       setStagedOrders(readyDocs);
 
       if (ordersList.length === 0) {
@@ -310,8 +314,12 @@ export default function DeliveryCaptainApp() {
         setActiveStep("awaiting_orders");
         stopOrderAlarm();
       } else if (isCheckedIn && !activeOrderRef.current) {
+        const isTripStatus = (s) => {
+          const lower = String(s || "").toLowerCase();
+          return lower === "dispatched" || lower === "en_route" || lower === "out_for_delivery";
+        };
         const resumeTrip = ordersList.find(
-          (d) => d && (d.status === "dispatched" || d.status === "en_route") && (!d.captainId || d.captainId === "sinchana")
+          (d) => d && isTripStatus(d.status) && (!d.captainId || d.captainId === "sinchana")
         );
         if (resumeTrip) {
           const dispatchedMs = safeDateMs(resumeTrip.dispatchedAt || resumeTrip.stagedAt, Date.now());

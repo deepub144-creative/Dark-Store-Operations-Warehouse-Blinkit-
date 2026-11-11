@@ -1152,7 +1152,7 @@ export default function OrderingAppPage() {
         let active = null;
         if (last && typeof last === "object") {
           const live = liveOrders.find((o) => o && (o.id || o.orderId) === (last.id || last.orderId));
-          active = live || null;
+          active = live || (!["cancelled", "delivered"].includes(String(last.status || "").toLowerCase()) ? last : null);
         }
         const dismissedOrderId = String(safeStorage.get("auditx_dismissed_track_order", "") || "");
         const activeId = String(active?.id || active?.orderId || active?.orderNumber || "");

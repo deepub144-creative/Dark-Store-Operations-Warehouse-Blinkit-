@@ -1234,10 +1234,19 @@ export default function WarehouseDashboardPage() {
   const todayEstCogs = Math.max(0, hubMetrics.todayRevenue - todayEstProfit);
 
   // Real-time Queue Grouping
-  const pickingOrders = orders.filter((o) => o.status === "pending" || o.status === "picking");
-  const stagedOrders = orders.filter((o) => o.status === "staged");
-  const inTransitOrders = orders.filter((o) => o.status === "dispatched" || o.stage === "Out for Delivery");
-  const deliveredOrders = orders.filter((o) => o.status === "delivered");
+  const pickingOrders = orders.filter((o) => {
+    const s = String(o.status || "").toLowerCase();
+    return s === "pending" || s === "placed" || s === "picking" || s === "assigned";
+  });
+  const stagedOrders = orders.filter((o) => {
+    const s = String(o.status || "").toLowerCase();
+    return s === "staged" || String(o.stage || "").toLowerCase().includes("staged");
+  });
+  const inTransitOrders = orders.filter((o) => {
+    const s = String(o.status || "").toLowerCase();
+    return s === "dispatched" || s === "en_route" || o.stage === "Out for Delivery";
+  });
+  const deliveredOrders = orders.filter((o) => String(o.status || "").toLowerCase() === "delivered");
 
   // Filtered Queue for display
   const queueOrders = queueFilter === "all"
@@ -3195,10 +3204,10 @@ export default function WarehouseDashboardPage() {
                   </div>
                 ) : (
                   queueOrders.map((ord) => {
-                    const isPicking = ord.status === "pending" || ord.status === "picking";
-                    const isStaged = ord.status === "staged";
-                    const isDispatched = ord.status === "dispatched" || ord.stage === "Out for Delivery";
-                    const isDelivered = ord.status === "delivered";
+                    const isPicking = ["pending", "placed", "picking", "assigned"].includes(String(ord.status || "").toLowerCase());
+                    const isStaged = String(ord.status || "").toLowerCase() === "staged" || String(ord.stage || "").toLowerCase().includes("staged");
+                    const isDispatched = ["dispatched", "en_route"].includes(String(ord.status || "").toLowerCase()) || ord.stage === "Out for Delivery";
+                    const isDelivered = String(ord.status || "").toLowerCase() === "delivered";
 
                     return (
                       <div key={ord.id} style={S.queueOrderCard}>

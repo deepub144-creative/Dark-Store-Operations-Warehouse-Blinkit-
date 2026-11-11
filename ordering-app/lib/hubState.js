@@ -706,6 +706,66 @@ export function mergeHubStates(
     merged.storeStatusUpdatedAt = curStoreTs;
   }
 
+  // ── Orders & Complaints Reconciliation (preserve active records across reloads & cold boots) ──
+  const orderMap = new Map();
+  for (const o of cur.orders || []) {
+    if (o && typeof o === "object") {
+      const id = o.id || o.orderId || o.orderNumber;
+      if (id) orderMap.set(String(id), o);
+    }
+  }
+  for (const o of inc.orders || []) {
+    if (o && typeof o === "object") {
+      const id = o.id || o.orderId || o.orderNumber;
+      if (id) {
+        const sid = String(id);
+        const existing = orderMap.get(sid);
+        if (!existing) {
+          orderMap.set(sid, o);
+        } else {
+          const oTs = Date.parse(o.updatedAt || o.createdAt || "") || 0;
+          const eTs = Date.parse(existing.updatedAt || existing.createdAt || "") || 0;
+          orderMap.set(sid, oTs >= eTs ? { ...existing, ...o } : { ...o, ...existing });
+        }
+      }
+    }
+  }
+  let mergedOrders = Array.from(orderMap.values());
+  try {
+    if (typeof window !== "undefined" && window.localStorage) {
+      const clearedAtStr = window.localStorage.getItem("auditx_queue_cleared_at");
+      if (clearedAtStr) {
+        const clearedAtMs = Date.parse(clearedAtStr) || 0;
+        if (clearedAtMs > 0) {
+          mergedOrders = mergedOrders.filter((ord) => {
+            const ordMs = Date.parse(ord.createdAt || ord.updatedAt || "") || 0;
+            return ordMs > clearedAtMs;
+          });
+        }
+      }
+    }
+  } catch {}
+  merged.orders = mergedOrders.slice(0, 300);
+
+  const complaintMap = new Map();
+  for (const c of cur.complaints || []) {
+    if (c && typeof c === "object" && c.id) complaintMap.set(String(c.id), c);
+  }
+  for (const c of inc.complaints || []) {
+    if (c && typeof c === "object" && c.id) {
+      const sid = String(c.id);
+      const existing = complaintMap.get(sid);
+      if (!existing) {
+        complaintMap.set(sid, c);
+      } else {
+        const cTs = Date.parse(c.updatedAt || c.createdAt || "") || 0;
+        const eTs = Date.parse(existing.updatedAt || existing.createdAt || "") || 0;
+        complaintMap.set(sid, cTs >= eTs ? { ...existing, ...c } : { ...c, ...existing });
+      }
+    }
+  }
+  merged.complaints = Array.from(complaintMap.values()).slice(0, 200);
+
   // 2. Staff Duty status slices (thrupthi & sinchana independently monotonic)
   const nextStaffStatus = { ...(merged.staffStatus || {}) };
   for (const id of ["thrupthi", "sinchana"]) {
