@@ -4919,14 +4919,8 @@ export default function OrderingAppPage() {
                     fontWeight: 800,
                   }}
                 >
-                  {activeDeliveryOrder.status === "delivered" ? "Doorstep Delivery Completed" : "🛵 Rider at Doorstep • Submit to Complete Delivery"}
-                </span>
-                <h3 style={{ margin: "6px 0 2px", fontSize: 17, fontWeight: 900, color: "#0f172a" }}>
-                  Rate Delivery &amp; Ordered Items
-                </h3>
-                <p style={{ margin: 0, fontSize: 12, color: "#64748b" }}>
-                  Order #{activeDeliveryOrder.orderNumber || activeDeliveryOrder.id} delivered
-                </p>
+                  ✕
+                </button>
               </div>
 
             <form onSubmit={handleSubmitOrderingRating}>
@@ -4961,140 +4955,55 @@ export default function OrderingAppPage() {
                     <div style={{ fontSize: 13, fontWeight: 800, color: "#0f172a" }}>Delivery Partner</div>
                     <div style={{ fontSize: 11, color: "#64748b" }}>AuditX Express</div>
                   </div>
-                  <div style={{ display: "flex", gap: 3 }}>
-                    {[1, 2, 3, 4, 5].map((st) => (
-                      <button
-                        key={st}
-                        type="button"
-                        onClick={() => setRiderStars(st)}
-                        style={{
-                          background: "none",
-                          border: "none",
-                          fontSize: 22,
-                          cursor: "pointer",
-                          padding: 1,
-                          color: st <= riderStars ? "#f59e0b" : "#cbd5e1",
-                        }}
-                      >
-                        ★
-                      </button>
-                    ))}
-                  </div>
                 </div>
-
-                {/* Item Ratings */}
-                <div
-                  style={{
-                    background: "#f8fafc",
-                    border: "1px solid #e2e8f0",
-                    borderRadius: 12,
-                    padding: 12,
-                    marginBottom: 12,
-                    maxHeight: 160,
-                    overflowY: "auto",
-                  }}
-                >
-                  <div style={{ fontSize: 12, fontWeight: 800, color: "#334155", marginBottom: 6 }}>
-                    📦 Rate Ordered Items:
-                  </div>
-                  {(activeDeliveryOrder.items || []).map((it, idx) => {
-                    const key = it.skuId || it.sku || it.name || idx;
-                    const val = itemStarsMap[key] ?? 5;
-                    return (
-                      <div
-                        key={key}
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "space-between",
-                          padding: "5px 0",
-                          borderBottom: idx < (activeDeliveryOrder.items || []).length - 1 ? "1px solid #e2e8f0" : "none",
-                        }}
-                      >
-                        <span style={{ fontSize: 12, fontWeight: 700, color: "#0f172a" }}>
-                          {it.name} (x{it.qty || 1})
-                        </span>
-                        <div style={{ display: "flex", gap: 2 }}>
-                          {[1, 2, 3, 4, 5].map((st) => (
-                            <button
-                              key={st}
-                              type="button"
-                              onClick={() => setItemStarsMap((prev) => ({ ...prev, [key]: st }))}
-                              style={{
-                                background: "none",
-                                border: "none",
-                                fontSize: 18,
-                                cursor: "pointer",
-                                padding: 1,
-                                color: st <= val ? "#f59e0b" : "#cbd5e1",
-                              }}
-                            >
-                              ★
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                <input
-                  type="text"
-                  placeholder="Write a quick note for Rider Sinchana B R or item quality..."
-                  value={rateFeedbackText}
-                  onChange={(e) => setRateFeedbackText(e.target.value)}
-                  style={{
-                    width: "100%",
-                    padding: "10px 12px",
-                    borderRadius: 10,
-                    border: "1px solid #cbd5e1",
-                    fontSize: 12.5,
-                    marginBottom: 12,
-                    boxSizing: "border-box",
-                    outline: "none",
-                  }}
-                />
-
-                <button
-                  type="submit"
-                  style={{
-                    width: "100%",
-                    background: "linear-gradient(135deg, #0c831f 0%, #15803d 100%)",
-                    color: "#ffffff",
-                    border: "none",
-                    borderRadius: 12,
-                    padding: "12px 16px",
-                    fontSize: 13.5,
-                    fontWeight: 900,
-                    cursor: "pointer",
-                    boxShadow: "0 4px 14px rgba(12, 131, 31, 0.3)",
-                  }}
-                >
-                  ⭐ Submit Rating &amp; Complete Delivery
-                </button>
-
-                {(activeDeliveryOrder.status === "delivered" || orderingStage === "delivered") && (
-                  <div style={{ marginTop: 10 }}>
+                <div style={{ display: "flex", gap: 3 }}>
+                  {[1, 2, 3, 4, 5].map((st) => (
                     <button
+                      key={st}
                       type="button"
-                      onClick={() => {
-                        setReceiptOrder(activeDeliveryOrder);
-                        setShowReceiptModal(true);
-                      }}
+                      onClick={() => setRiderStars(st)}
                       style={{
-                        width: "100%",
-                        padding: "10px 14px",
-                        borderRadius: 10,
-                        border: "1.5px solid #0c831f",
-                        background: "#f0fdf4",
-                        color: "#0c831f",
-                        fontWeight: 800,
-                        fontSize: 12.5,
+                        background: "none",
+                        border: "none",
+                        fontSize: 22,
                         cursor: "pointer",
+                        padding: 1,
+                        color: st <= riderStars ? "#f59e0b" : "#cbd5e1",
+                      }}
+                    >
+                      ★
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Item Ratings */}
+              <div
+                style={{
+                  background: "#f8fafc",
+                  border: "1px solid #e2e8f0",
+                  borderRadius: 12,
+                  padding: 12,
+                  marginBottom: 12,
+                  maxHeight: 160,
+                  overflowY: "auto",
+                }}
+              >
+                <div style={{ fontSize: 12, fontWeight: 800, color: "#334155", marginBottom: 6 }}>
+                  📦 Rate Ordered Items:
+                </div>
+                {(activeDeliveryOrder.items || []).map((it, idx) => {
+                  const key = it.skuId || it.sku || it.name || idx;
+                  const val = itemStarsMap[key] ?? 5;
+                  return (
+                    <div
+                      key={key}
+                      style={{
                         display: "flex",
                         alignItems: "center",
-                        justifyContent: "center",
-                        gap: 6,
+                        justifyContent: "space-between",
+                        padding: "5px 0",
+                        borderBottom: idx < (activeDeliveryOrder.items || []).length - 1 ? "1px solid #e2e8f0" : "none",
                       }}
                     >
                       <span style={{ fontSize: 12, fontWeight: 700, color: "#0f172a" }}>
