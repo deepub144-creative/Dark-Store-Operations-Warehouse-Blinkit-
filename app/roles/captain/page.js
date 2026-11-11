@@ -3,6 +3,9 @@
 import { useEffect, useState, useRef } from "react";
 import { doc, updateDoc } from "firebase/firestore";
 import { db } from "@/lib/firebaseClient";
+import ErrorBoundary from "@/components/ErrorBoundary";
+import { withIdempotentLock } from "@/lib/apiClient";
+import { safeArr, safeDateMs, safeNum, safeStorage } from "@/lib/safeData";
 import { playOrderAlarm, stopOrderAlarm, playScanSuccess, playSuccessChime } from "@/lib/soundSystem";
 import SharedScanner from "@/components/SharedScanner";
 import SlideButton from "@/components/SlideButton";
@@ -68,13 +71,13 @@ export default function DeliveryCaptainApp() {
       try {
         if (typeof window === "undefined") return;
         const todayKey = getTodayISTDateKey();
-        const isAuth = localStorage.getItem("auditx_rider_authenticated") === "true";
-        const authDate = localStorage.getItem("auditx_rider_auth_date") || "";
+        const isAuth = safeStorage.get("auditx_rider_authenticated") === "true";
+        const authDate = safeStorage.get("auditx_rider_auth_date", "") || "";
         if (isAuth && authDate === todayKey) {
           setIsRiderLoggedIn(true);
-          if (localStorage.getItem("auditx_device_sinchana") === "LOGGED_IN") {
+          if (safeStorage.get("auditx_device_sinchana") === "LOGGED_IN") {
             setIsCheckedIn(true);
-            if (!Number(localStorage.getItem("auditx_device_sinchana_updated_at") || 0)) {
+            if (!Number(safeStorage.get("auditx_device_sinchana_updated_at", "0") || 0)) {
               recordLocalStaffDuty({
                 staffId: "sinchana",
                 staffName: "Sinchana B R",
@@ -86,9 +89,9 @@ export default function DeliveryCaptainApp() {
           }
         } else {
           if (isAuth && authDate !== todayKey) {
-            localStorage.removeItem("auditx_rider_authenticated");
-            localStorage.removeItem("auditx_rider_auth_date");
-            localStorage.setItem("auditx_device_sinchana", "LOGGED_OUT");
+            safeStorage.remove("auditx_rider_authenticated");
+            safeStorage.remove("auditx_rider_auth_date");
+            safeStorage.set("auditx_device_sinchana", "LOGGED_OUT");
           }
           setIsRiderLoggedIn(false);
           setIsCheckedIn(false);
@@ -105,9 +108,9 @@ export default function DeliveryCaptainApp() {
       // never let a stale/cold cloud poll turn an active ON DUTY toggle back OFF.
       try {
         const isTodayAuth =
-          localStorage.getItem("auditx_rider_authenticated") === "true" &&
-          localStorage.getItem("auditx_rider_auth_date") === getTodayISTDateKey();
-        const localDuty = localStorage.getItem("auditx_device_sinchana");
+          safeStorage.get("auditx_rider_authenticated") === "true" &&
+          safeStorage.get("auditx_rider_auth_date") === getTodayISTDateKey();
+        const localDuty = safeStorage.get("auditx_device_sinchana");
         const cloudDuty = cloudState.staffStatus?.sinchana?.deviceStatus;
 
         if (isTodayAuth && localDuty === "LOGGED_IN" && cloudDuty !== "LOGGED_IN") {
@@ -231,47 +234,77 @@ export default function DeliveryCaptainApp() {
   const [gigFormSubmitted, setGigFormSubmitted] = useState(false);
   const [showDeliveredSheet, setShowDeliveredSheet] = useState(false);
   const playedDeliveredIds = useRef(new Set());
+  const creditedOrderIdsRef = useRef(new Set());
+  const activeOrderRef = useRef(activeOrder);
+  activeOrderRef.current = activeOrder;
+  const remSecRef = useRef(CAPTAIN_SLA_SECONDS);
   const timerRef = useRef(null);
   const transitRef = useRef(null);
+  const toastTimerRef = useRef(null);
 
-  // Load Sinchana B R Wallet from localStorage on mount
+  function showRiderToast(msg, ms = 3200) {
+    setActionSuccess(msg);
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = setTimeout(() => {
+      setActionSuccess("");
+    }, ms);
+  }
+
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem("auditx_sinchana_wallet");
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (typeof parsed.balance === "number") setSinchanaWalletBalance(parsed.balance);
-        if (typeof parsed.totalGigsKm === "number") setSinchanaTotalGigsKm(parsed.totalGigsKm);
-      }
-    } catch (e) {
-      // ignore storage error
-    }
+    return () => {
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    };
   }, []);
 
-  function creditSinchanaWallet() {
+  // Load Sinchana B R Wallet & credited orders from safeStorage on mount
+  useEffect(() => {
+    const saved = safeStorage.getJson("auditx_sinchana_wallet", null);
+    if (saved && typeof saved === "object") {
+      if (Number.isFinite(Number(saved.balance))) setSinchanaWalletBalance(safeNum(saved.balance, 28));
+      if (Number.isFinite(Number(saved.totalGigsKm))) setSinchanaTotalGigsKm(safeNum(saved.totalGigsKm, 5.1));
+    }
+    const credited = safeArr(safeStorage.getJson("auditx_sinchana_credited_orders", []));
+    credited.forEach((id) => creditedOrderIdsRef.current.add(String(id)));
+  }, []);
+
+  function creditSinchanaWallet(orderId = "") {
+    const oid = String(orderId || "");
+    if (oid && creditedOrderIdsRef.current.has(oid)) {
+      return false;
+    }
+    if (oid) {
+      if (creditedOrderIdsRef.current.size > 100) {
+        const recent = Array.from(creditedOrderIdsRef.current).slice(-60);
+        creditedOrderIdsRef.current = new Set(recent);
+      }
+      creditedOrderIdsRef.current.add(oid);
+      safeStorage.setJson(
+        "auditx_sinchana_credited_orders",
+        Array.from(creditedOrderIdsRef.current)
+      );
+    }
     playSuccessChime();
-    const nextBalance = sinchanaWalletBalance + 28;
-    const nextKm = Number((sinchanaTotalGigsKm + 5.1).toFixed(1));
-    setSinchanaWalletBalance(nextBalance);
-    setSinchanaTotalGigsKm(nextKm);
-    setGigFormSubmitted(true);
-    try {
-      localStorage.setItem(
-        "auditx_sinchana_wallet",
-        JSON.stringify({
+    let computedBalance = 0;
+    setSinchanaWalletBalance((prevBal) => {
+      const nextBalance = Math.max(0, safeNum(prevBal, 0)) + 28;
+      computedBalance = nextBalance;
+      setSinchanaTotalGigsKm((prevKm) => {
+        const nextKm = Number((Math.max(0, safeNum(prevKm, 0)) + 5.1).toFixed(1));
+        safeStorage.setJson("auditx_sinchana_wallet", {
           riderName: "Sinchana B R",
           balance: nextBalance,
           totalGigsKm: nextKm,
           lastGigKm: 5.1,
           lastEarnedRupees: 28,
           updatedAt: new Date().toISOString(),
-        })
-      );
-    } catch (e) {
-      // ignore storage error
-    }
-    setActionSuccess(`💰 Credited ₹28 (Gigs: 5.1 kms) to Sinchana B R Wallet! Balance: ₹${nextBalance}`);
-    setTimeout(() => setActionSuccess(""), 3500);
+        });
+        return nextKm;
+      });
+      return nextBalance;
+    });
+    setGigFormSubmitted(true);
+    showRiderToast(`💰 Credited ₹28 (Gigs: 5.1 kms) to Sinchana B R Wallet! Balance: ₹${computedBalance}`, 3500);
+    return true;
   }
 
   // Clear entire queue across all apps
@@ -289,32 +322,33 @@ export default function DeliveryCaptainApp() {
   // Subscribe to Instant Zero-Lag Live Orders Store (< 10ms Cross-Tab Sync)
   useEffect(() => {
     const unsub = subscribeToLiveOrders((liveOrders) => {
-      // 1. Live Orders Assigned to Captain Sinchana B R (Currently being picked by Thrupthi K S)
-      const inPrep = liveOrders.filter(
-        (d) => d.status === "pending" || d.status === "picking" || d.status === "ASSIGNED"
+      const ordersList = safeArr(liveOrders);
+      const inPrep = ordersList.filter(
+        (d) => d && (d.status === "pending" || d.status === "picking" || d.status === "ASSIGNED")
       );
       setIncomingAssignedOrders(inPrep);
 
-      // 2. Orders Staged by Thrupthi K S into Racks (B7, H2, D5, H4, T1, T6, B5, S4, T4) ready for pickup
-      const readyDocs = liveOrders.filter((d) => d.status === "staged" || d.status === "Staged");
+      const readyDocs = ordersList.filter((d) => d && (d.status === "staged" || d.status === "Staged"));
       setStagedOrders(readyDocs);
 
-      if (liveOrders.length === 0) {
+      if (ordersList.length === 0) {
         setActiveOrder(null);
+        activeOrderRef.current = null;
         setActiveStep("awaiting_orders");
         stopOrderAlarm();
-      } else if (isCheckedIn && !activeOrder) {
-        // ⚡ Only resume trip if Captain Sinchana B R was actively en route (e.g. refreshed page mid-delivery)
-        const resumeTrip = liveOrders.find(
-          (d) => (d.status === "dispatched" || d.status === "en_route") && (!d.captainId || d.captainId === "sinchana")
+      } else if (isCheckedIn && !activeOrderRef.current) {
+        const resumeTrip = ordersList.find(
+          (d) => d && (d.status === "dispatched" || d.status === "en_route") && (!d.captainId || d.captainId === "sinchana")
         );
         if (resumeTrip) {
-          const dispatchedMs = resumeTrip.dispatchedAt ? new Date(resumeTrip.dispatchedAt).getTime() : Date.now();
+          const dispatchedMs = safeDateMs(resumeTrip.dispatchedAt || resumeTrip.stagedAt, Date.now());
           const wallElapsed = Math.max(0, Math.min(CAPTAIN_SLA_SECONDS, Math.floor((Date.now() - dispatchedMs) / 1000)));
           const rem = Math.max(0, CAPTAIN_SLA_SECONDS - wallElapsed);
           const pct = rem <= 0 ? 100 : rem <= 15 ? 96 : Math.min(95, Math.round((wallElapsed / CAPTAIN_SLA_SECONDS) * 100));
-          const wpIdx = rem <= 0 ? 4 : pct < 25 ? 0 : pct < 50 ? 1 : pct < 75 ? 2 : 3;
+          const wpIdx = rem <= 0 ? TIPTUR_WAYPOINTS.length - 1 : pct < 25 ? 0 : pct < 50 ? 1 : pct < 75 ? 2 : 3;
+          remSecRef.current = rem;
           setActiveOrder(resumeTrip);
+          activeOrderRef.current = resumeTrip;
           setElapsedSec(wallElapsed);
           setRemainingSec(rem);
           setArrivingMinutes(Math.max(1, Math.ceil(rem / 60)));
@@ -329,31 +363,37 @@ export default function DeliveryCaptainApp() {
     });
 
     const unsubBus = subscribeToEvents((data) => {
+      if (!data) return;
       if (data.type === "PICKER_DELAY_UPDATED") {
         const p = data.payload || data;
-        setIncomingAssignedOrders((prev) =>
-          prev.map((ord) => {
-            if (ord.id === p.orderId || ord.orderNumber === p.orderId || ord.orderNumber === p.orderNumber) {
-              return {
-                ...ord,
-                delaySec: p.delaySec,
-                delayMins: p.delayMins,
-                dynamicTotalSla: p.dynamicTotalSla,
-                pickTimeSec: p.pickTimeSec,
-              };
-            }
-            return ord;
-          })
-        );
+        if (p?.orderId || p?.orderNumber) {
+          setIncomingAssignedOrders((prev) =>
+            prev.map((ord) => {
+              if (
+                (p.orderId && (ord.id === p.orderId || ord.orderNumber === p.orderId)) ||
+                (p.orderNumber && ord.orderNumber === p.orderNumber)
+              ) {
+                return {
+                  ...ord,
+                  delaySec: safeNum(p.delaySec, 0),
+                  delayMins: safeNum(p.delayMins, 0),
+                  dynamicTotalSla: safeNum(p.dynamicTotalSla, 10),
+                  pickTimeSec: safeNum(p.pickTimeSec, 0),
+                };
+              }
+              return ord;
+            })
+          );
+        }
       }
       if (data.type === "QUEUE_CLEARED") {
         setIncomingAssignedOrders([]);
         setStagedOrders([]);
         setActiveOrder(null);
+        activeOrderRef.current = null;
         setActiveStep("awaiting_orders");
         stopOrderAlarm();
-        setActionSuccess("🧹 Today's Queue cleared by warehouse dispatch!");
-        setTimeout(() => setActionSuccess(""), 3000);
+        showRiderToast("🧹 Today's Queue cleared by warehouse dispatch!", 3000);
       }
     });
 
@@ -362,45 +402,41 @@ export default function DeliveryCaptainApp() {
       unsubBus();
       stopOrderAlarm();
     };
-  }, [activeOrder, isCheckedIn]);
+  }, [isCheckedIn]);
 
-  // Real-Time 8-Minute (480s) Countdown & Synchronized GPS Waypoint Progression (No instant 100% bypass)
+  // Real-Time 8-Minute (480s) Countdown & Synchronized GPS Waypoint Progression (pure state updates outside functional updaters)
+  const activeOrderId = activeOrder?.id || null;
   useEffect(() => {
-    if (activeOrder && activeStep === "en_route") {
+    if (activeOrderId && activeStep === "en_route") {
       timerRef.current = setInterval(() => {
-        setElapsedSec((prev) => prev + 1);
-        setRemainingSec((prev) => {
-          const next = prev > 0 ? prev - 1 : 0;
-          const elapsedNow = Math.max(0, CAPTAIN_SLA_SECONDS - next);
-          setArrivingMinutes(Math.max(1, Math.ceil(next / 60)));
+        const next = Math.max(0, remSecRef.current - 1);
+        remSecRef.current = next;
+        const elapsedNow = Math.max(0, CAPTAIN_SLA_SECONDS - next);
+        setElapsedSec(elapsedNow);
+        setRemainingSec(next);
+        setArrivingMinutes(Math.max(1, Math.ceil(next / 60)));
 
-          if (next === 15) {
-            setDoorstepSeconds(15);
-          }
+        if (next === 15) {
+          setDoorstepSeconds(15);
+        }
 
-          if (next > 15) {
-            // Normal running time smoothly advances 0% -> 95% across Waypoints 0..3 over real 465 seconds
-            const realPct = Math.min(95, Math.round((elapsedNow / CAPTAIN_SLA_SECONDS) * 100));
-            const wpIdx = realPct < 25 ? 0 : realPct < 50 ? 1 : realPct < 75 ? 2 : 3;
-            const kmLeft = Math.max(0.1, Number((1.5 * (1 - realPct / 100)).toFixed(1)));
-            setTransitProgress(realPct);
-            setCurrentWaypointIdx(wpIdx);
-            setDistanceLeftKm(kmLeft);
-          } else if (next > 0) {
-            // Final 15 seconds doorstep approach (96% -> 99%)
-            const approachPct = Math.min(99, 96 + Math.round(((15 - next) / 15) * 3));
-            setTransitProgress(approachPct);
-            setCurrentWaypointIdx(3);
-            setDistanceLeftKm(0.1);
-          } else {
-            // Exact timer completion (0s left -> 100% Customer Doorstep)
-            setTransitProgress(100);
-            setCurrentWaypointIdx(TIPTUR_WAYPOINTS.length - 1);
-            setDistanceLeftKm(0);
-          }
-
-          return next;
-        });
+        if (next > 15) {
+          const realPct = Math.min(95, Math.round((elapsedNow / CAPTAIN_SLA_SECONDS) * 100));
+          const wpIdx = realPct < 25 ? 0 : realPct < 50 ? 1 : realPct < 75 ? 2 : 3;
+          const kmLeft = Math.max(0.1, Number((1.5 * (1 - realPct / 100)).toFixed(1)));
+          setTransitProgress(realPct);
+          setCurrentWaypointIdx(wpIdx);
+          setDistanceLeftKm(kmLeft);
+        } else if (next > 0) {
+          const approachPct = Math.min(99, 96 + Math.round(((15 - next) / 15) * 3));
+          setTransitProgress(approachPct);
+          setCurrentWaypointIdx(3);
+          setDistanceLeftKm(0.1);
+        } else {
+          setTransitProgress(100);
+          setCurrentWaypointIdx(TIPTUR_WAYPOINTS.length - 1);
+          setDistanceLeftKm(0);
+        }
       }, 1000);
     } else {
       if (timerRef.current) clearInterval(timerRef.current);
@@ -411,7 +447,7 @@ export default function DeliveryCaptainApp() {
       if (timerRef.current) clearInterval(timerRef.current);
       if (transitRef.current) clearInterval(transitRef.current);
     };
-  }, [activeOrder, activeStep]);
+  }, [activeOrderId, activeStep]);
 
   // 15-second doorstep final countdown -> Rider arrived to location
   useEffect(() => {
@@ -448,182 +484,176 @@ export default function DeliveryCaptainApp() {
 
   async function handleConfirmPickupAndStartDelivery(orderParam) {
     const targetOrder = orderParam || activeOrder;
-    if (!targetOrder) return;
-    stopOrderAlarm();
-    playSuccessChime();
+    if (!targetOrder?.id) return;
+    await withIdempotentLock(`rider_pickup_${targetOrder.id}`, async () => {
+      stopOrderAlarm();
+      playSuccessChime();
 
-    const dispatchedOrder = {
-      ...targetOrder,
-      status: "dispatched",
-      stage: "Out for Delivery",
-      captainId: "sinchana",
-      captainName: "Sinchana B R",
-      captainPhone: "8088553237",
-      captainMessage: "Hi I am Sinchana B R, your order captain on the way coming soon!",
-      remainingMins: 8,
-      estimatedDeliveryMins: 8,
-      riderEtaMins: 8,
-      distanceKm: 1.5,
-      dispatchedAt: new Date().toISOString(),
-    };
+      const dispatchedOrder = {
+        ...targetOrder,
+        status: "dispatched",
+        stage: "Out for Delivery",
+        captainId: "sinchana",
+        captainName: "Sinchana B R",
+        captainPhone: "8088553237",
+        captainMessage: "Hi I am Sinchana B R, your order captain on the way coming soon!",
+        remainingMins: 8,
+        estimatedDeliveryMins: 8,
+        riderEtaMins: 8,
+        distanceKm: 1.5,
+        dispatchedAt: new Date().toISOString(),
+      };
 
-    updateLiveOrder(targetOrder.id, {
-      status: "dispatched",
-      stage: "Out for Delivery",
-      captainId: "sinchana",
-      captainName: "Sinchana B R",
-      captainPhone: "8088553237",
-      captainMessage: "Hi I am Sinchana B R, your order captain on the way coming soon!",
-      remainingMins: 8,
-      estimatedDeliveryMins: 8,
-      riderEtaMins: 8,
-      distanceKm: 1.5,
-      dispatchedAt: new Date().toISOString(),
-    });
-
-    broadcastEvent("FAST_DELIVERY_STARTED", {
-      orderId: targetOrder.id,
-      orderNumber: targetOrder.orderNumber || targetOrder.id,
-      captainName: "Sinchana B R",
-      remainingMins: 8,
-      riderEtaMins: 8,
-      distanceKm: 1.5,
-    });
-
-    if (db) {
+      remSecRef.current = CAPTAIN_SLA_SECONDS;
+      setActiveOrder(dispatchedOrder);
+      activeOrderRef.current = dispatchedOrder;
+      setRemainingSec(CAPTAIN_SLA_SECONDS);
+      setArrivingMinutes(8);
+      setDistanceLeftKm(1.5);
+      setDoorstepSeconds(null);
+      setRiderArrivedBar(false);
+      setElapsedSec(0);
+      setTransitProgress(0);
+      setCurrentWaypointIdx(0);
+      setActiveStep("en_route");
+      setRiderTab("active");
+      setDeliveryMilestone("picked_up");
+      setDeliveredCelebration(null);
       try {
-        await updateDoc(doc(db, "orders", targetOrder.id), {
-          status: "dispatched",
-          stage: "Out for Delivery",
-          captainId: "sinchana",
-          captainName: "Sinchana B R",
-          captainPhone: "8088553237",
-          captainMessage: "Hi I am Sinchana B R, your order captain on the way coming soon!",
-          remainingMins: 8,
-          estimatedDeliveryMins: 8,
-          riderEtaMins: 8,
-          distanceKm: 1.5,
-          dispatchedAt: new Date().toISOString(),
-        });
-      } catch (e) {
-        console.warn(e);
-      }
-    }
+        navigator.vibrate?.(15);
+      } catch {}
+      showRiderToast("🚀 Pickup confirmed from Rack! 8-Minute express delivery started.", 3500);
 
-    setActiveOrder(dispatchedOrder);
-    setRemainingSec(CAPTAIN_SLA_SECONDS);
-    setArrivingMinutes(8);
-    setDistanceLeftKm(1.5);
-    setDoorstepSeconds(null);
-    setRiderArrivedBar(false);
-    setElapsedSec(0);
-    setTransitProgress(0);
-    setCurrentWaypointIdx(0);
-    setActiveStep("en_route");
-    setRiderTab("active");
-    setDeliveryMilestone("picked_up");
-    setDeliveredCelebration(null);
-    try {
-      navigator.vibrate?.(15);
-    } catch {}
-    setActionSuccess("🚀 Pickup confirmed from Rack! 8-Minute express delivery started.");
-    setTimeout(() => setActionSuccess(""), 3500);
+      updateLiveOrder(targetOrder.id, {
+        status: "dispatched",
+        stage: "Out for Delivery",
+        captainId: "sinchana",
+        captainName: "Sinchana B R",
+        captainPhone: "8088553237",
+        captainMessage: "Hi I am Sinchana B R, your order captain on the way coming soon!",
+        remainingMins: 8,
+        estimatedDeliveryMins: 8,
+        riderEtaMins: 8,
+        distanceKm: 1.5,
+        dispatchedAt: dispatchedOrder.dispatchedAt,
+      });
+
+      broadcastEvent("FAST_DELIVERY_STARTED", {
+        orderId: targetOrder.id,
+        orderNumber: targetOrder.orderNumber || targetOrder.id,
+        captainName: "Sinchana B R",
+        remainingMins: 8,
+        riderEtaMins: 8,
+        distanceKm: 1.5,
+      });
+
+      if (db && targetOrder.id) {
+        try {
+          updateDoc(doc(db, "orders", String(targetOrder.id)), {
+            status: "dispatched",
+            stage: "Out for Delivery",
+            captainId: "sinchana",
+            captainName: "Sinchana B R",
+            captainPhone: "8088553237",
+            captainMessage: "Hi I am Sinchana B R, your order captain on the way coming soon!",
+            remainingMins: 8,
+            estimatedDeliveryMins: 8,
+            riderEtaMins: 8,
+            distanceKm: 1.5,
+            dispatchedAt: dispatchedOrder.dispatchedAt,
+          }).catch(() => {});
+        } catch {}
+      }
+    });
   }
 
   async function handleCustomerHandoverConfirmation() {
-    if (!activeOrder) return;
-    playSuccessChime();
+    const currentOrder = activeOrderRef.current || activeOrder;
+    if (!currentOrder?.id) return;
+    await withIdempotentLock(`rider_deliver_${currentOrder.id}`, async () => {
+      playSuccessChime();
 
-    const deliveredOrder = {
-      ...activeOrder,
-      status: "delivered",
-      stage: "Delivered",
-      deliveredAt: new Date().toISOString(),
-      deliveryDurationSec: elapsedSec,
-      totalSlaSec: (activeOrder.pickTimeSec || 110) + elapsedSec,
-      needsCustomerRating: true,
-    };
-
-    updateLiveOrder(activeOrder.id, {
-      status: "delivered",
-      stage: "Delivered",
-      deliveredAt: new Date().toISOString(),
-      deliveryDurationSec: elapsedSec,
-      totalSlaSec: (activeOrder.pickTimeSec || 110) + elapsedSec,
-      needsCustomerRating: true,
-    });
-
-    broadcastEvent("ORDER_DELIVERED", deliveredOrder);
-
-    try {
-      const lastRaw = localStorage.getItem("auditx_customer_last_order");
-      if (lastRaw) {
-        const parsed = JSON.parse(lastRaw);
-        if ((parsed.id || parsed.orderId) === (activeOrder.id || activeOrder.orderId)) {
-          localStorage.setItem(
-            "auditx_customer_last_order",
-            JSON.stringify({ ...parsed, ...deliveredOrder })
-          );
-        }
-      }
-    } catch (e) {
-      console.warn(e);
-    }
-
-    // 1. Immediately reset state & show delivered celebration summary
-    creditSinchanaWallet();
-    setShowDeliveredSheet(false);
-    setDeliveredCelebration({
-      orderNumber: activeOrder.orderNumber || activeOrder.id,
-      distanceKm: "5.1 kms",
-      earned: 28,
-      durationSec: elapsedSec,
-      completedAt: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-    });
-    setEarningsLog((prev) => [
-      {
-        orderNumber: activeOrder.orderNumber || activeOrder.id,
-        distanceKm: "5.1 kms",
-        earned: 28,
-        time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-      },
-      ...prev.slice(0, 14),
-    ]);
-    setActiveOrder(null);
-    setActiveStep("delivered");
-    setDeliveryMilestone("delivered");
-    setRiderTab("active");
-    setArrivingMinutes(8);
-    setDistanceLeftKm(1.5);
-    setDoorstepSeconds(null);
-    setRiderArrivedBar(false);
-    setGigFormSubmitted(false);
-
-    if (typeof window !== "undefined") {
-      window.scrollTo({ top: 0, behavior: "smooth" });
-    }
-    setActionSuccess(`🎉 Handover complete! Order delivered safely. Ready for next delivery • Searching live tasks...`);
-    setTimeout(() => setActionSuccess(""), 4000);
-
-    // 2. Fire-and-forget Firestore update without blocking local state reset
-    if (db) {
-      updateDoc(doc(db, "orders", activeOrder.id), {
+      const deliveredOrder = {
+        ...currentOrder,
         status: "delivered",
         stage: "Delivered",
         deliveredAt: new Date().toISOString(),
         deliveryDurationSec: elapsedSec,
-        totalSlaSec: (activeOrder.pickTimeSec || 110) + elapsedSec,
+        totalSlaSec: safeNum(currentOrder.pickTimeSec, 110) + elapsedSec,
         needsCustomerRating: true,
-      }).catch((e) => console.warn(e));
-    }
+      };
+
+      updateLiveOrder(currentOrder.id, {
+        status: "delivered",
+        stage: "Delivered",
+        deliveredAt: deliveredOrder.deliveredAt,
+        deliveryDurationSec: elapsedSec,
+        totalSlaSec: deliveredOrder.totalSlaSec,
+        needsCustomerRating: true,
+      });
+
+      broadcastEvent("ORDER_DELIVERED", deliveredOrder);
+
+      try {
+        const parsed = safeStorage.getJson("auditx_customer_last_order", null);
+        if (parsed && (parsed.id || parsed.orderId) === (currentOrder.id || currentOrder.orderId)) {
+          safeStorage.setJson("auditx_customer_last_order", { ...parsed, ...deliveredOrder });
+        }
+      } catch {}
+
+      creditSinchanaWallet(currentOrder.id);
+      setShowDeliveredSheet(false);
+      setDeliveredCelebration({
+        orderNumber: currentOrder.orderNumber || currentOrder.id,
+        distanceKm: "5.1 kms",
+        earned: 28,
+        durationSec: elapsedSec,
+        completedAt: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      });
+      setEarningsLog((prev) => [
+        {
+          orderNumber: currentOrder.orderNumber || currentOrder.id,
+          distanceKm: "5.1 kms",
+          earned: 28,
+          time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        },
+        ...prev.slice(0, 14),
+      ]);
+      remSecRef.current = CAPTAIN_SLA_SECONDS;
+      setActiveOrder(null);
+      activeOrderRef.current = null;
+      setActiveStep("delivered");
+      setDeliveryMilestone("delivered");
+      setRiderTab("active");
+      setArrivingMinutes(8);
+      setDistanceLeftKm(1.5);
+      setDoorstepSeconds(null);
+      setRiderArrivedBar(false);
+
+      if (typeof window !== "undefined") {
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }
+      showRiderToast("🎉 Handover complete! Order delivered safely. Ready for next delivery • Searching live tasks...", 4000);
+
+      if (db && currentOrder.id) {
+        try {
+          updateDoc(doc(db, "orders", String(currentOrder.id)), {
+            status: "delivered",
+            stage: "Delivered",
+            deliveredAt: deliveredOrder.deliveredAt,
+            deliveryDurationSec: elapsedSec,
+            totalSlaSec: deliveredOrder.totalSlaSec,
+            needsCustomerRating: true,
+          }).catch(() => {});
+        } catch {}
+      }
+    });
   }
 
   function handleResetForNextDelivery() {
-    if (!gigFormSubmitted) {
-      creditSinchanaWallet();
-    }
     setDeliveredCelebration(null);
     setActiveOrder(null);
+    activeOrderRef.current = null;
     setActiveStep("awaiting_orders");
     setDeliveryMilestone("reached_store");
     setRiderTab("tasks");
@@ -715,7 +745,7 @@ export default function DeliveryCaptainApp() {
               statusUpdatedAt,
             });
           }}
-          walletAmount={sinchanaWalletBalance || 28}
+          walletAmount={sinchanaWalletBalance ?? 0}
           userName="Sinchana B R"
           userInitial="S"
         />
@@ -975,6 +1005,7 @@ export default function DeliveryCaptainApp() {
               )}
 
               {/* STAGED ORDERS READY FOR PICKUP */}
+              <ErrorBoundary label="Staged Orders Queue" compact>
               {stagedOrders.length > 0 ? (
                 <div>
                   <div style={S.newOrderNotification}>
@@ -1075,6 +1106,7 @@ export default function DeliveryCaptainApp() {
                   </div>
                 </div>
               ) : null}
+              </ErrorBoundary>
             </div>
           )}
 
@@ -1093,6 +1125,7 @@ export default function DeliveryCaptainApp() {
           )}
 
           {riderTab === "active" && activeOrder && (
+            <ErrorBoundary label="Active Delivery View" compact>
             <div style={{ position: "relative", minHeight: 540 }}>
               {/* Full-bleed Map Area at Top */}
               <div className="ios-card" style={{ padding: 10, marginBottom: 12 }}>
@@ -1125,11 +1158,13 @@ export default function DeliveryCaptainApp() {
                   decoding="async"
                   style={{
                     width: "100%",
-                    height: sheetDetent === "large" ? 130 : 220,
+                    height: 200,
                     objectFit: "cover",
                     borderRadius: 14,
                     display: "block",
-                    transition: "height 280ms var(--ios-spring)",
+                    transform: sheetDetent === "large" ? "scaleY(0.65)" : "scaleY(1)",
+                    transformOrigin: "top center",
+                    transition: "transform 280ms var(--ios-spring)",
                   }}
                 />
               </div>
@@ -1274,7 +1309,7 @@ export default function DeliveryCaptainApp() {
                       />
                     </div>
                     <div className="ios-caption" style={{ color: "var(--ios-label-2)", marginTop: 6 }}>
-                      Waypoint: {TIPTUR_WAYPOINTS[currentWaypointIdx].label}
+                      Waypoint: {TIPTUR_WAYPOINTS[currentWaypointIdx]?.label || "En route to customer"}
                     </div>
                   </div>
                 )}
@@ -1332,6 +1367,7 @@ export default function DeliveryCaptainApp() {
                 )}
               </div>
             </div>
+            </ErrorBoundary>
           )}
 
           {/* DELIVERED CELEBRATION + EARNING SUMMARY */}

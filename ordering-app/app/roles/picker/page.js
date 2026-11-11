@@ -1,8 +1,11 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { memo, useEffect, useState, useRef } from "react";
 import { doc, updateDoc } from "firebase/firestore";
 import { db } from "@/lib/firebaseClient";
+import ErrorBoundary from "@/components/ErrorBoundary";
+import { withIdempotentLock } from "@/lib/apiClient";
+import { safeArr, safeNum, safeStorage } from "@/lib/safeData";
 import {
   playOrderAlarm,
   stopOrderAlarm,
@@ -126,10 +129,40 @@ export const WAREHOUSE_OPERATIONS = [
   },
 ];
 
+const PickerShiftTicker = memo(function PickerShiftTicker({ isOnline }) {
+  const [loginSeconds, setLoginSeconds] = useState(1);
+
+  useEffect(() => {
+    if (!isOnline) return;
+    const t = setInterval(() => {
+      setLoginSeconds((prev) => prev + 1);
+    }, 1000);
+    return () => clearInterval(t);
+  }, [isOnline]);
+
+  const formatLive = (sec) => {
+    const h = Math.floor(sec / 3600);
+    const m = Math.floor((sec % 3600) / 60);
+    const s = sec % 60;
+    return h > 0 ? `${h}hr ${m}min ${s}s` : `${m}m ${s}s`;
+  };
+  const formatCum = (sec) => {
+    const total = 3720 + sec;
+    const h = Math.floor(total / 3600);
+    const m = Math.floor((total % 3600) / 60);
+    return `${h}hr ${m}min`;
+  };
+
+  return (
+    <span className="ios-caption" style={{ color: "var(--ios-label)", fontWeight: 600 }}>
+      ⏱ {formatLive(loginSeconds)} • Shift {formatCum(loginSeconds)}
+    </span>
+  );
+});
+
 export default function OdPickerApp() {
   const [isPickerLoggedIn, setIsPickerLoggedIn] = useState(false);
   const [isOnline, setIsOnline] = useState(false);
-  const [loginSeconds, setLoginSeconds] = useState(1); // Starts at 0m 1s live tracking
   const [unassignedOrders, setUnassignedOrders] = useState([]);
   const [activeOrder, setActiveOrder] = useState(null);
   const activeOrderRef = useRef(null);
@@ -143,13 +176,13 @@ export default function OdPickerApp() {
       try {
         if (typeof window === "undefined") return;
         const todayKey = getTodayISTDateKey();
-        const isAuth = localStorage.getItem("auditx_picker_authenticated") === "true";
-        const authDate = localStorage.getItem("auditx_picker_auth_date") || "";
+        const isAuth = safeStorage.get("auditx_picker_authenticated") === "true";
+        const authDate = safeStorage.get("auditx_picker_auth_date", "") || "";
         if (isAuth && authDate === todayKey) {
           setIsPickerLoggedIn(true);
-          if (localStorage.getItem("auditx_device_thrupthi") === "LOGGED_IN") {
+          if (safeStorage.get("auditx_device_thrupthi") === "LOGGED_IN") {
             setIsOnline(true);
-            if (!Number(localStorage.getItem("auditx_device_thrupthi_updated_at") || 0)) {
+            if (!Number(safeStorage.get("auditx_device_thrupthi_updated_at", "0") || 0)) {
               recordLocalStaffDuty({
                 staffId: "thrupthi",
                 staffName: "Thrupthi K S",
@@ -161,9 +194,9 @@ export default function OdPickerApp() {
           }
         } else {
           if (isAuth && authDate !== todayKey) {
-            localStorage.removeItem("auditx_picker_authenticated");
-            localStorage.removeItem("auditx_picker_auth_date");
-            localStorage.setItem("auditx_device_thrupthi", "LOGGED_OUT");
+            safeStorage.remove("auditx_picker_authenticated");
+            safeStorage.remove("auditx_picker_auth_date");
+            safeStorage.set("auditx_device_thrupthi", "LOGGED_OUT");
           }
           setIsPickerLoggedIn(false);
           setIsOnline(false);
@@ -180,9 +213,9 @@ export default function OdPickerApp() {
       // never let a stale/cold cloud poll turn an active ON DUTY toggle back OFF.
       try {
         const isTodayAuth =
-          localStorage.getItem("auditx_picker_authenticated") === "true" &&
-          localStorage.getItem("auditx_picker_auth_date") === getTodayISTDateKey();
-        const localDuty = localStorage.getItem("auditx_device_thrupthi");
+          safeStorage.get("auditx_picker_authenticated") === "true" &&
+          safeStorage.get("auditx_picker_auth_date") === getTodayISTDateKey();
+        const localDuty = safeStorage.get("auditx_device_thrupthi");
         const cloudDuty = cloudState.staffStatus?.thrupthi?.deviceStatus;
 
         if (isTodayAuth && localDuty === "LOGGED_IN" && cloudDuty !== "LOGGED_IN") {
@@ -255,30 +288,6 @@ export default function OdPickerApp() {
     }
   }
 
-  // Live Login Hours / Active Shift Timer for OD Picker Thrupthi K S
-  useEffect(() => {
-    if (!isOnline) return;
-    const t = setInterval(() => {
-      setLoginSeconds((prev) => prev + 1);
-    }, 1000);
-    return () => clearInterval(t);
-  }, [isOnline]);
-
-  function formatLiveTrackingTime(sec) {
-    const h = Math.floor(sec / 3600);
-    const m = Math.floor((sec % 3600) / 60);
-    const s = sec % 60;
-    if (h > 0) return `${h}hr ${m}min ${s}s`;
-    return `${m}m ${s}s`;
-  }
-
-  function formatCumulativeShiftHours(sec) {
-    const total = 3720 + sec; // 1hr 2min shift base + live session seconds
-    const h = Math.floor(total / 3600);
-    const m = Math.floor((total % 3600) / 60);
-    return `${h}hr ${m}min`;
-  }
-  
   // Per-item verification state
   const [pickedItemsMap, setPickedItemsMap] = useState({});
   const [barcodeScannedMap, setBarcodeScannedMap] = useState({});
@@ -290,7 +299,7 @@ export default function OdPickerApp() {
     STAGING_RACKS.find((r) => r.id === "D5") || STAGING_RACKS[2] || STAGING_RACKS[0]
   );
   const [captainScannedRack, setCaptainScannedRack] = useState(false);
-  const [phoneCameraModal, setPhoneCameraModal] = useState(null); // { type: 'aisle' | 'barcode', expectedCode: string, itemIdx: number, itemName: string }
+  const [phoneCameraModal, setPhoneCameraModal] = useState(null);
 
   // 2-Minute Strict SLA Countdown & Stopwatch
   const PICKER_SLA_SECONDS = 120; // 2:00 min
@@ -298,12 +307,36 @@ export default function OdPickerApp() {
   const [elapsedSec, setElapsedSec] = useState(0);
   const [activeStep, setActiveStep] = useState("accept"); // accept | picking | staging | complete
   const [pickerTab, setPickerTab] = useState("new_orders"); // new_orders | in_progress | packed
-  const [packedHistory, setPackedHistory] = useState([]);
+  const [packedHistory, setPackedHistory] = useState(() =>
+    safeArr(safeStorage.getJson("auditx_picker_packed_history", []))
+  );
   const [actionSuccess, setActionSuccess] = useState("");
   const [manualCodeInput, setManualCodeInput] = useState("");
   const [scannerOpen, setScannerOpen] = useState(true);
   const [scannerMode, setScannerMode] = useState("both"); // barcode | aisle | both
   const timerRef = useRef(null);
+  const elapsedSecRef = useRef(0);
+  const toastTimerRef = useRef(null);
+  const isOnlineRef = useRef(isOnline);
+  isOnlineRef.current = isOnline;
+
+  function showPickerToast(msg, ms = 3200) {
+    setActionSuccess(msg);
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = setTimeout(() => {
+      setActionSuccess("");
+    }, ms);
+  }
+
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    safeStorage.setJson("auditx_picker_packed_history", safeArr(packedHistory).slice(0, 20));
+  }, [packedHistory]);
 
   // 6 Warehouse Operations Interactive States (Picker, Putaway, Inventory, Expiry, FNV, FRZ)
   const [selectedOperation, setSelectedOperation] = useState("picker");
@@ -339,9 +372,9 @@ export default function OdPickerApp() {
     }
 
     const unsub = subscribeToLiveOrders((liveOrders) => {
-      if (!isOnline) return;
-      const list = liveOrders || [];
-      const pendingDocs = list.filter((d) => d.status === "pending" || d.status === "ASSIGNED");
+      if (!isOnlineRef.current) return;
+      const list = safeArr(liveOrders);
+      const pendingDocs = list.filter((d) => d && (d.status === "pending" || d.status === "ASSIGNED"));
       setUnassignedOrders(pendingDocs);
 
       if (list.length === 0) {
@@ -353,9 +386,8 @@ export default function OdPickerApp() {
         return;
       }
 
-      // ⚡ Only resume if Thrupthi was actively in the middle of picking (e.g. page refresh during active pick)
       if (!activeOrderRef.current) {
-        const resume = list.find((d) => d.status === "picking" && d.pickerId === "thrupthi");
+        const resume = list.find((d) => d && d.status === "picking" && d.pickerId === "thrupthi");
         if (resume) {
           activeOrderRef.current = resume;
           handleAcceptOrder(resume);
@@ -367,33 +399,36 @@ export default function OdPickerApp() {
       unsub();
       stopOrderAlarm();
     };
-  }, [isOnline, activeOrder]);
+  }, [isOnline]);
 
   // Listen for Cross-Tab Captain Scan events
   useEffect(() => {
     const unsub = subscribeToEvents((event) => {
+      if (!event) return;
+      const curId = activeOrderRef.current?.id;
+      const matchesOrder = !event.orderId || (curId && event.orderId === curId);
       if (
         (event.type === "CAPTAIN_RACK_SCANNED" || event.type === "RACK_SCANNED_BY_CAPTAIN") &&
-        (!event.orderId || event.orderId === activeOrder?.id)
+        matchesOrder
       ) {
         setCaptainScannedRack(true);
         playScanSuccess();
-        setActionSuccess(`✅ Captain Sinchana B R scanned Rack ${assignedRack.id}! Slide to handover.`);
-        setTimeout(() => setActionSuccess(""), 4000);
+        showPickerToast(`✅ Captain Sinchana B R scanned Rack ${assignedRack.id}! Slide to handover.`, 4000);
       }
       if (event.type === "QUEUE_CLEARED") {
         setUnassignedOrders([]);
         setActiveOrder(null);
+        activeOrderRef.current = null;
         setActiveStep("accept");
-        setActionSuccess("🧹 Today's Queue cleared across all systems!");
-        setTimeout(() => setActionSuccess(""), 3000);
+        safeStorage.remove("auditx_picker_active_progress");
+        showPickerToast("🧹 Today's Queue cleared across all systems!", 3000);
       }
     });
 
     return () => {
       unsub();
     };
-  }, [activeOrder, assignedRack]);
+  }, [assignedRack.id]);
 
   // Clear entire queue across all apps
   function handleClearQueue() {
@@ -401,56 +436,77 @@ export default function OdPickerApp() {
     clearAllLiveOrders();
     setUnassignedOrders([]);
     setActiveOrder(null);
+    activeOrderRef.current = null;
     setActiveStep("accept");
-    setActionSuccess("🧹 Cleared Today's Queue across Warehouse, Picker, and Ordering Apps!");
-    setTimeout(() => setActionSuccess(""), 3500);
+    safeStorage.remove("auditx_picker_active_progress");
+    showPickerToast("🧹 Cleared Today's Queue across Warehouse, Picker, and Ordering Apps!", 3500);
   }
 
-  // 2-Minute Stopwatch & Dynamic SLA Countdown Timer (Customer Delivery SLA increases dynamically if picking is delayed)
+  // Persist active pick item progress across refreshes/reloads
   useEffect(() => {
-    if (activeOrder && activeStep === "picking") {
+    const ordId = activeOrder?.id;
+    if (!ordId || activeStep === "accept" || activeStep === "complete") return;
+    safeStorage.setJson("auditx_picker_active_progress", {
+      orderId: ordId,
+      pickedItemsMap,
+      barcodeScannedMap,
+      aisleScannedMap,
+      selectedItemIdx,
+      assignedRackId: assignedRack?.id || "D5",
+      elapsedSec: elapsedSecRef.current,
+    });
+  }, [activeOrder?.id, activeStep, pickedItemsMap, barcodeScannedMap, aisleScannedMap, selectedItemIdx, assignedRack?.id]);
+
+  // 2-Minute Stopwatch & Dynamic SLA Countdown Timer (side effects live cleanly outside state updaters)
+  const activeOrderId = activeOrder?.id || null;
+  useEffect(() => {
+    if (activeOrderId && activeStep === "picking") {
       timerRef.current = setInterval(() => {
-        setElapsedSec((prev) => {
-          const next = prev + 1;
-          if (next > PICKER_SLA_SECONDS) {
-            // OD Picker has delayed beyond 2:00 mins (120 seconds)
-            const delaySec = next - PICKER_SLA_SECONDS;
-            const delayMins = Math.ceil(delaySec / 60);
-            const dynamicTotalSla = 10 + delayMins;
+        const next = elapsedSecRef.current + 1;
+        elapsedSecRef.current = next;
+        setElapsedSec(next);
+        setRemainingSec(Math.max(0, PICKER_SLA_SECONDS - next));
 
-            // Broadcast live delay update (sync to cloud every 5s cleanly without flooding)
-            updateLiveOrder(
-              activeOrder.id,
-              {
-                pickTimeSec: next,
-                delaySec,
-                delayMins,
-                dynamicTotalSla,
-                estimatedDeliveryMins: dynamicTotalSla,
-              },
-              { skipCloud: next % 5 !== 1 }
-            );
+        if (next > PICKER_SLA_SECONDS && activeOrderRef.current?.id) {
+          const delaySec = next - PICKER_SLA_SECONDS;
+          const delayMins = Math.ceil(delaySec / 60);
+          const dynamicTotalSla = 10 + delayMins;
+          const ordId = activeOrderRef.current.id;
+          const ordNum = activeOrderRef.current.orderNumber || ordId;
 
-            broadcastEvent("PICKER_DELAY_UPDATED", {
-              orderId: activeOrder.id,
-              orderNumber: activeOrder.orderNumber || activeOrder.id,
+          updateLiveOrder(
+            ordId,
+            {
               pickTimeSec: next,
               delaySec,
               delayMins,
               dynamicTotalSla,
-            });
-          }
-          return next;
-        });
-        setRemainingSec((prev) => (prev <= 1 ? 0 : prev - 1));
+              estimatedDeliveryMins: dynamicTotalSla,
+            },
+            { skipCloud: next % 5 !== 1 }
+          );
+
+          broadcastEvent("PICKER_DELAY_UPDATED", {
+            orderId: ordId,
+            orderNumber: ordNum,
+            pickTimeSec: next,
+            delaySec,
+            delayMins,
+            dynamicTotalSla,
+          });
+        }
       }, 1000);
-    } else {
-      if (timerRef.current) clearInterval(timerRef.current);
+    } else if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
     }
     return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
     };
-  }, [activeOrder, activeStep]);
+  }, [activeOrderId, activeStep]);
 
   // Scan Aisle Rack QR Code when Captain Sinchana B R is away
   function handleScanAisleRack(targetCode) {
@@ -463,62 +519,68 @@ export default function OdPickerApp() {
       pickerName: "Thrupthi K S",
       note: "Sinchana B R away; Aisle Rack QR verified by Thrupthi K S",
     });
-    setActionSuccess(`✅ Aisle Rack ${code} QR Code Scanned & Verified by Thrupthi K S! Ready for Handover.`);
-    setTimeout(() => setActionSuccess(""), 3500);
+    showPickerToast(`✅ Aisle Rack ${code} QR Code Scanned & Verified by Thrupthi K S! Ready for Handover.`, 3500);
   }
 
   function handleAcceptOrder(order) {
-    stopOrderAlarm();
-    // Random assign from 9 fixed dark store racks: B5, B7, D5, H2, H4, S4, T1, T4, T6
-    const RACK_OPTIONS = ["B5", "B7", "D5", "H2", "H4", "S4", "T1", "T4", "T6"];
-    const targetRackId = order?.assignedRack && RACK_OPTIONS.includes(order.assignedRack)
-      ? order.assignedRack
-      : RACK_OPTIONS[Math.floor(Math.random() * RACK_OPTIONS.length)];
+    if (!order?.id) return;
+    withIdempotentLock(`picker_accept_${order.id}`, async () => {
+      stopOrderAlarm();
+      const RACK_OPTIONS = ["B5", "B7", "D5", "H2", "H4", "S4", "T1", "T4", "T6"];
+      const savedProg = safeStorage.getJson("auditx_picker_active_progress", null);
+      const isResumingSaved = savedProg && savedProg.orderId === order.id;
+      const targetRackId =
+        (isResumingSaved && savedProg.assignedRackId) ||
+        (order?.assignedRack && RACK_OPTIONS.includes(order.assignedRack)
+          ? order.assignedRack
+          : RACK_OPTIONS[Math.floor(Math.random() * RACK_OPTIONS.length)]);
 
-    const rack = STAGING_RACKS.find((r) => r.id === targetRackId) || STAGING_RACKS[0];
-    setAssignedRack(rack);
-    setActiveOrder(order);
-    setRemainingSec(PICKER_SLA_SECONDS);
-    setElapsedSec(0);
-    setPickedItemsMap({});
-    setBarcodeScannedMap({});
-    setAisleScannedMap({});
-    setSelectedItemIdx(0);
-    setCaptainScannedRack(false);
-    setActiveStep("picking");
-    setPickerTab("in_progress");
-    try {
-      navigator.vibrate?.(12);
-    } catch {}
+      const rack = STAGING_RACKS.find((r) => r.id === targetRackId) || STAGING_RACKS[0];
+      const resumedElapsed = isResumingSaved ? safeNum(savedProg.elapsedSec, 0) : 0;
+      elapsedSecRef.current = resumedElapsed;
 
-    updateLiveOrder(order.id, {
-      status: "picking",
-      stage: "Picking Items",
-      pickerId: "thrupthi",
-      pickerName: "Thrupthi K S",
-      assignedRack: rack.id,
-      rackQr: rack.qr,
-      acceptedAt: new Date().toISOString(),
-    });
-
-    if (db) {
+      setAssignedRack(rack);
+      setActiveOrder(order);
+      activeOrderRef.current = order;
+      setRemainingSec(Math.max(0, PICKER_SLA_SECONDS - resumedElapsed));
+      setElapsedSec(resumedElapsed);
+      setPickedItemsMap(isResumingSaved ? savedProg.pickedItemsMap || {} : {});
+      setBarcodeScannedMap(isResumingSaved ? savedProg.barcodeScannedMap || {} : {});
+      setAisleScannedMap(isResumingSaved ? savedProg.aisleScannedMap || {} : {});
+      setSelectedItemIdx(isResumingSaved ? safeNum(savedProg.selectedItemIdx, 0) : 0);
+      setCaptainScannedRack(false);
+      setActiveStep("picking");
+      setPickerTab("in_progress");
       try {
-        updateDoc(doc(db, "orders", order.id), {
-          status: "picking",
-          stage: "Picking Items",
-          pickerId: "thrupthi",
-          pickerName: "Thrupthi K S",
-          assignedRack: rack.id,
-          rackQr: rack.qr,
-          acceptedAt: new Date().toISOString(),
-        }).catch(() => {});
-      } catch (e) {
-        console.warn(e);
-      }
-    }
+        navigator.vibrate?.(12);
+      } catch {}
 
-    setActionSuccess(`⚡ Order #${order.orderNumber || order.id} Accepted! 2:00 Min Picker Timer Started.`);
-    setTimeout(() => setActionSuccess(""), 3000);
+      updateLiveOrder(order.id, {
+        status: "picking",
+        stage: "Picking Items",
+        pickerId: "thrupthi",
+        pickerName: "Thrupthi K S",
+        assignedRack: rack.id,
+        rackQr: rack.qr,
+        acceptedAt: order.acceptedAt || new Date().toISOString(),
+      });
+
+      if (db && order.id) {
+        try {
+          updateDoc(doc(db, "orders", String(order.id)), {
+            status: "picking",
+            stage: "Picking Items",
+            pickerId: "thrupthi",
+            pickerName: "Thrupthi K S",
+            assignedRack: rack.id,
+            rackQr: rack.qr,
+            acceptedAt: order.acceptedAt || new Date().toISOString(),
+          }).catch(() => {});
+        } catch {}
+      }
+
+      showPickerToast(`⚡ Order #${order.orderNumber || order.id} Accepted! 2:00 Min Picker Timer Started.`, 3000);
+    });
   }
 
   // Operation-specific Barcode & Aisle Scanner
@@ -857,114 +919,118 @@ export default function OdPickerApp() {
 
   // Confirm Handover to Staging Rack via Slide
   async function handleConfirmRackStaging() {
-    if (!activeOrder) return;
-    const finalSec = elapsedSec;
-    const isSlaAchieved = finalSec <= PICKER_SLA_SECONDS;
-    const delaySec = Math.max(0, finalSec - PICKER_SLA_SECONDS);
-    const delayMins = Math.ceil(delaySec / 60);
-    const finalTotalSla = 10 + delayMins;
-    const currentOrder = activeOrder;
-    const currentRack = assignedRack;
+    if (!activeOrder?.id) return;
+    const ordId = activeOrder.id;
+    await withIdempotentLock(`picker_stage_${ordId}`, async () => {
+      const finalSec = elapsedSecRef.current || elapsedSec;
+      const isSlaAchieved = finalSec <= PICKER_SLA_SECONDS;
+      const delaySec = Math.max(0, finalSec - PICKER_SLA_SECONDS);
+      const delayMins = Math.ceil(delaySec / 60);
+      const finalTotalSla = 10 + delayMins;
+      const currentOrder = activeOrder;
+      const currentRack = assignedRack;
 
-    // 1. Immediately reset state so UI instantly returns to home task searching frame
-    playSuccessChime();
-    try {
-      navigator.vibrate?.([15, 40, 20]);
-    } catch {}
-    setPackedHistory((prev) => [
-      {
-        id: currentOrder.id,
-        orderNumber: currentOrder.orderNumber || currentOrder.id,
-        rackId: currentRack.id,
-        pickTimeSec: finalSec,
-        itemCount: (currentOrder.items || []).length,
-        completedAt: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-      },
-      ...prev.slice(0, 19),
-    ]);
-    setActiveOrder(null);
-    activeOrderRef.current = null;
-    setActiveStep("accept");
-    setPickerTab("new_orders");
-    setPickedItemsMap({});
-    setBarcodeScannedMap({});
-    setAisleScannedMap({});
-    setSelectedItemIdx(0);
-    setElapsedSec(0);
-    setCaptainScannedRack(false);
-    setUnassignedOrders((prev) => prev.filter((o) => o.id !== currentOrder.id));
+      safeStorage.remove("auditx_picker_active_progress");
+      playSuccessChime();
+      try {
+        navigator.vibrate?.([15, 40, 20]);
+      } catch {}
+      setPackedHistory((prev) => [
+        {
+          id: currentOrder.id,
+          orderNumber: currentOrder.orderNumber || currentOrder.id,
+          rackId: currentRack.id,
+          pickTimeSec: finalSec,
+          itemCount: safeArr(currentOrder.items).length,
+          completedAt: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        },
+        ...prev.slice(0, 19),
+      ]);
+      setActiveOrder(null);
+      activeOrderRef.current = null;
+      elapsedSecRef.current = 0;
+      setActiveStep("accept");
+      setPickerTab("new_orders");
+      setPickedItemsMap({});
+      setBarcodeScannedMap({});
+      setAisleScannedMap({});
+      setSelectedItemIdx(0);
+      setElapsedSec(0);
+      setCaptainScannedRack(false);
+      setUnassignedOrders((prev) => prev.filter((o) => o.id !== currentOrder.id));
 
-    if (typeof window !== "undefined") {
-      window.scrollTo({ top: 0, behavior: "smooth" });
-    }
-    setActionSuccess(
-      isSlaAchieved
-        ? `🎉 SUCCESS: Picked & Handed Over to Rack ${currentRack.id} in ${finalSec}s! Searching next order...`
-        : `⚠️ Placed in Rack ${currentRack.id} in ${finalSec}s (+${delayMins}m delay, total SLA: ${finalTotalSla} mins). Searching next order...`
-    );
-    setTimeout(() => setActionSuccess(""), 3500);
+      if (typeof window !== "undefined") {
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }
+      showPickerToast(
+        isSlaAchieved
+          ? `🎉 SUCCESS: Picked & Handed Over to Rack ${currentRack.id} in ${finalSec}s! Searching next order...`
+          : `⚠️ Placed in Rack ${currentRack.id} in ${finalSec}s (+${delayMins}m delay, total SLA: ${finalTotalSla} mins). Searching next order...`,
+        3500
+      );
 
-    // 2. Broadcast and update realtime orders
-    updateLiveOrder(currentOrder.id, {
-      status: "staged",
-      stage: "Staged in Rack " + currentRack.id,
-      assignedRack: currentRack.id,
-      rackQr: currentRack.qr,
-      rackZone: currentRack.zone,
-      pickerId: "thrupthi",
-      pickerName: "Thrupthi K S",
-      stagedAt: new Date().toISOString(),
-      pickTimeSec: finalSec,
-      delaySec: delaySec,
-      delayMins: delayMins,
-      finalTotalSla: finalTotalSla,
-      remainingMins: 8,
-      estimatedDeliveryMins: 8,
-      riderEtaMins: 8,
-      handoverToRiderCompleted: true,
-      qrCode: `AUDITX-HANDOVER-${currentOrder.id}-${currentRack.id}`,
-    });
-
-    broadcastEvent("ORDER_STAGED", {
-      orderId: currentOrder.id,
-      assignedRack: currentRack.id,
-      pickerName: "Thrupthi K S",
-      captainName: "Sinchana B R",
-      pickTimeSec: finalSec,
-      delaySec: delaySec,
-      delayMins: delayMins,
-      finalTotalSla: finalTotalSla,
-      remainingMins: 8,
-      riderEtaMins: 8,
-    });
-
-    broadcastEvent("PICKER_HANDOVER_COMPLETED", {
-      orderId: currentOrder.id,
-      assignedRack: currentRack.id,
-      pickerName: "Thrupthi K S",
-      captainName: "Sinchana B R",
-      pickTimeSec: finalSec,
-      delaySec: delaySec,
-      delayMins: delayMins,
-      finalTotalSla: finalTotalSla,
-      remainingMins: 8,
-      riderEtaMins: 8,
-    });
-
-    // 3. Fire-and-forget Firestore update without blocking local state reset
-    if (db) {
-      updateDoc(doc(db, "orders", currentOrder.id), {
+      updateLiveOrder(currentOrder.id, {
         status: "staged",
         stage: "Staged in Rack " + currentRack.id,
         assignedRack: currentRack.id,
         rackQr: currentRack.qr,
+        rackZone: currentRack.zone,
         pickerId: "thrupthi",
         pickerName: "Thrupthi K S",
         stagedAt: new Date().toISOString(),
         pickTimeSec: finalSec,
+        delaySec: delaySec,
+        delayMins: delayMins,
+        finalTotalSla: finalTotalSla,
+        remainingMins: 8,
+        estimatedDeliveryMins: 8,
+        riderEtaMins: 8,
+        handoverToRiderCompleted: true,
         qrCode: `AUDITX-HANDOVER-${currentOrder.id}-${currentRack.id}`,
-      }).catch((e) => console.warn(e));
-    }
+      });
+
+      broadcastEvent("ORDER_STAGED", {
+        orderId: currentOrder.id,
+        assignedRack: currentRack.id,
+        pickerName: "Thrupthi K S",
+        captainName: "Sinchana B R",
+        pickTimeSec: finalSec,
+        delaySec: delaySec,
+        delayMins: delayMins,
+        finalTotalSla: finalTotalSla,
+        remainingMins: 8,
+        riderEtaMins: 8,
+      });
+
+      broadcastEvent("PICKER_HANDOVER_COMPLETED", {
+        orderId: currentOrder.id,
+        assignedRack: currentRack.id,
+        pickerName: "Thrupthi K S",
+        captainName: "Sinchana B R",
+        pickTimeSec: finalSec,
+        delaySec: delaySec,
+        delayMins: delayMins,
+        finalTotalSla: finalTotalSla,
+        remainingMins: 8,
+        riderEtaMins: 8,
+      });
+
+      if (db && currentOrder.id) {
+        try {
+          updateDoc(doc(db, "orders", String(currentOrder.id)), {
+            status: "staged",
+            stage: "Staged in Rack " + currentRack.id,
+            assignedRack: currentRack.id,
+            rackQr: currentRack.qr,
+            pickerId: "thrupthi",
+            pickerName: "Thrupthi K S",
+            stagedAt: new Date().toISOString(),
+            pickTimeSec: finalSec,
+            qrCode: `AUDITX-HANDOVER-${currentOrder.id}-${currentRack.id}`,
+          }).catch(() => {});
+        } catch {}
+      }
+    });
   }
 
   function handleResetForNextOrder() {
@@ -1062,9 +1128,7 @@ export default function OdPickerApp() {
               gap: 8,
             }}
           >
-            <span className="ios-caption" style={{ color: "var(--ios-label)", fontWeight: 600 }}>
-              ⏱ {formatLiveTrackingTime(loginSeconds)} • Shift {formatCumulativeShiftHours(loginSeconds)}
-            </span>
+            <PickerShiftTicker isOnline={isOnline} />
             <span className="ios-caption" style={{ color: "#0C831F", fontWeight: 700 }}>
               SLA &lt; 2:00
             </span>
@@ -1248,6 +1312,7 @@ export default function OdPickerApp() {
                 </div>
               </div>
 
+              <ErrorBoundary label="Picker Order Queue" compact>
               {unassignedOrders.length > 0 ? (
                 <div style={S.orderAlertCard}>
                   <div style={S.alertHeader}>
@@ -1331,6 +1396,7 @@ export default function OdPickerApp() {
                   })}
                 </div>
               ) : null}
+              </ErrorBoundary>
 
               {/* ── 6 WAREHOUSE OPERATIONS WITH DROPDOWN SLIDER ── */}
               <div style={S.operationsWorkspace}>
@@ -1449,10 +1515,11 @@ export default function OdPickerApp() {
                     style={{ ...S.bypassSmallBtn, background: "#0c831f", borderColor: "#0c831f" }}
                     onClick={() => {
                       handlePickAllBypass();
+                      elapsedSecRef.current = 45;
                       setElapsedSec(45);
                       setRemainingSec(75);
                       setActiveStep("staging");
-                      setActionSuccess("⚡ Fast 45-Second picking completed by Thrupthi K S! Proceeding to rack staging.");
+                      showPickerToast("⚡ Fast 45-Second picking completed by Thrupthi K S! Proceeding to rack staging.", 3200);
                     }}
                     title="Simulate superfast 45-second picking"
                   >
@@ -1461,10 +1528,10 @@ export default function OdPickerApp() {
                   <button
                     style={{ ...S.bypassSmallBtn, background: "#dc2626", borderColor: "#dc2626", color: "#ffffff" }}
                     onClick={() => {
+                      elapsedSecRef.current = 210;
                       setElapsedSec(210);
                       setRemainingSec(0);
-                      setActionSuccess("⚠️ Overtime simulated: 210s elapsed (+2m delay). Delivery SLA dynamically scaled to 12 mins across all apps!");
-                      setTimeout(() => setActionSuccess(""), 4000);
+                      showPickerToast("⚠️ Overtime simulated: 210s elapsed (+2m delay). Delivery SLA dynamically scaled to 12 mins across all apps!", 4000);
                     }}
                     title="Simulate picking delay overtime to test dynamic SLA scale"
                   >
@@ -1477,6 +1544,7 @@ export default function OdPickerApp() {
               </div>
 
               {/* ITEMS LIST WITH ONE-HAND 56PX TARGETS & SWIPE-RIGHT TO PICK */}
+              <ErrorBoundary label="Pick List" compact>
               <div style={S.itemsList}>
                 {items.map((item, idx) => {
                   const isPicked = !!pickedItemsMap[idx];
@@ -1523,7 +1591,9 @@ export default function OdPickerApp() {
                                   decoding="async"
                                   style={S.itemImg}
                                   onError={(e) => {
-                                    e.target.src = "https://images.unsplash.com/photo-1546548970-71785318a17b?auto=format&fit=crop&w=300&q=80";
+                                    if (e.currentTarget.dataset.fbApplied) return;
+                                    e.currentTarget.dataset.fbApplied = "1";
+                                    e.currentTarget.src = "/auditx-logo.png";
                                   }}
                                 />
                                 {isPicked && <div style={S.imgPickedOverlay}>✅</div>}
@@ -1646,6 +1716,7 @@ export default function OdPickerApp() {
                   );
                 })}
               </div>
+              </ErrorBoundary>
 
               {/* CAMERA / IN-STORE BARCODE & AISLE SCANNER SECTION */}
               <div style={S.scannerSectionCard}>
@@ -2007,6 +2078,8 @@ function PhoneCameraScannerModal({ modalData, onClose, onScanSuccess }) {
   const [cameraError, setCameraError] = useState(null);
   const [manualCode, setManualCode] = useState("");
   const isScannedRef = useRef(false);
+  const onScanSuccessRef = useRef(onScanSuccess);
+  onScanSuccessRef.current = onScanSuccess;
 
   const { type, expectedCode, itemName } = modalData;
   const isAisle = type === "aisle";
@@ -2019,7 +2092,7 @@ function PhoneCameraScannerModal({ modalData, onClose, onScanSuccess }) {
     async function initCamera() {
       try {
         setCameraError(null);
-        if (typeof navigator === "undefined" || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
           if (isMounted) {
             setCameraError("Camera unavailable on this browser/environment. Tap Instant Scan below!");
             setCameraActive(false);
@@ -2027,7 +2100,6 @@ function PhoneCameraScannerModal({ modalData, onClose, onScanSuccess }) {
           return;
         }
 
-        // Request original phone rear camera (environment) first
         try {
           stream = await navigator.mediaDevices.getUserMedia({
             video: {
@@ -2036,23 +2108,30 @@ function PhoneCameraScannerModal({ modalData, onClose, onScanSuccess }) {
               height: { ideal: 720 },
             },
           });
-        } catch (e1) {
-          // Fallback to user facing camera / webcam
+        } catch {
           stream = await navigator.mediaDevices.getUserMedia({ video: true });
         }
 
-        if (videoRef.current && isMounted) {
+        if (!isMounted) {
+          stream?.getTracks?.().forEach((track) => track.stop());
+          return;
+        }
+
+        if (videoRef.current) {
           videoRef.current.srcObject = stream;
-          await videoRef.current.play();
+          await videoRef.current.play().catch(() => {});
+          if (!isMounted) {
+            stream?.getTracks?.().forEach((track) => track.stop());
+            return;
+          }
           setCameraActive(true);
           startDetectionLoop();
         }
       } catch (err) {
+        if (!isMounted) return;
         console.warn("Camera init error:", err);
-        if (isMounted) {
-          setCameraError("Camera unavailable or permission denied. Use Instant Scan or manual input below!");
-          setCameraActive(false);
-        }
+        setCameraError("Camera unavailable or permission denied. Use Instant Scan or manual input below!");
+        setCameraActive(false);
       }
     }
 
@@ -2067,19 +2146,19 @@ function PhoneCameraScannerModal({ modalData, onClose, onScanSuccess }) {
           if (videoRef.current && videoRef.current.readyState >= 2) {
             try {
               const codes = await detector.detect(videoRef.current);
-              if (codes && codes.length > 0) {
+              if (codes && codes.length > 0 && isMounted) {
                 const detected = codes[0].rawValue;
                 if (detected) {
                   isScannedRef.current = true;
-                  onScanSuccess(detected);
+                  onScanSuccessRef.current?.(detected);
                   return;
                 }
               }
-            } catch (e) {}
+            } catch {}
           }
-          animFrame = requestAnimationFrame(scan);
+          if (isMounted) animFrame = requestAnimationFrame(scan);
         };
-        scan();
+        animFrame = requestAnimationFrame(scan);
       }
     }
 
@@ -2092,7 +2171,7 @@ function PhoneCameraScannerModal({ modalData, onClose, onScanSuccess }) {
         stream.getTracks().forEach((track) => track.stop());
       }
     };
-  }, [onScanSuccess]);
+  }, []);
 
   return (
     <div style={P.modalOverlay}>
