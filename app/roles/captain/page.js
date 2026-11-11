@@ -15,7 +15,6 @@ import {
   subscribeToLiveOrders,
   updateLiveOrder,
   clearAllLiveOrders,
-  saveLiveOrder,
   subscribeToCloudHub,
   dispatchCloudAction,
   recordLocalStaffDuty,
@@ -183,32 +182,6 @@ export default function DeliveryCaptainApp() {
     }
   }
 
-  function handleSimulateIncomingStagedOrder() {
-    playSuccessChime();
-    const demoOrder = {
-      id: `ORD-TIP-${Math.floor(100000 + Math.random() * 900000)}`,
-      orderNumber: `${Math.floor(1000 + Math.random() * 9000)}`,
-      customerName: "Ramesh Gowda",
-      customerPhone: "9845099887",
-      customerAddress: "Kalpataru College Road, Tiptur - 572201",
-      status: "staged",
-      stage: "Staged in Rack D5",
-      assignedRack: "D5",
-      rackQr: "RACK-D5",
-      stagedAt: new Date().toISOString(),
-      pickTimeSec: 68,
-      totalAmount: 320,
-      items: [
-        { skuId: "CADBURY-SILK-01", name: "Cadbury Dairy Milk Silk Chocolate (150g)", qty: 2, price: 175, binLocation: "Aisle C1 - S1 - 001" },
-        { skuId: "FRAME-A4-WOOD", name: "Classic Wooden Deep Box Art Frame", qty: 1, price: 349, binLocation: "Aisle F1 - R1 - 002" },
-      ],
-    };
-    saveLiveOrder(demoOrder);
-    broadcastEvent("ORDER_STAGED", demoOrder);
-    setActionSuccess("📦 Demo Order staged in Rack D5! Alert sent to Sinchana B R.");
-    setTimeout(() => setActionSuccess(""), 3500);
-  }
-  
   // 8-Minute Rider Countdown (8:00 mins = 480 seconds) + Auto-reducing ETA like Ordering Tracking Page
   const CAPTAIN_SLA_SECONDS = 480;
   const [remainingSec, setRemainingSec] = useState(CAPTAIN_SLA_SECONDS);
@@ -1534,12 +1507,6 @@ export default function DeliveryCaptainApp() {
               </IOSGroupedList>
 
               <IOSGroupedList header="Actions">
-                <IOSListRow
-                  title="Simulate Test Order"
-                  subtitle="Stage a sample order at Rack D5"
-                  chevron
-                  onClick={handleSimulateIncomingStagedOrder}
-                />
                 <IOSListRow
                   title="Sign Out of Shift"
                   destructive
