@@ -180,6 +180,11 @@ export default function OdPickerApp() {
         const authDate = safeStorage.get("auditx_picker_auth_date", "") || "";
         if (isAuth && authDate === todayKey) {
           setIsPickerLoggedIn(true);
+          fetch("/api/auth/staff", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ mode: "terminal_session", staffId: "thrupthi" }),
+          }).catch(() => {});
           if (safeStorage.get("auditx_device_thrupthi") === "LOGGED_IN") {
             setIsOnline(true);
             if (!Number(safeStorage.get("auditx_device_thrupthi_updated_at", "0") || 0)) {
@@ -659,11 +664,35 @@ export default function OdPickerApp() {
     setTimeout(() => setActionSuccess(""), 4000);
   }
 
+  async function handleMarkItemUnavailable(item, idx) {
+    if (!activeOrder || !item) return;
+    const skuId = item.skuId || item.sku || "";
+    if (!skuId) return;
+    const ordId = activeOrder.id || activeOrder.orderId || activeOrder.orderNumber;
+    const res = await dispatchCloudAction("PICKER_MARK_ITEM_OOS", {
+      orderId: ordId,
+      skuId,
+      updatedBy: "Thrupthi K S",
+    });
+    if (res?.ok) {
+      broadcastEvent("PICKER_ITEM_SHORTAGE", {
+        orderId: ordId,
+        skuId,
+        name: item.name,
+      });
+      showPickerToast(`⚠️ Marked "${item.name}" unavailable — SM, ASM & customer notified live!`, 4000);
+    } else {
+      showPickerToast(res?.error || "Could not report item shortage. Try again.", 3500);
+    }
+  }
+
   // Generate Real-time Test Order for OD Picker
   function handleGenerateTestOrder() {
     stopOrderAlarm();
     playNotificationChime();
     const designatedBay = STAGING_RACKS.find((r) => r.id === "D5") || STAGING_RACKS[2];
+    const chocItem = CATALOG.find((c) => c.sku === "CHOC-01") || CATALOG[0];
+    const frameItem = CATALOG.find((c) => c.sku === "FRAME-01") || CATALOG[1];
     const testOrd = {
       id: `ORD-KA44-${Math.floor(1000 + Math.random() * 9000)}`,
       orderNumber: `${Math.floor(1000 + Math.random() * 9000)}`,
@@ -672,31 +701,31 @@ export default function OdPickerApp() {
       customerPhone: "9845012345",
       status: "pending",
       stage: "Picking",
-      totalAmount: 474,
+      totalAmount: (Number(chocItem?.price || 1) + Number(frameItem?.price || 100) + 10),
       assignedRack: designatedBay.id,
       items: [
         {
-          skuId: "CADBURY-SILK-01",
-          name: "Cadbury Dairy Milk Silk Chocolate (150g)",
+          skuId: chocItem?.sku || "CHOC-01",
+          name: chocItem?.name || "Beatss Crispy Chocolate Wafer Bar",
           qty: 1,
           units: 5,
           unitSpecification: "5 units fixed",
-          price: 175,
-          image: "https://images.unsplash.com/photo-1548907040-4baa42d10919?auto=format&fit=crop&w=300&q=80",
-          aisle: "C1 - S1 - 001",
-          barcode: "8901233024011",
+          price: Number(chocItem?.price || 1),
+          image: chocItem?.image || "/choclates/beatss.jpg",
+          aisle: chocItem?.aisle || "C1 - S1 - 001",
+          barcode: chocItem?.barcode || "89044001001",
           category: "Chocolates",
         },
         {
-          skuId: "FRAME-A4-BLK",
-          name: "Minimalist Black A4 Wall Frame",
+          skuId: frameItem?.sku || "FRAME-01",
+          name: frameItem?.name || "Minimalist Black A4 Wall Frame",
           qty: 1,
           units: 1,
           unitSpecification: "1 unit single",
-          price: 299,
-          image: "https://images.unsplash.com/photo-1579783902614-a3fb3927b675?auto=format&fit=crop&w=300&q=80",
-          aisle: "F1 - R2 - 001",
-          barcode: "89044009001",
+          price: Number(frameItem?.price || 100),
+          image: frameItem?.image || "/frames/programming-stickers.jpg",
+          aisle: frameItem?.aisle || "F1 - R2 - 001",
+          barcode: frameItem?.barcode || "89044009001",
           category: "Frames",
         },
       ],
@@ -1678,19 +1707,42 @@ export default function OdPickerApp() {
                             </div>
                           )}
 
-                          {/* ONE-HAND >= 56PX PICKED CTA */}
+                          {/* ONE-HAND >= 56PX PICKED CTA + SHORTAGE MARK */}
                           {!isPicked ? (
-                            <IOSButton
-                              variant={isBarcodeDone && isAisleDone ? "green" : "primary"}
-                              minHeight={56}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleMarkItemPicked(idx);
-                              }}
-                              style={{ marginTop: 10, fontSize: 17, fontWeight: 700 }}
-                            >
-                              ✓ Picked ({item.qty || 1} {item.qty > 1 ? "Units" : "Unit"})
-                            </IOSButton>
+                            <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                              <IOSButton
+                                variant={isBarcodeDone && isAisleDone ? "green" : "primary"}
+                                minHeight={56}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleMarkItemPicked(idx);
+                                }}
+                                style={{ flex: 2, fontSize: 16, fontWeight: 700 }}
+                              >
+                                ✓ Picked ({item.qty || 1} {item.qty > 1 ? "Units" : "Unit"})
+                              </IOSButton>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleMarkItemUnavailable(item, idx);
+                                }}
+                                style={{
+                                  flex: 1,
+                                  minHeight: 56,
+                                  borderRadius: 14,
+                                  border: "1px solid rgba(255,59,48,0.4)",
+                                  background: "rgba(255,59,48,0.08)",
+                                  color: "#DC2626",
+                                  fontSize: 12,
+                                  fontWeight: 700,
+                                  cursor: "pointer",
+                                  padding: "0 8px",
+                                }}
+                              >
+                                ⚠️ OOS
+                              </button>
+                            </div>
                           ) : (
                             <div
                               className="ios-badge-pop"

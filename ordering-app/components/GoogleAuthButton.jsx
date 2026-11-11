@@ -2,28 +2,44 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { STAFF } from "@/lib/roles";
-import { dispatchCloudAction, getOrCreateDeviceUid } from "@/lib/realtimeSync";
+import { getOrCreateDeviceUid, dispatchCloudAction } from "@/lib/realtimeSync";
 import { apiFetch, withIdempotentLock } from "@/lib/apiClient";
 import { safeStorage } from "@/lib/safeData";
 
-export const GOOGLE_CLIENT_ID = "925739101724-pjo6hpncuvgt62ovuqg3splvd3711m0e.apps.googleusercontent.com";
+export const GOOGLE_CLIENT_ID =
+  process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ||
+  "925739101724-pjo6hpncuvgt62ovuqg3splvd3711m0e.apps.googleusercontent.com";
 
-// Helper to decode Google JWT token
-export function parseGoogleJwt(token) {
+const OAUTH_POPUP_CHANNEL = "auditx_google_oauth_popup";
+const OAUTH_STATE_KEY = "auditx_google_oauth_state";
+const OAUTH_NONCE_KEY = "auditx_google_oauth_nonce";
+
+export function isEmbeddedInAppBrowser() {
+  if (typeof navigator === "undefined") return false;
+  const ua = navigator.userAgent || "";
+  if (/CriOS|FxiOS/i.test(ua)) return false;
+  return /WhatsApp|Instagram|FBAN|FBAV|FB_IAB|Twitter|Line\/|Snapchat|BytedanceWebview|MicroMessenger|; wv\)/i.test(
+    ua
+  );
+}
+
+function isSafariOrStandalone() {
+  if (typeof navigator === "undefined" || typeof window === "undefined") return false;
+  const ua = navigator.userAgent || "";
+  const isSafari = /Safari/i.test(ua) && !/Chrome|Chromium|Edg|OPR|CriOS|Android/i.test(ua);
+  const isStandalone =
+    window.matchMedia?.("(display-mode: standalone)")?.matches ||
+    window.navigator?.standalone === true;
+  return isSafari || isStandalone;
+}
+
+function randomTokenHex(bytesLen = 12) {
   try {
-    const base64Url = token.split(".")[1];
-    const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
-    const jsonPayload = decodeURIComponent(
-      atob(base64)
-        .split("")
-        .map((c) => "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2))
-        .join("")
-    );
-    return JSON.parse(jsonPayload);
-  } catch (e) {
-    console.warn("JWT parse error:", e);
-    return null;
+    const arr = new Uint8Array(bytesLen);
+    crypto.getRandomValues(arr);
+    return Array.from(arr, (b) => b.toString(16).padStart(2, "0")).join("");
+  } catch {
+    return `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
   }
 }
 
@@ -42,302 +58,422 @@ export default function GoogleAuthButton({
 }) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [inAppBanner, setInAppBanner] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
+  const [retryState, setRetryState] = useState(null); // { idToken, message }
+
   const abortRef = useRef(null);
   const navTimerRef = useRef(null);
-  const popupTimerRef = useRef(null);
+  const popupWatchRef = useRef(null);
   const mountedRef = useRef(true);
 
-  // 1. Load Google Identity Services SDK script once cleanly
+  // 1. Preload Google Identity Services SDK on idle & detect in-app browsers proactively
   useEffect(() => {
     mountedRef.current = true;
     if (typeof window === "undefined") return;
-    if (window.google?.accounts?.oauth2) return;
-
-    const existing = document.querySelector('script[data-auditx-gis="1"], script[src*="accounts.google.com/gsi/client"]');
-    if (!existing) {
-      const script = document.createElement("script");
-      script.src = "https://accounts.google.com/gsi/client";
-      script.async = true;
-      script.defer = true;
-      script.dataset.auditxGis = "1";
-      script.onerror = () => {
-        console.warn("Google Identity Services script failed to load from CDN.");
-      };
-      document.head.appendChild(script);
+    if (isEmbeddedInAppBrowser()) {
+      setInAppBanner(true);
     }
 
+    const preloadScript = () => {
+      if (window.google?.accounts?.id || window.google?.accounts?.oauth2) return;
+      const existing = document.querySelector(
+        'script[data-auditx-gis="1"], script[src*="accounts.google.com/gsi/client"]'
+      );
+      if (!existing) {
+        const script = document.createElement("script");
+        script.src = "https://accounts.google.com/gsi/client";
+        script.async = true;
+        script.defer = true;
+        script.dataset.auditxGis = "1";
+        document.head.appendChild(script);
+      }
+    };
+
+    if (typeof window.requestIdleCallback === "function") {
+      const idleId = window.requestIdleCallback(preloadScript, { timeout: 1200 });
+      return () => {
+        mountedRef.current = false;
+        window.cancelIdleCallback?.(idleId);
+        abortRef.current?.abort?.("unmount");
+        if (navTimerRef.current) clearTimeout(navTimerRef.current);
+        if (popupWatchRef.current) clearInterval(popupWatchRef.current);
+      };
+    }
+
+    const t = setTimeout(preloadScript, 150);
     return () => {
       mountedRef.current = false;
+      clearTimeout(t);
       abortRef.current?.abort?.("unmount");
       if (navTimerRef.current) clearTimeout(navTimerRef.current);
-      if (popupTimerRef.current) clearTimeout(popupTimerRef.current);
+      if (popupWatchRef.current) clearInterval(popupWatchRef.current);
     };
   }, []);
 
-  // 2. Handle return from Google OAuth when redirected via URL hash (#id_token=... or #access_token=...)
+  // 2. Verify Google ID token on server (cached Google JWKS), set session JWT & persist user safely
+  async function exchangeVerifiedTokenWithServer(idToken) {
+    if (!idToken) return;
+    if (mountedRef.current) {
+      setLoading(true);
+      setRetryState(null);
+    }
+
+    abortRef.current?.abort?.("superseded");
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
+
+    const deviceUid = getOrCreateDeviceUid();
+    try {
+      const res = await apiFetch("/api/auth/google", {
+        method: "POST",
+        body: {
+          idToken,
+          deviceUid,
+          context,
+          roleCode,
+        },
+        timeoutMs: 10000,
+        retries: 2,
+        signal: ctrl.signal,
+      });
+
+      if (!mountedRef.current || res.aborted) return;
+
+      if (!res.ok || !res.data?.success) {
+        const msg =
+          res.error ||
+          res.data?.error ||
+          "Could not complete Google sign-in. Check your connection and retry.";
+        setRetryState(
+          res.status === 0 || res.status >= 500 || res.timedOut
+            ? { idToken, message: msg }
+            : null
+        );
+        onError?.(msg);
+        setLoading(false);
+        return;
+      }
+
+      const { user, customer, staff } = res.data;
+      const effectiveRole = res.data.roleCode || "CUSTOMER";
+
+      if (effectiveRole === "CUSTOMER" || context === "ordering") {
+        const googleProfile = {
+          name: user?.name || customer?.name || "Customer",
+          email: user?.email || customer?.email || "",
+          picture: user?.picture || customer?.picture || "",
+          sub: user?.sub || "",
+          provider: "google",
+          authTime: new Date().toISOString(),
+        };
+        safeStorage.setJson("auditx_google_user", googleProfile);
+        safeStorage.setJson("auditx_last_google_account", googleProfile);
+        safeStorage.setJson("auditx_customer", customer);
+        safeStorage.setJson("blinkit_customer", customer);
+        safeStorage.set("auditx_play_team_intro_once", "1", "session");
+        safeStorage.set("auditx_play_team_intro_once", "1", "local");
+
+        // Fire-and-forget registration sync event for local BroadcastChannel tabs
+        dispatchCloudAction("REGISTER_LOGIN", {
+          sub: user?.sub,
+          deviceUid,
+          name: customer?.name,
+          email: customer?.email,
+          phone: customer?.phone,
+          loginMethod: "Official Google OAuth 2.0",
+        }).catch(() => {});
+
+        if (mountedRef.current) setLoading(false);
+        onSuccess?.({ ...googleProfile, role: "CUSTOMER", customer });
+
+        let dest = "/ordering";
+        try {
+          const rt = safeStorage.get("auditx_auth_return_to", "", "session") || "";
+          if (
+            rt &&
+            rt.startsWith("/") &&
+            !rt.startsWith("//") &&
+            !rt.startsWith("/ordering/login")
+          ) {
+            dest = rt;
+            safeStorage.remove("auditx_auth_return_to", "session");
+          }
+        } catch {}
+
+        navTimerRef.current = setTimeout(() => {
+          if (mountedRef.current) router.push(dest);
+        }, 40);
+      } else {
+        if (staff) {
+          safeStorage.setJson("auditx_staff", staff);
+          if (["SM", "ASM", "MD"].includes(effectiveRole)) {
+            safeStorage.setJson("auditx_wh_session", {
+              id: staff.id,
+              name: staff.name,
+              roleCode: effectiveRole,
+              authDate: new Date().toISOString().slice(0, 10),
+              loggedInAt: new Date().toISOString(),
+            });
+          }
+        }
+        if (mountedRef.current) setLoading(false);
+        if (onSuccess) {
+          onSuccess({ ...(user || {}), role: effectiveRole, staff });
+        } else {
+          if (effectiveRole === "PICKER" || context === "picker") router.push("/picker");
+          else if (effectiveRole === "DELIVERY" || context === "rider") router.push("/rider");
+          else if (effectiveRole === "ASM") router.push("/dashboard?role=asm");
+          else if (effectiveRole === "MD") router.push("/dashboard?role=md");
+          else if (context === "dashboard") router.push("/dashboard");
+          else router.push("/warehouse");
+        }
+      }
+    } catch {
+      if (!mountedRef.current) return;
+      const msg = "Network connection failed during Google login. Tap Retry.";
+      setRetryState({ idToken, message: msg });
+      onError?.(msg);
+      setLoading(false);
+    }
+  }
+
+  // 3. Handle OAuth return hash (#id_token=... or #error=...) cleanly in redirect OR popup child tab
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const hash = window.location.hash;
-    const search = window.location.search;
+    const hash = window.location.hash || "";
+    const search = window.location.search || "";
 
     if (search.includes("error=") || hash.includes("error=")) {
+      const errParams = new URLSearchParams(
+        hash.includes("error=") ? hash.replace(/^#/, "") : search.replace(/^\?/, "")
+      );
+      const errCode = errParams.get("error") || "";
       try {
-        window.history.replaceState(null, "", window.location.pathname);
-      } catch {}
-    }
-
-    if (!hash || (!hash.includes("id_token=") && !hash.includes("access_token="))) return;
-
-    try {
-      const params = new URLSearchParams(hash.startsWith("#") ? hash.substring(1) : hash);
-      const idToken = params.get("id_token");
-      const accessToken = params.get("access_token");
-
-      if (idToken) {
-        const payload = parseGoogleJwt(idToken);
-        if (payload && (payload.name || payload.email)) {
-          window.history.replaceState(null, "", window.location.pathname);
-          const realName = payload.name || payload.given_name || payload.email.split("@")[0];
-          finalizeLogin({
-            name: realName,
-            email: payload.email,
-            picture: payload.picture || "https://lh3.googleusercontent.com/a/default-user=s96-c",
-            sub: payload.sub,
-            emailVerified: payload.email_verified,
-            provider: "google",
-            authTime: new Date().toISOString(),
-          });
-          return;
-        }
-      }
-
-      if (accessToken) {
-        const ctrl = new AbortController();
-        abortRef.current = ctrl;
-        apiFetch("https://www.googleapis.com/oauth2/v3/userinfo", {
-          headers: { Authorization: `Bearer ${accessToken}` },
-          timeoutMs: 8000,
-          retries: 1,
-          signal: ctrl.signal,
-        })
-          .then((res) => {
-            if (!mountedRef.current || res.aborted) return;
-            const userInfo = res.data;
-            if (res.ok && userInfo && (userInfo.name || userInfo.email)) {
-              try {
-                window.history.replaceState(null, "", window.location.pathname);
-              } catch {}
-              const realName = userInfo.name || userInfo.given_name || userInfo.email.split("@")[0];
-              finalizeLogin({
-                name: realName,
-                email: userInfo.email,
-                picture: userInfo.picture || "https://lh3.googleusercontent.com/a/default-user=s96-c",
-                sub: userInfo.sub,
-                emailVerified: userInfo.email_verified,
-                provider: "google",
-                authTime: new Date().toISOString(),
-              });
-            } else if (!res.ok) {
-              finalizeLogin(getDefaultGoogleUser());
-            }
-          })
-          .catch(() => {});
-      }
-    } catch (e) {
-      console.warn("OAuth hash parse error:", e);
-    }
-  }, []);
-
-  function getDefaultGoogleUser() {
-    const parsed =
-      safeStorage.getJson("auditx_last_google_account", null) ||
-      safeStorage.getJson("auditx_google_user", null);
-    if (parsed?.name && parsed?.email) return parsed;
-    const uid = getOrCreateDeviceUid();
-    const shortTag = uid.slice(-4).toUpperCase();
-    return {
-      name: `Customer ${shortTag}`,
-      email: `customer_${shortTag.toLowerCase()}@auditx.app`,
-      picture: "https://lh3.googleusercontent.com/a/default-user=s96-c",
-      sub: `google_${uid}`,
-      emailVerified: true,
-      provider: "google_bypass",
-      authTime: new Date().toISOString(),
-    };
-  }
-
-  // 3. Finalize Login, register daily device count (400 max), and enter ordering app
-  async function finalizeLogin(googleUser, chosenRole = null) {
-    if (popupTimerRef.current) {
-      clearTimeout(popupTimerRef.current);
-      popupTimerRef.current = null;
-    }
-    const effectiveRole = chosenRole || roleCode || (context === "ordering" ? "CUSTOMER" : null);
-
-    if (effectiveRole === "CUSTOMER" || context === "ordering") {
-      const deviceUid = getOrCreateDeviceUid();
-      const custObj = {
-        customerId: `google_${googleUser.sub || (googleUser.email ? googleUser.email.replace(/[^a-zA-Z0-9]/g, "_") : deviceUid)}`,
-        deviceUid,
-        name: googleUser.name || `Customer ${deviceUid.slice(-4).toUpperCase()}`,
-        email: googleUser.email || "",
-        picture: googleUser.picture || "https://lh3.googleusercontent.com/a/default-user=s96-c",
-        phone: googleUser.phone || "9845112233",
-        location: "KFGSC , Tiptur 572201",
-        walletBalance: 1000000,
-        provider: googleUser.provider || "google",
-        loginMethod:
-          googleUser.provider === "google_bypass"
-            ? "Google Quick Bypass"
-            : "Official Google OAuth 2.0",
-        verifiedAt: new Date().toISOString(),
-      };
-
-      try {
-        const regRes = await dispatchCloudAction("REGISTER_LOGIN", {
-          deviceUid,
-          name: custObj.name,
-          email: custObj.email,
-          phone: custObj.phone,
-          loginMethod: custObj.loginMethod,
-        });
-
-        if (regRes && !regRes.ok && regRes.status === 403) {
-          if (mountedRef.current) setLoading(false);
-          const msg = regRes.error || "Ordering app reached maximum capacity (400 devices today).";
-          onError?.(msg);
-          return;
-        }
+        window.history.replaceState(null, "", window.location.pathname + window.location.search);
       } catch {}
 
-      safeStorage.setJson("auditx_google_user", googleUser);
-      safeStorage.setJson("auditx_last_google_account", googleUser);
-      safeStorage.setJson("auditx_customer", custObj);
-      safeStorage.setJson("blinkit_customer", custObj);
-      safeStorage.set("auditx_play_team_intro_once", "1", "session");
-      safeStorage.set("auditx_play_team_intro_once", "1", "local");
-
-      if (mountedRef.current) setLoading(false);
-      onSuccess?.({ ...googleUser, role: "CUSTOMER", customer: custObj });
-
-      let dest = "/ordering";
-      try {
-        const rt = safeStorage.get("auditx_auth_return_to", "", "session") || "";
-        if (rt && rt.startsWith("/") && !rt.startsWith("//") && !rt.startsWith("/ordering/login")) {
-          dest = rt;
-          safeStorage.remove("auditx_auth_return_to", "session");
-        }
-      } catch {}
-
-      navTimerRef.current = setTimeout(() => {
-        if (mountedRef.current) router.push(dest);
-      }, 100);
-    } else {
-      let staffMember = STAFF[0];
-      if (effectiveRole === "PICKER" || context === "picker") staffMember = STAFF[3]; // Thrupthi K S
-      else if (effectiveRole === "DELIVERY" || context === "rider") staffMember = STAFF[4]; // Sinchana B R
-      else if (effectiveRole === "ASM") staffMember = STAFF[1]; // Deepu B
-      else if (effectiveRole === "MD") staffMember = STAFF[2]; // A B Harshitha
-      else if (effectiveRole === "SM" || context === "warehouse" || context === "dashboard") staffMember = STAFF[0]; // Bhaskar N S
-
-      const updatedStaff = {
-        ...staffMember,
-        googleEmail: googleUser.email,
-        googlePicture: googleUser.picture,
-        googleName: googleUser.name,
-        authenticatedViaGoogle: true,
-      };
-
-      try {
-        localStorage.setItem("auditx_staff", JSON.stringify(updatedStaff));
-      } catch (e) {
-        console.warn(e);
-      }
-
-      setLoading(false);
-      if (onSuccess) {
-        onSuccess({ ...googleUser, role: effectiveRole, staff: updatedStaff });
-      } else {
-        if (effectiveRole === "PICKER" || context === "picker") router.push("/picker");
-        else if (effectiveRole === "DELIVERY" || context === "rider") router.push("/rider");
-        else if (effectiveRole === "ASM") router.push("/dashboard?role=asm");
-        else if (effectiveRole === "MD") router.push("/dashboard?role=md");
-        else if (context === "dashboard") router.push("/dashboard");
-        else router.push("/warehouse");
-      }
-    }
-  }
-
-  // 4. CLICK HANDLER: Directly authenticates without showing ANY intermediate message or modal,
-  // and in a fraction of a second returns to the main ordering catalog!
-  function handleButtonClick() {
-    if (loading) return;
-    withIdempotentLock("google_auth_click", async () => {
-      if (mountedRef.current) setLoading(true);
-
-      if (typeof window !== "undefined" && window.google?.accounts?.oauth2) {
+      if (window.opener && window.opener !== window) {
         try {
-          if (popupTimerRef.current) clearTimeout(popupTimerRef.current);
-          popupTimerRef.current = setTimeout(() => {
-            if (mountedRef.current) setLoading(false);
-          }, 12000);
-
-          const client = window.google.accounts.oauth2.initTokenClient({
-            client_id: clientId,
-            scope: "openid profile email",
-            prompt: "select_account",
-            callback: async (tokenResponse) => {
-              if (popupTimerRef.current) {
-                clearTimeout(popupTimerRef.current);
-                popupTimerRef.current = null;
-              }
-              if (tokenResponse?.access_token) {
-                try {
-                  const ctrl = new AbortController();
-                  abortRef.current = ctrl;
-                  const res = await apiFetch("https://www.googleapis.com/oauth2/v3/userinfo", {
-                    headers: { Authorization: `Bearer ${tokenResponse.access_token}` },
-                    timeoutMs: 8000,
-                    retries: 1,
-                    signal: ctrl.signal,
-                  });
-                  const userInfo = res.data;
-                  if (res.ok && userInfo && (userInfo.name || userInfo.email)) {
-                    const realName = userInfo.name || userInfo.given_name || "Deepu B";
-                    const email = userInfo.email || "deepub1235@gmail.com";
-                    const picture = userInfo.picture || "https://lh3.googleusercontent.com/a/default-user=s96-c";
-
-                    await finalizeLogin({
-                      name: realName,
-                      email,
-                      picture,
-                      sub: userInfo.sub || `google_${Date.now()}`,
-                      emailVerified: true,
-                      provider: "google",
-                      authTime: new Date().toISOString(),
-                    });
-                    return;
-                  }
-                } catch {}
-              }
-              await finalizeLogin(getDefaultGoogleUser());
-            },
-            error_callback: () => {
-              if (popupTimerRef.current) {
-                clearTimeout(popupTimerRef.current);
-                popupTimerRef.current = null;
-              }
-              finalizeLogin(getDefaultGoogleUser());
-            },
-          });
-
-          client.requestAccessToken({ prompt: "select_account" });
+          const ch = new BroadcastChannel(OAUTH_POPUP_CHANNEL);
+          ch.postMessage({ type: "GOOGLE_OAUTH_ERROR", error: errCode });
+          ch.close();
+          window.close();
           return;
         } catch {}
       }
+      // User cancelled Google screen -> quietly stay on login screen with no error
+      if (errCode !== "access_denied" && errCode !== "user_cancelled" && errCode) {
+        onError?.("Google sign-in could not complete. Tap to try again.");
+      }
+      return;
+    }
 
-      await finalizeLogin(getDefaultGoogleUser());
+    if (!hash.includes("id_token=")) return;
+
+    const params = new URLSearchParams(hash.replace(/^#/, ""));
+    const idToken = params.get("id_token") || "";
+    const stateReturned = params.get("state") || "";
+    const expectedState = safeStorage.get(OAUTH_STATE_KEY, "", "session") || "";
+
+    try {
+      window.history.replaceState(null, "", window.location.pathname + window.location.search);
+    } catch {}
+
+    // If opened inside OAuth popup, hand token back to parent window and close popup immediately
+    if (window.opener && window.opener !== window) {
+      try {
+        const ch = new BroadcastChannel(OAUTH_POPUP_CHANNEL);
+        ch.postMessage({
+          type: "GOOGLE_OAUTH_TOKEN",
+          idToken,
+          state: stateReturned,
+        });
+        ch.close();
+      } catch {}
+      try {
+        window.opener.postMessage(
+          { type: "AUDITX_GOOGLE_OAUTH_TOKEN", idToken, state: stateReturned },
+          window.location.origin
+        );
+      } catch {}
+      window.close();
+      return;
+    }
+
+    // Same-tab redirect completion
+    safeStorage.remove(OAUTH_STATE_KEY, "session");
+    safeStorage.remove(OAUTH_NONCE_KEY, "session");
+    if (expectedState && stateReturned && expectedState !== stateReturned) {
+      onError?.("Login security check expired. Please tap Sign in with Google again.");
+      return;
+    }
+
+    if (idToken) {
+      exchangeVerifiedTokenWithServer(idToken);
+    }
+  }, []);
+
+  // 4. Primary Click Handler (In-App WebView guard -> Popup/One-Tap -> Redirect Fallback)
+  function handleButtonClick() {
+    if (loading) return;
+
+    // Expose safe test trigger for local automated E2E without touching production security
+    if (typeof window !== "undefined" && typeof window.__AUDITX_MOCK_GOOGLE_ID_TOKEN__ === "string" && window.__AUDITX_MOCK_GOOGLE_ID_TOKEN__) {
+      const tok = window.__AUDITX_MOCK_GOOGLE_ID_TOKEN__;
+      window.__AUDITX_MOCK_GOOGLE_ID_TOKEN__ = "";
+      exchangeVerifiedTokenWithServer(tok);
+      return;
+    }
+
+    // Detect Instagram / WhatsApp / Facebook in-app WebViews cleanly
+    if (isEmbeddedInAppBrowser()) {
+      setInAppBanner(true);
+      onError?.("Open in Chrome/Safari to sign in with Google.");
+      return;
+    }
+
+    withIdempotentLock("google_auth_click", async () => {
+      if (!mountedRef.current) return;
+      setLoading(true);
+      setRetryState(null);
+      setInAppBanner(false);
+
+      const state = randomTokenHex(12);
+      const nonce = randomTokenHex(12);
+      safeStorage.set(OAUTH_STATE_KEY, state, "session");
+      safeStorage.set(OAUTH_NONCE_KEY, nonce, "session");
+
+      const redirectUri = `${window.location.origin}${window.location.pathname}`;
+      const oauthUrl =
+        `https://accounts.google.com/o/oauth2/v2/auth` +
+        `?client_id=${encodeURIComponent(clientId)}` +
+        `&redirect_uri=${encodeURIComponent(redirectUri)}` +
+        `&response_type=id_token` +
+        `&scope=${encodeURIComponent("openid email profile")}` +
+        `&nonce=${encodeURIComponent(nonce)}` +
+        `&state=${encodeURIComponent(state)}` +
+        `&prompt=select_account`;
+
+      // Safari ITP / standalone Home Screen PWAs reject cross-origin popups -> use redirect flow directly
+      if (isSafariOrStandalone()) {
+        window.location.assign(oauthUrl);
+        return;
+      }
+
+      // Open OAuth popup and fall back cleanly to same-tab redirect if popup blocked
+      let popup = null;
+      try {
+        const w = 480;
+        const h = 620;
+        const left = Math.max(0, Math.round(window.screenX + (window.outerWidth - w) / 2));
+        const top = Math.max(0, Math.round(window.screenY + (window.outerHeight - h) / 2));
+        popup = window.open(
+          oauthUrl,
+          "auditx_google_signin",
+          `width=${w},height=${h},left=${left},top=${top},popup=yes`
+        );
+      } catch {
+        popup = null;
+      }
+
+      if (!popup || popup.closed || typeof popup.closed === "undefined") {
+        // Popup blocked -> seamless automatic redirect fallback
+        window.location.assign(oauthUrl);
+        return;
+      }
+
+      let finished = false;
+      let ch = null;
+
+      const cleanupListeners = () => {
+        if (popupWatchRef.current) {
+          clearInterval(popupWatchRef.current);
+          popupWatchRef.current = null;
+        }
+        window.removeEventListener("message", handleWinMsg);
+        if (ch) {
+          try {
+            ch.close();
+          } catch {}
+          ch = null;
+        }
+      };
+
+      const finishWithToken = (idToken) => {
+        if (finished) return;
+        finished = true;
+        cleanupListeners();
+        try {
+          if (popup && !popup.closed) popup.close();
+        } catch {}
+        exchangeVerifiedTokenWithServer(idToken);
+      };
+
+      const finishCancelledOrError = (errCode = "") => {
+        if (finished) return;
+        finished = true;
+        cleanupListeners();
+        if (mountedRef.current) setLoading(false);
+        if (errCode && errCode !== "access_denied" && errCode !== "user_cancelled") {
+          onError?.("Google sign-in interrupted. Tap to try again.");
+        }
+      };
+
+      const handleWinMsg = (ev) => {
+        if (ev.origin !== window.location.origin) return;
+        if (ev.data?.type === "AUDITX_GOOGLE_OAUTH_TOKEN" && ev.data.idToken) {
+          if (!ev.data.state || ev.data.state === state) {
+            finishWithToken(ev.data.idToken);
+          }
+        }
+      };
+      window.addEventListener("message", handleWinMsg);
+
+      try {
+        ch = new BroadcastChannel(OAUTH_POPUP_CHANNEL);
+        ch.addEventListener("message", (ev) => {
+          if (ev?.data?.type === "GOOGLE_OAUTH_TOKEN" && ev.data.idToken) {
+            if (!ev.data.state || ev.data.state === state) {
+              finishWithToken(ev.data.idToken);
+            }
+          } else if (ev?.data?.type === "GOOGLE_OAUTH_ERROR") {
+            finishCancelledOrError(ev.data.error);
+          }
+        });
+      } catch {}
+
+      // Watch popup close cleanly: if user closed/cancelled popup, reset quietly with no error
+      popupWatchRef.current = setInterval(() => {
+        try {
+          if (!popup || popup.closed) {
+            setTimeout(() => {
+              if (!finished) finishCancelledOrError("user_cancelled");
+            }, 250);
+          }
+        } catch {}
+      }, 300);
     });
+  }
+
+  async function handleCopySignInLink() {
+    if (typeof window === "undefined") return;
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      setCopiedLink(true);
+      setTimeout(() => setCopiedLink(false), 2500);
+    } catch {
+      try {
+        const input = document.createElement("input");
+        input.value = window.location.href;
+        document.body.appendChild(input);
+        input.select();
+        document.execCommand("copy");
+        document.body.removeChild(input);
+        setCopiedLink(true);
+        setTimeout(() => setCopiedLink(false), 2500);
+      } catch {}
+    }
   }
 
   const defaultButtonText =
@@ -352,7 +488,6 @@ export default function GoogleAuthButton({
 
   return (
     <div style={{ width: fullWidth ? "100%" : "auto", ...style }}>
-      {/* Sleek Small Bar Google Login Button */}
       <button
         type="button"
         onClick={handleButtonClick}
@@ -378,26 +513,12 @@ export default function GoogleAuthButton({
             theme === "dark"
               ? "0 2px 8px rgba(0,0,0,0.25)"
               : "0 1px 3px rgba(60,64,67,0.1), 0 1px 2px rgba(60,64,67,0.06)",
-          transition: "all 0.15s ease",
+          transition: "transform 0.15s ease, opacity 0.15s ease",
           outline: "none",
           userSelect: "none",
-        }}
-        onMouseEnter={(e) => {
-          if (!loading) {
-            e.currentTarget.style.background = theme === "dark" ? "#283548" : "#f8fafc";
-            e.currentTarget.style.borderColor = theme === "dark" ? "#475569" : "#c1c7cd";
-            e.currentTarget.style.transform = "translateY(-1px)";
-          }
-        }}
-        onMouseLeave={(e) => {
-          if (!loading) {
-            e.currentTarget.style.background = theme === "dark" ? "#1e293b" : "#ffffff";
-            e.currentTarget.style.borderColor = theme === "dark" ? "#334155" : "#dadce0";
-            e.currentTarget.style.transform = "translateY(0)";
-          }
+          opacity: loading ? 0.78 : 1,
         }}
       >
-        {/* Official Multicolor Google G Icon */}
         <svg width={size === "small" ? 16 : 18} height={size === "small" ? 16 : 18} viewBox="0 0 24 24">
           <path
             fill="#4285F4"
@@ -418,6 +539,82 @@ export default function GoogleAuthButton({
         </svg>
         <span>{loading ? "Signing in..." : defaultButtonText}</span>
       </button>
+
+      {inAppBanner && (
+        <div
+          role="alert"
+          style={{
+            marginTop: 10,
+            padding: "10px 12px",
+            borderRadius: 12,
+            background: "#FFFBEB",
+            border: "1px solid #FCD34D",
+            color: "#92400E",
+            fontSize: 12,
+            lineHeight: 1.45,
+            textAlign: "left",
+          }}
+        >
+          <div style={{ fontWeight: 800, marginBottom: 4 }}>Open in Chrome/Safari to sign in</div>
+          <div style={{ marginBottom: 8 }}>
+            In-app browsers (WhatsApp, Instagram, Facebook) block Google Sign-In. Copy this link and open it in Safari or Chrome.
+          </div>
+          <button
+            type="button"
+            onClick={handleCopySignInLink}
+            style={{
+              width: "100%",
+              minHeight: 36,
+              borderRadius: 9,
+              border: "none",
+              background: "#0C831F",
+              color: "#FFFFFF",
+              fontSize: 12.5,
+              fontWeight: 700,
+              cursor: "pointer",
+            }}
+          >
+            {copiedLink ? "✓ Link Copied!" : "Copy Sign-In Link"}
+          </button>
+        </div>
+      )}
+
+      {retryState && (
+        <div
+          role="alert"
+          style={{
+            marginTop: 8,
+            padding: "8px 12px",
+            borderRadius: 10,
+            background: "#FEF2F2",
+            border: "1px solid #FCA5A5",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 8,
+            fontSize: 12,
+            color: "#991B1B",
+          }}
+        >
+          <span>{retryState.message}</span>
+          <button
+            type="button"
+            onClick={() => exchangeVerifiedTokenWithServer(retryState.idToken)}
+            style={{
+              padding: "6px 12px",
+              borderRadius: 8,
+              border: "none",
+              background: "#0C831F",
+              color: "#FFFFFF",
+              fontWeight: 700,
+              cursor: "pointer",
+              flexShrink: 0,
+            }}
+          >
+            Retry
+          </button>
+        </div>
+      )}
     </div>
   );
 }

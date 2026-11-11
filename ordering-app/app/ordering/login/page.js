@@ -192,20 +192,13 @@ export default function CustomerInteractiveLoginPage() {
       };
 
       try {
-        const regRes = await dispatchCloudAction("REGISTER_LOGIN", {
+        dispatchCloudAction("REGISTER_LOGIN", {
           deviceUid: getOrCreateDeviceUid(),
           name: displayName,
           phone: cleanPhone,
           email: "",
           loginMethod: "Mobile OTP",
-        });
-        if (regRes && !regRes.ok && regRes.status === 403) {
-          setErrorMsg(
-            regRes.error || "Ordering app reached maximum daily capacity (400 devices today)."
-          );
-          setLoading(false);
-          return;
-        }
+        }).catch(() => {});
         safeStorage.setJson("auditx_customer", custObj);
         safeStorage.setJson("blinkit_customer", custObj);
         safeStorage.set("auditx_play_team_intro_once", "1", "session");

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { getTodayISTDateKey } from "@/lib/hubState";
+import { safeStorage } from "@/lib/safeData";
 
 // Exact SHA-256 credentials from Warehouse_Login_Page.html (NAME|digitsOfDOB)
 const WAREHOUSE_USERS = [
@@ -275,10 +276,46 @@ export default function WarehouseLoginGate({ onAuthenticated, initialNotice = ""
 
     setSubmitting(true);
     const h = await computeSha256Hex(`${u}|${p}`);
-    const user = WAREHOUSE_USERS.find((x) => x.h === h);
+    let matchedSess = null;
+    try {
+      const staffRes = await fetch("/api/auth/staff", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: "warehouse", username: u, password: p, credHash: h }),
+      });
+      if (staffRes.ok) {
+        const staffJson = await staffRes.json().catch(() => null);
+        if (staffJson?.success && staffJson?.session) {
+          matchedSess = staffJson.session;
+        }
+      } else if (staffRes.status === 429) {
+        setSubmitting(false);
+        const errJ = await staffRes.json().catch(() => null);
+        setStatusMsg({ text: errJ?.error || "Too many attempts. Please wait briefly.", ok: false });
+        return;
+      }
+    } catch {
+      // Offline / transient network fallback against local verifier
+    }
+
+    if (!matchedSess) {
+      const localUser = WAREHOUSE_USERS.find((x) => x.h === h);
+      if (localUser) {
+        matchedSess = {
+          id: localUser.id,
+          name: localUser.n,
+          roleCode: localUser.roleCode,
+          storeId: "TIPTUR-HUB-KA44",
+          areaId: "SOUTH-TUMKUR-AREA",
+          allowedStoreIds: ["TIPTUR-HUB-KA44"],
+          authDate: getTodayISTDateKey(),
+          loggedInAt: new Date().toISOString(),
+        };
+      }
+    }
     setSubmitting(false);
 
-    if (!user) {
+    if (!matchedSess) {
       failsRef.current += 1;
       drawCaptcha();
       if (failsRef.current >= MAX_TRIES) {
@@ -292,20 +329,11 @@ export default function WarehouseLoginGate({ onAuthenticated, initialNotice = ""
     }
 
     failsRef.current = 0;
-    const sessionObj = {
-      id: user.id,
-      name: user.n,
-      roleCode: user.roleCode,
-      authDate: getTodayISTDateKey(),
-      loggedInAt: new Date().toISOString(),
-    };
-    try {
-      sessionStorage.setItem("wh_user", user.n);
-      localStorage.setItem("auditx_wh_session", JSON.stringify(sessionObj));
-    } catch {}
+    safeStorage.set("wh_user", matchedSess.name, "session");
+    safeStorage.setJson("auditx_wh_session", matchedSess);
 
-    setStatusMsg({ text: `Welcome, ${user.n}! Opening Dashboard...`, ok: true });
-    onAuthenticated?.(sessionObj);
+    setStatusMsg({ text: `Welcome, ${matchedSess.name}! Opening Dashboard...`, ok: true });
+    onAuthenticated?.(matchedSess);
   }
 
   return (

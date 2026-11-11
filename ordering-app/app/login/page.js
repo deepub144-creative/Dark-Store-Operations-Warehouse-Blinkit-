@@ -111,7 +111,7 @@ export default function LoginPage() {
   }
 
   // VERIFY OTP & ROUTE DIRECTLY TO DEDICATED ROLE VIEW
-  function verifyStaffOtp(overrideOtp) {
+  async function verifyStaffOtp(overrideOtp) {
     const activeOtp = overrideOtp || otp;
     if (activeOtp.length < 4) {
       setError("Please enter the 4-digit verification code");
@@ -135,6 +135,20 @@ export default function LoginPage() {
     const isEmergencyAsm = cleanPhone === "6364150847";
     const targetRoute = (isEmergencyAsm && emergencyTarget) ? emergencyTarget.route : foundAuth.route;
     const targetRoleCode = (isEmergencyAsm && emergencyTarget) ? emergencyTarget.code : foundAuth.roleCode;
+
+    // Mint server HttpOnly JWT session cookie with SM/ASM/MD/Picker/Rider scope
+    try {
+      await fetch("/api/auth/staff", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mode: "staff_otp",
+          phone: cleanPhone,
+          otp: activeOtp,
+          overrideRoleCode: targetRoleCode,
+        }),
+      });
+    } catch {}
 
     try {
       localStorage.setItem("auditx_staff", JSON.stringify(fullStaffDoc));
@@ -167,6 +181,19 @@ export default function LoginPage() {
             verifiedAt: new Date().toISOString(),
           })
         );
+        localStorage.setItem(
+          "auditx_wh_session",
+          JSON.stringify({
+            id: foundAuth.phone === "6364150847" ? "deepu" : foundAuth.phone === "8971720997" ? "harshitha" : "bhaskar",
+            name: foundAuth.name,
+            roleCode: targetRoleCode,
+            storeId: "TIPTUR-HUB-KA44",
+            areaId: "SOUTH-TUMKUR-AREA",
+            allowedStoreIds: ["TIPTUR-HUB-KA44"],
+            authDate: getTodayISTDateKey(),
+            loggedInAt: new Date().toISOString(),
+          })
+        );
       }
     } catch (e) {
       console.warn("Storage error:", e);
@@ -175,7 +202,7 @@ export default function LoginPage() {
     setTimeout(() => {
       setLoading(false);
       router.push(targetRoute);
-    }, 400);
+    }, 150);
   }
 
   function handleInstantDemoLogin() {

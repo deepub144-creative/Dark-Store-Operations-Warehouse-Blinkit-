@@ -194,7 +194,7 @@ export default function TrackOrderPage() {
       const list = safeArr(cloudState?.orders);
       const match = list.find((o) => o && (o.id === orderId || o.orderId === orderId || o.orderNumber === orderId));
       if (match) processOrderEta(match);
-    }, 1800);
+    }, 1800, { scope: "customer", storeId: "TIPTUR-HUB-KA44" });
 
     const onWakeSync = () => {
       if (typeof document !== "undefined" && document.visibilityState === "visible") {
@@ -769,6 +769,24 @@ export default function TrackOrderPage() {
         )}
 
         {/* ── 2. CUSTOMER LIVE TRACKING MAP & TIMELINE (Hidden once arrived at doorstep) ── */}
+        {order?.pickerFlaggedOos && !isCancelled && (
+          <div
+            role="status"
+            style={{
+              margin: "8px 14px",
+              padding: "10px 12px",
+              borderRadius: 12,
+              background: "#FFFBEB",
+              border: "1px solid #F59E0B",
+              color: "#92400E",
+              fontSize: 12.5,
+              fontWeight: 700,
+              lineHeight: 1.4,
+            }}
+          >
+            ⚠️ Shelf Shortage Update: {Array.isArray(order.unavailableSkus) && order.unavailableSkus.length > 0 ? order.unavailableSkus.join(", ") : "An item"} was marked unavailable during packing. Store Manager has been notified.
+          </div>
+        )}
         {loading && !order ? (
           <OrderingSkeletonScreen />
         ) : !hasArrivedAtDoorstep && !isCancelled && (

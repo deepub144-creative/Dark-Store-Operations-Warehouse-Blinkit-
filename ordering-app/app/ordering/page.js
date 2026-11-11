@@ -18,6 +18,9 @@ import {
   fetchCloudHubState,
   dispatchCloudAction,
   verifyPlacedOrderStatus,
+  reserveCheckoutStock,
+  releaseCheckoutReservation,
+  attemptSilentSessionRefresh,
   getOrCreateDeviceUid,
 } from "@/lib/realtimeSync";
 import ErrorBoundary from "@/components/ErrorBoundary";
@@ -461,6 +464,8 @@ const OrderingProductCard = memo(function OrderingProductCard({
   return (
     <div
       data-dfx="card"
+      data-sku={item.sku}
+      data-available={availableUnits}
       className="ios-stagger-item"
       style={{
         ...S.productCard,
@@ -676,6 +681,9 @@ export default function OrderingAppPage() {
     return () => clearTimeout(timer);
   }, [searchQuery]);
   const [placingOrder, setPlacingOrder] = useState(false);
+  const [checkoutStatusMsg, setCheckoutStatusMsg] = useState("");
+  const [activeReservation, setActiveReservation] = useState(null); // { reservationId, idempotencyKey, expiresAtMs }
+  const [reservationSecsLeft, setReservationSecsLeft] = useState(0);
   const [toastMessage, setToastMessage] = useState("");
   const [oosList, setOosList] = useState([]);
   const [inventoryStockMap, setInventoryStockMap] = useState({});
@@ -1112,20 +1120,14 @@ export default function OrderingAppPage() {
       triggerTeamIntroOnce();
     }
 
-    // Check-in returning device into today's 400-device daily cap & live login count
+    // Non-blocking customer device login sync (unlimited capacity)
     dispatchCloudAction("REGISTER_LOGIN", {
       deviceUid: getOrCreateDeviceUid(),
       name: parsedCustomer.name,
       phone: parsedCustomer.phone || "",
       email: parsedCustomer.email || "",
       loginMethod: parsedCustomer.loginMethod || "Saved Session",
-    }).then((res) => {
-      if (res && !res.ok && res.status === 403) {
-        setCapacityBlockedMsg(
-          res.error || "Ordering app daily capacity reached (400 / 400 devices logged in today)."
-        );
-      }
-    });
+    }).catch(() => {});
 
     setOosList(safeArr(safeStorage.getJson("auditx_oos_items", [])));
     const rawInv = safeStorage.getJson("auditx_inventory_units", {});
@@ -1206,7 +1208,7 @@ export default function OrderingAppPage() {
     }
     loadComplaints();
 
-    // Cross-device real-time cloud hub subscription (syncs SM/ASM edits -> phones)
+    // Cross-device real-time cloud hub & <1s SSE subscription (syncs SM/ASM edits -> phones)
     const unsubCloud = subscribeToCloudHub((cloudState, meta) => {
       if (!cloudState) return;
       const cloudOpen = cloudState.isStoreOpen !== false;
@@ -1237,7 +1239,7 @@ export default function OrderingAppPage() {
       if (Array.isArray(cloudState.orders)) {
         checkActiveDelivery(cloudState.orders);
       }
-    }, 1800);
+    }, 1800, { scope: "customer", storeId: "TIPTUR-HUB-KA44" });
 
     const unsubBus = subscribeToEvents((data) => {
       if (!data) return;
@@ -1872,9 +1874,91 @@ export default function OrderingAppPage() {
     return () => io.disconnect();
   }, [visibleLimit, filteredCatalog.length]);
 
+  useEffect(() => {
+    if (!activeReservation?.expiresAtMs) {
+      setReservationSecsLeft(0);
+      return;
+    }
+    const tick = () => {
+      const rem = Math.max(0, Math.ceil((activeReservation.expiresAtMs - Date.now()) / 1000));
+      setReservationSecsLeft(rem);
+      if (rem === 0) {
+        const resCopy = activeReservation;
+        setActiveReservation(null);
+        releaseCheckoutReservation({
+          reservationId: resCopy.reservationId,
+          idempotencyKey: resCopy.idempotencyKey,
+          reason: "expired",
+        }).catch(() => {});
+        triggerToast("5-minute stock hold expired. Tap Pay to reserve items again.");
+      }
+    };
+    tick();
+    const iv = setInterval(tick, 1000);
+    return () => clearInterval(iv);
+  }, [activeReservation]);
+
+  async function handleOpenPaymentModalWithReserve() {
+    if (hasOngoingOrder) {
+      const ongoingId = ongoingTrackedOrder?.orderNumber || ongoingTrackedOrder?.id || ongoingTrackedOrder?.orderId || "Current Order";
+      triggerToast(`⚠️ Active Order in Progress! Order #${ongoingId} is currently being tracked.`);
+      return;
+    }
+    if (!isStoreOpen) {
+      triggerToast("🛑 Store is closed right now, ordering soon!");
+      return;
+    }
+    if (cartItemsList.length === 0) {
+      triggerToast("Your cart is empty.");
+      return;
+    }
+
+    const idemKey = pendingCheckoutIdemRef.current || createIdempotencyKey("ord");
+    pendingCheckoutIdemRef.current = idemKey;
+
+    if (isOnlineNow() && (!activeReservation || activeReservation.idempotencyKey !== idemKey)) {
+      const res = await reserveCheckoutStock({
+        idempotencyKey: idemKey,
+        items: cartItemsList.map((it) => ({ sku: it.sku, qty: it.qty })),
+        userId: customer?.customerId || "customer",
+        storeId: "TIPTUR-HUB-KA44",
+        ttlMs: 300000,
+      });
+      if (!res.ok && res.outOfStock) {
+        triggerToast(`⛔ ${res.error || "Selected item just ran out of stock."}`);
+        fetchCloudHubState({ force: true }).catch(() => {});
+        return;
+      }
+      if (res.ok && res.reservation) {
+        setActiveReservation({
+          reservationId: res.reservation.reservationId,
+          idempotencyKey: idemKey,
+          expiresAtMs: res.reservation.expiresAtMs || Date.now() + 300000,
+        });
+      }
+    }
+
+    setShowPaymentModal(true);
+  }
+
+  function handleCancelPaymentModal() {
+    setShowPaymentModal(false);
+    if (activeReservation && !placingOrder) {
+      const resCopy = activeReservation;
+      setActiveReservation(null);
+      releaseCheckoutReservation({
+        reservationId: resCopy.reservationId,
+        idempotencyKey: resCopy.idempotencyKey,
+        reason: "release",
+      }).catch(() => {});
+    }
+  }
+
   function completeConfirmedOrder(confirmedOrder, itemCountSnap, grandTotalSnap) {
     const confirmedId = confirmedOrder.id || confirmedOrder.orderId || confirmedOrder.orderNumber;
     pendingCheckoutIdemRef.current = "";
+    setActiveReservation(null);
+    setCheckoutStatusMsg("");
     setUnconfirmedOrderPrompt(null);
     setCartNotice("");
 
@@ -2016,6 +2100,7 @@ export default function OrderingAppPage() {
       }
 
       setPlacingOrder(true);
+      setCheckoutStatusMsg("Placing your order...");
       setShowPaymentModal(false);
       setUnconfirmedOrderPrompt(null);
 
@@ -2031,6 +2116,7 @@ export default function OrderingAppPage() {
           orderId,
           orderNumber: orderId,
           idempotencyKey,
+          reservationId: activeReservation?.reservationId || "",
           customerId: customer?.customerId || "cust_tiptur_demo",
           customerName: customer?.name || "Customer",
           customerPhone: customer?.phone || "9845112233",
@@ -2046,7 +2132,7 @@ export default function OrderingAppPage() {
           deliveryFee,
           handlingFee,
           totalSavings,
-          status: "pending",
+          status: "placed",
           stage: "Awaiting OD Picker",
           assignedRack: rack.id,
           rackQr: rack.qr,
@@ -2063,8 +2149,8 @@ export default function OrderingAppPage() {
               : selectedPaymentMethod === "card"
               ? "Saved Credit Card"
               : "Cash on Delivery",
-          storeId: "TIPTUR-DARK-STORE",
-          storeName: "AUDIT'X Dark Store",
+          storeId: "TIPTUR-HUB-KA44",
+          storeName: "AUDIT'X Tiptur HUB - KA44",
           estimatedDeliveryMins: 10,
           createdAt: new Date().toISOString(),
           qrCode: `AUDITX-ORD-${orderId}-CUSTOMER-QR`,
@@ -2087,29 +2173,43 @@ export default function OrderingAppPage() {
         const currentTotal = grandTotal;
 
         // Validate & persist atomically without blind retry (retries: 0 inside dispatchCloudAction)
-        const cloudRes = await dispatchCloudAction("PLACE_ORDER", {
+        let cloudRes = await dispatchCloudAction("PLACE_ORDER", {
           order: createdOrder,
           idempotencyKey,
+          reservationId: activeReservation?.reservationId || "",
         });
 
-        if (cloudRes?.state?.inventoryStockMap) setInventoryStockMap(cloudRes.state.inventoryStockMap);
-        if (cloudRes?.state?.oosList) setOosList(cloudRes.state.oosList);
-
-        if (cloudRes && !cloudRes.ok) {
-          // 401 -> token/session check: send to login with cart intact
-          if (cloudRes.status === 401) {
+        // If 401 token expired -> silently refresh session cookie and retry placement once cleanly
+        if (cloudRes && !cloudRes.ok && cloudRes.status === 401) {
+          const refreshed = await attemptSilentSessionRefresh();
+          if (refreshed) {
+            cloudRes = await dispatchCloudAction("PLACE_ORDER", {
+              order: createdOrder,
+              idempotencyKey,
+              reservationId: activeReservation?.reservationId || "",
+            });
+          } else {
             safeStorage.set("auditx_auth_return_to", "/ordering/checkout", "session");
             triggerToast("Session expired — sign in to finish checkout (your cart is saved).");
             router.replace("/ordering/login?returnTo=/ordering/checkout");
             return;
           }
+        }
 
-          // Timeout or dropped network right after submit -> check status by idempotencyKey before showing error!
-          if (cloudRes.timedOut || cloudRes.status === 0 || cloudRes.status >= 500) {
-            const matchedOrder = await verifyPlacedOrderStatus({ idempotencyKey, orderId });
-            if (matchedOrder) {
-              completeConfirmedOrder(matchedOrder, currentItemCount, currentTotal);
-              return;
+        if (cloudRes?.state?.inventoryStockMap) setInventoryStockMap(cloudRes.state.inventoryStockMap);
+        if (cloudRes?.state?.oosList) setOosList(cloudRes.state.oosList);
+
+        if (cloudRes && !cloudRes.ok) {
+          // Timeout, busy server (5xx/429), or dropped network right after submit -> poll order status by idempotencyKey!
+          if (cloudRes.timedOut || cloudRes.status === 0 || cloudRes.status === 429 || cloudRes.status >= 500) {
+            setCheckoutStatusMsg("Hang tight, still placing your order...");
+            for (let pollAttempt = 0; pollAttempt < 2; pollAttempt++) {
+              const matchedOrder = await verifyPlacedOrderStatus({ idempotencyKey, orderId });
+              if (matchedOrder) {
+                completeConfirmedOrder(matchedOrder, currentItemCount, currentTotal);
+                return;
+              }
+              await new Promise((r) => setTimeout(r, 650));
             }
             setUnconfirmedOrderPrompt({
               idempotencyKey,
@@ -2117,6 +2217,17 @@ export default function OrderingAppPage() {
             });
             triggerToast("We couldn't confirm your order. Check My Orders or tap Retry.");
             return;
+          }
+
+          // Release held stock reservation cleanly on payment/validation decline
+          if (activeReservation) {
+            const resCopy = activeReservation;
+            setActiveReservation(null);
+            releaseCheckoutReservation({
+              reservationId: resCopy.reservationId,
+              idempotencyKey: resCopy.idempotencyKey,
+              reason: "payment_failed",
+            }).catch(() => {});
           }
 
           if (cloudRes.data?.storeClosed) {
@@ -2134,6 +2245,7 @@ export default function OrderingAppPage() {
         completeConfirmedOrder(confirmedOrder, currentItemCount, currentTotal);
       } finally {
         setPlacingOrder(false);
+        setCheckoutStatusMsg("");
       }
     });
   }
@@ -2229,7 +2341,7 @@ export default function OrderingAppPage() {
         isCheckoutView
           ? () => {
               if (showPaymentModal) {
-                setShowPaymentModal(false);
+                handleCancelPaymentModal();
                 return;
               }
               setIsCheckoutView(false);
@@ -2460,9 +2572,9 @@ export default function OrderingAppPage() {
                     minHeight={48}
                     disabled={placingOrder || cartItemsList.length === 0}
                     loading={placingOrder}
-                    onClick={() => setShowPaymentModal(true)}
+                    onClick={handleOpenPaymentModalWithReserve}
                   >
-                    {placingOrder ? "Placing..." : "Place Order →"}
+                    {placingOrder ? (checkoutStatusMsg || "Placing your order...") : "Place Order →"}
                   </IOSButton>
                 )}
               </div>
@@ -2572,6 +2684,42 @@ export default function OrderingAppPage() {
                 }}
               >
                 You&apos;re offline — your cart is saved safely. Checkout unlocks as soon as you&apos;re back online.
+              </div>
+            )}
+
+            {checkoutStatusMsg && (
+              <div
+                role="status"
+                style={{
+                  background: "#ECFDF5",
+                  border: "1.5px solid #34D399",
+                  borderRadius: 12,
+                  padding: "10px 12px",
+                  marginBottom: 12,
+                  fontSize: 12.5,
+                  fontWeight: 700,
+                  color: "#065F46",
+                }}
+              >
+                ⏳ {checkoutStatusMsg}
+              </div>
+            )}
+
+            {reservationSecsLeft > 0 && (
+              <div
+                role="status"
+                style={{
+                  background: "#F0FDF4",
+                  border: "1px solid #86EFAC",
+                  borderRadius: 12,
+                  padding: "8px 12px",
+                  marginBottom: 12,
+                  fontSize: 12,
+                  fontWeight: 700,
+                  color: "#166534",
+                }}
+              >
+                🔒 Stock reserved for you ({Math.floor(reservationSecsLeft / 60)}:{String(reservationSecsLeft % 60).padStart(2, "0")})
               </div>
             )}
 
@@ -2996,7 +3144,7 @@ export default function OrderingAppPage() {
                   <button
                     type="button"
                     style={S.changeLinkBtn}
-                    onClick={() => setShowPaymentModal(true)}
+                    onClick={handleOpenPaymentModalWithReserve}
                   >
                     Change
                   </button>
@@ -3010,7 +3158,7 @@ export default function OrderingAppPage() {
                     const ordId = ongoingTrackedOrder.orderNumber || ongoingTrackedOrder.id || ongoingTrackedOrder.orderId;
                     router.push(`/track/${ordId}`);
                   } else {
-                    setShowPaymentModal(true);
+                    handleOpenPaymentModalWithReserve();
                   }
                 }}
               >
@@ -3033,7 +3181,7 @@ export default function OrderingAppPage() {
 
               <div
                 onClick={() => {
-                  if (!hasOngoingOrder) setShowPaymentModal(true);
+                  if (!hasOngoingOrder) handleOpenPaymentModalWithReserve();
                 }}
                 style={{
                   display: "flex",
@@ -4943,7 +5091,7 @@ export default function OrderingAppPage() {
           ═══════════════════════════════════════════════════════════ */}
       <IOSBottomSheet
         isOpen={showPaymentModal}
-        onClose={() => setShowPaymentModal(false)}
+        onClose={handleCancelPaymentModal}
         title="Select Payment Method"
         subtitle={`Amount Payable: ₹${grandTotal}`}
         detent="large"
