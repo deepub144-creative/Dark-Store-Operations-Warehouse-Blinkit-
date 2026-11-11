@@ -143,6 +143,7 @@ export async function POST(req) {
           items: order.items || [],
           total: order.totalAmount,
           status: "placed",
+          order,
         });
       });
     }

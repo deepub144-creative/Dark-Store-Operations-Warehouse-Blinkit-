@@ -194,6 +194,28 @@ export default function TrackOrderPage() {
       if (match) processOrderEta(match);
     }, 1800, { scope: "customer", storeId: "TIPTUR-HUB-KA44" });
 
+    // Direct Firestore real-time onSnapshot listener for instant zero-refresh order status updates
+    let unsubFirestore = null;
+    if (db && orderId) {
+      try {
+        const orderRef = doc(db, "orders", String(orderId));
+        unsubFirestore = onSnapshot(
+          orderRef,
+          (docSnap) => {
+            if (docSnap.exists()) {
+              const data = { id: docSnap.id, ...docSnap.data() };
+              processOrderEta(data);
+            }
+          },
+          (err) => {
+            console.warn("[TrackOrder] Firestore onSnapshot warning:", err?.message);
+          }
+        );
+      } catch (e) {
+        console.warn("[TrackOrder] Could not initialize Firestore snapshot:", e?.message);
+      }
+    }
+
     const onWakeSync = () => {
       if (typeof document !== "undefined" && document.visibilityState === "visible") {
         fetchCloudHubState({ force: true }).catch(() => {});
@@ -260,6 +282,7 @@ export default function TrackOrderPage() {
     });
 
     return () => {
+      if (unsubFirestore) unsubFirestore();
       unsub();
       unsubCloud();
       unsubEvents();

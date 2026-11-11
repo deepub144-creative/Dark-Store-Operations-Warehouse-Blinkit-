@@ -152,10 +152,10 @@ export async function POST(req) {
     if (action === "PLACE_ORDER" || action === "RESERVE_STOCK") {
       const orderUserId = String(
         session?.userId ||
-          payload?.order?.customerId ||
-          payload?.order?.customerPhone ||
-          payload?.userId ||
-          ""
+        payload?.order?.customerId ||
+        payload?.order?.customerPhone ||
+        payload?.userId ||
+        ""
       ).trim();
       const rl = await checkOrderRateLimit({ userId: orderUserId, clientIp });
       if (!rl.allowed) {
@@ -358,9 +358,12 @@ export async function POST(req) {
           const custEmail = updatedOrder.customerEmail;
           const normNewStatus = normalizeEmailStatus(updatedOrder.status);
 
-          if (custEmail && normNewStatus === "delivered" && !updatedOrder.delivered_email_sent) {
+          if (!updatedOrder.statusEmailsSent) updatedOrder.statusEmailsSent = {};
+
+          if (custEmail && normNewStatus === "delivered" && !updatedOrder.delivered_email_sent && !updatedOrder.statusEmailsSent["delivered"]) {
             updatedOrder.delivered_email_sent = true;
             updatedOrder.lastEmailedStatus = "delivered";
+            updatedOrder.statusEmailsSent["delivered"] = new Date().toISOString();
             const orderSnapshot = { ...updatedOrder };
             enqueueBackgroundTask("send_delivery_email_with_slip", async () => {
               let attempts = 0;
@@ -400,9 +403,11 @@ export async function POST(req) {
             custEmail &&
             normNewStatus !== "placed" &&
             normNewStatus !== "delivered" &&
+            !updatedOrder.statusEmailsSent[normNewStatus] &&
             updatedOrder.lastEmailedStatus !== normNewStatus
           ) {
             updatedOrder.lastEmailedStatus = normNewStatus;
+            updatedOrder.statusEmailsSent[normNewStatus] = new Date().toISOString();
             const emailData = {
               name: updatedOrder.customerName || "Customer",
               email: custEmail,
@@ -472,8 +477,8 @@ export async function POST(req) {
               action === "GRN_INWARD"
                 ? "grn_inward"
                 : action === "AUDIT_ADJUSTMENT"
-                ? "audit_adjustment"
-                : "manual_adjustment",
+                  ? "audit_adjustment"
+                  : "manual_adjustment",
             actor: actorName,
             actorRole,
             storeId: targetStoreId,
@@ -692,16 +697,16 @@ export async function POST(req) {
           ];
           next.orders = (next.orders || []).map((ord) =>
             ord.id === r.orderId ||
-            ord.orderId === r.orderId ||
-            ord.orderNumber === r.orderNumber
+              ord.orderId === r.orderId ||
+              ord.orderNumber === r.orderNumber
               ? {
-                  ...ord,
-                  status: "delivered",
-                  stage: "Delivered",
-                  customerRatingSubmitted: true,
-                  riderRating: r.riderRating,
-                  itemRatings: r.itemRatings,
-                }
+                ...ord,
+                status: "delivered",
+                stage: "Delivered",
+                customerRatingSubmitted: true,
+                riderRating: r.riderRating,
+                itemRatings: r.itemRatings,
+              }
               : ord
           );
           return {};
@@ -719,12 +724,12 @@ export async function POST(req) {
           next.complaints = (next.complaints || []).map((c) =>
             c.id === id
               ? {
-                  ...c,
-                  status: status || "RESOLVED",
-                  resolvedBy: actorName,
-                  resolvedAt: resolvedAt || new Date().toLocaleTimeString("en-IN"),
-                  response: response || `Resolved by ${actorName}`,
-                }
+                ...c,
+                status: status || "RESOLVED",
+                resolvedBy: actorName,
+                resolvedAt: resolvedAt || new Date().toLocaleTimeString("en-IN"),
+                response: response || `Resolved by ${actorName}`,
+              }
               : c
           );
           return {};

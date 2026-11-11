@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebaseAdmin";
-import { readHubStateSnapshot } from "@/lib/serverStateEngine";
+import { loadAndReapState } from "@/lib/serverStateEngine";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   const t0 = performance.now();
-  const state = await readHubStateSnapshot();
+  const state = await loadAndReapState();
   const latencyMs = Math.round((performance.now() - t0) * 100) / 100;
 
   const hasRedis = Boolean(

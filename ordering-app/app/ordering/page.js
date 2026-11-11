@@ -3,6 +3,8 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { usePathname, useRouter } from "next/navigation";
+import { doc, onSnapshot } from "firebase/firestore";
+import { db } from "@/lib/firebaseClient";
 import { CATALOG } from "@/lib/items";
 import { getDefaultItemStock, mergeCatalogItems } from "@/lib/hubState";
 import {
@@ -1455,6 +1457,42 @@ export default function OrderingAppPage() {
   const countdownSecRef = useRef(deliveryCountdownSec);
   countdownSecRef.current = deliveryCountdownSec;
   const activeDeliveryId = activeDeliveryOrder?.id || activeDeliveryOrder?.orderId || null;
+
+  // Real-time Firestore onSnapshot listener for live order tracking without page reload
+  useEffect(() => {
+    if (!db || !activeDeliveryId) return;
+    let unsubFs = null;
+    try {
+      unsubFs = onSnapshot(
+        doc(db, "orders", String(activeDeliveryId)),
+        (snap) => {
+          if (snap.exists()) {
+            const data = { id: snap.id, ...snap.data() };
+            syncPastOrdersWithLive([data]);
+            const st = String(data.status || "").toLowerCase();
+            if (st === "delivered") {
+              setOrderingStage("delivered");
+              setDeliveryCountdownSec(0);
+              setLatestDeliveredSlipOrder(data);
+              setActiveDeliveryOrder(null);
+            } else if (st === "dispatched" || st === "out_for_delivery") {
+              setOrderingStage("rider_assigned");
+            } else if (st === "packed" || st === "staged") {
+              setOrderingStage("packed_assigning");
+            }
+          }
+        },
+        (err) => {
+          console.warn("[OrderingPage] Firestore onSnapshot warning:", err?.message);
+        }
+      );
+    } catch (e) {
+      console.warn("[OrderingPage] Firestore listener init error:", e?.message);
+    }
+    return () => {
+      if (unsubFs) unsubFs();
+    };
+  }, [activeDeliveryId, syncPastOrdersWithLive]);
 
   useEffect(() => {
     if (orderingStage === "idle" || orderingStage === "delivered" || !activeDeliveryId) return;
@@ -5075,7 +5113,8 @@ export default function OrderingAppPage() {
               )}
             </form>
           </div>
-        )}
+        </div>
+      )}
 
       </IOSMobileShell>
 

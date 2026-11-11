@@ -358,9 +358,12 @@ export async function POST(req) {
           const custEmail = updatedOrder.customerEmail;
           const normNewStatus = normalizeEmailStatus(updatedOrder.status);
 
-          if (custEmail && normNewStatus === "delivered" && !updatedOrder.delivered_email_sent) {
+          if (!updatedOrder.statusEmailsSent) updatedOrder.statusEmailsSent = {};
+
+          if (custEmail && normNewStatus === "delivered" && !updatedOrder.delivered_email_sent && !updatedOrder.statusEmailsSent["delivered"]) {
             updatedOrder.delivered_email_sent = true;
             updatedOrder.lastEmailedStatus = "delivered";
+            updatedOrder.statusEmailsSent["delivered"] = new Date().toISOString();
             const orderSnapshot = { ...updatedOrder };
             enqueueBackgroundTask("send_delivery_email_with_slip", async () => {
               let attempts = 0;
@@ -400,9 +403,11 @@ export async function POST(req) {
             custEmail &&
             normNewStatus !== "placed" &&
             normNewStatus !== "delivered" &&
+            !updatedOrder.statusEmailsSent[normNewStatus] &&
             updatedOrder.lastEmailedStatus !== normNewStatus
           ) {
             updatedOrder.lastEmailedStatus = normNewStatus;
+            updatedOrder.statusEmailsSent[normNewStatus] = new Date().toISOString();
             const emailData = {
               name: updatedOrder.customerName || "Customer",
               email: custEmail,
