@@ -79,10 +79,21 @@ export function normalizeEmailStatus(st = "") {
   return "placed";
 }
 
+function cleanItemName(name) {
+  if (!name) return "Item";
+  return String(name)
+    .replace(/\s*\([^)]*units fixed[^)]*\)/gi, "")
+    .replace(/\s*\([^)]*DELIVERED[^)]*\)/gi, "")
+    .replace(/\s*\|?\s*DELIVERED\b/gi, "")
+    .replace(/\s*\(5 units fixed\s*\|\s*DELIVERED\)/gi, "")
+    .trim();
+}
+
 function buildHtmlEmail({ name, orderId, items = [], total, status }) {
   const normKey = normalizeEmailStatus(status);
   const cfg = STATUS_CONFIG[normKey] || STATUS_CONFIG.placed;
   const isPlaced = normKey === "placed";
+  const isDelivered = normKey === "delivered";
 
   const safeName = String(name || "Customer").trim();
   const safeOrderId = String(orderId || "").trim();
@@ -91,7 +102,7 @@ function buildHtmlEmail({ name, orderId, items = [], total, status }) {
 
   const itemsRows = (items || [])
     .map((item) => {
-      const itemName = String(item.name || item.title || "Item").trim();
+      const itemName = cleanItemName(item.name || item.title || "Item");
       const qty = Number(item.qty || item.quantity || 1);
       const price = Number(item.price || 0).toLocaleString("en-IN");
       return `
@@ -106,7 +117,7 @@ function buildHtmlEmail({ name, orderId, items = [], total, status }) {
 
   const liveStatusList = (items || [])
     .map((item) => {
-      const itemName = String(item.name || item.title || "Item").trim();
+      const itemName = cleanItemName(item.name || item.title || "Item");
       return `<li style="margin-bottom: 6px; font-size: 14px; color: #334155;"><strong>${itemName}</strong>: <span style="display: inline-block; padding: 2px 8px; border-radius: 4px; background: ${cfg.bgColor}; color: ${cfg.textColor}; font-weight: 700; font-size: 12px;">${cfg.label}</span></li>`;
     })
     .join("");
@@ -158,7 +169,12 @@ function buildHtmlEmail({ name, orderId, items = [], total, status }) {
                 Hi <strong>${safeName}</strong>,
               </p>
               ${
-                isPlaced
+                isDelivered
+                  ? `<p style="margin: 0 0 16px 0; font-size: 14px; color: #475569; line-height: 1.5;">
+                      Your order has been delivered. Thank you for ordering with AuditX!<br />
+                      Your delivery slip is attached.
+                    </p>`
+                  : isPlaced
                   ? `<p style="margin: 0 0 16px 0; font-size: 14px; color: #475569; line-height: 1.5;">
                       Our order is placed. Thank you!<br />
                       Your order is arriving soon.
@@ -234,13 +250,14 @@ function buildPlainTextEmail({ name, orderId, items = [], total, status }) {
   const normKey = normalizeEmailStatus(status);
   const cfg = STATUS_CONFIG[normKey] || STATUS_CONFIG.placed;
   const isPlaced = normKey === "placed";
+  const isDelivered = normKey === "delivered";
   const safeName = String(name || "Customer").trim();
   const safeOrderId = String(orderId || "").trim();
   const safeTotal = Number(total || 0).toLocaleString("en-IN");
 
   const itemsList = (items || [])
     .map((item) => {
-      const itemName = String(item.name || item.title || "Item").trim();
+      const itemName = cleanItemName(item.name || item.title || "Item");
       const qty = Number(item.qty || item.quantity || 1);
       const price = Number(item.price || 0).toLocaleString("en-IN");
       return `- ${itemName} | Qty: ${qty} | ₹${price}`;
@@ -249,15 +266,22 @@ function buildPlainTextEmail({ name, orderId, items = [], total, status }) {
 
   const liveList = (items || [])
     .map((item) => {
-      const itemName = String(item.name || item.title || "Item").trim();
+      const itemName = cleanItemName(item.name || item.title || "Item");
       return `- ${itemName}: ${cfg.label}`;
     })
     .join("\n");
 
+  let greetingBody = `${cfg.headline}\n${cfg.subhead}\n`;
+  if (isDelivered) {
+    greetingBody = "Your order has been delivered. Thank you for ordering with AuditX! Your delivery slip is attached.\n";
+  } else if (isPlaced) {
+    greetingBody = "Our order is placed. Thank you!\nYour order is arriving soon.\n";
+  }
+
   return `
 Hi ${safeName},
 
-${isPlaced ? "Our order is placed. Thank you!\nYour order is arriving soon.\n" : `${cfg.headline}\n${cfg.subhead}\n`}
+${greetingBody}
 Order ID: #${safeOrderId}
 
 Items:
@@ -284,6 +308,8 @@ Team AuditX
  * @param {Array} params.items - Ordered items list
  * @param {number} params.total - Grand total amount in INR
  * @param {string} params.status - Order status (placed, picking, staged, dispatched, delivered)
+ * @param {Object} [params.order] - Full order object for generating PDF slip attachment
+ * @param {Array} [params.attachments] - Array of { filename, content (base64) }
  * @returns {Promise<{ ok: boolean, id?: string, skipped?: boolean, reason?: string, error?: string }>}
  */
 export async function sendOrderEmail({
@@ -293,6 +319,8 @@ export async function sendOrderEmail({
   items = [],
   total = 0,
   status = "placed",
+  order = null,
+  attachments = [],
 }) {
   const apiKey = process.env.RESEND_API_KEY || "";
   const fromEmail = process.env.EMAIL_FROM || "AuditX <onboarding@resend.dev>";
@@ -318,25 +346,50 @@ export async function sendOrderEmail({
   const subject =
     normKey === "placed"
       ? `Your AuditX order is placed - Order #${orderId}`
+      : normKey === "delivered"
+      ? `Your AuditX order is delivered - Order #${orderId}`
       : `AuditX order #${orderId} update: ${cfg.label}`;
 
   const html = buildHtmlEmail({ name, orderId, items, total, status });
   const text = buildPlainTextEmail({ name, orderId, items, total, status });
 
+  let finalAttachments = Array.isArray(attachments) ? [...attachments] : [];
+
+  // Automatically generate and attach the crisp Delivery Slip PDF for delivered orders
+  if (normKey === "delivered" && finalAttachments.length === 0 && order) {
+    try {
+      const { generateDeliverySlipPdfBuffer } = await import("./orderSlipPdf.js");
+      const pdfBuffer = await generateDeliverySlipPdfBuffer(order);
+      if (pdfBuffer) {
+        finalAttachments.push({
+          filename: `Slip-${orderId}.pdf`,
+          content: pdfBuffer.toString("base64"),
+        });
+      }
+    } catch (e) {
+      console.warn(`[EmailService] Failed to generate slip PDF for #${orderId}:`, e?.message || e);
+    }
+  }
+
   try {
+    const emailPayload = {
+      from: fromEmail,
+      to: [cleanEmail],
+      subject,
+      html,
+      text,
+    };
+    if (finalAttachments.length > 0) {
+      emailPayload.attachments = finalAttachments;
+    }
+
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        from: fromEmail,
-        to: [cleanEmail],
-        subject,
-        html,
-        text,
-      }),
+      body: JSON.stringify(emailPayload),
     });
 
     const data = await res.json().catch(() => null);

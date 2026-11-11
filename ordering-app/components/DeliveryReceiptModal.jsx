@@ -1,7 +1,6 @@
 "use client";
 
 import React from "react";
-import { downloadDeliveredOrderPdfSlip } from "@/lib/orderSlipPdf";
 
 export default function DeliveryReceiptModal({
   order,
@@ -68,9 +67,7 @@ export default function DeliveryReceiptModal({
     xPos += 2;
   });
 
-  async function handleDownloadPDF() {
-    await downloadDeliveredOrderPdfSlip(order);
-  }
+
 
   return (
     <>
@@ -133,26 +130,22 @@ export default function DeliveryReceiptModal({
           }}
         >
           <div style={{ display: "flex", gap: 8 }}>
-            <button
-              type="button"
-              onClick={handleDownloadPDF}
+            <span
               style={{
-                background: "#0c831f",
-                color: "#ffffff",
-                border: "none",
+                background: "#f0fdf4",
+                color: "#15803d",
+                border: "1px solid #bbf7d0",
                 borderRadius: 8,
                 padding: "8px 14px",
                 fontSize: 12.5,
-                fontWeight: 800,
-                cursor: "pointer",
+                fontWeight: 700,
                 display: "inline-flex",
                 alignItems: "center",
                 gap: 6,
-                boxShadow: "0 2px 8px rgba(12, 131, 31, 0.35)",
               }}
             >
-              📥 Download PDF Receipt
-            </button>
+              📧 PDF Slip emailed to your Google inbox
+            </span>
             <button
               type="button"
               onClick={() => window.print()}

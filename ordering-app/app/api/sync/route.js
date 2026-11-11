@@ -357,9 +357,49 @@ export async function POST(req) {
           // Trigger live status update email notification (EMAIL 2+) for customer
           const custEmail = updatedOrder.customerEmail;
           const normNewStatus = normalizeEmailStatus(updatedOrder.status);
-          if (
+
+          if (custEmail && normNewStatus === "delivered" && !updatedOrder.delivered_email_sent) {
+            updatedOrder.delivered_email_sent = true;
+            updatedOrder.lastEmailedStatus = "delivered";
+            const orderSnapshot = { ...updatedOrder };
+            enqueueBackgroundTask("send_delivery_email_with_slip", async () => {
+              let attempts = 0;
+              let success = false;
+              let lastErr = null;
+              while (attempts < 3 && !success) {
+                attempts++;
+                try {
+                  const res = await sendOrderEmail({
+                    name: orderSnapshot.customerName || "Customer",
+                    email: custEmail,
+                    orderId: orderSnapshot.orderId || orderSnapshot.id,
+                    items: orderSnapshot.items || [],
+                    total: orderSnapshot.totalAmount,
+                    status: "delivered",
+                    order: orderSnapshot,
+                  });
+                  if (res.ok) {
+                    success = true;
+                    console.log(`[DeliveryEmail] Slip successfully sent to ${custEmail} for #${orderSnapshot.orderId}`);
+                  } else {
+                    lastErr = res.error || res.reason;
+                    console.warn(`[DeliveryEmail] Attempt ${attempts}/3 failed for #${orderSnapshot.orderId}:`, lastErr);
+                    if (attempts < 3) await new Promise((r) => setTimeout(r, 1200 * attempts));
+                  }
+                } catch (e) {
+                  lastErr = e?.message || e;
+                  console.warn(`[DeliveryEmail] Attempt ${attempts}/3 error for #${orderSnapshot.orderId}:`, lastErr);
+                  if (attempts < 3) await new Promise((r) => setTimeout(r, 1200 * attempts));
+                }
+              }
+              if (!success) {
+                console.error(`[DeliveryEmail] All 3 attempts failed to send delivery slip for #${orderSnapshot.orderId}:`, lastErr);
+              }
+            });
+          } else if (
             custEmail &&
             normNewStatus !== "placed" &&
+            normNewStatus !== "delivered" &&
             updatedOrder.lastEmailedStatus !== normNewStatus
           ) {
             updatedOrder.lastEmailedStatus = normNewStatus;
@@ -370,6 +410,7 @@ export async function POST(req) {
               items: updatedOrder.items || [],
               total: updatedOrder.totalAmount,
               status: normNewStatus,
+              order: updatedOrder,
             };
             enqueueBackgroundTask("send_order_status_email", async () => {
               await sendOrderEmail(emailData);

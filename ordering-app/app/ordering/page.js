@@ -33,7 +33,6 @@ import {
 import { safeArr, safeNum, safeStorage, validateCustomerBoundary } from "@/lib/safeData";
 import { playNotificationChime, playSuccessChime } from "@/lib/soundSystem";
 import { getRandomStagingRack } from "@/lib/roles";
-import { downloadDeliveredOrderPdfSlip } from "@/lib/orderSlipPdf";
 import DiwaliTheme from "@/lib/diwaliTheme";
 import DiwaliCrackers from "@/lib/diwaliCrackers";
 import AuditxLogo from "@/components/AuditxLogo";
@@ -66,10 +65,7 @@ const OrderPlacedSheet = dynamic(() => retryImport(() => import("@/components/ui
   ssr: false,
   loading: () => null,
 });
-const DeliveryReceiptModal = dynamic(() => retryImport(() => import("@/components/DeliveryReceiptModal")), {
-  ssr: false,
-  loading: () => null,
-});
+
 const LittlePenguin = dynamic(() => retryImport(() => import("@/components/LittlePenguin")), {
   ssr: false,
   loading: () => null,
@@ -881,18 +877,6 @@ export default function OrderingAppPage() {
     } catch { }
   }, []);
 
-  async function handleDownloadPdfSlip(orderObj, focusItem = null) {
-    if (!orderObj) return;
-    const ok = await downloadDeliveredOrderPdfSlip(orderObj, focusItem);
-    if (ok) {
-      triggerToast(
-        focusItem
-          ? `📄 Downloaded PDF slip for ${focusItem.name}`
-          : `📄 Downloaded delivery slip PDF for #${orderObj.orderNumber || orderObj.id}`
-      );
-    }
-  }
-
   // Modal & Overlay visibility state (declared prior to isOrderingHomeActive TDZ guard)
   const [showComplaintModal, setShowComplaintModal] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
@@ -1086,7 +1070,6 @@ export default function OrderingAppPage() {
     const prefetchHeavy = () => {
       try {
         import("@/components/ui/OrderPlacedSheet");
-        import("@/components/DeliveryReceiptModal");
       } catch { }
     };
     if (typeof window !== "undefined" && typeof window.requestIdleCallback === "function") {
@@ -2442,6 +2425,11 @@ export default function OrderingAppPage() {
       }
       onChange={(nextTab) => {
         if (nextTab === "cart") {
+          if (cartItemsList.length === 0) {
+            triggerToast("Your cart is empty. Add items from the catalog.");
+            setIsCheckoutView(false);
+            return;
+          }
           setIsCheckoutView(true);
           return;
         }
@@ -3300,23 +3288,20 @@ export default function OrderingAppPage() {
                     </div>
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-                    <button
-                      type="button"
-                      onClick={() => handleDownloadPdfSlip(latestDeliveredSlipOrder)}
+                    <span
                       style={{
-                        background: "#0C831F",
-                        color: "#FFFFFF",
-                        border: "none",
-                        borderRadius: 8,
-                        padding: "7px 11px",
-                        fontSize: 11.5,
-                        fontWeight: 800,
-                        cursor: "pointer",
+                        background: "#dcfce7",
+                        color: "#15803d",
+                        border: "1px solid #86efac",
+                        borderRadius: 6,
+                        padding: "5px 9px",
+                        fontSize: 11,
+                        fontWeight: 700,
                         whiteSpace: "nowrap",
                       }}
                     >
-                      📄 PDF Slip
-                    </button>
+                      📧 Slip emailed to your Google inbox
+                    </span>
                     <button
                       type="button"
                       aria-label="Dismiss delivered slip banner"
@@ -3884,31 +3869,11 @@ export default function OrderingAppPage() {
                                         Qty {it.qty} • ₹{it.price}
                                       </div>
                                     </div>
-                                    {isOrderDelivered && (
-                                      <button
-                                        type="button"
-                                        onClick={() => handleDownloadPdfSlip(po, it)}
-                                        title={`Download delivered item PDF slip for ${it.name}`}
-                                        style={{
-                                          background: "#dcfce7",
-                                          color: "#15803d",
-                                          border: "1px solid #86efac",
-                                          borderRadius: 7,
-                                          padding: "4px 7px",
-                                          fontSize: 10.5,
-                                          fontWeight: 800,
-                                          cursor: "pointer",
-                                          whiteSpace: "nowrap",
-                                        }}
-                                      >
-                                        📄 PDF
-                                      </button>
-                                    )}
                                   </div>
                                 ))}
                               </div>
 
-                              <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
                                 <button
                                   type="button"
                                   onClick={() => handleReorderAll(po)}
@@ -3929,75 +3894,21 @@ export default function OrderingAppPage() {
                                   🛒 Reorder All
                                 </button>
                                 {isOrderDelivered ? (
-                                  <>
-                                    <button
-                                      type="button"
-                                      onClick={() => handleDownloadPdfSlip(po)}
-                                      style={{
-                                        padding: "11px 13px",
-                                        borderRadius: 10,
-                                        border: "1.5px solid #0c831f",
-                                        background: "#f0fdf4",
-                                        color: "#0c831f",
-                                        fontWeight: 800,
-                                        fontSize: 12.5,
-                                        cursor: "pointer",
-                                        display: "inline-flex",
-                                        alignItems: "center",
-                                        gap: 5,
-                                        whiteSpace: "nowrap",
-                                      }}
-                                      title="Download Delivered Order Slip in PDF"
-                                    >
-                                      📄 Download PDF Slip
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setReceiptOrder(po);
-                                        setShowReceiptModal(true);
-                                      }}
-                                      style={{
-                                        padding: "11px 12px",
-                                        borderRadius: 10,
-                                        border: "1px solid #cbd5e1",
-                                        background: "#ffffff",
-                                        color: "#0f172a",
-                                        fontWeight: 700,
-                                        fontSize: 12.5,
-                                        cursor: "pointer",
-                                        whiteSpace: "nowrap",
-                                      }}
-                                      title="View Receipt Preview"
-                                    >
-                                      🧾 Slip
-                                    </button>
-                                  </>
-                                ) : (
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      triggerToast("🔒 PDF slip downloads once this item/order is delivered!")
-                                    }
+                                  <span
                                     style={{
-                                      padding: "10px 12px",
+                                      padding: "8px 12px",
                                       borderRadius: 10,
-                                      border: "1px dashed #94a3b8",
-                                      background: "#f8fafc",
-                                      color: "#64748b",
+                                      border: "1px solid #bbf7d0",
+                                      background: "#f0fdf4",
+                                      color: "#15803d",
                                       fontWeight: 700,
-                                      fontSize: 11.5,
-                                      cursor: "not-allowed",
-                                      display: "inline-flex",
-                                      alignItems: "center",
-                                      gap: 5,
+                                      fontSize: 12,
                                       whiteSpace: "nowrap",
                                     }}
-                                    title="PDF slip unlocks after order is delivered"
                                   >
-                                    🔒 PDF on delivery
-                                  </button>
-                                )}
+                                    📧 Delivery slip sent to Google email
+                                  </span>
+                                ) : null}
                               </div>
                             </div>
                           );
@@ -5168,31 +5079,8 @@ export default function OrderingAppPage() {
               </button>
 
               {(activeDeliveryOrder.status === "delivered" || orderingStage === "delivered") && (
-                <div style={{ marginTop: 10 }}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setReceiptOrder(activeDeliveryOrder);
-                      setShowReceiptModal(true);
-                    }}
-                    style={{
-                      width: "100%",
-                      padding: "10px 14px",
-                      borderRadius: 10,
-                      border: "1.5px solid #0c831f",
-                      background: "#f0fdf4",
-                      color: "#0c831f",
-                      fontWeight: 800,
-                      fontSize: 12.5,
-                      cursor: "pointer",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      gap: 6,
-                    }}
-                  >
-                    🧾 View &amp; Download Delivery Receipt (PDF)
-                  </button>
+                <div style={{ marginTop: 10, padding: "10px 14px", borderRadius: 10, border: "1px solid #bbf7d0", background: "#f0fdf4", color: "#15803d", fontWeight: 700, fontSize: 12.5, textAlign: "center" }}>
+                  📧 Delivery slip (PDF) sent to your Google email
                 </div>
               )}
             </form>
@@ -6271,12 +6159,7 @@ export default function OrderingAppPage() {
         </div>
       )}
 
-      {/* ── DELIVERY RECEIPT MODAL ── */}
-      <DeliveryReceiptModal
-        order={receiptOrder}
-        isOpen={showReceiptModal}
-        onClose={() => setShowReceiptModal(false)}
-      />
+
 
       {/* ── RAG-BASED EMBEDDED AI ASSISTANT: AUDIT'X Mini ── */}
       {!showIntroOverlay && (

@@ -134,6 +134,29 @@ export default function WarehouseDashboardPage() {
   const [staffStatus, setStaffStatus] = useState([]);
   const [activeTab, setActiveTab] = useState("overview"); // 'overview' | 'queue' | 'margin' | 'ratings' | 'complaints' | 'inventory' | 'devices' | 'orderCap' | 'erdDfd' | 'history' | 'asmDesk'
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [headerHeight, setHeaderHeight] = useState(88);
+  const headerRef = useRef(null);
+
+  useEffect(() => {
+    if (!headerRef.current) return;
+    const updateHeight = () => {
+      if (headerRef.current) {
+        setHeaderHeight(headerRef.current.offsetHeight || 88);
+      }
+    };
+    updateHeight();
+    let ro = null;
+    if (typeof ResizeObserver !== "undefined") {
+      ro = new ResizeObserver(updateHeight);
+      ro.observe(headerRef.current);
+    }
+    window.addEventListener("resize", updateHeight);
+    return () => {
+      ro?.disconnect();
+      window.removeEventListener("resize", updateHeight);
+    };
+  }, []);
+
   const [showLoginsPopover, setShowLoginsPopover] = useState(false);
   const [popoverAlign, setPopoverAlign] = useState("right");
   const loginsBtnRef = useRef(null);
@@ -1305,9 +1328,10 @@ export default function WarehouseDashboardPage() {
 
   return (
     <div ref={wrapRef} style={{ ...S.wrap, background: themeMode === "dark" ? "#0b0f17" : "#F4F5F0" }}>
-      {/* ── TOP HEADER / MANAGEMENT BAR ── */}
-      <header style={S.header}>
-        <div style={S.brandCol}>
+      {/* ── TOP HEADER / MANAGEMENT BAR (2 CLEAN ROWS: BRAND + OPERATIONS STATUS ROW 1; SUBTEXT & STAFF TOOLBAR ROW 2) ── */}
+      <header ref={headerRef} style={S.header}>
+        {/* ROW 1: Store Brand, Menu Toggle & Master Open/Close Switch on Left; Theme, Exit Portal & Clock on Right */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", gap: 12, flexWrap: "wrap" }}>
           <div style={S.logoRow}>
             {/* Sidebar Slide Toggle Button */}
             <button
@@ -1328,179 +1352,186 @@ export default function WarehouseDashboardPage() {
               ariaLabel="Dark store open or closed"
             />
           </div>
-          <div style={S.subText}>
-            Audit'X Dark Store • Tiptur (KA-44) • 10-Min Express
-          </div>
-        </div>
 
-        <div style={S.headerRight}>
-          {/* Theme Toggle Button */}
-          <button
-            type="button"
-            style={{
-              width: 38,
-              height: 38,
-              borderRadius: 12,
-              border: "1px solid #334155",
-              background: "#1E293B",
-              display: "grid",
-              placeItems: "center",
-              color: "#facc15",
-              cursor: "pointer",
-            }}
-            onClick={() => setThemeMode(themeMode === "dark" ? "light" : "dark")}
-            title={`Toggle Theme (${themeMode === "dark" ? "Light" : "Dark"} Mode)`}
-            aria-label="Toggle theme"
-          >
-            <WarehouseGlyph name={themeMode === "dark" ? "sun" : "moon"} size={18} stroke="#facc15" />
-          </button>
-
-          <div style={S.staffSwitcherBlock}>
-            <div style={S.activeStaffPill}>
-              {staff.logo ? (
-                <img src={staff.logo} alt="" style={{ width: 22, height: 22, borderRadius: "50%", objectFit: "cover" }} />
-              ) : (
-                <span>{staff.avatar}</span>
-              )}
-              <div>
-                <div style={S.activeStaffName}>{staff.name}</div>
-                <div style={S.activeStaffRole}>{staff.designation}</div>
-              </div>
-            </div>
-
-            {/* Give ASM (Deepu B) and SM (Bhaskar N S) 1-click toggle between SM Command Tower & ASM Putaway Desk */}
-            {(staff?.id === "deepu" || staff?.roleCode === "ASM" || staff?.id === "bhaskar" || staff?.roleCode === "SM") && (
-              <button
-                type="button"
-                onClick={() => handleTabChange(activeTab === "asmDesk" ? "overview" : "asmDesk")}
-                style={{
-                  background: activeTab === "asmDesk" ? "#0C831F" : "#1E293B",
-                  color: "#ffffff",
-                  border: "1px solid #334155",
-                  borderRadius: 8,
-                  padding: "6px 10px",
-                  fontSize: 11.5,
-                  fontWeight: 800,
-                  cursor: "pointer",
-                  whiteSpace: "nowrap",
-                }}
-                title="Switch between SM Dashboard & ASM Putaway Desk"
-              >
-                {activeTab === "asmDesk" ? "📊 SM Command Tower" : "📥 ASM Putaway Desk"}
-              </button>
-            )}
-          </div>
-
-          <button
-            type="button"
-            onClick={switchToAsmOrMd}
-            style={{
-              background: "#1E293B",
-              color: "#E2E8F0",
-              border: "1px solid #334155",
-              borderRadius: 10,
-              padding: "8px 12px",
-              fontSize: 12,
-              fontWeight: 800,
-              cursor: "pointer",
-              whiteSpace: "nowrap",
-            }}
-            title="Switch to MD / ASM without closing the store"
-          >
-            🔄 Switch MD / ASM
-          </button>
-
-          <button style={S.logoutBtn} onClick={logout}>
-            Exit Portal
-          </button>
-
-          {/* Active Ordering App Customer Logins Live Pill (Positioned Right, Dynamic Popover Align) */}
-          <div style={{ position: "relative" }} ref={loginsBtnRef}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginLeft: "auto", flexWrap: "nowrap" }}>
+            {/* Theme Toggle Button */}
             <button
               type="button"
               style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 7,
+                width: 38,
                 height: 38,
-                padding: "0 12px",
                 borderRadius: 12,
-                border: "1.5px solid #10b981",
-                background: "rgba(16, 185, 129, 0.12)",
-                color: "#ffffff",
+                border: "1px solid #334155",
+                background: "#1E293B",
+                display: "grid",
+                placeItems: "center",
+                color: "#facc15",
                 cursor: "pointer",
-                fontWeight: 800,
-                fontSize: 12,
-                whiteSpace: "nowrap",
+                flexShrink: 0,
               }}
-              onClick={toggleLoginsPopover}
-              aria-label={`${hubMetrics.userLoginsTodayCount} user logins today`}
-              aria-expanded={showLoginsPopover}
-              title="View live Ordering App customer logins"
+              onClick={() => setThemeMode(themeMode === "dark" ? "light" : "dark")}
+              title={`Toggle Theme (${themeMode === "dark" ? "Light" : "Dark"} Mode)`}
+              aria-label="Toggle theme"
             >
-              <span
-                style={{
-                  width: 8,
-                  height: 8,
-                  borderRadius: "50%",
-                  background: "#10b981",
-                  boxShadow: "0 0 8px #10b981",
-                  display: "inline-block",
-                }}
-              />
-              <WarehouseGlyph name="login" size={15} stroke="#10b981" />
-              <span>{hubMetrics.userLoginsTodayCount} Logins</span>
+              <WarehouseGlyph name={themeMode === "dark" ? "sun" : "moon"} size={18} stroke="#facc15" />
             </button>
 
-            {/* Popover */}
-            {showLoginsPopover && (
-              <div
-                style={{
-                  position: "absolute",
-                  right: 0,
-                  top: 48,
-                  width: 310,
-                  maxWidth: "calc(100vw - 24px)",
-                  background: "#1E293B",
-                  border: "1px solid #334155",
-                  borderRadius: 16,
-                  padding: 12,
-                  boxShadow: "0 20px 40px -12px rgba(0,0,0,0.6)",
-                  zIndex: 500,
-                }}
-              >
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, paddingBottom: 8, borderBottom: "1px solid #334155" }}>
-                  <div>
-                    <h3 style={{ margin: 0, fontSize: 13, fontWeight: 800, color: "#ffffff" }}>
-                      {hubMetrics.userLoginsTodayCount} Users Logged In Today
-                    </h3>
-                    <div style={{ fontSize: 10.5, color: "#94a3b8", marginTop: 2 }}>
-                      Live customer logins synced real-time from /ordering
-                    </div>
-                  </div>
-                  <span style={{ fontSize: 11, fontWeight: 800, color: "#10b981", background: "rgba(16, 185, 129, 0.15)", padding: "2px 6px", borderRadius: 4 }}>
-                    ● LIVE
-                  </span>
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
-                  <div style={{ background: "rgba(16, 185, 129, 0.12)", border: "1px solid rgba(16, 185, 129, 0.3)", borderRadius: 10, padding: "8px 10px" }}>
-                    <div style={{ fontSize: 10, color: "#6ee7b7", fontWeight: 700 }}>New Today</div>
-                    <div style={{ fontSize: 18, fontWeight: 900, color: "#ffffff" }}>{hubMetrics.newSignupsTodayCount}</div>
-                  </div>
-                  <div style={{ background: "rgba(56, 189, 248, 0.12)", border: "1px solid rgba(56, 189, 248, 0.3)", borderRadius: 10, padding: "8px 10px" }}>
-                    <div style={{ fontSize: 10, color: "#7dd3fc", fontWeight: 700 }}>Active Today</div>
-                    <div style={{ fontSize: 18, fontWeight: 900, color: "#ffffff" }}>{hubMetrics.userLoginsTodayCount}</div>
-                  </div>
-                  <div style={{ background: "rgba(148, 163, 184, 0.12)", border: "1px solid rgba(148, 163, 184, 0.3)", borderRadius: 10, padding: "8px 10px" }}>
-                    <div style={{ fontSize: 10, color: "#cbd5e1", fontWeight: 700 }}>Total Saved</div>
-                    <div style={{ fontSize: 18, fontWeight: 900, color: "#ffffff" }}>{hubMetrics.totalLoginsCount}</div>
-                  </div>
-                </div>
-              </div>
-            )}
+            <button style={S.logoutBtn} onClick={logout}>
+              Exit Portal
+            </button>
+
+            <LiveHeaderClock />
+          </div>
+        </div>
+
+        {/* ROW 2 (SUB-BAR): Location/SLA Subtext on Left; Staff Switcher & 5 Logins Live Pill Cleanly Right-Aligned */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", gap: 12, paddingTop: 6, borderTop: "1px solid rgba(255,255,255,0.06)", flexWrap: "wrap" }}>
+          <div style={S.subText}>
+            Audit'X Dark Store • Tiptur (KA-44) • 10-Min Express
           </div>
 
-          <LiveHeaderClock />
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginLeft: "auto", flexWrap: "wrap" }}>
+            <div style={S.staffSwitcherBlock}>
+              <div style={S.activeStaffPill}>
+                {staff.logo ? (
+                  <img src={staff.logo} alt="" style={{ width: 22, height: 22, borderRadius: "50%", objectFit: "cover" }} />
+                ) : (
+                  <span>{staff.avatar}</span>
+                )}
+                <div>
+                  <div style={S.activeStaffName}>{staff.name}</div>
+                  <div style={S.activeStaffRole}>{staff.designation}</div>
+                </div>
+              </div>
+
+              {/* Give ASM (Deepu B) and SM (Bhaskar N S) 1-click toggle between SM Command Tower & ASM Putaway Desk */}
+              {(staff?.id === "deepu" || staff?.roleCode === "ASM" || staff?.id === "bhaskar" || staff?.roleCode === "SM") && (
+                <button
+                  type="button"
+                  onClick={() => handleTabChange(activeTab === "asmDesk" ? "overview" : "asmDesk")}
+                  style={{
+                    background: activeTab === "asmDesk" ? "#0C831F" : "#1E293B",
+                    color: "#ffffff",
+                    border: "1px solid #334155",
+                    borderRadius: 8,
+                    padding: "6px 10px",
+                    fontSize: 11.5,
+                    fontWeight: 800,
+                    cursor: "pointer",
+                    whiteSpace: "nowrap",
+                  }}
+                  title="Switch between SM Dashboard & ASM Putaway Desk"
+                >
+                  {activeTab === "asmDesk" ? "📊 SM Command Tower" : "📥 ASM Putaway Desk"}
+                </button>
+              )}
+            </div>
+
+            <button
+              type="button"
+              onClick={switchToAsmOrMd}
+              style={{
+                background: "#1E293B",
+                color: "#E2E8F0",
+                border: "1px solid #334155",
+                borderRadius: 10,
+                padding: "8px 12px",
+                fontSize: 12,
+                fontWeight: 800,
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+              }}
+              title="Switch to MD / ASM without closing the store"
+            >
+              🔄 Switch MD / ASM
+            </button>
+
+            {/* Active Ordering App Customer Logins Live Pill (Cleanly Right Aligned, Never Cuts Off Header) */}
+            <div style={{ position: "relative" }} ref={loginsBtnRef}>
+              <button
+                type="button"
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 7,
+                  height: 38,
+                  padding: "0 12px",
+                  borderRadius: 12,
+                  border: "1.5px solid #10b981",
+                  background: "rgba(16, 185, 129, 0.12)",
+                  color: "#ffffff",
+                  cursor: "pointer",
+                  fontWeight: 800,
+                  fontSize: 12,
+                  whiteSpace: "nowrap",
+                }}
+                onClick={toggleLoginsPopover}
+                aria-label={`${hubMetrics.userLoginsTodayCount} user logins today`}
+                aria-expanded={showLoginsPopover}
+                title="View live Ordering App customer logins"
+              >
+                <span
+                  style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: "50%",
+                    background: "#10b981",
+                    boxShadow: "0 0 8px #10b981",
+                    display: "inline-block",
+                  }}
+                />
+                <WarehouseGlyph name="login" size={15} stroke="#10b981" />
+                <span>{hubMetrics.userLoginsTodayCount} Logins</span>
+              </button>
+
+              {/* Popover */}
+              {showLoginsPopover && (
+                <div
+                  style={{
+                    position: "absolute",
+                    right: 0,
+                    top: 48,
+                    width: 310,
+                    maxWidth: "calc(100vw - 24px)",
+                    background: "#1E293B",
+                    border: "1px solid #334155",
+                    borderRadius: 16,
+                    padding: 12,
+                    boxShadow: "0 20px 40px -12px rgba(0,0,0,0.6)",
+                    zIndex: 500,
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, paddingBottom: 8, borderBottom: "1px solid #334155" }}>
+                    <div>
+                      <h3 style={{ margin: 0, fontSize: 13, fontWeight: 800, color: "#ffffff" }}>
+                        {hubMetrics.userLoginsTodayCount} Users Logged In Today
+                      </h3>
+                      <div style={{ fontSize: 10.5, color: "#94a3b8", marginTop: 2 }}>
+                        Live customer logins synced real-time from /ordering
+                      </div>
+                    </div>
+                    <span style={{ fontSize: 11, fontWeight: 800, color: "#10b981", background: "rgba(16, 185, 129, 0.15)", padding: "2px 6px", borderRadius: 4 }}>
+                      ● LIVE
+                    </span>
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
+                    <div style={{ background: "rgba(16, 185, 129, 0.12)", border: "1px solid rgba(16, 185, 129, 0.3)", borderRadius: 10, padding: "8px 10px" }}>
+                      <div style={{ fontSize: 10, color: "#6ee7b7", fontWeight: 700 }}>New Today</div>
+                      <div style={{ fontSize: 18, fontWeight: 900, color: "#ffffff" }}>{hubMetrics.newSignupsTodayCount}</div>
+                    </div>
+                    <div style={{ background: "rgba(56, 189, 248, 0.12)", border: "1px solid rgba(56, 189, 248, 0.3)", borderRadius: 10, padding: "8px 10px" }}>
+                      <div style={{ fontSize: 10, color: "#7dd3fc", fontWeight: 700 }}>Active Today</div>
+                      <div style={{ fontSize: 18, fontWeight: 900, color: "#ffffff" }}>{hubMetrics.userLoginsTodayCount}</div>
+                    </div>
+                    <div style={{ background: "rgba(148, 163, 184, 0.12)", border: "1px solid rgba(148, 163, 184, 0.3)", borderRadius: 10, padding: "8px 10px" }}>
+                      <div style={{ fontSize: 10, color: "#cbd5e1", fontWeight: 700 }}>Total Saved</div>
+                      <div style={{ fontSize: 18, fontWeight: 900, color: "#ffffff" }}>{hubMetrics.totalLoginsCount}</div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       </header>
 
@@ -1646,7 +1677,7 @@ export default function WarehouseDashboardPage() {
         />
       ) : (
         /* ── SM STORE MANAGER WORKSPACE ── */
-        <div style={S.workspaceLayout}>
+        <div style={{ ...S.workspaceLayout, minHeight: `calc(100vh - ${headerHeight}px)` }}>
         {/* ── 1. LEFT SLIDE BAR (EXPANDABLE / COLLAPSIBLE WAREHOUSE OPS LAUNCHER) ── */}
         <aside
           style={{
@@ -1655,7 +1686,9 @@ export default function WarehouseDashboardPage() {
             width: sidebarOpen ? 318 : 0,
             padding: sidebarOpen ? "14px 12px 24px" : 0,
             overflowY: "auto",
-            maxHeight: "calc(100vh - 72px)",
+            top: headerHeight,
+            height: `calc(100vh - ${headerHeight}px)`,
+            maxHeight: `calc(100vh - ${headerHeight}px)`,
           }}
         >
           {/* Header */}
@@ -4428,7 +4461,7 @@ function LiveHeaderClock() {
 
 const S = {
   wrap: { minHeight: "100vh", width: "100%", maxWidth: "100vw", overflowX: "hidden", background: "#F1F5F9", fontFamily: "system-ui, -apple-system, sans-serif", boxSizing: "border-box" },
-  header: { position: "sticky", top: 0, zIndex: 60, flexShrink: 0, background: "#0F172A", borderBottom: "1px solid #1E293B", padding: "10px 18px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10, width: "100%", maxWidth: "100vw", boxSizing: "border-box" },
+  header: { position: "sticky", top: 0, zIndex: 60, flexShrink: 0, background: "#0F172A", borderBottom: "1px solid #1E293B", padding: "10px 18px", display: "flex", flexDirection: "column", gap: 8, width: "100%", maxWidth: "100vw", boxSizing: "border-box" },
   brandCol: { display: "flex", flexDirection: "column", gap: 6 },
   logoRow: { display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" },
   sidebarToggleBtn: { background: "#1e293b", color: "#f8fafc", border: "1px solid #334155", padding: "6px 12px", borderRadius: 8, fontSize: 12, fontWeight: 800, cursor: "pointer" },

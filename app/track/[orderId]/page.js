@@ -15,9 +15,7 @@ import {
   dispatchCloudAction,
 } from "@/lib/realtimeSync";
 import { playSuccessChime, playNotificationChime } from "@/lib/soundSystem";
-import { downloadDeliveredOrderPdfSlip } from "@/lib/orderSlipPdf";
 import AuditxLogo from "@/components/AuditxLogo";
-import DeliveryReceiptModal from "@/components/DeliveryReceiptModal";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { subscribeNetworkStatus, withIdempotentLock } from "@/lib/apiClient";
 import { safeArr, safeDateMs, safeNum, safeStorage } from "@/lib/safeData";
@@ -719,27 +717,26 @@ export default function TrackOrderPage() {
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 {isDelivered && (
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      const ok = await downloadDeliveredOrderPdfSlip(activeOrder);
-                      if (ok) triggerToast("📄 Delivery slip PDF downloaded!");
-                    }}
+                  <div
                     style={{
                       flex: 1,
                       minWidth: 140,
                       minHeight: 46,
-                      background: "#FFFFFF",
-                      color: "#0C831F",
-                      border: "1.5px solid #0C831F",
+                      background: "#F0FDF4",
+                      color: "#15803D",
+                      border: "1px solid #BBF7D0",
                       borderRadius: 12,
-                      fontSize: 13.5,
-                      fontWeight: 800,
-                      cursor: "pointer",
+                      fontSize: 12.5,
+                      fontWeight: 700,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      padding: "8px 12px",
+                      textAlign: "center",
                     }}
                   >
-                    📄 Download PDF Slip
-                  </button>
+                    📧 Delivery slip attached to Google email
+                  </div>
                 )}
                 <button
                   type="button"
@@ -1202,29 +1199,8 @@ export default function TrackOrderPage() {
 
               {/* Delivery Receipt Action Button (Only shown after delivery) */}
               {isDelivered && (
-                <div style={{ marginTop: 14 }}>
-                  <button
-                    type="button"
-                    onClick={() => setShowReceiptModal(true)}
-                    style={{
-                      width: "100%",
-                      minHeight: 44,
-                      padding: "12px 16px",
-                      borderRadius: 12,
-                      border: "1.5px solid #0c831f",
-                      background: "#f0fdf4",
-                      color: "#0c831f",
-                      fontSize: 13,
-                      fontWeight: 800,
-                      cursor: "pointer",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      gap: 8,
-                    }}
-                  >
-                    Download receipt
-                  </button>
+                <div style={{ marginTop: 14, padding: "10px 14px", borderRadius: 12, border: "1px solid #bbf7d0", background: "#f0fdf4", color: "#15803d", fontWeight: 700, fontSize: 12.5, textAlign: "center" }}>
+                  📧 Delivery slip sent to your Google email
                 </div>
               )}
             </div>
@@ -1277,26 +1253,20 @@ export default function TrackOrderPage() {
                     You rated Delivery Partner {riderRating}/5 ★ and reviewed {(activeOrder.items || []).length} item(s).
                   </p>
                   <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 8 }}>
-                    <button
-                      type="button"
-                      onClick={() => setShowReceiptModal(true)}
+                    <div
                       style={{
-                        padding: "11px 18px",
+                        padding: "10px 14px",
                         borderRadius: 10,
-                        border: "1.5px solid #0c831f",
-                        background: "#ffffff",
-                        color: "#0c831f",
-                        fontSize: 13,
-                        fontWeight: 800,
-                        cursor: "pointer",
-                        display: "inline-flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        gap: 8,
+                        border: "1px solid #bbf7d0",
+                        background: "#f0fdf4",
+                        color: "#15803d",
+                        fontSize: 12.5,
+                        fontWeight: 700,
+                        textAlign: "center",
                       }}
                     >
-                      🧾 View &amp; Download Delivery Receipt (PDF)
-                    </button>
+                      📧 Delivery slip (PDF) sent to your Google email
+                    </div>
                     <button
                       type="button"
                       onClick={handleReturnToCatalog}
@@ -1714,12 +1684,7 @@ export default function TrackOrderPage() {
               </button>
             </form>
       </IOSBottomSheet>
-      {/* ── DELIVERY RECEIPT MODAL ── */}
-      <DeliveryReceiptModal
-        order={activeOrder}
-        isOpen={showReceiptModal}
-        onClose={() => setShowReceiptModal(false)}
-      />
+
     </>
   );
 }
