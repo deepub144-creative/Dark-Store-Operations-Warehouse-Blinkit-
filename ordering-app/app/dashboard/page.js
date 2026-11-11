@@ -135,6 +135,24 @@ export default function WarehouseDashboardPage() {
   const [activeTab, setActiveTab] = useState("overview"); // 'overview' | 'queue' | 'margin' | 'ratings' | 'complaints' | 'inventory' | 'devices' | 'orderCap' | 'erdDfd' | 'history' | 'asmDesk'
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [showLoginsPopover, setShowLoginsPopover] = useState(false);
+  const [popoverAlign, setPopoverAlign] = useState("right");
+  const loginsBtnRef = useRef(null);
+
+  const toggleLoginsPopover = useCallback(() => {
+    setShowLoginsPopover((prev) => {
+      const next = !prev;
+      if (next && loginsBtnRef.current) {
+        const rect = loginsBtnRef.current.getBoundingClientRect();
+        if (rect.left < 330) {
+          setPopoverAlign("left");
+        } else {
+          setPopoverAlign("right");
+        }
+      }
+      return next;
+    });
+  }, []);
+
   const [govTab, setGovTab] = useState("queue"); // 'queue' | 'sku'
   const [themeMode, setThemeMode] = useState("dark"); // 'dark' | 'light'
 
@@ -1307,90 +1325,6 @@ export default function WarehouseDashboardPage() {
         </div>
 
         <div style={S.headerRight}>
-          {/* Active Ordering App Customer Logins Live Pill (Live Clean Count: number of users logged in) */}
-          <div style={{ position: "relative" }}>
-            <button
-              type="button"
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 7,
-                height: 38,
-                padding: "0 12px",
-                borderRadius: 12,
-                border: "1.5px solid #10b981",
-                background: "rgba(16, 185, 129, 0.12)",
-                color: "#ffffff",
-                cursor: "pointer",
-                fontWeight: 800,
-                fontSize: 12,
-              }}
-              onClick={() => setShowLoginsPopover(!showLoginsPopover)}
-              aria-label={`${hubMetrics.userLoginsTodayCount} user logins today`}
-              aria-expanded={showLoginsPopover}
-              title="View live Ordering App customer logins"
-            >
-              <span
-                style={{
-                  width: 8,
-                  height: 8,
-                  borderRadius: "50%",
-                  background: "#10b981",
-                  boxShadow: "0 0 8px #10b981",
-                  display: "inline-block",
-                }}
-              />
-              <WarehouseGlyph name="login" size={15} stroke="#10b981" />
-              <span>{hubMetrics.userLoginsTodayCount} Logins</span>
-            </button>
-
-            {/* Popover */}
-            {showLoginsPopover && (
-              <div
-                style={{
-                  position: "absolute",
-                  right: 0,
-                  top: 48,
-                  width: 310,
-                  background: "#1E293B",
-                  border: "1px solid #334155",
-                  borderRadius: 16,
-                  padding: 12,
-                  boxShadow: "0 20px 40px -12px rgba(0,0,0,0.6)",
-                  zIndex: 200,
-                }}
-              >
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, paddingBottom: 8, borderBottom: "1px solid #334155" }}>
-                  <div>
-                    <h3 style={{ margin: 0, fontSize: 13, fontWeight: 800, color: "#ffffff" }}>
-                      {hubMetrics.userLoginsTodayCount} Users Logged In Today
-                    </h3>
-                    <div style={{ fontSize: 10.5, color: "#94a3b8", marginTop: 2 }}>
-                      Live customer logins synced real-time from /ordering
-                    </div>
-                  </div>
-                  <span style={{ fontSize: 11, fontWeight: 800, color: "#10b981", background: "rgba(16, 185, 129, 0.15)", padding: "2px 6px", borderRadius: 4 }}>
-                    ● LIVE
-                  </span>
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
-                  <div style={{ background: "rgba(16, 185, 129, 0.12)", border: "1px solid rgba(16, 185, 129, 0.3)", borderRadius: 10, padding: "8px 10px" }}>
-                    <div style={{ fontSize: 10, color: "#6ee7b7", fontWeight: 700 }}>New Today</div>
-                    <div style={{ fontSize: 18, fontWeight: 900, color: "#ffffff" }}>{hubMetrics.newSignupsTodayCount}</div>
-                  </div>
-                  <div style={{ background: "rgba(56, 189, 248, 0.12)", border: "1px solid rgba(56, 189, 248, 0.3)", borderRadius: 10, padding: "8px 10px" }}>
-                    <div style={{ fontSize: 10, color: "#7dd3fc", fontWeight: 700 }}>Active Today</div>
-                    <div style={{ fontSize: 18, fontWeight: 900, color: "#ffffff" }}>{hubMetrics.userLoginsTodayCount}</div>
-                  </div>
-                  <div style={{ background: "rgba(148, 163, 184, 0.12)", border: "1px solid rgba(148, 163, 184, 0.3)", borderRadius: 10, padding: "8px 10px" }}>
-                    <div style={{ fontSize: 10, color: "#cbd5e1", fontWeight: 700 }}>Total Saved</div>
-                    <div style={{ fontSize: 18, fontWeight: 900, color: "#ffffff" }}>{hubMetrics.totalLoginsCount}</div>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-
           {/* Theme Toggle Button */}
           <button
             type="button"
@@ -1466,6 +1400,92 @@ export default function WarehouseDashboardPage() {
           >
             🔄 Switch MD / ASM
           </button>
+
+          {/* Active Ordering App Customer Logins Live Pill (Positioned Right, Dynamic Popover Align) */}
+          <div style={{ position: "relative" }} ref={loginsBtnRef}>
+            <button
+              type="button"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 7,
+                height: 38,
+                padding: "0 12px",
+                borderRadius: 12,
+                border: "1.5px solid #10b981",
+                background: "rgba(16, 185, 129, 0.12)",
+                color: "#ffffff",
+                cursor: "pointer",
+                fontWeight: 800,
+                fontSize: 12,
+                whiteSpace: "nowrap",
+              }}
+              onClick={toggleLoginsPopover}
+              aria-label={`${hubMetrics.userLoginsTodayCount} user logins today`}
+              aria-expanded={showLoginsPopover}
+              title="View live Ordering App customer logins"
+            >
+              <span
+                style={{
+                  width: 8,
+                  height: 8,
+                  borderRadius: "50%",
+                  background: "#10b981",
+                  boxShadow: "0 0 8px #10b981",
+                  display: "inline-block",
+                }}
+              />
+              <WarehouseGlyph name="login" size={15} stroke="#10b981" />
+              <span>{hubMetrics.userLoginsTodayCount} Logins</span>
+            </button>
+
+            {/* Popover */}
+            {showLoginsPopover && (
+              <div
+                style={{
+                  position: "absolute",
+                  ...(popoverAlign === "left" ? { left: 0 } : { right: 0 }),
+                  top: 48,
+                  width: 310,
+                  maxWidth: "calc(100vw - 32px)",
+                  background: "#1E293B",
+                  border: "1px solid #334155",
+                  borderRadius: 16,
+                  padding: 12,
+                  boxShadow: "0 20px 40px -12px rgba(0,0,0,0.6)",
+                  zIndex: 500,
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, paddingBottom: 8, borderBottom: "1px solid #334155" }}>
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: 13, fontWeight: 800, color: "#ffffff" }}>
+                      {hubMetrics.userLoginsTodayCount} Users Logged In Today
+                    </h3>
+                    <div style={{ fontSize: 10.5, color: "#94a3b8", marginTop: 2 }}>
+                      Live customer logins synced real-time from /ordering
+                    </div>
+                  </div>
+                  <span style={{ fontSize: 11, fontWeight: 800, color: "#10b981", background: "rgba(16, 185, 129, 0.15)", padding: "2px 6px", borderRadius: 4 }}>
+                    ● LIVE
+                  </span>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
+                  <div style={{ background: "rgba(16, 185, 129, 0.12)", border: "1px solid rgba(16, 185, 129, 0.3)", borderRadius: 10, padding: "8px 10px" }}>
+                    <div style={{ fontSize: 10, color: "#6ee7b7", fontWeight: 700 }}>New Today</div>
+                    <div style={{ fontSize: 18, fontWeight: 900, color: "#ffffff" }}>{hubMetrics.newSignupsTodayCount}</div>
+                  </div>
+                  <div style={{ background: "rgba(56, 189, 248, 0.12)", border: "1px solid rgba(56, 189, 248, 0.3)", borderRadius: 10, padding: "8px 10px" }}>
+                    <div style={{ fontSize: 10, color: "#7dd3fc", fontWeight: 700 }}>Active Today</div>
+                    <div style={{ fontSize: 18, fontWeight: 900, color: "#ffffff" }}>{hubMetrics.userLoginsTodayCount}</div>
+                  </div>
+                  <div style={{ background: "rgba(148, 163, 184, 0.12)", border: "1px solid rgba(148, 163, 184, 0.3)", borderRadius: 10, padding: "8px 10px" }}>
+                    <div style={{ fontSize: 10, color: "#cbd5e1", fontWeight: 700 }}>Total Saved</div>
+                    <div style={{ fontSize: 18, fontWeight: 900, color: "#ffffff" }}>{hubMetrics.totalLoginsCount}</div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
 
           <button style={S.logoutBtn} onClick={logout}>
             Exit Portal
