@@ -1,11 +1,18 @@
-import { initializeApp, getApps, cert } from "firebase-admin/app";
-import { getFirestore } from "firebase-admin/firestore";
-import { getAuth } from "firebase-admin/auth";
+import { createRequire } from "module";
 
-function getAdminApp() {
-  try {
-    if (getApps().length) return getApps()[0];
+let adminDbInstance = null;
+let adminAuthInstance = null;
 
+try {
+  const require = createRequire(import.meta.url);
+  const { initializeApp, getApps, cert } = require("firebase-admin/app");
+  const { getFirestore } = require("firebase-admin/firestore");
+  const { getAuth } = require("firebase-admin/auth");
+
+  const apps = getApps();
+  let adminApp = apps && apps.length > 0 ? apps[0] : null;
+
+  if (!adminApp) {
     const projectId = process.env.FIREBASE_PROJECT_ID;
     const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
     let privateKey = process.env.FIREBASE_PRIVATE_KEY || "";
@@ -14,31 +21,23 @@ function getAdminApp() {
     }
     privateKey = privateKey.replace(/\\n/g, "\n");
 
-    if (!projectId || !clientEmail || !privateKey) {
-      return null;
+    if (projectId && clientEmail && privateKey) {
+      adminApp = initializeApp({
+        credential: cert({ projectId, clientEmail, privateKey }),
+      });
     }
-
-    return initializeApp({
-      credential: cert({ projectId, clientEmail, privateKey }),
-    });
-  } catch (err) {
-    console.warn("[FirebaseAdmin] Initialization warning:", err?.message);
-    return null;
   }
-}
 
-let adminDbInstance = null;
-let adminAuthInstance = null;
-
-try {
-  const adminApp = getAdminApp();
   if (adminApp) {
     adminDbInstance = getFirestore(adminApp);
     adminAuthInstance = getAuth(adminApp);
   }
-} catch (e) {
-  console.warn("[FirebaseAdmin] Service binding warning:", e?.message);
+} catch (err) {
+  console.warn("[FirebaseAdmin] Optional admin initialization fallback:", err?.message);
+  adminDbInstance = null;
+  adminAuthInstance = null;
 }
 
 export const adminDb = adminDbInstance;
 export const adminAuth = adminAuthInstance;
+

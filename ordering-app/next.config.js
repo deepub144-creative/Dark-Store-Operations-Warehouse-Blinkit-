@@ -1,6 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  serverExternalPackages: ["firebase-admin"],
   typescript: {
     // Isolate legacy JS page helper exports when Vite TS files exist under app/web-chat
     ignoreBuildErrors: true,
