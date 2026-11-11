@@ -866,6 +866,7 @@ export default function TrackOrderPage() {
                 <text x="0" y="2.5" textAnchor="middle" fontSize="11">🛵</text>
               </g>
             </svg>
+            )}
 
             {/* Live Route Info Strip */}
             <div style={S.mapLiveRouteBadge}>

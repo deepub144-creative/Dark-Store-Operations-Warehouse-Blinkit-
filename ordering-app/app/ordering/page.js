@@ -432,6 +432,13 @@ const OrderingSearchInput = memo(function OrderingSearchInput({
   );
 });
 
+function CatalogBoundaryProbe() {
+  if (typeof window !== "undefined" && window.__AUDITX_FORCE_CATALOG_CRASH__ === true) {
+    throw new Error("Simulated child render failure for boundary verification");
+  }
+  return null;
+}
+
 const OrderingProductCard = memo(function OrderingProductCard({
   item,
   idx,
@@ -3345,6 +3352,7 @@ export default function OrderingAppPage() {
                   compact
                   onRetry={() => fetchCloudHubState({ force: true })}
                 >
+                  <CatalogBoundaryProbe />
                   {loading && visibleCatalog.length === 0 ? (
                     <OrderingSkeletonScreen />
                   ) : visibleCatalog.length === 0 ? (
