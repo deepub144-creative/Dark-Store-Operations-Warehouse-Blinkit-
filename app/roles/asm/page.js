@@ -1,11 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { collection, onSnapshot, doc, updateDoc, addDoc } from "firebase/firestore";
-import { db } from "@/lib/firebaseClient";
 import { CATALOG } from "@/lib/items";
-import SharedScanner from "@/components/SharedScanner";
 import { playNotificationChime, playSuccessChime, playScanSuccess } from "@/lib/soundSystem";
 import {
   subscribeToEvents,
@@ -15,8 +12,8 @@ import {
   getCachedCloudHubState,
 } from "@/lib/realtimeSync";
 import { mergeCatalogItems, getDefaultItemStock } from "@/lib/hubState";
-import AuditxLogo from "@/components/AuditxLogo";
 import LiveOrderPipeline from "@/components/LiveOrderPipeline";
+import StockMonitorPanel from "@/components/inventory/StockMonitorPanel";
 
 // Official Dark Store Catalog for ASM: Strictly matching Ordering App & SM Dashboard (Frames = 1 unit, Chocolates = 5 units)
 const ASM_OFFICIAL_CATALOG = CATALOG.filter(
@@ -28,7 +25,7 @@ const ASM_OFFICIAL_CATALOG = CATALOG.filter(
   weight: item.category === "Frames" ? "1 unit" : "5 units",
 }));
 
-export default function AssistantStoreManagerApp({ embedded = false }) {
+export default function AssistantStoreManagerApp({ embedded = false, sharedCloudState = null }) {
   const router = useRouter();
 
   // Dump standalone /roles/asm link into /dashboard?role=asm
@@ -41,9 +38,15 @@ export default function AssistantStoreManagerApp({ embedded = false }) {
   const [activeTab, setActiveTab] = useState("itemHelp"); // itemHelp | soloAudit | putawayBay
   const [catalogItems, setCatalogItems] = useState(ASM_OFFICIAL_CATALOG);
   const [inventoryStockMap, setInventoryStockMap] = useState({});
+  const [stockBySku, setStockBySku] = useState({});
+  const [inventoryMovements, setInventoryMovements] = useState([]);
+  const [lowStockAlerts, setLowStockAlerts] = useState([]);
+  const [reconciliationReport, setReconciliationReport] = useState(null);
   const [customCatalogItems, setCustomCatalogItems] = useState([]);
   const [oosList, setOosList] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("all");
+  const [stockFilter, setStockFilter] = useState("all");
   const [selectedItem, setSelectedItem] = useState(ASM_OFFICIAL_CATALOG[0]);
   const [actionSuccess, setActionSuccess] = useState("");
 
@@ -75,12 +78,21 @@ export default function AssistantStoreManagerApp({ embedded = false }) {
     },
   ]);
 
-  // Sync live catalog, stock units, Putaway items & OOS across SM Dashboard, ASM & Ordering App
+  // Sync live catalog, stock units, Putaway items, movements & alerts via shared parent or <1s SSE stream
   useEffect(() => {
-    function applyStateSnapshot(invMap = {}, oosArr = [], customArr = []) {
+    function applyCloudSnapshot(cloudState) {
+      if (!cloudState) return;
+      const invMap = cloudState.inventoryStockMap || {};
+      const oosArr = cloudState.oosList || [];
+      const customArr = cloudState.customCatalogItems || [];
       setInventoryStockMap(invMap);
       setOosList(oosArr);
       setCustomCatalogItems(customArr);
+      if (cloudState.stockBySku) setStockBySku(cloudState.stockBySku);
+      if (Array.isArray(cloudState.inventoryMovements)) setInventoryMovements(cloudState.inventoryMovements);
+      if (Array.isArray(cloudState.lowStockAlerts)) setLowStockAlerts(cloudState.lowStockAlerts);
+      if (cloudState.reconciliationReport) setReconciliationReport(cloudState.reconciliationReport);
+
       const merged = mergeCatalogItems(ASM_OFFICIAL_CATALOG, customArr).map((item) => {
         const liveUnits =
           invMap[item.sku] !== undefined ? Number(invMap[item.sku]) : getDefaultItemStock(item);
@@ -95,38 +107,23 @@ export default function AssistantStoreManagerApp({ embedded = false }) {
       setAuditSku((prev) => merged.find((m) => m.sku === prev?.sku) || merged[0]);
     }
 
-    function loadLocal() {
-      const cached = getCachedCloudHubState();
-      if (cached) {
-        applyStateSnapshot(
-          cached.inventoryStockMap || {},
-          cached.oosList || [],
-          cached.customCatalogItems || []
-        );
-        return;
-      }
-      try {
-        const rawOos = localStorage.getItem("auditx_oos_items");
-        const rawInv = localStorage.getItem("auditx_inventory_units");
-        const rawCustom = localStorage.getItem("auditx_custom_catalog");
-        applyStateSnapshot(
-          rawInv ? JSON.parse(rawInv) : {},
-          rawOos ? JSON.parse(rawOos) : [],
-          rawCustom ? JSON.parse(rawCustom) : []
-        );
-      } catch (e) {
-        console.warn(e);
-      }
+    if (sharedCloudState) {
+      applyCloudSnapshot(sharedCloudState);
+      return;
     }
-    loadLocal();
 
-    const unsubCloud = subscribeToCloudHub((cloudState) => {
-      applyStateSnapshot(
-        cloudState.inventoryStockMap || {},
-        cloudState.oosList || [],
-        cloudState.customCatalogItems || []
-      );
-    }, 1800);
+    const cached = getCachedCloudHubState();
+    if (cached) {
+      applyCloudSnapshot(cached);
+    }
+
+    const unsubCloud = subscribeToCloudHub(
+      (cloudState) => {
+        applyCloudSnapshot(cloudState);
+      },
+      1800,
+      { scope: "asm", storeId: "TIPTUR-HUB-KA44", batchWindowMs: 250 }
+    );
 
     const unsubBus = subscribeToEvents((data) => {
       if (data.type === "ITEM_STOCK_TOGGLED" && data.payload) {
@@ -141,7 +138,7 @@ export default function AssistantStoreManagerApp({ embedded = false }) {
       unsubCloud();
       unsubBus();
     };
-  }, []);
+  }, [sharedCloudState]);
 
   async function handleToggleStockStatus(sku, currentInStock) {
     const nextStatus = !currentInStock;
@@ -301,14 +298,54 @@ export default function AssistantStoreManagerApp({ embedded = false }) {
     }
   }
 
-  function handleSubmitSoloAudit(e) {
+  async function handleGrnInward(sku, delta = 5) {
+    const res = await dispatchCloudAction("GRN_INWARD", { sku, delta, updatedBy: "Deepu B (ASM)" });
+    if (res?.ok && res.state) {
+      setInventoryStockMap(res.state.inventoryStockMap || {});
+      if (res.state.stockBySku) setStockBySku(res.state.stockBySku);
+      if (Array.isArray(res.state.inventoryMovements)) setInventoryMovements(res.state.inventoryMovements);
+      setOosList(res.state.oosList || []);
+      playScanSuccess();
+      setActionSuccess(`📥 GRN Inward (+${delta}) applied to ${sku} and synced live!`);
+      setTimeout(() => setActionSuccess(""), 3000);
+    } else if (res?.error) {
+      setActionSuccess(`⚠️ ${res.error}`);
+      setTimeout(() => setActionSuccess(""), 3000);
+    }
+  }
+
+  async function handleRunReconciliation() {
+    const res = await dispatchCloudAction("RUN_RECONCILIATION", {});
+    const rep = res?.data?.report || res?.state?.reconciliationReport;
+    if (rep) {
+      setReconciliationReport(rep);
+      setActionSuccess(
+        rep.ok
+          ? `✅ Ledger verified across ${rep.checkedSkus} SKUs — 0 variances.`
+          : `🚨 ${rep.mismatches.length} ledger variance(s) flagged!`
+      );
+      setTimeout(() => setActionSuccess(""), 4000);
+    }
+  }
+
+  async function handleSubmitSoloAudit(e) {
     e.preventDefault();
     const systemQty =
-      inventoryStockMap[auditSku.sku] !== undefined
+      stockBySku[auditSku.sku]?.unitsInStock !== undefined
+        ? Number(stockBySku[auditSku.sku].unitsInStock)
+        : inventoryStockMap[auditSku.sku] !== undefined
         ? Number(inventoryStockMap[auditSku.sku])
         : getDefaultItemStock(auditSku);
-    const physicalQty = parseInt(physicalCountInput) || 0;
+    const physicalQty = Math.max(0, parseInt(physicalCountInput, 10) || 0);
     const variance = physicalQty - systemQty;
+
+    if (variance !== 0) {
+      await dispatchCloudAction("AUDIT_ADJUSTMENT", {
+        sku: auditSku.sku,
+        setUnits: physicalQty,
+        updatedBy: "Deepu B (ASM)",
+      });
+    }
 
     const newAudit = {
       id: `AUD-KA44-${Math.floor(100 + Math.random() * 900)}`,
@@ -317,14 +354,14 @@ export default function AssistantStoreManagerApp({ embedded = false }) {
       systemQty,
       physicalQty,
       variance,
-      status: variance === 0 ? "VERIFIED_ACCURATE" : "DISCREPANCY_FLAGGED",
+      status: variance === 0 ? "VERIFIED_ACCURATE" : "DISCREPANCY_ADJUSTED",
       date: `Today, ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`,
       auditor: "Deepu B (ASM)",
       conductedBy: "Deepu B (ASM)",
       zone: `Aisle ${auditSku.aisle} (${auditSku.category})`,
       systemCount: systemQty,
       physicalCount: physicalQty,
-      notes: auditNotes || (variance === 0 ? "Physical count matches system ledger." : `Variance of ${variance} units reported to SM Bhaskar N S.`),
+      notes: auditNotes || (variance === 0 ? "Physical count matches system ledger." : `Variance of ${variance} units adjusted in live ledger & reported to SM Bhaskar N S.`),
       smApproved: false,
     };
 
@@ -333,7 +370,7 @@ export default function AssistantStoreManagerApp({ embedded = false }) {
 
     playSuccessChime();
     setAuditNotes("");
-    setActionSuccess(`🛡️ Solo Inventory Audit for "${auditSku.name}" signed & dispatched to Store Manager Bhaskar N S!`);
+    setActionSuccess(`🛡️ Solo Inventory Audit for "${auditSku.name}" signed & synced to live ledger!`);
     setTimeout(() => setActionSuccess(""), 4000);
   }
 
@@ -661,152 +698,40 @@ export default function AssistantStoreManagerApp({ embedded = false }) {
           </div>
         )}
 
-        {/* MODULE 1: ITEM NOT FOUND / VISIBILITY HELP & OUT OF STOCK MARKER */}
+        {/* MODULE 1: LIVE ASM AREA INVENTORY CONTROLLER & AVAILABILITY */}
         {activeTab === "itemHelp" && (
           <div>
             <div style={S.panelHeader}>
               <div>
-                <h2 style={S.panelTitle}>Item Assistance & Availability Controller</h2>
+                <h2 style={S.panelTitle}>ASM Area Live Inventory &amp; Availability Controller</h2>
                 <p style={S.panelSub}>
-                  When OD Pickers cannot find an item on shelf, ASM verifies the rack. If truly unavailable, mark it <b>Not Available</b> to sync live to customer apps.
+                  Real-time SKU stock, 5-min checkout holds, low-stock alerts &amp; movement ledger across your assigned area. Updates live within &lt;1s on every order.
                 </p>
               </div>
-
-              <input
-                type="text"
-                placeholder="Search SKU name or Aisle (e.g. F0 - A1 - 001)..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                style={S.searchInput}
-              />
             </div>
 
-            <div style={S.itemsGrid}>
-              {filteredItems.map((item) => {
-                const inStock = item.inStock !== false;
-                return (
-                  <div
-                    key={item.sku}
-                    style={{
-                      ...S.itemCard,
-                      borderColor: inStock ? "#E2E8F0" : "#FCA5A5",
-                      background: inStock ? "#FFFFFF" : "#FEF2F2",
-                    }}
-                  >
-                    <div style={S.itemCardTop}>
-                      <div style={S.aislePill}>
-                        📍 Aisle: <b>{item.aisle}</b>
-                      </div>
-                      <span
-                        style={{
-                          ...S.stockPill,
-                          background: inStock ? "#065f46" : "#7f1d1d",
-                          color: inStock ? "#6ee7b7" : "#fca5a5",
-                        }}
-                      >
-                        {inStock ? "IN STOCK" : "NOT AVAILABLE"}
-                      </span>
-                    </div>
-
-                    {/* Real Product Photo from Catalog */}
-                    <div
-                      style={{
-                        width: "100%",
-                        height: 160,
-                        borderRadius: 10,
-                        overflow: "hidden",
-                        background: "#f8fafc",
-                        margin: "8px 0 10px",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        border: "1px solid #e2e8f0",
-                        position: "relative",
-                      }}
-                    >
-                      <img
-                        src={item.image || (item.category === "Frames" ? "/frames/programming-stickers.jpg" : "/choclates/beatss.jpg")}
-                        alt={item.name}
-                        style={{
-                          width: "100%",
-                          height: "100%",
-                          objectFit: "contain",
-                          padding: 6,
-                          filter: inStock ? "none" : "grayscale(0.85) opacity(0.65)",
-                        }}
-                        loading="lazy"
-                        onError={(e) => {
-                          e.target.onerror = null;
-                          e.target.src = item.category === "Frames" ? "/frames/programming-stickers.jpg" : "/choclates/beatss.jpg";
-                        }}
-                      />
-                      {!inStock && (
-                        <div
-                          style={{
-                            position: "absolute",
-                            inset: 0,
-                            background: "rgba(127, 29, 29, 0.55)",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            color: "#ffffff",
-                            fontWeight: 900,
-                            fontSize: 12,
-                            letterSpacing: "0.5px",
-                          }}
-                        >
-                          OUT OF STOCK
-                        </div>
-                      )}
-                    </div>
-
-                    <div style={S.itemName}>
-                      {item.name}
-                      {item.isCustomPutaway && (
-                        <span style={{ marginLeft: 6, fontSize: 10, background: "#DBEAFE", color: "#1D4ED8", padding: "2px 6px", borderRadius: 4, fontWeight: 800 }}>
-                          PUTAWAY
-                        </span>
-                      )}
-                    </div>
-                    <div style={S.itemCategory}>
-                      {item.category} • ₹{item.price} •{" "}
-                      <b style={{ color: Number(item.units || 0) <= 0 ? "#dc2626" : item.category === "Frames" ? "#2563eb" : "#0c831f" }}>
-                        {Number(item.units || 0) <= 0
-                          ? "🚫 0 Units Left (Auto OOS)"
-                          : `📦 ${item.units} Unit(s) In Shelf`}
-                      </b>
-                    </div>
-
-                    <div style={{ ...S.itemCardBottom, display: "flex", gap: 8 }}>
-                      <button
-                        style={{
-                          ...S.stockToggleBtn,
-                          background: inStock ? "#ef4444" : "#10b981",
-                          flex: 1,
-                        }}
-                        onClick={() => handleToggleStockStatus(item.sku, inStock)}
-                      >
-                        {inStock ? "🚨 Mark OOS" : "🟢 Back In Stock"}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleRestockUnit(item.sku, 1)}
-                        style={{
-                          ...S.stockToggleBtn,
-                          background: "#0284c7",
-                          width: "auto",
-                          padding: "8px 10px",
-                          flexShrink: 0,
-                        }}
-                        title="Add +1 Putaway unit"
-                      >
-                        +1 Unit
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+            <StockMonitorPanel
+              dark={false}
+              roleCode="ASM"
+              storeId="SOUTH-TUMKUR-AREA (KA44)"
+              items={catalogItems}
+              stockBySku={stockBySku}
+              inventoryStockMap={inventoryStockMap}
+              oosList={oosList}
+              movements={inventoryMovements}
+              alerts={lowStockAlerts}
+              reconciliationReport={reconciliationReport}
+              searchQuery={searchQuery}
+              onSearchChange={setSearchQuery}
+              categoryFilter={categoryFilter}
+              onCategoryFilterChange={setCategoryFilter}
+              stockFilter={stockFilter}
+              onStockFilterChange={setStockFilter}
+              onAdjustStock={handleRestockUnit}
+              onGrnInward={handleGrnInward}
+              onToggleOos={handleToggleStockStatus}
+              onRunReconciliation={handleRunReconciliation}
+            />
           </div>
         )}
 

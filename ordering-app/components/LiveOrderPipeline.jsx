@@ -39,7 +39,10 @@ export default function LiveOrderPipeline({ title = "Live Order Tracking", dark 
 
   useEffect(() => {
     const unsub = subscribeToLiveOrders((list) => setOrders(Array.isArray(list) ? list : []));
-    const t = setInterval(() => setTick((x) => x + 1), 1000);
+    const t = setInterval(() => {
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+      setTick((x) => (x + 1) % 600);
+    }, 5000);
     return () => {
       unsub();
       clearInterval(t);

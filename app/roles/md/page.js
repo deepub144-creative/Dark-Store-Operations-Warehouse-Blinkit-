@@ -79,23 +79,27 @@ export default function ManagingDirectorApp({ embedded = false }) {
   useEffect(() => {
     setComplaints(getAllLiveComplaints());
 
-    const unsubCloud = subscribeToCloudHub((cloudState) => {
-      if (!cloudState) return;
-      const m = computeHubMetrics(cloudState);
-      if (Array.isArray(cloudState.complaints)) {
-        setComplaints(cloudState.complaints);
-      }
-      setScaleMetrics((prev) => ({
-        ...prev,
-        dailyOrders: m.todayOrdersCount,
-        grossMerchandiseValue: m.todayRevenue,
-        totalRevenueSaved: m.totalRevenueSaved,
-        totalSalesCount: m.totalSalesCount,
-        userLoginsTodayCount: m.userLoginsTodayCount,
-        avgRatingToday: m.avgRatingToday,
-        ratingsCountToday: m.ratingsCountToday,
-      }));
-    }, 2000);
+    const unsubCloud = subscribeToCloudHub(
+      (cloudState) => {
+        if (!cloudState) return;
+        const m = computeHubMetrics(cloudState);
+        if (Array.isArray(cloudState.complaints)) {
+          setComplaints(cloudState.complaints);
+        }
+        setScaleMetrics((prev) => ({
+          ...prev,
+          dailyOrders: m.todayOrdersCount,
+          grossMerchandiseValue: m.todayRevenue,
+          totalRevenueSaved: m.totalRevenueSaved,
+          totalSalesCount: m.totalSalesCount,
+          userLoginsTodayCount: m.userLoginsTodayCount,
+          avgRatingToday: m.avgRatingToday,
+          ratingsCountToday: m.ratingsCountToday,
+        }));
+      },
+      2500,
+      { scope: "md", storeId: "TIPTUR-HUB-KA44" }
+    );
 
     const unsubBus = subscribeToEvents((data) => {
       if (data.type === "QUEUE_CLEARED") {

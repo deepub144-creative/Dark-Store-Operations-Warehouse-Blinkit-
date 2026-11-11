@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { collection, doc, onSnapshot, orderBy, query, setDoc, updateDoc } from "firebase/firestore";
+import StockMonitorPanel from "@/components/inventory/StockMonitorPanel";
 import { db } from "@/lib/firebaseClient";
 import {
   subscribeToEvents,
@@ -149,10 +150,15 @@ export default function WarehouseDashboardPage() {
   const [pingedDevice, setPingedDevice] = useState("");
   const [skuSearch, setSkuSearch] = useState("");
   const [skuCategoryFilter, setSkuCategoryFilter] = useState("all"); // 'all' | 'Chocolates' | 'Frames'
+  const [skuStockFilter, setSkuStockFilter] = useState("all"); // 'all' | 'low' | 'oos'
   const [queueFilter, setQueueFilter] = useState("all"); // 'all' | 'picking' | 'staged' | 'dispatched' | 'delivered'
 
-  // Inventory Units State (synced with cloud & localStorage)
+  // Inventory Units & Ledger State (synced with cloud, SSE stream & localStorage)
   const [inventoryStockMap, setInventoryStockMap] = useState({});
+  const [stockBySku, setStockBySku] = useState({});
+  const [inventoryMovements, setInventoryMovements] = useState([]);
+  const [lowStockAlerts, setLowStockAlerts] = useState([]);
+  const [reconciliationReport, setReconciliationReport] = useState(null);
   const [oosList, setOosList] = useState([]);
   const [customCatalogItems, setCustomCatalogItems] = useState([]);
 
@@ -247,6 +253,42 @@ export default function WarehouseDashboardPage() {
     setActiveTab("overview");
     playSuccessChime();
   }
+
+  // Hydrate & sync URL filters/tab cleanly (?tab=&q=&cat=&filter=&qfilter=)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const p = new URLSearchParams(window.location.search || "");
+      const t = p.get("tab");
+      const q = p.get("q");
+      const cat = p.get("cat");
+      const flt = p.get("filter");
+      const qf = p.get("qfilter");
+      if (t) setActiveTab(t);
+      if (q !== null) setSkuSearch(q);
+      if (cat && ["all", "Chocolates", "Frames"].includes(cat)) setSkuCategoryFilter(cat);
+      if (flt && ["all", "low", "oos"].includes(flt)) setSkuStockFilter(flt);
+      if (qf && ["all", "picking", "staged", "dispatched", "delivered"].includes(qf)) setQueueFilter(qf);
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !authChecked || !staff) return;
+    try {
+      const url = new URL(window.location.href);
+      if (activeTab && activeTab !== "overview") url.searchParams.set("tab", activeTab);
+      else url.searchParams.delete("tab");
+      if (skuSearch) url.searchParams.set("q", skuSearch);
+      else url.searchParams.delete("q");
+      if (skuCategoryFilter !== "all") url.searchParams.set("cat", skuCategoryFilter);
+      else url.searchParams.delete("cat");
+      if (skuStockFilter !== "all") url.searchParams.set("filter", skuStockFilter);
+      else url.searchParams.delete("filter");
+      if (queueFilter !== "all") url.searchParams.set("qfilter", queueFilter);
+      else url.searchParams.delete("qfilter");
+      window.history.replaceState(null, "", url.pathname + url.search);
+    } catch {}
+  }, [authChecked, staff, activeTab, skuSearch, skuCategoryFilter, skuStockFilter, queueFilter]);
 
   // Load and sync store status (Store Manager toggle for Ordering App)
   useEffect(() => {
@@ -393,42 +435,84 @@ export default function WarehouseDashboardPage() {
     const res = await dispatchCloudAction("UPDATE_STOCK_UNIT", { sku: skuId, delta });
     if (res?.ok && res.state) {
       setInventoryStockMap(res.state.inventoryStockMap || {});
+      if (res.state.stockBySku) setStockBySku(res.state.stockBySku);
+      if (Array.isArray(res.state.inventoryMovements)) setInventoryMovements(res.state.inventoryMovements);
       setOosList(res.state.oosList || []);
     }
     setActionSuccess(`📦 Stock for SKU ${skuId} synced live!`);
     setTimeout(() => setActionSuccess(""), 2000);
   }
 
-  // Subscribe to live orders and events
+  async function handleGrnInward(skuId, delta = 5) {
+    playSuccessChime();
+    const res = await dispatchCloudAction("GRN_INWARD", {
+      sku: skuId,
+      delta,
+      updatedBy: staff?.name || "Bhaskar N S",
+    });
+    if (res?.ok && res.state) {
+      setInventoryStockMap(res.state.inventoryStockMap || {});
+      if (res.state.stockBySku) setStockBySku(res.state.stockBySku);
+      if (Array.isArray(res.state.inventoryMovements)) setInventoryMovements(res.state.inventoryMovements);
+      setOosList(res.state.oosList || []);
+      setActionSuccess(`📥 GRN Inward (+${delta} units) recorded & synced live for ${skuId}!`);
+    } else if (res?.error) {
+      setActionSuccess(`⚠️ ${res.error}`);
+    }
+    setTimeout(() => setActionSuccess(""), 3000);
+  }
+
+  async function handleRunReconciliation() {
+    const res = await dispatchCloudAction("RUN_RECONCILIATION", {});
+    const rep = res?.data?.report || res?.state?.reconciliationReport;
+    if (rep) {
+      setReconciliationReport(rep);
+      setActionSuccess(
+        rep.ok
+          ? `✅ Stock ledger verified across ${rep.checkedSkus} SKUs — 0 variances.`
+          : `🚨 Reconciliation flagged ${rep.mismatches.length} mismatch(es)!`
+      );
+      setTimeout(() => setActionSuccess(""), 4000);
+    }
+  }
+
+  // Subscribe to live orders and events (<1s SSE + 250ms batched updates)
   useEffect(() => {
     if (!staff) return;
 
-    // 1. Subscribe to live cloud hub state (Orders, Inventory, OOS, Putaway, Logins, Ratings, Cumulative, Daily History)
-    const unsubCloud = subscribeToCloudHub((cloudState, meta) => {
-      if (!cloudState) return;
-      if (meta?.persistenceMode) setSyncPersistenceMode(meta.persistenceMode);
-      setIsStorePaused(cloudState.isStoreOpen === false);
-      if (Array.isArray(cloudState.orders)) setOrders(sanitizeOrders(cloudState.orders));
-      if (Array.isArray(cloudState.complaints)) setComplaints(sanitizeComplaints(cloudState.complaints));
-      if (cloudState.inventoryStockMap) setInventoryStockMap(cloudState.inventoryStockMap);
-      if (Array.isArray(cloudState.oosList)) setOosList(cloudState.oosList);
-      if (Array.isArray(cloudState.customCatalogItems)) setCustomCatalogItems(cloudState.customCatalogItems);
-      if (cloudState.loginDevicesToday) setLoginDevicesToday(cloudState.loginDevicesToday);
-      if (cloudState.newSignupsToday) setNewSignupsToday(cloudState.newSignupsToday);
-      if (cloudState.allCustomerDevices) setAllCustomerDevices(cloudState.allCustomerDevices);
-      if (Array.isArray(cloudState.ratingsToday)) setRatingsToday(cloudState.ratingsToday);
-      if (cloudState.cumulativeStats) setCumulativeStats(cloudState.cumulativeStats);
-      if (Array.isArray(cloudState.dailyHistory)) setDailyHistory(cloudState.dailyHistory);
-      if (cloudState.dateKey) setCurrentDateKey(cloudState.dateKey);
-      if (Array.isArray(cloudState.capLogs)) setCapLogs(cloudState.capLogs);
-      if (Number(cloudState.orderCapLimit) > 0) setOrderCapLimit(Number(cloudState.orderCapLimit));
-      if (cloudState.staffStatus) {
-        setDeviceFleet({
-          thrupthi: cloudState.staffStatus.thrupthi?.deviceStatus || "LOGGED_OUT",
-          sinchana: cloudState.staffStatus.sinchana?.deviceStatus || "LOGGED_OUT",
-        });
-      }
-    }, 1800);
+    const unsubCloud = subscribeToCloudHub(
+      (cloudState, meta) => {
+        if (!cloudState) return;
+        if (meta?.persistenceMode) setSyncPersistenceMode(meta.persistenceMode);
+        setIsStorePaused(cloudState.isStoreOpen === false);
+        if (Array.isArray(cloudState.orders)) setOrders(sanitizeOrders(cloudState.orders));
+        if (Array.isArray(cloudState.complaints)) setComplaints(sanitizeComplaints(cloudState.complaints));
+        if (cloudState.inventoryStockMap) setInventoryStockMap(cloudState.inventoryStockMap);
+        if (cloudState.stockBySku) setStockBySku(cloudState.stockBySku);
+        if (Array.isArray(cloudState.inventoryMovements)) setInventoryMovements(cloudState.inventoryMovements);
+        if (Array.isArray(cloudState.lowStockAlerts)) setLowStockAlerts(cloudState.lowStockAlerts);
+        if (cloudState.reconciliationReport) setReconciliationReport(cloudState.reconciliationReport);
+        if (Array.isArray(cloudState.oosList)) setOosList(cloudState.oosList);
+        if (Array.isArray(cloudState.customCatalogItems)) setCustomCatalogItems(cloudState.customCatalogItems);
+        if (cloudState.loginDevicesToday) setLoginDevicesToday(cloudState.loginDevicesToday);
+        if (cloudState.newSignupsToday) setNewSignupsToday(cloudState.newSignupsToday);
+        if (cloudState.allCustomerDevices) setAllCustomerDevices(cloudState.allCustomerDevices);
+        if (Array.isArray(cloudState.ratingsToday)) setRatingsToday(cloudState.ratingsToday);
+        if (cloudState.cumulativeStats) setCumulativeStats(cloudState.cumulativeStats);
+        if (Array.isArray(cloudState.dailyHistory)) setDailyHistory(cloudState.dailyHistory);
+        if (cloudState.dateKey) setCurrentDateKey(cloudState.dateKey);
+        if (Array.isArray(cloudState.capLogs)) setCapLogs(cloudState.capLogs);
+        if (Number(cloudState.orderCapLimit) > 0) setOrderCapLimit(Number(cloudState.orderCapLimit));
+        if (cloudState.staffStatus) {
+          setDeviceFleet({
+            thrupthi: cloudState.staffStatus.thrupthi?.deviceStatus || "LOGGED_OUT",
+            sinchana: cloudState.staffStatus.sinchana?.deviceStatus || "LOGGED_OUT",
+          });
+        }
+      },
+      1800,
+      { scope: String(staff.roleCode || "sm").toLowerCase(), storeId: "TIPTUR-HUB-KA44", batchWindowMs: 250 }
+    );
 
     // 2. Subscribe to real-time live orders broadcast
     const unsubOrders = subscribeToLiveOrders((newOrders) => {
@@ -860,6 +944,8 @@ export default function WarehouseDashboardPage() {
     playNotificationChime();
     const orderNum = Math.floor(1000 + Math.random() * 9000);
     const rack = getRandomStagingRack();
+    const chocSim = CATALOG.find((c) => c.sku === "CHOC-01") || STORE_MANAGER_CATALOG[0];
+    const frameSim = CATALOG.find((c) => c.sku === "FRAME-01") || STORE_MANAGER_CATALOG[1];
     const simOrder = {
       id: `ORD-${orderNum}`,
       orderId: `ORD-${orderNum}`,
@@ -876,39 +962,40 @@ export default function WarehouseDashboardPage() {
       captainName: "Sinchana B R",
       captainPhone: "8088553237",
       paymentMethod: "Audit'X Demo Wallet",
-      totalAmount: 474,
+      totalAmount: (Number(chocSim?.price || 1) + Number(frameSim?.price || 100) + 10),
       createdAt: new Date().toISOString(),
       items: [
         {
-          skuId: "CADBURY-SILK-01",
-          name: "Cadbury Dairy Milk Silk Chocolate (150g)",
+          skuId: chocSim?.sku || "CHOC-01",
+          name: chocSim?.name || "Beatss Crispy Chocolate Wafer Bar",
           category: "Chocolates",
           qty: 1,
           units: 5,
           unitSpecification: "5 units fixed",
-          price: 175,
-          mrp: 195,
-          binLocation: "Aisle C1 - S1 - 001",
-          image: "https://images.unsplash.com/photo-1548907040-4baa42d10919?auto=format&fit=crop&w=300&q=80",
+          price: Number(chocSim?.price || 1),
+          mrp: Number(chocSim?.mrp || 5),
+          binLocation: chocSim?.aisle || "Aisle C1 - S1 - 001",
+          image: chocSim?.image || "/choclates/beatss.jpg",
         },
         {
-          skuId: "FRAME-A4-BLK",
-          name: "Minimalist Black A4 Wall Frame",
+          skuId: frameSim?.sku || "FRAME-01",
+          name: frameSim?.name || "Minimalist Black A4 Wall Frame",
           category: "Frames",
           qty: 1,
           units: 1,
           unitSpecification: "1 unit single",
-          price: 299,
-          mrp: 499,
-          binLocation: "Aisle F1 - R2 - 001",
-          image: "https://images.unsplash.com/photo-1579783902614-a3fb3927b675?auto=format&fit=crop&w=300&q=80",
+          price: Number(frameSim?.price || 100),
+          mrp: Number(frameSim?.mrp || 199),
+          binLocation: frameSim?.aisle || "Aisle F1 - R2 - 001",
+          image: frameSim?.image || "/frames/programming-stickers.jpg",
         },
       ],
     };
     const placedRes = await dispatchCloudAction("PLACE_ORDER", { order: simOrder });
     if (placedRes?.ok) {
-      saveLiveOrder(simOrder);
-      setActionSuccess(`⚡ Live Order #${simOrder.id} created (Chocolates & Frames)! Deducted SKU units & synced to OD Picker.`);
+      const confirmed = placedRes.data?.order || simOrder;
+      saveLiveOrder(confirmed, { skipCloud: true });
+      setActionSuccess(`⚡ Live Order #${confirmed.id} created (Chocolates & Frames)! Deducted SKU units & synced to OD Picker.`);
     } else {
       setActionSuccess(placedRes?.error || "⚠️ Store closed or item out of stock for test order.");
     }
@@ -926,7 +1013,6 @@ export default function WarehouseDashboardPage() {
       pickerName: "Thrupthi K S",
     };
     updateLiveOrder(orderId, updates);
-    await dispatchCloudAction("UPDATE_ORDER", { orderId, updates });
     setActionSuccess(`⚡ Order #${orderId} Picked fast in 42s by Thrupthi K S! Staged in Rack D5.`);
     setTimeout(() => setActionSuccess(""), 3000);
   }
@@ -941,7 +1027,6 @@ export default function WarehouseDashboardPage() {
       captainName: "Sinchana B R",
     };
     updateLiveOrder(orderId, updates);
-    await dispatchCloudAction("UPDATE_ORDER", { orderId, updates });
     setActionSuccess(`🛵 Pickup confirmed by Sinchana B R! 8-Min Express Delivery started.`);
     setTimeout(() => setActionSuccess(""), 3000);
   }
@@ -956,7 +1041,6 @@ export default function WarehouseDashboardPage() {
       deliveryDurationSec: 180,
     };
     updateLiveOrder(orderId, updates);
-    await dispatchCloudAction("UPDATE_ORDER", { orderId, updates });
     setActionSuccess(`🎉 Order #${orderId} delivered fast in 3 mins to KFGSC by Sinchana B R!`);
     setTimeout(() => setActionSuccess(""), 3500);
   }
@@ -1038,14 +1122,14 @@ export default function WarehouseDashboardPage() {
           ? inTransitOrders
           : deliveredOrders;
 
-  // Roster with real logos
-  const fullRoster = STAFF.map((s) => {
+  // Roster with deterministic telemetry
+  const fullRoster = STAFF.map((s, idx) => {
     const liveDoc = staffStatus.find((ls) => ls.id === s.id);
     return {
       ...s,
       online: liveDoc ? liveDoc.online : true,
       lastActive: liveDoc ? liveDoc.lastActive : "Live Now",
-      battery: liveDoc ? liveDoc.battery : (s.id === "sinchana" ? 92 : 88 + Math.floor(Math.random() * 10)),
+      battery: liveDoc ? liveDoc.battery : (s.id === "sinchana" ? 92 : 88 + ((idx * 3) % 10)),
     };
   });
 
@@ -1412,9 +1496,22 @@ export default function WarehouseDashboardPage() {
         </div>
       )}
 
-      {/* ── DYNAMIC ROLE WORKSPACE (SM & ASM share full SM Dashboard permission + ASM Putaway Desk; MD gets MD Command) ── */}
+      {/* ── DYNAMIC ROLE WORKSPACE (SM = Store Tower | ASM = Area/Inventory/Putaway/Audit | MD = Executive Command) ── */}
       {staff?.id === "harshitha" || staff?.roleCode === "MD" ? (
         <ManagingDirectorApp embedded={true} />
+      ) : staff?.id === "deepu" || staff?.roleCode === "ASM" ? (
+        <AssistantStoreManagerApp
+          embedded={true}
+          sharedCloudState={{
+            inventoryStockMap,
+            stockBySku,
+            oosList,
+            customCatalogItems,
+            inventoryMovements,
+            lowStockAlerts,
+            reconciliationReport,
+          }}
+        />
       ) : (
         /* ── SM STORE MANAGER WORKSPACE ── */
         <div style={S.workspaceLayout}>
@@ -3282,45 +3379,13 @@ export default function WarehouseDashboardPage() {
                 <div>
                   <h2 style={S.sectionHeading}>📦 SKU Inventory &amp; Stock Units</h2>
                   <p style={S.sectionSub}>
-                    Active dark store warehouse catalog: <b>Frames</b> (all 1 unit single) and <b>Chocolates</b> (all 5 units fixed) with exact matching images and names as the customer ordering app.
+                    Real-time store stock, 5-min checkout holds, low-stock alerts &amp; movement ledger (<b>Frames</b> 1 unit single, <b>Chocolates</b> 5 units fixed).
                   </p>
-                </div>
-                <div style={S.searchBox}>
-                  <span>🔍</span>
-                  <input
-                    type="text"
-                    placeholder="Filter by SKU name, category, or aisle..."
-                    style={S.searchInput}
-                    value={skuSearch}
-                    onChange={(e) => setSkuSearch(e.target.value)}
-                  />
                 </div>
               </div>
 
-              {/* Category Filter Pills & Save Inventory Button */}
+              {/* Action Controls Bar */}
               <div style={S.skuCategoryTabsRow}>
-                <button
-                  type="button"
-                  style={{ ...S.skuCatPill, ...(skuCategoryFilter === "all" ? S.skuCatPillActive : {}) }}
-                  onClick={() => setSkuCategoryFilter("all")}
-                >
-                  All Items ({mergedCatalog.length})
-                </button>
-                <button
-                  type="button"
-                  style={{ ...S.skuCatPill, ...(skuCategoryFilter === "Chocolates" ? S.skuCatPillActive : {}) }}
-                  onClick={() => setSkuCategoryFilter("Chocolates")}
-                >
-                  🍫 Chocolates ({mergedCatalog.filter((c) => c.category === "Chocolates").length}) • 5 Units Fixed
-                </button>
-                <button
-                  type="button"
-                  style={{ ...S.skuCatPill, ...(skuCategoryFilter === "Frames" ? S.skuCatPillActive : {}) }}
-                  onClick={() => setSkuCategoryFilter("Frames")}
-                >
-                  🖼️ Frames ({mergedCatalog.filter((c) => c.category === "Frames").length}) • 1 Unit Single
-                </button>
-
                 <button
                   type="button"
                   style={S.resetDefaultsBtn}
@@ -3348,88 +3413,28 @@ export default function WarehouseDashboardPage() {
                 />
               </div>
 
-              {/* Inventory Grid with All Ordering Images & Unit Editor */}
-              <div style={S.skuGrid}>
-                {filteredSKUs.map((sku) => {
-                  const defaultUnit = getDefaultItemStock(sku);
-                  const units = inventoryStockMap[sku.sku] !== undefined ? Number(inventoryStockMap[sku.sku]) : defaultUnit;
-                  const isOut = units <= 0 || oosList.includes(sku.sku) || sku.soldOut === true;
-                  const isLow = !isOut && units < (sku.category === "Frames" ? 1 : 2);
-
-                  return (
-                    <div key={sku.sku || sku.id} style={S.skuCard}>
-                      <div style={S.skuHeader}>
-                        <span style={S.skuCode}>
-                          {sku.sku} {sku.isCustomPutaway ? "• PUTAWAY" : ""}
-                        </span>
-                        <span style={S.skuBin}>{sku.aisle || sku.zone || "Zone C2"}</span>
-                      </div>
-
-                      {/* Product Image as per ordering app */}
-                      <div style={{ display: "flex", gap: 12, alignItems: "center", margin: "6px 0" }}>
-                        <img
-                          src={sku.image}
-                          alt={sku.name}
-                          style={S.skuCatalogImg}
-                          onError={(e) => {
-                            e.target.src = sku.category === "Frames" ? "/frames/programming-stickers.jpg" : "/choclates/beatss.jpg";
-                          }}
-                        />
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <h4 style={S.skuName}>{sku.name}</h4>
-                          <div style={S.skuMeta}>
-                            <span style={sku.category === "Frames" ? S.badgeFrames : S.badgeChoc}>
-                              {sku.category === "Frames" ? "🖼️ Frames • 1 unit single" : "🍫 Chocolates • 5 units fixed"}
-                            </span>
-                          </div>
-                          <div style={S.skuPriceTag}>
-                            ₹{sku.price} <s style={{ fontSize: 11, color: "#64748b" }}>₹{sku.mrp}</s>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* UNITS IN STOCK INTERACTIVE STEPPER */}
-                      <div style={S.stockUnitsControlRow}>
-                        <div style={S.unitsCountCol}>
-                          <span style={S.unitsLabel}>UNITS IN STOCK</span>
-                          <span style={{ ...S.unitsNumber, color: isOut ? "#ef4444" : isLow ? "#f59e0b" : "#0c831f" }}>
-                            {units} {sku.category === "Frames" ? "Unit (Single)" : "Units (Fixed)"}
-                          </span>
-                        </div>
-
-                        {/* Interactive Plus / Minus Stock Editor */}
-                        <div style={S.unitsStepper}>
-                          <button
-                            type="button"
-                            style={S.stepperBtn}
-                            onClick={() => handleUpdateStockUnit(sku.sku, -1)}
-                            title="Decrease units in stock"
-                          >
-                            –
-                          </button>
-                          <span style={S.stepperVal}>{units}</span>
-                          <button
-                            type="button"
-                            style={S.stepperBtn}
-                            onClick={() => handleUpdateStockUnit(sku.sku, 1)}
-                            title="Increase units in stock"
-                          >
-                            +
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Barcode & Status Footer */}
-                      <div style={S.skuCardFooter}>
-                        <code style={S.barcodeCodeSmall}>🏷️ {sku.barcode || "89044002001"}</code>
-                        <span style={isOut ? S.tagRed : isLow ? S.tagYellow : S.tagGreen}>
-                          {isOut ? "OUT OF STOCK" : isLow ? "LOW STOCK" : "IN STOCK"}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+              {/* Apple-Smooth Live Stock, Reservation, Movement Ledger & Reconciliation Panel */}
+              <StockMonitorPanel
+                dark={themeMode === "dark"}
+                roleCode={staff?.roleCode || "SM"}
+                storeId="TIPTUR-HUB-KA44"
+                items={mergedCatalog}
+                stockBySku={stockBySku}
+                inventoryStockMap={inventoryStockMap}
+                oosList={oosList}
+                movements={inventoryMovements}
+                alerts={lowStockAlerts}
+                reconciliationReport={reconciliationReport}
+                searchQuery={skuSearch}
+                onSearchChange={setSkuSearch}
+                categoryFilter={skuCategoryFilter}
+                onCategoryFilterChange={setSkuCategoryFilter}
+                stockFilter={skuStockFilter}
+                onStockFilterChange={setSkuStockFilter}
+                onAdjustStock={handleUpdateStockUnit}
+                onGrnInward={handleGrnInward}
+                onRunReconciliation={handleRunReconciliation}
+              />
             </div>
           )}
 
@@ -3757,7 +3762,18 @@ export default function WarehouseDashboardPage() {
           {/* TAB 10: ASM PUTAWAY & SOLO AUDIT DESK (Accessible to ASM & SM) */}
           {activeTab === "asmDesk" && (
             <div style={S.sectionWrap}>
-              <AssistantStoreManagerApp embedded={true} />
+              <AssistantStoreManagerApp
+                embedded={true}
+                sharedCloudState={{
+                  inventoryStockMap,
+                  stockBySku,
+                  oosList,
+                  customCatalogItems,
+                  inventoryMovements,
+                  lowStockAlerts,
+                  reconciliationReport,
+                }}
+              />
             </div>
           )}
 
