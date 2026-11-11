@@ -719,6 +719,13 @@ export default function OrderingAppPage() {
     setPastOrders(safeArr(safeStorage.getJson("auditx_customer_past_orders", [])));
   }, []);
 
+  // Auto-close payment sheet if cart becomes empty
+  useEffect(() => {
+    if (cartItemsList.length === 0 && showPaymentModal) {
+      setShowPaymentModal(false);
+    }
+  }, [cartItemsList.length, showPaymentModal]);
+
   // Hydrate persisted cart, address, coupon, instructions, payment method, and checkout step cleanly on load
   useEffect(() => {
     const savedCart = safeStorage.getJson("auditx_ordering_cart", null);
@@ -752,12 +759,13 @@ export default function OrderingAppPage() {
       setSelectedPaymentMethod(savedPay);
     }
     const savedStep = safeStorage.getJson("auditx_ordering_checkout_step", null);
+    const hasSavedCartItems = Object.keys(safeStorage.getJson("auditx_ordering_cart", {}) || {}).length > 0;
     if (savedStep && typeof savedStep === "object") {
-      if (typeof savedStep.isCheckoutView === "boolean") setIsCheckoutView(savedStep.isCheckoutView);
+      if (typeof savedStep.isCheckoutView === "boolean") setIsCheckoutView(hasSavedCartItems ? savedStep.isCheckoutView : false);
       if (typeof savedStep.activeBottomTab === "string") setActiveBottomTab(savedStep.activeBottomTab);
     }
     if (pathname) {
-      if (pathname.endsWith("/cart") || pathname.endsWith("/checkout")) setIsCheckoutView(true);
+      if (pathname.endsWith("/cart") || pathname.endsWith("/checkout")) setIsCheckoutView(hasSavedCartItems);
       else if (pathname.endsWith("/categories")) { setIsCheckoutView(false); setActiveBottomTab("categories"); }
       else if (pathname.endsWith("/search")) { setIsCheckoutView(false); setActiveBottomTab("search"); }
       else if (pathname.endsWith("/orders")) { setIsCheckoutView(false); setActiveBottomTab("order_again"); }
@@ -1911,7 +1919,9 @@ export default function OrderingAppPage() {
       return;
     }
     if (cartItemsList.length === 0) {
-      triggerToast("Your cart is empty.");
+      triggerToast("Your cart is empty. Add items from the catalog.");
+      setShowPaymentModal(false);
+      setIsCheckoutView(false);
       return;
     }
 
@@ -2076,6 +2086,8 @@ export default function OrderingAppPage() {
       }
       if (cartItemsList.length === 0) {
         triggerToast("Your cart is empty. Add items from the catalog.");
+        setShowPaymentModal(false);
+        setIsCheckoutView(false);
         return;
       }
 
@@ -3142,7 +3154,7 @@ export default function OrderingAppPage() {
             <section style={S.checkoutCard}>
               <div style={S.sectionHeaderRow}>
                 <h3 style={S.cardSectionTitle}>PAYMENT METHOD</h3>
-                {!hasOngoingOrder && (
+                {!hasOngoingOrder && cartItemsList.length > 0 && (
                   <button
                     type="button"
                     style={S.changeLinkBtn}
@@ -3159,8 +3171,11 @@ export default function OrderingAppPage() {
                   if (hasOngoingOrder) {
                     const ordId = ongoingTrackedOrder.orderNumber || ongoingTrackedOrder.id || ongoingTrackedOrder.orderId;
                     router.push(`/track/${ordId}`);
-                  } else {
+                  } else if (cartItemsList.length > 0) {
                     handleOpenPaymentModalWithReserve();
+                  } else {
+                    triggerToast("Your cart is empty. Add items from the catalog.");
+                    setIsCheckoutView(false);
                   }
                 }}
               >
@@ -3183,7 +3198,13 @@ export default function OrderingAppPage() {
 
               <div
                 onClick={() => {
-                  if (!hasOngoingOrder) handleOpenPaymentModalWithReserve();
+                  if (hasOngoingOrder) return;
+                  if (cartItemsList.length > 0) {
+                    handleOpenPaymentModalWithReserve();
+                  } else {
+                    triggerToast("Your cart is empty. Add items from the catalog.");
+                    setIsCheckoutView(false);
+                  }
                 }}
                 style={{
                   display: "flex",
@@ -5272,12 +5293,28 @@ export default function OrderingAppPage() {
                     <span>🛵 TRACK ACTIVE ORDER →</span>
                   </button>
                 </div>
+              ) : cartItemsList.length === 0 ? (
+                <button
+                  type="button"
+                  style={{
+                    ...S.confirmPayBtn,
+                    background: "#0c831f",
+                    cursor: "pointer",
+                  }}
+                  onClick={() => {
+                    setShowPaymentModal(false);
+                    setIsCheckoutView(false);
+                  }}
+                >
+                  <span>🛍️ Cart is Empty — Add Items</span>
+                  <IconArrowRight size={18} color="#ffffff" />
+                </button>
               ) : (
                 <button
                   type="button"
                   style={S.confirmPayBtn}
                   onClick={handleFinalOrderPlacement}
-                  disabled={placingOrder || !isOnline}
+                  disabled={placingOrder || !isOnline || grandTotal <= 0}
                 >
                   <span>
                     {!isOnline
