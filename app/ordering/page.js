@@ -1555,14 +1555,15 @@ export default function OrderingAppPage() {
     toastTimerRef.current = setTimeout(() => setToastMessage(""), 3500);
   }
 
-  // Merge standard catalog with ASM Putaway newly dumped custom items & skip any malformed entries without id/sku or numeric price
+  // Merge standard catalog with ASM Putaway items: ONLY Chocolates & Frames in Ordering App
   const effectiveCatalog = useMemo(() => {
     return mergeCatalogItems(CATALOG, customCatalogItems).filter(
       (item) =>
         item &&
         typeof item === "object" &&
         Boolean(item.sku || item.id) &&
-        Number.isFinite(Number(item.price))
+        Number.isFinite(Number(item.price)) &&
+        (item.category === "Chocolates" || item.category === "Frames")
     );
   }, [customCatalogItems]);
 

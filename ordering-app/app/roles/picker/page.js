@@ -1275,71 +1275,126 @@ export default function OdPickerApp() {
           ════════════════════════════════════════════════════════ */}
           {pickerTab === "new_orders" && (
             <div>
-              {/* ── HOME TASK SEARCHING VIDEO (ALWAYS VISIBLE & PLAYING ON HOME) ── */}
-              <div
-                style={{
-                  background: "#ffffff",
-                  borderRadius: 16,
-                  padding: 14,
-                  border: "1.5px solid #e2e8f0",
-                  marginBottom: 16,
-                  boxShadow: "0 4px 18px rgba(0,0,0,0.06)",
-                }}
-              >
-                <div style={{ position: "relative", borderRadius: 12, overflow: "hidden", marginBottom: 12 }}>
-                  <video
-                    autoPlay
-                    loop
-                    muted
-                    playsInline
-                    style={{
-                      width: "100%",
-                      height: 220,
-                      objectFit: "cover",
-                      borderRadius: 12,
-                      display: "block",
-                      background: "#080c14",
-                    }}
-                  >
-                    <source src="/animations/task_search_icon_logo.mp4" type="video/mp4" />
-                    <source src="/task_search_icon_logo.mp4" type="video/mp4" />
-                    <source src="/tasksearching.mp4" type="video/mp4" />
-                    <source src="/task-searching.mp4" type="video/mp4" />
-                    <source src="/videos/task-searching.mp4" type="video/mp4" />
-                  </video>
-                  <div
-                    style={{
-                      position: "absolute",
-                      bottom: 10,
-                      left: "50%",
-                      transform: "translateX(-50%)",
-                      background: "rgba(15, 23, 42, 0.88)",
-                      backdropFilter: "blur(6px)",
-                      color: "#ffffff",
-                      padding: "6px 14px",
-                      borderRadius: 20,
-                      fontSize: 11,
-                      fontWeight: 700,
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 8,
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    <span
+              {/* ── TASK SEARCHING VIDEO: PLAY ONLY WHEN NO TASK IS ASSIGNED. DISAPPEARS ON ASSIGNMENT, REAPPEARS ON COMPLETION ── */}
+              {!activeOrder && unassignedOrders.length === 0 && (
+                <div
+                  style={{
+                    background: "#ffffff",
+                    borderRadius: 16,
+                    padding: 14,
+                    border: "1.5px solid #e2e8f0",
+                    marginBottom: 16,
+                    boxShadow: "0 4px 18px rgba(0,0,0,0.06)",
+                  }}
+                >
+                  <div style={{ position: "relative", borderRadius: 12, overflow: "hidden", marginBottom: 12 }}>
+                    <video
+                      autoPlay
+                      loop
+                      muted
+                      playsInline
                       style={{
-                        width: 8,
-                        height: 8,
-                        borderRadius: "50%",
-                        background: "#10b981",
-                        boxShadow: "0 0 8px #10b981",
-                        display: "inline-block",
+                        width: "100%",
+                        height: 220,
+                        objectFit: "cover",
+                        borderRadius: 12,
+                        display: "block",
+                        background: "#080c14",
                       }}
-                    />
-                    <span>Searching Live Picking Tasks...</span>
+                    >
+                      <source src="/animations/task_search_icon_logo.mp4" type="video/mp4" />
+                      <source src="/task_search_icon_logo.mp4" type="video/mp4" />
+                      <source src="/tasksearching.mp4" type="video/mp4" />
+                      <source src="/task-searching.mp4" type="video/mp4" />
+                      <source src="/videos/task-searching.mp4" type="video/mp4" />
+                    </video>
+                    <div
+                      style={{
+                        position: "absolute",
+                        bottom: 10,
+                        left: "50%",
+                        transform: "translateX(-50%)",
+                        background: "rgba(15, 23, 42, 0.88)",
+                        backdropFilter: "blur(6px)",
+                        color: "#ffffff",
+                        padding: "6px 14px",
+                        borderRadius: 20,
+                        fontSize: 11,
+                        fontWeight: 700,
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      <span
+                        style={{
+                          width: 8,
+                          height: 8,
+                          borderRadius: "50%",
+                          background: "#10b981",
+                          boxShadow: "0 0 8px #10b981",
+                          display: "inline-block",
+                        }}
+                      />
+                      <span>Searching Live Picking Tasks...</span>
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
+
+              {/* ── ACTIVE TASK INFORMATION (SHOWN INSTEAD OF VIDEO WHEN TASK IS ASSIGNED & ACTIVE) ── */}
+              {activeOrder && (
+                <div
+                  style={{
+                    background: "#ffffff",
+                    border: "2px solid #0c831f",
+                    borderRadius: 16,
+                    padding: 16,
+                    marginBottom: 16,
+                    boxShadow: "0 6px 20px rgba(12, 131, 31, 0.12)",
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span style={{ fontSize: 22 }}>⚡</span>
+                      <div>
+                        <div style={{ fontSize: 13, fontWeight: 900, color: "#0c831f", letterSpacing: "0.4px" }}>
+                          ACTIVE TASK IN PROGRESS • ORDER #{activeOrder.orderNumber || activeOrder.id}
+                        </div>
+                        <div style={{ fontSize: 11.5, color: "#64748b", marginTop: 2 }}>
+                          Target Bay: <b>RACK {assignedRack?.id || activeOrder.assignedRack || "D5"}</b> • {activeOrder.items?.length || 0} SKUs
+                        </div>
+                      </div>
+                    </div>
+                    <span
+                      style={{
+                        padding: "4px 10px",
+                        borderRadius: 8,
+                        background: "#e5f5e8",
+                        color: "#0c831f",
+                        fontWeight: 800,
+                        fontSize: 11,
+                      }}
+                    >
+                      ● PICKING
+                    </span>
+                  </div>
+
+                  <div style={{ fontSize: 12, color: "#334155", background: "#f8fafc", padding: "10px 12px", borderRadius: 10, marginBottom: 12, border: "1px solid #e2e8f0" }}>
+                    <div>👤 <b>{activeOrder.customerName || "Customer (Namma Tiptur)"}</b></div>
+                    <div style={{ color: "#64748b", fontSize: 11, marginTop: 2 }}>📍 {activeOrder.customerAddress || "Tiptur - 572201"}</div>
+                  </div>
+
+                  <IOSButton
+                    variant="green"
+                    minHeight={48}
+                    onClick={() => setPickerTab("in_progress")}
+                  >
+                    Resume Active Picking ({pickedCount}/{items.length} Picked) →
+                  </IOSButton>
+                </div>
+              )}
 
               <ErrorBoundary label="Picker Order Queue" compact>
               {unassignedOrders.length > 0 ? (

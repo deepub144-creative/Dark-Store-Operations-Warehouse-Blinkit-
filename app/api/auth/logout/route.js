@@ -8,3 +8,4 @@ export async function POST() {
   clearSessionCookies(res);
   return res;
 }
+

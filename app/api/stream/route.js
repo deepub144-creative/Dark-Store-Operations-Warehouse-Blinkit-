@@ -95,6 +95,7 @@ export async function GET(req) {
             updatedAt: evt.updatedAt,
             changedSkus: evt.changedSkus,
             inventoryStockMapPatch: evt.inventoryStockMapPatch,
+            stockBySkuPatch: evt.stockBySkuPatch,
             oosList: evt.oosList,
             isStoreOpen: evt.isStoreOpen,
           };
@@ -144,3 +145,4 @@ export async function GET(req) {
     },
   });
 }
+

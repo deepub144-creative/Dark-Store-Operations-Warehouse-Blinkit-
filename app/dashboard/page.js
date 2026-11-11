@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { collection, doc, onSnapshot, orderBy, query, setDoc, updateDoc } from "firebase/firestore";
 import StockMonitorPanel from "@/components/inventory/StockMonitorPanel";
@@ -137,6 +137,21 @@ export default function WarehouseDashboardPage() {
   const [showLoginsPopover, setShowLoginsPopover] = useState(false);
   const [govTab, setGovTab] = useState("queue"); // 'queue' | 'sku'
   const [themeMode, setThemeMode] = useState("dark"); // 'dark' | 'light'
+
+  // Horizontal Navigation Tab Bar Scroll Ref & Scroll Controls
+  const tabsScrollRef = useRef(null);
+  const scrollHorizontalTabs = useCallback((offset) => {
+    if (tabsScrollRef.current) {
+      tabsScrollRef.current.scrollBy({ left: offset, behavior: "smooth" });
+    }
+  }, []);
+
+  useEffect(() => {
+    if (tabsScrollRef.current) {
+      const activeBtn = tabsScrollRef.current.querySelector(`[data-tab-id="${activeTab}"]`);
+      activeBtn?.scrollIntoView?.({ behavior: "smooth", block: "nearest", inline: "center" });
+    }
+  }, [activeTab]);
 
   // Order Cap States
   const [orderCapLimit, setOrderCapLimit] = useState(MAX_DAILY_USER_DEVICES);
@@ -1197,48 +1212,41 @@ export default function WarehouseDashboardPage() {
         </div>
 
         <div style={S.headerRight}>
-          {/* Active Ordering App Customer Logins Popover Trigger (Live Customer Count, NOT hardcoded 5 staff) */}
+          {/* Active Ordering App Customer Logins Live Pill (Live Clean Count: number of users logged in) */}
           <div style={{ position: "relative" }}>
             <button
               type="button"
               style={{
-                position: "relative",
-                width: 38,
+                display: "flex",
+                alignItems: "center",
+                gap: 7,
                 height: 38,
+                padding: "0 12px",
                 borderRadius: 12,
-                border: "1px solid #334155",
-                background: "#1E293B",
-                display: "grid",
-                placeItems: "center",
-                color: "#cbd5e1",
+                border: "1.5px solid #10b981",
+                background: "rgba(16, 185, 129, 0.12)",
+                color: "#ffffff",
                 cursor: "pointer",
+                fontWeight: 800,
+                fontSize: 12,
               }}
               onClick={() => setShowLoginsPopover(!showLoginsPopover)}
-              aria-label={`${hubMetrics.totalLoginsCount} customer total logins`}
+              aria-label={`${hubMetrics.userLoginsTodayCount} user logins today`}
               aria-expanded={showLoginsPopover}
               title="View live Ordering App customer logins"
             >
-              <WarehouseGlyph name="login" size={18} stroke="#cbd5e1" />
               <span
                 style={{
-                  position: "absolute",
-                  top: -6,
-                  right: -6,
-                  minWidth: 20,
-                  height: 20,
-                  padding: "0 5px",
-                  borderRadius: 10,
-                  background: hubMetrics.totalLoginsCount > 0 ? "#0c831f" : "#475569",
-                  color: "#ffffff",
-                  fontSize: 11,
-                  fontWeight: 900,
-                  display: "grid",
-                  placeItems: "center",
-                  border: "2px solid #0F172A",
+                  width: 8,
+                  height: 8,
+                  borderRadius: "50%",
+                  background: "#10b981",
+                  boxShadow: "0 0 8px #10b981",
+                  display: "inline-block",
                 }}
-              >
-                {hubMetrics.totalLoginsCount}
-              </span>
+              />
+              <WarehouseGlyph name="login" size={15} stroke="#10b981" />
+              <span>{hubMetrics.userLoginsTodayCount} Logins</span>
             </button>
 
             {/* Popover */}
@@ -1260,10 +1268,10 @@ export default function WarehouseDashboardPage() {
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, paddingBottom: 8, borderBottom: "1px solid #334155" }}>
                   <div>
                     <h3 style={{ margin: 0, fontSize: 13, fontWeight: 800, color: "#ffffff" }}>
-                      {hubMetrics.totalLoginsCount} Total Login{hubMetrics.totalLoginsCount === 1 ? "" : "s"}
+                      {hubMetrics.userLoginsTodayCount} Users Logged In Today
                     </h3>
                     <div style={{ fontSize: 10.5, color: "#94a3b8", marginTop: 2 }}>
-                      {hubMetrics.newSignupsTodayCount} New sign-ups today • Saved across days
+                      Live customer logins synced real-time from /ordering
                     </div>
                   </div>
                   <span style={{ fontSize: 11, fontWeight: 800, color: "#10b981", background: "rgba(16, 185, 129, 0.15)", padding: "2px 6px", borderRadius: 4 }}>
@@ -1993,6 +2001,185 @@ export default function WarehouseDashboardPage() {
 
         {/* ── 2. MAIN WORKSPACE CONTENT ── */}
         <main style={{ ...S.mainContent, background: themeMode === "dark" ? "#0b0f17" : "#F4F5F0" }}>
+          {/* ── TOP HORIZONTAL WORKSPACE TABS WITH SCROLL BUTTONS & ARROW LINE ── */}
+          <div
+            style={{
+              background: themeMode === "dark" ? "#161f2e" : "#ffffff",
+              border: themeMode === "dark" ? "1px solid #233147" : "1px solid #e2e8f0",
+              borderRadius: 16,
+              padding: "10px 12px 8px",
+              marginBottom: 16,
+              boxShadow: "0 4px 18px rgba(0,0,0,0.08)",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              {/* Left Scroll Button */}
+              <button
+                type="button"
+                onClick={() => scrollHorizontalTabs(-220)}
+                aria-label="Scroll tabs left"
+                title="Scroll navigation tabs left"
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 10,
+                  border: themeMode === "dark" ? "1px solid #334155" : "1px solid #cbd5e1",
+                  background: themeMode === "dark" ? "#1e293b" : "#f1f5f9",
+                  color: themeMode === "dark" ? "#f8fafc" : "#0f172a",
+                  fontSize: 16,
+                  fontWeight: 900,
+                  cursor: "pointer",
+                  display: "grid",
+                  placeItems: "center",
+                  flexShrink: 0,
+                  boxShadow: "0 2px 6px rgba(0,0,0,0.1)",
+                  transition: "all 0.15s ease",
+                }}
+              >
+                ◀
+              </button>
+
+              {/* Scrollable Tabs Container */}
+              <div
+                ref={tabsScrollRef}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  overflowX: "auto",
+                  scrollBehavior: "smooth",
+                  padding: "4px 2px",
+                  scrollbarWidth: "none",
+                  msOverflowStyle: "none",
+                  flex: 1,
+                }}
+              >
+                {[
+                  { id: "overview", label: "Ops Overview", icon: "📊" },
+                  { id: "queue", label: "Today's Queue", icon: "📋", badge: orders.length },
+                  { id: "inventory", label: "SKU Stock & Units", icon: "📦", badge: mergedCatalog.length || 59 },
+                  { id: "margin", label: "Sales Margin", icon: "💰" },
+                  { id: "ratings", label: "Customer Ratings", icon: "⭐", badge: ratingsToday.length },
+                  { id: "complaints", label: "Complaints Desk", icon: "⚠️", badge: complaints.length },
+                  { id: "devices", label: "Personnel & Devices", icon: "📱", badge: 2 },
+                  { id: "orderCap", label: "Order Cap & Surge", icon: "🎯" },
+                  { id: "erdDfd", label: "ERD & DFD Architecture", icon: "🏗️" },
+                  { id: "history", label: "Daily History", icon: "📜" },
+                  { id: "asmDesk", label: "ASM Putaway Desk", icon: "🛡️" },
+                ].map((tab) => {
+                  const isActive = activeTab === tab.id;
+                  return (
+                    <button
+                      key={tab.id}
+                      data-tab-id={tab.id}
+                      type="button"
+                      onClick={() => handleTabChange(tab.id)}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        padding: "8px 14px",
+                        borderRadius: 12,
+                        border: isActive
+                          ? "1.5px solid #10b981"
+                          : themeMode === "dark"
+                          ? "1px solid #233147"
+                          : "1px solid #e2e8f0",
+                        background: isActive
+                          ? (themeMode === "dark" ? "rgba(16, 185, 129, 0.18)" : "#e5f5e8")
+                          : (themeMode === "dark" ? "#1e293b" : "#f8fafc"),
+                        color: isActive
+                          ? (themeMode === "dark" ? "#34d399" : "#0c831f")
+                          : (themeMode === "dark" ? "#cbd5e1" : "#475569"),
+                        fontWeight: isActive ? 800 : 600,
+                        fontSize: 12.5,
+                        whiteSpace: "nowrap",
+                        cursor: "pointer",
+                        flexShrink: 0,
+                        transition: "all 0.15s ease",
+                      }}
+                    >
+                      <span>{tab.icon}</span>
+                      <span>{tab.label}</span>
+                      {tab.badge !== undefined && (
+                        <span
+                          style={{
+                            background: isActive ? "#10b981" : (themeMode === "dark" ? "#334155" : "#cbd5e1"),
+                            color: isActive ? "#ffffff" : (themeMode === "dark" ? "#cbd5e1" : "#1e293b"),
+                            fontSize: 10,
+                            fontWeight: 900,
+                            padding: "1px 6px",
+                            borderRadius: 10,
+                          }}
+                        >
+                          {tab.badge}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Right Scroll Button */}
+              <button
+                type="button"
+                onClick={() => scrollHorizontalTabs(220)}
+                aria-label="Scroll tabs right"
+                title="Scroll navigation tabs right"
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 10,
+                  border: themeMode === "dark" ? "1px solid #334155" : "1px solid #cbd5e1",
+                  background: themeMode === "dark" ? "#1e293b" : "#f1f5f9",
+                  color: themeMode === "dark" ? "#f8fafc" : "#0f172a",
+                  fontSize: 16,
+                  fontWeight: 900,
+                  cursor: "pointer",
+                  display: "grid",
+                  placeItems: "center",
+                  flexShrink: 0,
+                  boxShadow: "0 2px 6px rgba(0,0,0,0.1)",
+                  transition: "all 0.15s ease",
+                }}
+              >
+                ▶
+              </button>
+            </div>
+
+            {/* ── SCROLL ARROW LINE (VISUAL INDICATOR) ── */}
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 12,
+                marginTop: 8,
+                paddingTop: 6,
+                borderTop: themeMode === "dark" ? "1px solid #1e293b" : "1px solid #f1f5f9",
+                color: themeMode === "dark" ? "#64748b" : "#94a3b8",
+                fontSize: 11,
+                fontWeight: 700,
+                letterSpacing: "0.5px",
+              }}
+            >
+              <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                <span>◀</span> <span>Scroll Tabs Left</span>
+              </span>
+              <span
+                style={{
+                  flex: 1,
+                  maxWidth: 300,
+                  height: 2.5,
+                  background: "linear-gradient(90deg, rgba(16,185,129,0.15) 0%, #10b981 50%, rgba(16,185,129,0.15) 100%)",
+                  borderRadius: 2,
+                }}
+              />
+              <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                <span>Scroll Tabs Right</span> <span>▶</span>
+              </span>
+            </div>
+          </div>
           {/* LIVE TERMINAL DEVICE FLEET TRACKER (MOTOROLA & OPPO) */}
           <div
             style={{
@@ -2430,7 +2617,7 @@ export default function WarehouseDashboardPage() {
                       Ordering App Logins (/ordering)
                     </h2>
                     <span style={{ fontSize: 12, fontWeight: 800, padding: "3px 10px", borderRadius: 99, background: "#e5f5e8", color: "#0c831f" }}>
-                      {hubMetrics.userLoginsTodayCount} / 400 Today
+                      {hubMetrics.userLoginsTodayCount} Logins Today
                     </span>
                   </div>
                   <button style={S.smLinkBtn} onClick={() => setActiveTab("history")}>
@@ -3730,7 +3917,7 @@ export default function WarehouseDashboardPage() {
                             <td style={S.td}>{h.totalOrders || 0}</td>
                             <td style={S.td}>{h.unitsSold || 0}</td>
                             <td style={S.td}><b>₹{Number(h.gmv || 0).toLocaleString("en-IN")}</b></td>
-                            <td style={S.td}>{h.userLoginsCount || 0} / 400</td>
+                            <td style={S.td}>{h.userLoginsCount || 0}</td>
                             <td style={S.td}>{h.avgRating || 0} ★ ({h.ratingsCount || 0})</td>
                             <td style={S.td}>{h.complaintsCount || 0}</td>
                             <td style={S.td}>

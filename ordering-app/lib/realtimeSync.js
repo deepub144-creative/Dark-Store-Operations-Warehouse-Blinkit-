@@ -294,7 +294,6 @@ export function recordLocalStoreStatus(isOpen, statusUpdatedAt = Date.now()) {
       Number(statusUpdatedAt || Date.now()),
       Number(current.storeStatusUpdatedAt || 0) + 1
     ),
-    revision: Number(current.revision || 1) + 1,
     updatedAt: new Date().toISOString(),
   };
   const applied = applyCloudStateToLocalStorage(next, { directWrite: true });
@@ -315,7 +314,7 @@ export function recordLocalStaffDuty({
   const nextTs = Math.max(Number(statusUpdatedAt || Date.now()), prevTs + 1);
   const next = {
     ...current,
-    staffStatus: {
+      staffStatus: {
       ...(current.staffStatus || {}),
       [staffId]: {
         staffId,
@@ -327,7 +326,6 @@ export function recordLocalStaffDuty({
         updatedAt: new Date().toISOString(),
       },
     },
-    revision: Number(current.revision || 1) + 1,
     updatedAt: new Date().toISOString(),
   };
   const applied = applyCloudStateToLocalStorage(next, { directWrite: true });
@@ -633,10 +631,23 @@ function applyStreamDeltaToLocalState(delta) {
       ...(current.inventoryStockMap || {}),
       ...delta.inventoryStockMapPatch,
     };
+    const nextStock = { ...(next.stockBySku || current.stockBySku || {}) };
+    for (const [sku, qty] of Object.entries(delta.inventoryStockMapPatch)) {
+      if (nextStock[sku]) {
+        const nQty = Math.max(0, Number(qty) || 0);
+        const resUnits = Math.max(0, Number(nextStock[sku].reservedUnits || 0));
+        nextStock[sku] = {
+          ...nextStock[sku],
+          unitsInStock: nQty + resUnits,
+          availableUnits: nQty,
+        };
+      }
+    }
+    next.stockBySku = nextStock;
   }
   if (delta.stockBySkuPatch && typeof delta.stockBySkuPatch === "object") {
     next.stockBySku = {
-      ...(current.stockBySku || {}),
+      ...(next.stockBySku || current.stockBySku || {}),
       ...delta.stockBySkuPatch,
     };
   }
@@ -740,6 +751,9 @@ export function subscribeToCloudHub(callback, intervalMs = 1800, options = {}) {
         if (!parsed) return;
         sseConnected = true;
         sseFailCount = 0;
+        if (typeof window !== "undefined") {
+          window.__AUDITX_SSE_CONNECTED__ = true;
+        }
         const updated = applyStreamDeltaToLocalState(parsed);
         if (updated) {
           deliverCoalesced(updated, { fromSse: true });
@@ -751,6 +765,9 @@ export function subscribeToCloudHub(callback, intervalMs = 1800, options = {}) {
 
       es.onerror = () => {
         sseConnected = false;
+        if (typeof window !== "undefined") {
+          window.__AUDITX_SSE_CONNECTED__ = false;
+        }
         try {
           es.close();
         } catch {}
@@ -947,7 +964,6 @@ export function clearAllLiveOrders(opts = {}) {
       ...cached,
       orders: [],
       complaints: [],
-      revision: (cached.revision || 1) + 1,
     });
 
     const eventPayload = {
@@ -1013,7 +1029,6 @@ export function saveLiveOrder(newOrder, opts = {}) {
     applyCloudStateToLocalStorage({
       ...cached,
       orders: updatedList,
-      revision: (cached.revision || 1) + 1,
     });
 
     const eventPayload = {
@@ -1086,7 +1101,6 @@ export function updateLiveOrder(orderId, updates, opts = {}) {
     applyCloudStateToLocalStorage({
       ...cached,
       orders: cappedList,
-      revision: (cached.revision || 1) + 1,
     });
 
     let eventType = "ORDER_UPDATED";
