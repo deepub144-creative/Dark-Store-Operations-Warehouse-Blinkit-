@@ -1023,7 +1023,7 @@ export function executeAtomicPlaceOrderInState(next, {
   ).trim();
   const incomingOid = String(incomingOrder.id || incomingOrder.orderId || "").trim();
 
-  // Check idempotency map & live orders first
+  // Check idempotency map & live orders first (keyed strictly by idempotencyKey to prevent cross-user collision)
   if (reqIdemKey && next.orderIdempotencyMap?.[reqIdemKey]) {
     const existingOid = next.orderIdempotencyMap[reqIdemKey];
     const existingOrder = (next.orders || []).find(
@@ -1037,22 +1037,20 @@ export function executeAtomicPlaceOrderInState(next, {
     }
   }
 
-  const dupOrder = (next.orders || []).find(
-    (o) =>
-      (incomingOid && (o.id || o.orderId) === incomingOid) ||
-      (reqIdemKey && o.idempotencyKey === reqIdemKey)
-  );
-  if (dupOrder) {
-    if (reqIdemKey) {
+  if (reqIdemKey) {
+    const dupOrder = (next.orders || []).find(
+      (o) => o.idempotencyKey === reqIdemKey
+    );
+    if (dupOrder) {
       next.orderIdempotencyMap = {
         ...(next.orderIdempotencyMap || {}),
         [reqIdemKey]: dupOrder.id || dupOrder.orderId,
       };
+      return {
+        skipRevisionBump: true,
+        result: { order: dupOrder, deduped: true },
+      };
     }
-    return {
-      skipRevisionBump: true,
-      result: { order: dupOrder, deduped: true },
-    };
   }
 
   // Recompute all prices, coupons, fees, and totals strictly on the server
@@ -1129,12 +1127,23 @@ export function executeAtomicPlaceOrderInState(next, {
 
   // All checks passed -> commit decrement atomically for all SKUs
   const nowIso = new Date().toISOString();
-  const oid =
-    incomingOid ||
-    `ORD-KA44-${Date.now().toString().slice(-6)}-${Math.random()
-      .toString(36)
-      .slice(2, 5)
-      .toUpperCase()}`;
+  let oid = incomingOid;
+  const existingOrderIds = new Set((next.orders || []).map((o) => o.id || o.orderId));
+  if (!oid || existingOrderIds.has(oid)) {
+    for (let attempts = 0; attempts < 10; attempts++) {
+      const candidate = `ORD-KA44-${Date.now().toString().slice(-6)}-${Math.random()
+        .toString(36)
+        .substring(2, 7)
+        .toUpperCase()}`;
+      if (!existingOrderIds.has(candidate)) {
+        oid = candidate;
+        break;
+      }
+    }
+    if (!oid || existingOrderIds.has(oid)) {
+      oid = `ORD-KA44-${Date.now()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+    }
+  }
   const changedSkus = [];
   const movements = [];
   const alerts = [];
@@ -1216,7 +1225,14 @@ export function executeAtomicPlaceOrderInState(next, {
     orderNumber: incomingOrder.orderNumber || oid,
     idempotencyKey: reqIdemKey,
     reservationId: matchedReservation?.reservationId || reservationId || "",
-    customerId: String(actorId || incomingOrder.customerId || `cust_${incomingOrder.customerPhone || "guest"}`),
+    customerId: String(
+      actorId ||
+        incomingOrder.customerId ||
+        (incomingOrder.customerEmail ? `cust_${incomingOrder.customerEmail}` : `cust_${incomingOrder.customerPhone || "guest"}`)
+    ),
+    customerEmail: incomingOrder.customerEmail || "",
+    customerName: incomingOrder.customerName || "Customer",
+    customerPhone: incomingOrder.customerPhone || "",
     storeId,
     storeName: "AUDIT'X Tiptur HUB - KA44",
     areaId: next.areaId || "SOUTH-TUMKUR-AREA",
@@ -1230,6 +1246,7 @@ export function executeAtomicPlaceOrderInState(next, {
     totalAmount: pricingRes.pricing.totalAmount,
     status: incomingOrder.status || "placed",
     stage: incomingOrder.stage || "Awaiting OD Picker",
+    lastEmailedStatus: incomingOrder.lastEmailedStatus || "placed",
     stockDeducted: true,
     countedInTotals: true,
     createdAt: incomingOrder.createdAt || nowIso,
@@ -1801,10 +1818,29 @@ export function buildScopedStateSnapshot(state, { scope = "full", userId = "" } 
       ? (state.orders || []).filter(
           (o) =>
             o.customerId === cleanUser ||
+            o.customerEmail === cleanUser ||
             o.customerPhone === cleanUser ||
             String(o.customerId || "").endsWith(cleanUser)
         )
       : (state.orders || []).slice(0, 25);
+
+    // Sanitize staff personal details from customer view for privacy
+    const sanitizedOrders = filteredOrders.map((o) => {
+      if (!o || typeof o !== "object") return o;
+      const {
+        assignedStaffName,
+        assignedStaffPhone,
+        deliveryCaptainName,
+        deliveryCaptainPhone,
+        captainName,
+        captainPhone,
+        pickerName,
+        pickerPhone,
+        ...safeOrder
+      } = o;
+      return safeOrder;
+    });
+
     return {
       hubId: state.hubId,
       areaId: state.areaId,
@@ -1815,7 +1851,7 @@ export function buildScopedStateSnapshot(state, { scope = "full", userId = "" } 
       inventoryStockMap: state.inventoryStockMap,
       stockBySku: state.stockBySku,
       oosList: state.oosList,
-      orders: filteredOrders,
+      orders: sanitizedOrders,
       staffStatus: state.staffStatus,
       revision: state.revision,
       stockVersion: state.stockVersion,

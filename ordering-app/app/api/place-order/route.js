@@ -3,9 +3,11 @@ import { getSessionFromRequest } from "@/lib/serverAuth";
 import { checkOrderRateLimit, extractClientIp } from "@/lib/serverRateLimit";
 import {
   buildScopedStateSnapshot,
+  enqueueBackgroundTask,
   executeAtomicPlaceOrderInState,
   mutateHubStateAtomically,
 } from "@/lib/serverStateEngine";
+import { sendOrderEmail } from "@/lib/emailService";
 
 export const dynamic = "force-dynamic";
 
@@ -23,6 +25,7 @@ export async function POST(req) {
     const {
       customerId,
       customerName,
+      customerEmail,
       customerPhone,
       cart,
       items,
@@ -43,9 +46,11 @@ export async function POST(req) {
       return NextResponse.json({ error: "Cart is empty" }, { status: 400 });
     }
 
-    const safePhone = String(customerPhone || session?.phone || "9000000000").trim() || "9000000000";
+    const resolvedEmail = String(customerEmail || session?.email || "").trim().toLowerCase();
+    const resolvedName = String(session?.name || customerName || "Customer").trim();
+    const safePhone = String(customerPhone || session?.phone || "").trim();
     const resolvedUserId = String(
-      session?.userId || customerId || `cust_${safePhone}`
+      session?.userId || customerId || (resolvedEmail ? `cust_${resolvedEmail}` : `cust_${safePhone || "guest"}`)
     ).trim();
 
     const rl = await checkOrderRateLimit({ userId: resolvedUserId, clientIp });
@@ -61,7 +66,8 @@ export async function POST(req) {
       orderId: bodyOrderId || "",
       idempotencyKey,
       customerId: resolvedUserId,
-      customerName: customerName || session?.name || "Customer",
+      customerName: resolvedName,
+      customerEmail: resolvedEmail,
       customerPhone: safePhone,
       customerAddress:
         location?.address ||
@@ -76,11 +82,9 @@ export async function POST(req) {
       paymentMethod: body?.paymentMethod || "Blinkit Wallet",
       stage: "Awaiting OD Picker",
       status: "placed",
+      lastEmailedStatus: "placed",
       assignedStaffId: "thrupthi",
-      assignedStaffName: "Thrupthi K S (OD Picker)",
       deliveryCaptainId: "sinchana",
-      deliveryCaptainName: "Sinchana B R (OD Delivery)",
-      deliveryCaptainPhone: "8088553237",
       estimatedDeliveryMins: 10,
       createdAt: new Date().toISOString(),
     };
@@ -100,6 +104,21 @@ export async function POST(req) {
     }
 
     const order = mutRes.result.order;
+
+    // Send EMAIL 1: ORDER PLACED asynchronously in background (never blocks order response)
+    if (order && !mutRes.result.deduped && resolvedEmail) {
+      enqueueBackgroundTask("send_order_placed_email", async () => {
+        await sendOrderEmail({
+          name: resolvedName,
+          email: resolvedEmail,
+          orderId: order.orderId || order.id,
+          items: order.items || [],
+          total: order.totalAmount,
+          status: "placed",
+        });
+      });
+    }
+
     return NextResponse.json({
       success: true,
       deduped: Boolean(mutRes.result.deduped),

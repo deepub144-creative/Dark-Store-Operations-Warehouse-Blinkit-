@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { checkRoleAndStoreScope, getSessionFromRequest } from "@/lib/serverAuth";
 import { normalizeStoreId } from "@/lib/serverPricing";
 import { checkOrderRateLimit, extractClientIp } from "@/lib/serverRateLimit";
+import { adminDb } from "@/lib/firebaseAdmin";
+import { sendOrderEmail, normalizeEmailStatus } from "@/lib/emailService";
 import {
   buildDefaultInventoryMap,
   buildDefaultOosList,
@@ -15,6 +17,7 @@ import {
   buildScopedStateSnapshot,
   cancelOrderAndRestoreInState,
   computeStateReconciliation,
+  enqueueBackgroundTask,
   executeAtomicPlaceOrderInState,
   getPersistenceMode,
   loadAndReapState,
@@ -229,7 +232,24 @@ export async function POST(req) {
             actorId: session?.userId || payload.order?.customerId || "",
             actorRole: session?.roleCode || "CUSTOMER",
           });
-          if (!out.abort) extraResult = out.result || {};
+          if (!out.abort) {
+            extraResult = out.result || {};
+            const placedOrder = out.result?.order;
+            const custEmail = placedOrder?.customerEmail || session?.email || payload.order?.customerEmail;
+            if (placedOrder && !out.result?.deduped && custEmail) {
+              placedOrder.lastEmailedStatus = "placed";
+              enqueueBackgroundTask("send_order_placed_email_sync", async () => {
+                await sendOrderEmail({
+                  name: placedOrder.customerName || session?.name || "Customer",
+                  email: custEmail,
+                  orderId: placedOrder.orderId || placedOrder.id,
+                  items: placedOrder.items || [],
+                  total: placedOrder.totalAmount,
+                  status: "placed",
+                });
+              });
+            }
+          }
           return out;
         }
 
@@ -263,12 +283,29 @@ export async function POST(req) {
           const updates = payload.updates || {};
           if (!orderId) return { skipRevisionBump: true };
           let updatedOrder = null;
+
+          const STATUS_CHAIN_RANK = {
+            placed: 1,
+            pending: 1,
+            assigned: 1,
+            picking: 2,
+            staged: 3,
+            packed: 3,
+            dispatched: 4,
+            "out for delivery": 4,
+            en_route: 4,
+            delivered: 5,
+          };
+
           next.orders = (next.orders || []).map((ord) => {
             if (
               ord.id === orderId ||
               ord.orderId === orderId ||
               ord.orderNumber === orderId
             ) {
+              const currentStatus = String(ord.status || "placed").toLowerCase();
+              const currentRank = STATUS_CHAIN_RANK[currentStatus] || 1;
+
               // Preserve server-computed financials and stock flags safely
               const {
                 items: _ignoreItems,
@@ -278,6 +315,17 @@ export async function POST(req) {
                 stockRestored: _ignoreRestore,
                 ...safeUpdates
               } = updates;
+
+              // Enforce strictly one-directional progression: Placed -> Picking -> Packed -> Out for delivery -> Delivered
+              if (safeUpdates.status) {
+                const targetStatus = String(safeUpdates.status).toLowerCase();
+                const targetRank = STATUS_CHAIN_RANK[targetStatus] || currentRank;
+                if (targetRank < currentRank) {
+                  delete safeUpdates.status;
+                  delete safeUpdates.stage;
+                }
+              }
+
               updatedOrder = {
                 ...ord,
                 ...safeUpdates,
@@ -287,11 +335,47 @@ export async function POST(req) {
             }
             return ord;
           });
+
           if (!updatedOrder) {
             return { skipRevisionBump: true };
           }
+
+          // Trigger live status update email notification (EMAIL 2+) for customer
+          const custEmail = updatedOrder.customerEmail;
+          const normNewStatus = normalizeEmailStatus(updatedOrder.status);
+          if (
+            custEmail &&
+            normNewStatus !== "placed" &&
+            updatedOrder.lastEmailedStatus !== normNewStatus
+          ) {
+            updatedOrder.lastEmailedStatus = normNewStatus;
+            const emailData = {
+              name: updatedOrder.customerName || "Customer",
+              email: custEmail,
+              orderId: updatedOrder.orderId || updatedOrder.id,
+              items: updatedOrder.items || [],
+              total: updatedOrder.totalAmount,
+              status: normNewStatus,
+            };
+            enqueueBackgroundTask("send_order_status_email", async () => {
+              await sendOrderEmail(emailData);
+            });
+          }
+
+          const extraWrites = [];
+          if (adminDb && updatedOrder) {
+            extraWrites.push(async () => {
+              try {
+                await adminDb.collection("orders").doc(orderId).set(updatedOrder, { merge: true });
+              } catch (e) {
+                console.warn("Firestore order status update note:", e?.message);
+              }
+            });
+          }
+
           return {
             result: { order: updatedOrder },
+            extraWrites,
             sseEvent: {
               type: "ORDER_UPDATED",
               storeId: updatedOrder.storeId || next.hubId,

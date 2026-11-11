@@ -167,17 +167,41 @@ export default function AuditxSuiteTopBar({
             </>
           )}
 
-          {/* Variant 3: ORDERING (Customer - First letter logo only) */}
+          {/* Variant 3: ORDERING (Customer - First letter logo and exact Google name) */}
           {variant === "ordering" && (
             <>
               <button
                 type="button"
                 className="c user"
                 onClick={onUserClick}
-                style={{ cursor: "pointer", border: "1px solid var(--gline)", padding: 0 }}
+                style={{
+                  cursor: "pointer",
+                  border: "1px solid var(--gline)",
+                  padding: "2px 8px 2px 2px",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  borderRadius: 20,
+                  background: "rgba(255, 255, 255, 0.06)",
+                }}
                 title={userName ? `Customer: ${userName}` : "Customer Profile & Order History"}
               >
-                <span className="av dd">{userInitial || "D"}</span>
+                <span className="av dd">{userInitial || "C"}</span>
+                {userName && (
+                  <span
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 700,
+                      color: "#f8fafc",
+                      maxWidth: 110,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {userName}
+                  </span>
+                )}
               </button>
               <button
                 type="button"

@@ -240,7 +240,7 @@ export default function TrackOrderPage() {
               setArrivingMinutes(8);
               setRiderCountdownSec(480);
               setRiderProgress(25);
-              triggerToast("Hi, I'm Sinchana B R, your delivery captain! 🛵 Arriving in 8 mins");
+              triggerToast("Your delivery partner is on the way! 🛵 Arriving in 8 mins");
               playNotificationChime();
             }
           }, 2500);
@@ -257,7 +257,7 @@ export default function TrackOrderPage() {
         advanceStageMonotonic("delivered");
         setRiderProgress(100);
         playSuccessChime();
-        triggerToast("🎉 Order Delivered at Doorstep! Please rate Rider Sinchana B R & your items.");
+        triggerToast("🎉 Order Delivered at Doorstep! Please rate your delivery & items.");
       }
     });
 
@@ -313,7 +313,7 @@ export default function TrackOrderPage() {
         advanceStageMonotonic("almost_doorstep");
         setRiderProgress(92);
         playNotificationChime();
-        triggerToast("⚡ Almost to your doorstep! Sinchana B R is reaching now.");
+        triggerToast("⚡ Almost to your doorstep! Delivery partner is reaching now.");
       }
     }, 1000);
     return () => clearInterval(timer);
@@ -460,8 +460,6 @@ export default function TrackOrderPage() {
     handlingFee: 0,
     status: "pending",
     assignedRack: "D5",
-    pickerName: "Thrupthi K S",
-    captainName: "Sinchana B R",
     items: [],
   };
 
@@ -519,7 +517,6 @@ export default function TrackOrderPage() {
           orderId: activeOrder.id || orderId,
           orderNumber: activeOrder.orderNumber || orderId,
           customerName: activeOrder.customerName || "Customer",
-          riderName: "Sinchana B R",
           riderRating,
           itemRatings,
           compliments: selectedCompliments,
@@ -555,7 +552,7 @@ export default function TrackOrderPage() {
         broadcastEvent("ORDER_DELIVERED", deliveredOrder);
         broadcastEvent("ORDER_RATED", ratingPayload);
         setRatingSubmitted(true);
-        triggerToast("🎉 Order Delivered & Verified! Thank you for rating Sinchana B R.");
+        triggerToast("🎉 Order Delivered & Verified! Thank you for your review.");
       } finally {
         setRatingSubmitting(false);
       }
@@ -580,7 +577,7 @@ export default function TrackOrderPage() {
       needsCustomerRating: true,
     });
     broadcastEvent("ORDER_DELIVERED", updated);
-    triggerToast("🎉 Handover QR Verified! Please rate Rider Sinchana B R & your items below.");
+    triggerToast("🎉 Handover QR Verified! Please rate your delivery & items below.");
   }
 
   const isRatingDone = ratingSubmitted || !!activeOrder.customerRatingSubmitted;
@@ -718,7 +715,7 @@ export default function TrackOrderPage() {
                 Order arrived at your doorstep
               </div>
               <div style={{ fontSize: 12.5, color: "#166534", fontWeight: 500 }}>
-                Handover with Sinchana B R is ready at your gate. Live tracking has ended.
+                Handover with your delivery partner is ready at your gate. Live tracking has ended.
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 {isDelivered && (
@@ -1022,37 +1019,40 @@ export default function TrackOrderPage() {
             <div style={S.partnerHeader}>
               <div style={S.partnerLeftProfile}>
                 <div style={S.partnerAvatarBadge}>
-                  <img
-                    src="/sinchana-logo.png"
-                    alt="Sinchana B R"
+                  <div
                     style={{
                       width: "100%",
                       height: "100%",
-                      objectFit: "cover",
                       borderRadius: "50%",
+                      background: "#dcfce7",
+                      display: "grid",
+                      placeItems: "center",
+                      fontSize: 18,
                     }}
-                  />
+                  >
+                    🛵
+                  </div>
                   <span style={S.avatarOnlineIndicator} />
                 </div>
 
                 <div style={S.partnerNameBlock}>
                   <div style={S.partnerNameLine}>
-                    <b>Sinchana B R</b>
+                    <b>Delivery Partner</b>
                   </div>
                   <div style={S.partnerSubLine}>
-                    KA44 Fleet • 4.9 <IconStar size={11} color="#F59E0B" />
+                    AuditX Express • 4.9 <IconStar size={11} color="#F59E0B" />
                   </div>
                 </div>
               </div>
 
-              {/* Call Phone Button (Masked Relay for Rider Privacy) */}
+              {/* Call Phone Button (Masked Relay for Partner Privacy) */}
               <button
                 type="button"
                 onClick={() => {
-                  triggerToast("Connecting safely to Sinchana B R via privacy relay.");
+                  triggerToast("Connecting safely via privacy relay.");
                 }}
                 style={{ ...S.phoneActionBtn, minWidth: 44, minHeight: 44, cursor: "pointer", border: "none" }}
-                title="Call rider"
+                title="Call delivery partner"
               >
                 <IconPhone size={18} color="#0C831F" />
               </button>
@@ -1274,7 +1274,7 @@ export default function TrackOrderPage() {
                     Thank You for Rating Your Order!
                   </h3>
                   <p style={{ margin: "6px 0 0", fontSize: 12.5, color: "#475569" }}>
-                    You rated Delivery Partner <b>Sinchana B R</b> {riderRating}/5 ★ and reviewed {(activeOrder.items || []).length} item(s).
+                    You rated Delivery Partner {riderRating}/5 ★ and reviewed {(activeOrder.items || []).length} item(s).
                   </p>
                   <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 8 }}>
                     <button
@@ -1334,15 +1334,15 @@ export default function TrackOrderPage() {
                         {isDelivered ? "Doorstep Delivery Completed" : "🛵 Rider at Doorstep • Submit to Complete Delivery"}
                       </span>
                       <h3 style={{ margin: "6px 0 2px", fontSize: 17, fontWeight: 900, color: "#0f172a" }}>
-                        Rate the Rider &amp; Ordered Items
+                        Rate Delivery &amp; Ordered Items
                       </h3>
                       <p style={{ margin: 0, fontSize: 12, color: "#64748b" }}>
-                        How was your delivery with <b>Sinchana B R</b> and product quality?
+                        How was your delivery and product quality?
                       </p>
                     </div>
                   </div>
 
-                  {/* Rate Rider Sinchana B R */}
+                  {/* Rate Delivery Partner */}
                   <div
                     style={{
                       background: "#f8fafc",
@@ -1354,23 +1354,25 @@ export default function TrackOrderPage() {
                   >
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                        <img
-                          src="/sinchana-logo.png"
-                          alt="Sinchana B R"
+                        <div
                           style={{
                             width: 40,
                             height: 40,
                             borderRadius: "50%",
-                            objectFit: "cover",
-                            border: "2px solid #ca8a04",
+                            background: "#dcfce7",
+                            display: "grid",
+                            placeItems: "center",
+                            fontSize: 20,
                           }}
-                        />
+                        >
+                          🛵
+                        </div>
                         <div>
                           <div style={{ fontSize: 13.5, fontWeight: 800, color: "#0f172a" }}>
-                            Rate Rider: Sinchana B R
+                            Rate Delivery Partner
                           </div>
                           <div style={{ fontSize: 11, color: "#64748b" }}>
-                            Order Captain • Tiptur Hub KA-44
+                            AuditX Express • Tiptur Hub KA-44
                           </div>
                         </div>
                       </div>

@@ -476,8 +476,8 @@ const OrderingProductCard = memo(function OrderingProductCard({
         border: isOos
           ? "1px solid rgba(255, 59, 48, 0.45)"
           : item.comingSoon
-          ? "1px solid rgba(255, 149, 0, 0.4)"
-          : "0.5px solid var(--ios-card-border)",
+            ? "1px solid rgba(255, 149, 0, 0.4)"
+            : "0.5px solid var(--ios-card-border)",
         boxShadow: "var(--ios-card-shadow)",
       }}
     >
@@ -719,6 +719,13 @@ export default function OrderingAppPage() {
     setPastOrders(safeArr(safeStorage.getJson("auditx_customer_past_orders", [])));
   }, []);
 
+  // Auto-close payment sheet if cart becomes empty
+  useEffect(() => {
+    if (cartItemsList.length === 0 && showPaymentModal) {
+      setShowPaymentModal(false);
+    }
+  }, [cartItemsList.length, showPaymentModal]);
+
   // Hydrate persisted cart, address, coupon, instructions, payment method, and checkout step cleanly on load
   useEffect(() => {
     const savedCart = safeStorage.getJson("auditx_ordering_cart", null);
@@ -878,7 +885,7 @@ export default function OrderingAppPage() {
           setLatestDeliveredSlipOrder(null);
         }
       }
-    } catch {}
+    } catch { }
   }, []);
 
   async function handleDownloadPdfSlip(orderObj, focusItem = null) {
@@ -903,16 +910,16 @@ export default function OrderingAppPage() {
 
   const isOrderingHomeActive = Boolean(
     authChecked &&
-      customer &&
-      !capacityBlockedMsg &&
-      !showIntroOverlay &&
-      !placedOrderAnimation &&
-      !isCheckoutView &&
-      !showProfileModal &&
-      !showLoginModal &&
-      !showPaymentModal &&
-      !showComplaintModal &&
-      activeBottomTab === "home"
+    customer &&
+    !capacityBlockedMsg &&
+    !showIntroOverlay &&
+    !placedOrderAnimation &&
+    !isCheckoutView &&
+    !showProfileModal &&
+    !showLoginModal &&
+    !showPaymentModal &&
+    !showComplaintModal &&
+    activeBottomTab === "home"
   );
 
   // Festive crackers & Diwali theme active strictly on Ordering App Home page (skipped under saveData / reduced motion)
@@ -1054,7 +1061,7 @@ export default function OrderingAppPage() {
       setIsOnline(snap.online);
       if (!wasOnline && snap.online) {
         triggerToast("Back online — refreshing live catalog prices & stock...");
-        fetchCloudHubState({ force: true }).catch(() => {});
+        fetchCloudHubState({ force: true }).catch(() => { });
       }
       wasOnline = snap.online;
     });
@@ -1087,7 +1094,7 @@ export default function OrderingAppPage() {
       try {
         import("@/components/ui/OrderPlacedSheet");
         import("@/components/DeliveryReceiptModal");
-      } catch {}
+      } catch { }
     };
     if (typeof window !== "undefined" && typeof window.requestIdleCallback === "function") {
       const id = window.requestIdleCallback(prefetchHeavy, { timeout: 2000 });
@@ -1097,14 +1104,14 @@ export default function OrderingAppPage() {
     return () => clearTimeout(tid);
   }, [authChecked]);
 
-  // Load Customer (Mandatory Login Gate preserving returnTo path & cart across session expiry)
+  // Load Customer (Mandatory Google Login Gate preserving returnTo path & cart across session expiry)
   useEffect(() => {
-    const parsedCustomer = validateCustomerBoundary(
+    const rawSaved =
       safeStorage.getJson("auditx_customer", null) ||
-        safeStorage.getJson("blinkit_customer", null)
-    );
+      safeStorage.getJson("blinkit_customer", null);
+    const parsedCustomer = validateCustomerBoundary(rawSaved);
 
-    if (!parsedCustomer) {
+    if (!parsedCustomer || !parsedCustomer.email || parsedCustomer.customerId === "cust_tiptur_demo") {
       const returnPath = typeof window !== "undefined" ? window.location.pathname || "/ordering" : "/ordering";
       safeStorage.set("auditx_auth_return_to", returnPath, "session");
       router.replace(`/ordering/login?returnTo=${encodeURIComponent(returnPath)}`);
@@ -1129,7 +1136,7 @@ export default function OrderingAppPage() {
       phone: parsedCustomer.phone || "",
       email: parsedCustomer.email || "",
       loginMethod: parsedCustomer.loginMethod || "Saved Session",
-    }).catch(() => {});
+    }).catch(() => { });
 
     setOosList(safeArr(safeStorage.getJson("auditx_oos_items", [])));
     const rawInv = safeStorage.getJson("auditx_inventory_units", {});
@@ -1304,16 +1311,16 @@ export default function OrderingAppPage() {
             setOrderingStage("rider_assigned");
             setDeliveryCountdownSec(480);
             setCustomFloatingTitle("On the way");
-            setCustomFloatingSub("Sinchana B R is heading to you");
+            setCustomFloatingSub("Delivery Partner is heading to you");
             setCustomFloatingBadge("");
             playNotificationChime();
-            triggerToast("Sinchana B R is on the way (8 mins)");
+            triggerToast("Delivery Partner is on the way (8 mins)");
           }, 2500);
         } else if (data.type === "FAST_DELIVERY_STARTED") {
           setOrderingStage("rider_assigned");
           setDeliveryCountdownSec(480);
           setCustomFloatingTitle("On the way");
-          setCustomFloatingSub("Sinchana B R is heading to you");
+          setCustomFloatingSub("Delivery Partner is heading to you");
           setCustomFloatingBadge("");
         }
         if (data.type === "ORDER_DELIVERED") {
@@ -1416,9 +1423,9 @@ export default function OrderingAppPage() {
         setDeliveryCountdownSec(0);
         const ordId = String(
           activeDeliveryOrder?.id ||
-            activeDeliveryOrder?.orderId ||
-            activeDeliveryOrder?.orderNumber ||
-            ""
+          activeDeliveryOrder?.orderId ||
+          activeDeliveryOrder?.orderNumber ||
+          ""
         );
         if (ordId) safeStorage.set("auditx_dismissed_track_order", ordId);
         setActiveDeliveryOrder(null);
@@ -1435,7 +1442,7 @@ export default function OrderingAppPage() {
       if (next === 15 && orderingStage !== "almost_doorstep") {
         setOrderingStage("almost_doorstep");
         playNotificationChime();
-        triggerToast("⚡ Almost to your doorstep! Sinchana B R is reaching now.");
+        triggerToast("⚡ Almost to your doorstep! Delivery Partner is reaching now.");
       }
     }, 1000);
 
@@ -1453,7 +1460,6 @@ export default function OrderingAppPage() {
         orderId: ordId,
         orderNumber: activeDeliveryOrder.orderNumber || ordId,
         customerName: customer?.name || activeDeliveryOrder.customerName || "Customer",
-        riderName: "Sinchana B R",
         riderRating: riderStars,
         itemRatings: itemStarsMap,
         comment: rateFeedbackText.trim(),
@@ -1478,7 +1484,7 @@ export default function OrderingAppPage() {
       setShowRateOrderModal(false);
       setActiveDeliveryOrder(null);
       setOrderingStage("idle");
-      triggerToast("🎉 Order Delivered & Verified! Thank you for rating Sinchana B R.");
+      triggerToast("🎉 Order Delivered & Verified! Thank you for your review.");
     });
   }
 
@@ -1767,13 +1773,6 @@ export default function OrderingAppPage() {
       .filter(Boolean);
   }, [cartEntries, effectiveCatalog]);
 
-  // Auto-close payment sheet if cart becomes empty
-  useEffect(() => {
-    if (cartItemsList.length === 0 && showPaymentModal) {
-      setShowPaymentModal(false);
-    }
-  }, [cartItemsList.length, showPaymentModal]);
-
   const itemTotalMrp = useMemo(() => {
     return cartItemsList.reduce((s, item) => s + safeNum(item.mrp, safeNum(item.price, 0)) * item.qty, 0);
   }, [cartItemsList]);
@@ -1899,7 +1898,7 @@ export default function OrderingAppPage() {
           reservationId: resCopy.reservationId,
           idempotencyKey: resCopy.idempotencyKey,
           reason: "expired",
-        }).catch(() => {});
+        }).catch(() => { });
         triggerToast("5-minute stock hold expired. Tap Pay to reserve items again.");
       }
     };
@@ -1938,7 +1937,7 @@ export default function OrderingAppPage() {
       });
       if (!res.ok && res.outOfStock) {
         triggerToast(`⛔ ${res.error || "Selected item just ran out of stock."}`);
-        fetchCloudHubState({ force: true }).catch(() => {});
+        fetchCloudHubState({ force: true }).catch(() => { });
         return;
       }
       if (res.ok && res.reservation) {
@@ -1962,7 +1961,7 @@ export default function OrderingAppPage() {
         reservationId: resCopy.reservationId,
         idempotencyKey: resCopy.idempotencyKey,
         reason: "release",
-      }).catch(() => {});
+      }).catch(() => { });
     }
   }
 
@@ -2122,7 +2121,7 @@ export default function OrderingAppPage() {
         const idempotencyKey = pendingCheckoutIdemRef.current || createIdempotencyKey("ord");
         pendingCheckoutIdemRef.current = idempotencyKey;
 
-        const orderId = `ORD-KA44-${Math.floor(100000 + Math.random() * 900000)}`;
+        const orderId = `ORD-KA44-${Date.now()}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
         const rack = getRandomStagingRack();
 
         const createdOrder = {
@@ -2131,14 +2130,15 @@ export default function OrderingAppPage() {
           orderNumber: orderId,
           idempotencyKey,
           reservationId: activeReservation?.reservationId || "",
-          customerId: customer?.customerId || "cust_tiptur_demo",
+          customerId: customer?.customerId || `cust_${customer?.email || Date.now()}`,
           customerName: customer?.name || "Customer",
-          customerPhone: customer?.phone || "9845112233",
+          customerEmail: customer?.email || "",
+          customerPhone: customer?.phone || "",
           customerAddress: selectedAddress?.address || "KFGSC , Tiptur 572201",
           addressDetails: selectedAddress,
           deliveryInstructions: selectedInstructions.map(
             (id) => DELIVERY_INSTRUCTIONS_LIST.find((i) => i.id === id)?.label
-          ),
+          ).filter(Boolean),
           appliedCoupon: appliedCoupon?.code || null,
           couponSavings,
           totalAmount: grandTotal,
@@ -2148,21 +2148,20 @@ export default function OrderingAppPage() {
           totalSavings,
           status: "placed",
           stage: "Awaiting OD Picker",
+          lastEmailedStatus: "placed",
           assignedRack: rack.id,
+          assignedRackZone: rack.zone,
           rackQr: rack.qr,
-          pickerId: "thrupthi",
-          pickerName: "Thrupthi K S",
-          captainId: "sinchana",
-          captainName: "Sinchana B R",
-          captainPhone: "8088553237",
+          assignedStaffId: "thrupthi",
+          deliveryCaptainId: "sinchana",
           paymentMethod:
             selectedPaymentMethod === "wallet"
               ? "Audit'X Demo Wallet"
               : selectedPaymentMethod === "upi"
-              ? `UPI Direct (${selectedUpiApp.toUpperCase()})`
-              : selectedPaymentMethod === "card"
-              ? "Saved Credit Card"
-              : "Cash on Delivery",
+                ? `UPI Direct (${selectedUpiApp.toUpperCase()})`
+                : selectedPaymentMethod === "card"
+                  ? "Saved Credit Card"
+                  : "Cash on Delivery",
           storeId: "TIPTUR-HUB-KA44",
           storeName: "AUDIT'X Tiptur HUB - KA44",
           estimatedDeliveryMins: 10,
@@ -2241,7 +2240,7 @@ export default function OrderingAppPage() {
               reservationId: resCopy.reservationId,
               idempotencyKey: resCopy.idempotencyKey,
               reason: "payment_failed",
-            }).catch(() => {});
+            }).catch(() => { });
           }
 
           if (cloudRes.data?.storeClosed) {
@@ -2324,28 +2323,28 @@ export default function OrderingAppPage() {
     orderingStage === "rider_arrived"
       ? "Rider ARRIVED"
       : orderingStage === "almost_doorstep"
-      ? "Almost at doorstep"
-      : orderingStage === "one_minute"
-      ? "Arriving in 1 MIN"
-      : orderingStage === "delivered" && !rateCompleted
-      ? "Delivered • Rate"
-      : activeDeliveryOrder && orderingStage === "picking" && pickerDelayMins > 0
-      ? `Delivery in ${10 + pickerDelayMins} MINS`
-      : activeDeliveryOrder && deliveryCountdownSec > 0
-      ? `Delivery in ${Math.max(1, Math.ceil(deliveryCountdownSec / 60))} MIN${Math.max(1, Math.ceil(deliveryCountdownSec / 60)) === 1 ? "" : "S"}`
-      : "Delivery in 10 MINS";
+        ? "Almost at doorstep"
+        : orderingStage === "one_minute"
+          ? "Arriving in 1 MIN"
+          : orderingStage === "delivered" && !rateCompleted
+            ? "Delivered • Rate"
+            : activeDeliveryOrder && orderingStage === "picking" && pickerDelayMins > 0
+              ? `Delivery in ${10 + pickerDelayMins} MINS`
+              : activeDeliveryOrder && deliveryCountdownSec > 0
+                ? `Delivery in ${Math.max(1, Math.ceil(deliveryCountdownSec / 60))} MIN${Math.max(1, Math.ceil(deliveryCountdownSec / 60)) === 1 ? "" : "S"}`
+                : "Delivery in 10 MINS";
 
   const activeTabLargeTitle = isCheckoutView
     ? "Checkout"
     : activeBottomTab === "categories"
-    ? "Categories"
-    : activeBottomTab === "search"
-    ? "Search"
-    : activeBottomTab === "order_again"
-    ? "Orders"
-    : activeBottomTab === "explore_tiptur"
-    ? "Tiptur Hub"
-    : "AUDIT'X";
+      ? "Categories"
+      : activeBottomTab === "search"
+        ? "Search"
+        : activeBottomTab === "order_again"
+          ? "Orders"
+          : activeBottomTab === "explore_tiptur"
+            ? "Tiptur Hub"
+            : "AUDIT'X";
 
   const orderingHeaderElement = (
     <IOSNavBar
@@ -2354,15 +2353,15 @@ export default function OrderingAppPage() {
       onBack={
         isCheckoutView
           ? () => {
-              if (showPaymentModal) {
-                handleCancelPaymentModal();
-                return;
-              }
-              setIsCheckoutView(false);
+            if (showPaymentModal) {
+              handleCancelPaymentModal();
+              return;
             }
+            setIsCheckoutView(false);
+          }
           : activeBottomTab !== "home"
-          ? () => setActiveBottomTab("home")
-          : undefined
+            ? () => setActiveBottomTab("home")
+            : undefined
       }
       backLabel={isCheckoutView ? "Store" : "Home"}
       subHeader={
@@ -2370,8 +2369,8 @@ export default function OrderingAppPage() {
           <AuditxSuiteTopBar
             variant="ordering"
             isStoreOpen={isStoreOpen}
-            userName={customer?.name ? customer.name.split(" ")[0].toUpperCase() : "DEEPU"}
-            userInitial={customer?.name ? customer.name.charAt(0).toUpperCase() : "D"}
+            userName={customer?.name || "Customer"}
+            userInitial={customer?.name ? customer.name.charAt(0) : "C"}
             onUserClick={() => {
               if (customer?.name) {
                 setShowProfileModal(true);
@@ -2437,8 +2436,8 @@ export default function OrderingAppPage() {
         isCheckoutView
           ? "cart"
           : activeBottomTab === "order_again" || activeBottomTab === "explore_tiptur"
-          ? "orders"
-          : activeBottomTab
+            ? "orders"
+            : activeBottomTab
       }
       onChange={(nextTab) => {
         if (nextTab === "cart") {
@@ -2456,7 +2455,7 @@ export default function OrderingAppPage() {
           setTimeout(() => {
             try {
               searchInputRef.current?.focus();
-            } catch {}
+            } catch { }
           }, 120);
         }
       }}
@@ -2495,25 +2494,25 @@ export default function OrderingAppPage() {
           ) : null
         }
         onRefresh={() => {
-          fetchCloudHubState({ force: true }).catch(() => {});
+          fetchCloudHubState({ force: true }).catch(() => { });
           dispatchCloudAction("HEARTBEAT", { deviceUid: getOrCreateDeviceUid() });
         }}
         onSwipeBack={
           isCheckoutView
             ? () => {
-                if (showPaymentModal) {
-                  setShowPaymentModal(false);
-                  return;
-                }
-                if (placingOrder) {
-                  triggerToast("Completing order verification — please wait a moment.");
-                  return;
-                }
-                setIsCheckoutView(false);
+              if (showPaymentModal) {
+                setShowPaymentModal(false);
+                return;
               }
+              if (placingOrder) {
+                triggerToast("Completing order verification — please wait a moment.");
+                return;
+              }
+              setIsCheckoutView(false);
+            }
             : activeBottomTab !== "home"
-            ? () => setActiveBottomTab("home")
-            : undefined
+              ? () => setActiveBottomTab("home")
+              : undefined
         }
         stickyFooter={
           isCheckoutView ? (
@@ -2659,195 +2658,722 @@ export default function OrderingAppPage() {
           </div>
         )}
 
-      {/* ═══════════════════════════════════════════════════════════
+        {/* ═══════════════════════════════════════════════════════════
           MAIN VIEW: CHECKOUT OR CATALOG (WITH STORE CLOSED BANNER)
           ═══════════════════════════════════════════════════════════ */}
-      {isCheckoutView ? (
-        /* ── DEDICATED BLINKIT CART & CHECKOUT PAGE (EXACT ASCII WIREFRAME) ── */
-        <ErrorBoundary
-          label="Cart & Checkout"
-          subtitle="Your cart items and address are safely preserved. Tap Try again to resume."
-          onRetry={() => fetchCloudHubState({ force: true })}
-        >
-        <main style={S.checkoutMain}>
-          <div style={S.checkoutContainer}>
-            {/* Navigation back bar */}
-            <div style={S.checkoutNavBackRow}>
-              <button
-                style={S.backToCatalogBtn}
-                onClick={() => setIsCheckoutView(false)}
-              >
-                <IconArrowLeft size={16} color="#0c831f" />
-                <span>Add more items from Store</span>
-              </button>
-              <span style={S.cartCountHeader}>{totalItems} items in cart</span>
-            </div>
-
-            {!isOnline && (
-              <div
-                role="status"
-                style={{
-                  background: "#FFFBEB",
-                  border: "1.5px solid #F59E0B",
-                  borderRadius: 12,
-                  padding: "10px 12px",
-                  marginBottom: 12,
-                  fontSize: 12,
-                  fontWeight: 700,
-                  color: "#92400E",
-                }}
-              >
-                You&apos;re offline — your cart is saved safely. Checkout unlocks as soon as you&apos;re back online.
-              </div>
-            )}
-
-            {checkoutStatusMsg && (
-              <div
-                role="status"
-                style={{
-                  background: "#ECFDF5",
-                  border: "1.5px solid #34D399",
-                  borderRadius: 12,
-                  padding: "10px 12px",
-                  marginBottom: 12,
-                  fontSize: 12.5,
-                  fontWeight: 700,
-                  color: "#065F46",
-                }}
-              >
-                ⏳ {checkoutStatusMsg}
-              </div>
-            )}
-
-            {reservationSecsLeft > 0 && (
-              <div
-                role="status"
-                style={{
-                  background: "#F0FDF4",
-                  border: "1px solid #86EFAC",
-                  borderRadius: 12,
-                  padding: "8px 12px",
-                  marginBottom: 12,
-                  fontSize: 12,
-                  fontWeight: 700,
-                  color: "#166534",
-                }}
-              >
-                🔒 Stock reserved for you ({Math.floor(reservationSecsLeft / 60)}:{String(reservationSecsLeft % 60).padStart(2, "0")})
-              </div>
-            )}
-
-            {cartNotice && (
-              <div
-                role="status"
-                style={{
-                  background: "#EFF6FF",
-                  border: "1.5px solid #93C5FD",
-                  borderRadius: 12,
-                  padding: "10px 12px",
-                  marginBottom: 12,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: 8,
-                  fontSize: 12,
-                  fontWeight: 700,
-                  color: "#1E40AF",
-                }}
-              >
-                <span>ℹ️ {cartNotice}</span>
-                <button
-                  type="button"
-                  onClick={() => setCartNotice("")}
-                  style={{ background: "none", border: "none", color: "#1E40AF", fontWeight: 800, cursor: "pointer" }}
-                >
-                  Dismiss
-                </button>
-              </div>
-            )}
-
-            {unconfirmedOrderPrompt && (
-              <div
-                role="alert"
-                style={{
-                  background: "#FEF2F2",
-                  border: "1.5px solid #FCA5A5",
-                  borderRadius: 14,
-                  padding: "12px 14px",
-                  marginBottom: 14,
-                }}
-              >
-                <div style={{ fontSize: 13, fontWeight: 800, color: "#991B1B", marginBottom: 4 }}>
-                  Order confirmation interrupted
-                </div>
-                <div style={{ fontSize: 12, color: "#7F1D1D", lineHeight: 1.45, marginBottom: 10 }}>
-                  {unconfirmedOrderPrompt.message}
-                </div>
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        {isCheckoutView ? (
+          /* ── DEDICATED BLINKIT CART & CHECKOUT PAGE (EXACT ASCII WIREFRAME) ── */
+          <ErrorBoundary
+            label="Cart & Checkout"
+            subtitle="Your cart items and address are safely preserved. Tap Try again to resume."
+            onRetry={() => fetchCloudHubState({ force: true })}
+          >
+            <main style={S.checkoutMain}>
+              <div style={S.checkoutContainer}>
+                {/* Navigation back bar */}
+                <div style={S.checkoutNavBackRow}>
                   <button
-                    type="button"
-                    disabled={placingOrder || !isOnline}
-                    onClick={handleFinalOrderPlacement}
+                    style={S.backToCatalogBtn}
+                    onClick={() => setIsCheckoutView(false)}
+                  >
+                    <IconArrowLeft size={16} color="#0c831f" />
+                    <span>Add more items from Store</span>
+                  </button>
+                  <span style={S.cartCountHeader}>{totalItems} items in cart</span>
+                </div>
+
+                {!isOnline && (
+                  <div
+                    role="status"
                     style={{
-                      flex: 1,
-                      minHeight: 38,
-                      borderRadius: 10,
-                      border: "none",
-                      background: "#0C831F",
-                      color: "#FFFFFF",
+                      background: "#FFFBEB",
+                      border: "1.5px solid #F59E0B",
+                      borderRadius: 12,
+                      padding: "10px 12px",
+                      marginBottom: 12,
                       fontSize: 12,
-                      fontWeight: 800,
-                      cursor: "pointer",
+                      fontWeight: 700,
+                      color: "#92400E",
                     }}
                   >
-                    Retry Order
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsCheckoutView(false);
-                      setActiveBottomTab("order_again");
-                      fetchCloudHubState({ force: true }).catch(() => {});
-                    }}
+                    You&apos;re offline — your cart is saved safely. Checkout unlocks as soon as you&apos;re back online.
+                  </div>
+                )}
+
+                {checkoutStatusMsg && (
+                  <div
+                    role="status"
                     style={{
-                      flex: 1,
-                      minHeight: 38,
-                      borderRadius: 10,
-                      border: "1px solid #DC2626",
-                      background: "#FFFFFF",
-                      color: "#991B1B",
-                      fontSize: 12,
-                      fontWeight: 800,
-                      cursor: "pointer",
+                      background: "#ECFDF5",
+                      border: "1.5px solid #34D399",
+                      borderRadius: 12,
+                      padding: "10px 12px",
+                      marginBottom: 12,
+                      fontSize: 12.5,
+                      fontWeight: 700,
+                      color: "#065F46",
                     }}
                   >
-                    Check My Orders
-                  </button>
-                </div>
-              </div>
-            )}
+                    ⏳ {checkoutStatusMsg}
+                  </div>
+                )}
 
-            {/* ACTIVE ORDER ONGOING TRACKING LOCK BANNER */}
-            {hasOngoingOrder && (
-              <div
-                style={{
-                  background: "linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%)",
-                  border: "1.5px solid #f59e0b",
-                  borderRadius: 14,
-                  padding: "14px 16px",
-                  marginBottom: 16,
-                  boxShadow: "0 4px 14px rgba(245, 158, 11, 0.18)",
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
-                  <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
-                    <span style={{ fontSize: 24, lineHeight: 1 }}>🛵</span>
-                    <div>
-                      <div style={{ fontSize: 13.5, fontWeight: 900, color: "#92400e" }}>
-                        Ongoing Delivery Active • Order #{ongoingTrackedOrder.orderNumber || ongoingTrackedOrder.id}
+                {reservationSecsLeft > 0 && (
+                  <div
+                    role="status"
+                    style={{
+                      background: "#F0FDF4",
+                      border: "1px solid #86EFAC",
+                      borderRadius: 12,
+                      padding: "8px 12px",
+                      marginBottom: 12,
+                      fontSize: 12,
+                      fontWeight: 700,
+                      color: "#166534",
+                    }}
+                  >
+                    🔒 Stock reserved for you ({Math.floor(reservationSecsLeft / 60)}:{String(reservationSecsLeft % 60).padStart(2, "0")})
+                  </div>
+                )}
+
+                {cartNotice && (
+                  <div
+                    role="status"
+                    style={{
+                      background: "#EFF6FF",
+                      border: "1.5px solid #93C5FD",
+                      borderRadius: 12,
+                      padding: "10px 12px",
+                      marginBottom: 12,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: 8,
+                      fontSize: 12,
+                      fontWeight: 700,
+                      color: "#1E40AF",
+                    }}
+                  >
+                    <span>ℹ️ {cartNotice}</span>
+                    <button
+                      type="button"
+                      onClick={() => setCartNotice("")}
+                      style={{ background: "none", border: "none", color: "#1E40AF", fontWeight: 800, cursor: "pointer" }}
+                    >
+                      Dismiss
+                    </button>
+                  </div>
+                )}
+
+                {unconfirmedOrderPrompt && (
+                  <div
+                    role="alert"
+                    style={{
+                      background: "#FEF2F2",
+                      border: "1.5px solid #FCA5A5",
+                      borderRadius: 14,
+                      padding: "12px 14px",
+                      marginBottom: 14,
+                    }}
+                  >
+                    <div style={{ fontSize: 13, fontWeight: 800, color: "#991B1B", marginBottom: 4 }}>
+                      Order confirmation interrupted
+                    </div>
+                    <div style={{ fontSize: 12, color: "#7F1D1D", lineHeight: 1.45, marginBottom: 10 }}>
+                      {unconfirmedOrderPrompt.message}
+                    </div>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      <button
+                        type="button"
+                        disabled={placingOrder || !isOnline}
+                        onClick={handleFinalOrderPlacement}
+                        style={{
+                          flex: 1,
+                          minHeight: 38,
+                          borderRadius: 10,
+                          border: "none",
+                          background: "#0C831F",
+                          color: "#FFFFFF",
+                          fontSize: 12,
+                          fontWeight: 800,
+                          cursor: "pointer",
+                        }}
+                      >
+                        Retry Order
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsCheckoutView(false);
+                          setActiveBottomTab("order_again");
+                          fetchCloudHubState({ force: true }).catch(() => { });
+                        }}
+                        style={{
+                          flex: 1,
+                          minHeight: 38,
+                          borderRadius: 10,
+                          border: "1px solid #DC2626",
+                          background: "#FFFFFF",
+                          color: "#991B1B",
+                          fontSize: 12,
+                          fontWeight: 800,
+                          cursor: "pointer",
+                        }}
+                      >
+                        Check My Orders
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* ACTIVE ORDER ONGOING TRACKING LOCK BANNER */}
+                {hasOngoingOrder && (
+                  <div
+                    style={{
+                      background: "linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%)",
+                      border: "1.5px solid #f59e0b",
+                      borderRadius: 14,
+                      padding: "14px 16px",
+                      marginBottom: 16,
+                      boxShadow: "0 4px 14px rgba(245, 158, 11, 0.18)",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+                      <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+                        <span style={{ fontSize: 24, lineHeight: 1 }}>🛵</span>
+                        <div>
+                          <div style={{ fontSize: 13.5, fontWeight: 900, color: "#92400e" }}>
+                            Ongoing Delivery Active • Order #{ongoingTrackedOrder.orderNumber || ongoingTrackedOrder.id}
+                          </div>
+                          <div style={{ fontSize: 11.5, color: "#b45309", marginTop: 3, lineHeight: 1.45 }}>
+                            You cannot place another order while live tracking is in progress. Your cart items are safely preserved and checkout will automatically unlock once this order finishes and is delivered!
+                          </div>
+                        </div>
                       </div>
-                      <div style={{ fontSize: 11.5, color: "#b45309", marginTop: 3, lineHeight: 1.45 }}>
-                        You cannot place another order while live tracking is in progress. Your cart items are safely preserved and checkout will automatically unlock once this order finishes and is delivered!
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const ordId = ongoingTrackedOrder.orderNumber || ongoingTrackedOrder.id || ongoingTrackedOrder.orderId;
+                          router.push(`/track/${ordId}`);
+                        }}
+                        style={{
+                          background: "#d97706",
+                          color: "#ffffff",
+                          border: "none",
+                          borderRadius: 8,
+                          padding: "8px 12px",
+                          fontSize: 11.5,
+                          fontWeight: 800,
+                          cursor: "pointer",
+                          whiteSpace: "nowrap",
+                          flexShrink: 0,
+                        }}
+                      >
+                        Track Live 📍
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* 1. TOP DELIVERY & ADDRESS BAR (IN CHECKOUT) */}
+                <div style={S.checkoutCard}>
+                  <div style={S.checkoutEtaHeader}>
+                    <div style={S.checkoutEtaLeft}>
+                      <div style={S.checkoutEtaPill}>
+                        <IconLightning size={16} color="#000000" />
+                        <span style={S.checkoutEtaTime}>Delivery in 10 MINS</span>
+                      </div>
+                      <div style={S.checkoutAddressSub}>
+                        KFGSC , Tiptur 572201
+                      </div>
+                    </div>
+                    <button
+                      style={S.changeBtnSmall}
+                      onClick={() => setShowAddressModal(true)}
+                    >
+                      Change
+                    </button>
+                  </div>
+
+                  {/* Free delivery tracker */}
+                  <div style={S.freeDeliveryNotice}>
+                    <div style={S.freeDeliveryLabelRow}>
+                      <span style={S.unlockedFreeText}>
+                        <IconCheck size={14} color="#0c831f" /> You have unlocked <b>FREE Delivery</b>!
+                      </span>
+                      <span style={S.deliveryFeeBadge}>
+                        FREE
+                      </span>
+                    </div>
+                    <div style={S.progressTrack}>
+                      <div
+                        style={{
+                          ...S.progressFill,
+                          width: "100%",
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* 2. CART ITEMS & QUANTITY CONTROLS (ITEMS ADDED) */}
+                <section style={S.checkoutCard}>
+                  <div style={S.sectionHeaderRow}>
+                    <h3 style={S.cardSectionTitle}>ITEMS ADDED</h3>
+                    <span style={S.itemSubtextCount}>{totalItems} Items</span>
+                  </div>
+
+                  {cartItemsList.length === 0 ? (
+                    <div style={S.emptyCartState}>
+                      <IconCartBag size={36} color="#94a3b8" />
+                      <p style={S.emptyCartTitle}>Your cart is currently empty</p>
+                      <button
+                        style={S.browseCatalogBtn}
+                        onClick={() => setIsCheckoutView(false)}
+                      >
+                        Browse Tiptur Catalog
+                      </button>
+                    </div>
+                  ) : (
+                    <div style={S.itemsList}>
+                      {cartItemsList.map((item) => {
+                        const avail = getAvailableUnits(item);
+                        const isOos = oosList.includes(item.sku) || avail <= 0;
+                        return (
+                          <div key={item.sku} style={S.itemCardRow}>
+                            {/* Product Image */}
+                            <div style={S.itemImgWrapper}>
+                              <img
+                                src={item.image || "/auditx-logo.png"}
+                                alt={item.name}
+                                width={56}
+                                height={56}
+                                loading="lazy"
+                                decoding="async"
+                                onError={(e) => {
+                                  if (e.currentTarget.dataset.fbApplied) return;
+                                  e.currentTarget.dataset.fbApplied = "1";
+                                  e.currentTarget.src = "/auditx-logo.png";
+                                }}
+                                style={S.itemThumbnail}
+                              />
+                              {isOos && (
+                                <span style={S.itemOosOverlay}>Out of Stock</span>
+                              )}
+                            </div>
+
+                            {/* Title & Weight */}
+                            <div style={S.itemInfoCol}>
+                              <h4 style={S.itemTitle}>{item.name}</h4>
+                              <span style={S.itemWeight}>{item.weight}</span>
+                              <div style={S.itemPriceRow}>
+                                <span style={S.itemFinalPrice}>₹{item.price}</span>
+                                {item.mrp > item.price && (
+                                  <span style={S.itemMrpStrike}>₹{item.mrp}</span>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Stepper / Counter Button directly on each item */}
+                            <div style={S.stepperBox}>
+                              <button
+                                type="button"
+                                style={S.stepperMinusBtn}
+                                onClick={() => updateQty(item.sku, -1)}
+                                title="Decrease quantity"
+                              >
+                                −
+                              </button>
+                              <span style={S.stepperQty}>{item.qty}</span>
+                              <button
+                                type="button"
+                                style={S.stepperPlusBtn}
+                                onClick={() => updateQty(item.sku, 1)}
+                                disabled={isOos || item.qty >= avail}
+                                title="Increase quantity"
+                              >
+                                +
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </section>
+
+
+
+                {/* 3. COUPON & DISCOUNT ENGINE (APPLY COUPON / VIEW OFFERS) */}
+                <section style={S.checkoutCard}>
+                  <div
+                    style={S.couponWidget}
+                    onClick={() => setShowCouponModal(true)}
+                  >
+                    <div style={S.couponLeft}>
+                      <div style={S.couponIconWrapper}>
+                        <IconCoupon size={20} color="#0c831f" />
+                      </div>
+                      <div>
+                        {appliedCoupon ? (
+                          <div>
+                            <div style={S.couponAppliedCode}>
+                              Coupon <b>{appliedCoupon.code}</b> Applied
+                            </div>
+                            <div style={S.couponAppliedDesc}>
+                              {appliedCoupon.label} — Saved ₹{couponSavings}
+                            </div>
+                          </div>
+                        ) : (
+                          <div>
+                            <div style={S.couponPromptTitle}>Apply Coupon / View Offers</div>
+                            <div style={S.couponPromptSub}>
+                              Save up to ₹50 with promo codes & bank vouchers
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {appliedCoupon ? (
+                      <button
+                        type="button"
+                        style={S.removeCouponBtn}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleRemoveCoupon();
+                        }}
+                      >
+                        Remove
+                      </button>
+                    ) : (
+                      <div style={S.couponArrowRight}>
+                        <IconArrowRight size={16} color="#0c831f" />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Instant Savings Highlight */}
+                  {totalSavings > 0 && (
+                    <div style={S.savingsHighlightBanner}>
+                      <IconCheck size={14} color="#0c831f" />
+                      <span>
+                        Instant Savings Applied: You saved <b>₹{totalSavings}</b> on this order!
+                      </span>
+                    </div>
+                  )}
+                </section>
+
+                {/* 4. BILL & COST BREAKDOWN (BILL DETAILS) */}
+                <section style={S.checkoutCard}>
+                  <div style={S.sectionHeaderRow}>
+                    <h3 style={S.cardSectionTitle}>BILL DETAILS</h3>
+                  </div>
+
+                  <div style={S.billBreakdown}>
+                    <div style={S.billRow}>
+                      <span style={S.billLabel}>Item Total (MRP)</span>
+                      <span style={S.billValue}>₹{itemTotalMrp}</span>
+                    </div>
+
+                    {productDiscount > 0 && (
+                      <div style={S.billRow}>
+                        <span style={S.billDiscountLabel}>Product Discount</span>
+                        <span style={S.billDiscountValue}>− ₹{productDiscount}</span>
+                      </div>
+                    )}
+
+                    {couponSavings > 0 && (
+                      <div style={S.billRow}>
+                        <span style={S.billDiscountLabel}>
+                          Coupon Savings ({appliedCoupon.code})
+                        </span>
+                        <span style={S.billDiscountValue}>− ₹{couponSavings}</span>
+                      </div>
+                    )}
+
+                    <div style={S.billRow}>
+                      <span style={S.billLabel}>Delivery</span>
+                      <span style={S.billFreeHighlight}>FREE</span>
+                    </div>
+
+                    <div style={S.billRow}>
+                      <span style={S.billLabel}>Handling fee</span>
+                      <span style={handlingFee === 0 ? S.billFreeHighlight : S.billValue}>
+                        {handlingFee === 0 ? "FREE" : `₹${handlingFee}`}
+                      </span>
+                    </div>
+
+                    <div style={S.billDivider} />
+
+                    <div style={S.billGrandTotalRow}>
+                      <span style={S.grandTotalLabel}>Total</span>
+                      <span style={S.grandTotalAmount}>₹{grandTotal}</span>
+                    </div>
+                  </div>
+                </section>
+
+                {/* 5. DELIVERY INSTRUCTIONS & PREFERENCES */}
+                <section style={S.checkoutCard}>
+                  <div style={S.sectionHeaderRow}>
+                    <h3 style={S.cardSectionTitle}>DELIVERY INSTRUCTIONS</h3>
+                  </div>
+
+                  <div style={S.instructionsGrid}>
+                    {DELIVERY_INSTRUCTIONS_LIST.map((ins) => {
+                      const isSelected = selectedInstructions.includes(ins.id);
+                      return (
+                        <button
+                          key={ins.id}
+                          type="button"
+                          style={{
+                            ...S.instructionChipBtn,
+                            ...(isSelected ? S.instructionChipActive : {}),
+                          }}
+                          onClick={() => toggleInstruction(ins.id)}
+                        >
+                          <div style={S.chipIconWrapper}>
+                            {renderInstructionIcon(ins.iconType, isSelected)}
+                          </div>
+                          <span style={S.chipLabel}>{ins.label}</span>
+                          {isSelected && (
+                            <div style={S.chipActiveCheck}>
+                              <IconCheck size={12} color="#0c831f" />
+                            </div>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* 10-Minute SLA Operations Guarantee */}
+                </section>
+
+                {/* 5B. PAYMENT METHOD SUMMARY STRIP */}
+                <section style={S.checkoutCard}>
+                  <div style={S.sectionHeaderRow}>
+                    <h3 style={S.cardSectionTitle}>PAYMENT METHOD</h3>
+                    {!hasOngoingOrder && cartItemsList.length > 0 && (
+                      <button
+                        type="button"
+                        style={S.changeLinkBtn}
+                        onClick={handleOpenPaymentModalWithReserve}
+                      >
+                        Change
+                      </button>
+                    )}
+                  </div>
+
+                  <div
+                    style={S.selectedPaymentMethodRow}
+                    onClick={() => {
+                      if (hasOngoingOrder) {
+                        const ordId = ongoingTrackedOrder.orderNumber || ongoingTrackedOrder.id || ongoingTrackedOrder.orderId;
+                        router.push(`/track/${ordId}`);
+                      } else if (cartItemsList.length > 0) {
+                        handleOpenPaymentModalWithReserve();
+                      } else {
+                        triggerToast("Your cart is empty. Add items from the catalog.");
+                        setIsCheckoutView(false);
+                      }
+                    }}
+                  >
+                    <div style={S.paymentMethodLeftPreview}>
+                      <IconRealLogoAuditxWallet size={36} />
+                      <div>
+                        <div style={S.paymentMethodSelectedTitle}>
+                          Audit'X Demo Wallet
+                          <span style={S.oneClickPill}>1-CLICK INSTANT</span>
+                        </div>
+                        <div style={S.paymentMethodSelectedSub}>
+                          Paid through demo wallet • Balance: ₹{safeNum(customer?.walletBalance, WALLET_LIMIT).toLocaleString("en-IN")}
+                        </div>
+                      </div>
+                    </div>
+                    <div style={S.paymentMethodCheckActive}>
+                      <IconCheck size={14} color="#0c831f" />
+                    </div>
+                  </div>
+
+                  <div
+                    onClick={() => {
+                      if (hasOngoingOrder) return;
+                      if (cartItemsList.length > 0) {
+                        handleOpenPaymentModalWithReserve();
+                      } else {
+                        triggerToast("Your cart is empty. Add items from the catalog.");
+                        setIsCheckoutView(false);
+                      }
+                    }}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: 10,
+                      marginTop: 10,
+                      padding: "10px 12px",
+                      borderRadius: 12,
+                      background: "#f8fafc",
+                      border: "1px solid #e2e8f0",
+                      cursor: hasOngoingOrder ? "default" : "pointer",
+                    }}
+                  >
+                    <span style={{ fontSize: 11, fontWeight: 700, color: "#64748b" }}>
+                      UPI Apps
+                    </span>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <IconRealLogoPhonePe size={28} />
+                      <IconRealLogoGooglePay size={28} />
+                      <IconRealLogoPaytm size={28} />
+                      <IconRealLogoUPI size={28} />
+                    </div>
+                  </div>
+                </section>
+
+                {/* Spacer for sticky footer */}
+                <div style={{ height: 20 }} />
+              </div>
+            </main>
+          </ErrorBoundary>
+        ) : (
+          /* ── CATALOG BROWSE VIEW (STORE WITH SMART CART BAR) ── */
+          <main style={S.catalogMain}>
+            <div style={S.catalogContainer}>
+              {/* Store Closed Notice Banner */}
+              {!isStoreOpen && (
+                <div
+                  style={{
+                    background: "linear-gradient(135deg, #fff1f3 0%, #ffe4e6 100%)",
+                    border: "1.5px solid #fecdd3",
+                    borderRadius: 12,
+                    padding: "10px 14px",
+                    marginBottom: 12,
+                    boxShadow: "0 2px 8px rgba(225, 29, 72, 0.08)",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontSize: 20 }}>🏪</span>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                      <span
+                        style={{
+                          background: "#e11d48",
+                          color: "#fff",
+                          fontSize: 10,
+                          fontWeight: 800,
+                          padding: "2px 6px",
+                          borderRadius: 6,
+                          letterSpacing: 0.5,
+                        }}
+                      >
+                        STORE CLOSED
+                      </span>
+                      <span style={{ fontSize: 13, fontWeight: 800, color: "#9f1239" }}>
+                        Store is closed right now • Ordering opening soon!
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+              {/* Delivered Order PDF Slip Banner on Home (non-blocking, dismissible) */}
+              {!hasOngoingOrder && latestDeliveredSlipOrder && (
+                <div
+                  style={{
+                    background: "linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)",
+                    border: "1.5px solid #86efac",
+                    borderRadius: 14,
+                    padding: "11px 12px",
+                    marginBottom: 12,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 8,
+                    boxShadow: "0 2px 10px rgba(12, 131, 31, 0.1)",
+                  }}
+                >
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ fontSize: 12.5, fontWeight: 900, color: "#14532D" }}>
+                      ✅ Order #{latestDeliveredSlipOrder.orderNumber || latestDeliveredSlipOrder.id} Delivered
+                    </div>
+                    <div style={{ fontSize: 11, color: "#166534", marginTop: 2 }}>
+                      {(latestDeliveredSlipOrder.items || []).length} delivered item(s) • ₹{latestDeliveredSlipOrder.totalAmount ?? latestDeliveredSlipOrder.total ?? 0}
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                    <button
+                      type="button"
+                      onClick={() => handleDownloadPdfSlip(latestDeliveredSlipOrder)}
+                      style={{
+                        background: "#0C831F",
+                        color: "#FFFFFF",
+                        border: "none",
+                        borderRadius: 8,
+                        padding: "7px 11px",
+                        fontSize: 11.5,
+                        fontWeight: 800,
+                        cursor: "pointer",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      📄 PDF Slip
+                    </button>
+                    <button
+                      type="button"
+                      aria-label="Dismiss delivered slip banner"
+                      onClick={() => {
+                        const ordId = String(
+                          latestDeliveredSlipOrder.id ||
+                          latestDeliveredSlipOrder.orderId ||
+                          latestDeliveredSlipOrder.orderNumber ||
+                          ""
+                        );
+                        if (ordId) safeStorage.set("auditx_dismissed_slip_banner", ordId);
+                        setLatestDeliveredSlipOrder(null);
+                      }}
+                      style={{
+                        width: 26,
+                        height: 26,
+                        borderRadius: "50%",
+                        border: "1px solid #86efac",
+                        background: "#ffffff",
+                        color: "#166534",
+                        fontSize: 12,
+                        fontWeight: 800,
+                        cursor: "pointer",
+                        display: "grid",
+                        placeItems: "center",
+                        padding: 0,
+                      }}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Top Ongoing Order Alert in Catalog */}
+              {hasOngoingOrder && (
+                <div
+                  style={{
+                    background: "linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%)",
+                    border: "1.5px solid #f59e0b",
+                    borderRadius: 12,
+                    padding: "10px 14px",
+                    marginBottom: 12,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 10,
+                    boxShadow: "0 2px 8px rgba(245, 158, 11, 0.15)",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                    <span style={{ fontSize: 20 }}>🛵</span>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 12.5, fontWeight: 800, color: "#92400e" }}>
+                        Order #{ongoingTrackedOrder.orderNumber || ongoingTrackedOrder.id} is Live &amp; Tracked
+                      </div>
+                      <div style={{ fontSize: 11, color: "#b45309" }}>
+                        Express delivery underway • New order checkout unlocks automatically once delivered!
                       </div>
                     </div>
                   </div>
@@ -2861,2078 +3387,1557 @@ export default function OrderingAppPage() {
                       background: "#d97706",
                       color: "#ffffff",
                       border: "none",
-                      borderRadius: 8,
-                      padding: "8px 12px",
-                      fontSize: 11.5,
+                      borderRadius: 7,
+                      padding: "6px 12px",
+                      fontSize: 11,
                       fontWeight: 800,
                       cursor: "pointer",
                       whiteSpace: "nowrap",
                       flexShrink: 0,
                     }}
                   >
-                    Track Live 📍
+                    Track Live →
                   </button>
-                </div>
-              </div>
-            )}
-
-            {/* 1. TOP DELIVERY & ADDRESS BAR (IN CHECKOUT) */}
-            <div style={S.checkoutCard}>
-              <div style={S.checkoutEtaHeader}>
-                <div style={S.checkoutEtaLeft}>
-                  <div style={S.checkoutEtaPill}>
-                    <IconLightning size={16} color="#000000" />
-                    <span style={S.checkoutEtaTime}>Delivery in 10 MINS</span>
-                  </div>
-                  <div style={S.checkoutAddressSub}>
-                    KFGSC , Tiptur 572201
-                  </div>
-                </div>
-                <button
-                  style={S.changeBtnSmall}
-                  onClick={() => setShowAddressModal(true)}
-                >
-                  Change
-                </button>
-              </div>
-
-              {/* Free delivery tracker */}
-              <div style={S.freeDeliveryNotice}>
-                <div style={S.freeDeliveryLabelRow}>
-                  <span style={S.unlockedFreeText}>
-                    <IconCheck size={14} color="#0c831f" /> You have unlocked <b>FREE Delivery</b>!
-                  </span>
-                  <span style={S.deliveryFeeBadge}>
-                    FREE
-                  </span>
-                </div>
-                <div style={S.progressTrack}>
-                  <div
-                    style={{
-                      ...S.progressFill,
-                      width: "100%",
-                    }}
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* 2. CART ITEMS & QUANTITY CONTROLS (ITEMS ADDED) */}
-            <section style={S.checkoutCard}>
-              <div style={S.sectionHeaderRow}>
-                <h3 style={S.cardSectionTitle}>ITEMS ADDED</h3>
-                <span style={S.itemSubtextCount}>{totalItems} Items</span>
-              </div>
-
-              {cartItemsList.length === 0 ? (
-                <div style={S.emptyCartState}>
-                  <IconCartBag size={36} color="#94a3b8" />
-                  <p style={S.emptyCartTitle}>Your cart is currently empty</p>
-                  <button
-                    style={S.browseCatalogBtn}
-                    onClick={() => setIsCheckoutView(false)}
-                  >
-                    Browse Tiptur Catalog
-                  </button>
-                </div>
-              ) : (
-                <div style={S.itemsList}>
-                  {cartItemsList.map((item) => {
-                    const avail = getAvailableUnits(item);
-                    const isOos = oosList.includes(item.sku) || avail <= 0;
-                    return (
-                      <div key={item.sku} style={S.itemCardRow}>
-                        {/* Product Image */}
-                        <div style={S.itemImgWrapper}>
-                          <img
-                            src={item.image || "/auditx-logo.png"}
-                            alt={item.name}
-                            width={56}
-                            height={56}
-                            loading="lazy"
-                            decoding="async"
-                            onError={(e) => {
-                              if (e.currentTarget.dataset.fbApplied) return;
-                              e.currentTarget.dataset.fbApplied = "1";
-                              e.currentTarget.src = "/auditx-logo.png";
-                            }}
-                            style={S.itemThumbnail}
-                          />
-                          {isOos && (
-                            <span style={S.itemOosOverlay}>Out of Stock</span>
-                          )}
-                        </div>
-
-                        {/* Title & Weight */}
-                        <div style={S.itemInfoCol}>
-                          <h4 style={S.itemTitle}>{item.name}</h4>
-                          <span style={S.itemWeight}>{item.weight}</span>
-                          <div style={S.itemPriceRow}>
-                            <span style={S.itemFinalPrice}>₹{item.price}</span>
-                            {item.mrp > item.price && (
-                              <span style={S.itemMrpStrike}>₹{item.mrp}</span>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Stepper / Counter Button directly on each item */}
-                        <div style={S.stepperBox}>
-                          <button
-                            type="button"
-                            style={S.stepperMinusBtn}
-                            onClick={() => updateQty(item.sku, -1)}
-                            title="Decrease quantity"
-                          >
-                            −
-                          </button>
-                          <span style={S.stepperQty}>{item.qty}</span>
-                          <button
-                            type="button"
-                            style={S.stepperPlusBtn}
-                            onClick={() => updateQty(item.sku, 1)}
-                            disabled={isOos || item.qty >= avail}
-                            title="Increase quantity"
-                          >
-                            +
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
                 </div>
               )}
-            </section>
 
-
-
-            {/* 3. COUPON & DISCOUNT ENGINE (APPLY COUPON / VIEW OFFERS) */}
-            <section style={S.checkoutCard}>
-              <div
-                style={S.couponWidget}
-                onClick={() => setShowCouponModal(true)}
-              >
-                <div style={S.couponLeft}>
-                  <div style={S.couponIconWrapper}>
-                    <IconCoupon size={20} color="#0c831f" />
-                  </div>
-                  <div>
-                    {appliedCoupon ? (
-                      <div>
-                        <div style={S.couponAppliedCode}>
-                          Coupon <b>{appliedCoupon.code}</b> Applied
-                        </div>
-                        <div style={S.couponAppliedDesc}>
-                          {appliedCoupon.label} — Saved ₹{couponSavings}
-                        </div>
-                      </div>
-                    ) : (
-                      <div>
-                        <div style={S.couponPromptTitle}>Apply Coupon / View Offers</div>
-                        <div style={S.couponPromptSub}>
-                          Save up to ₹50 with promo codes & bank vouchers
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {appliedCoupon ? (
-                  <button
-                    type="button"
-                    style={S.removeCouponBtn}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleRemoveCoupon();
-                    }}
-                  >
-                    Remove
-                  </button>
-                ) : (
-                  <div style={S.couponArrowRight}>
-                    <IconArrowRight size={16} color="#0c831f" />
-                  </div>
-                )}
-              </div>
-
-              {/* Instant Savings Highlight */}
-              {totalSavings > 0 && (
-                <div style={S.savingsHighlightBanner}>
-                  <IconCheck size={14} color="#0c831f" />
-                  <span>
-                    Instant Savings Applied: You saved <b>₹{totalSavings}</b> on this order!
-                  </span>
-                </div>
-              )}
-            </section>
-
-            {/* 4. BILL & COST BREAKDOWN (BILL DETAILS) */}
-            <section style={S.checkoutCard}>
-              <div style={S.sectionHeaderRow}>
-                <h3 style={S.cardSectionTitle}>BILL DETAILS</h3>
-              </div>
-
-              <div style={S.billBreakdown}>
-                <div style={S.billRow}>
-                  <span style={S.billLabel}>Item Total (MRP)</span>
-                  <span style={S.billValue}>₹{itemTotalMrp}</span>
-                </div>
-
-                {productDiscount > 0 && (
-                  <div style={S.billRow}>
-                    <span style={S.billDiscountLabel}>Product Discount</span>
-                    <span style={S.billDiscountValue}>− ₹{productDiscount}</span>
-                  </div>
-                )}
-
-                {couponSavings > 0 && (
-                  <div style={S.billRow}>
-                    <span style={S.billDiscountLabel}>
-                      Coupon Savings ({appliedCoupon.code})
-                    </span>
-                    <span style={S.billDiscountValue}>− ₹{couponSavings}</span>
-                  </div>
-                )}
-
-                <div style={S.billRow}>
-                  <span style={S.billLabel}>Delivery</span>
-                  <span style={S.billFreeHighlight}>FREE</span>
-                </div>
-
-                <div style={S.billRow}>
-                  <span style={S.billLabel}>Handling fee</span>
-                  <span style={handlingFee === 0 ? S.billFreeHighlight : S.billValue}>
-                    {handlingFee === 0 ? "FREE" : `₹${handlingFee}`}
-                  </span>
-                </div>
-
-                <div style={S.billDivider} />
-
-                <div style={S.billGrandTotalRow}>
-                  <span style={S.grandTotalLabel}>Total</span>
-                  <span style={S.grandTotalAmount}>₹{grandTotal}</span>
-                </div>
-              </div>
-            </section>
-
-            {/* 5. DELIVERY INSTRUCTIONS & PREFERENCES */}
-            <section style={S.checkoutCard}>
-              <div style={S.sectionHeaderRow}>
-                <h3 style={S.cardSectionTitle}>DELIVERY INSTRUCTIONS</h3>
-              </div>
-
-              <div style={S.instructionsGrid}>
-                {DELIVERY_INSTRUCTIONS_LIST.map((ins) => {
-                  const isSelected = selectedInstructions.includes(ins.id);
-                  return (
-                    <button
-                      key={ins.id}
-                      type="button"
-                      style={{
-                        ...S.instructionChipBtn,
-                        ...(isSelected ? S.instructionChipActive : {}),
-                      }}
-                      onClick={() => toggleInstruction(ins.id)}
-                    >
-                      <div style={S.chipIconWrapper}>
-                        {renderInstructionIcon(ins.iconType, isSelected)}
-                      </div>
-                      <span style={S.chipLabel}>{ins.label}</span>
-                      {isSelected && (
-                        <div style={S.chipActiveCheck}>
-                          <IconCheck size={12} color="#0c831f" />
-                        </div>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* 10-Minute SLA Operations Guarantee */}
-            </section>
-
-            {/* 5B. PAYMENT METHOD SUMMARY STRIP */}
-            <section style={S.checkoutCard}>
-              <div style={S.sectionHeaderRow}>
-                <h3 style={S.cardSectionTitle}>PAYMENT METHOD</h3>
-                {!hasOngoingOrder && cartItemsList.length > 0 && (
-                  <button
-                    type="button"
-                    style={S.changeLinkBtn}
-                    onClick={handleOpenPaymentModalWithReserve}
-                  >
-                    Change
-                  </button>
-                )}
-              </div>
-
-              <div
-                style={S.selectedPaymentMethodRow}
-                onClick={() => {
-                  if (hasOngoingOrder) {
-                    const ordId = ongoingTrackedOrder.orderNumber || ongoingTrackedOrder.id || ongoingTrackedOrder.orderId;
-                    router.push(`/track/${ordId}`);
-                  } else if (cartItemsList.length > 0) {
-                    handleOpenPaymentModalWithReserve();
-                  } else {
-                    triggerToast("Your cart is empty. Add items from the catalog.");
-                    setIsCheckoutView(false);
-                  }
-                }}
-              >
-                <div style={S.paymentMethodLeftPreview}>
-                  <IconRealLogoAuditxWallet size={36} />
-                  <div>
-                    <div style={S.paymentMethodSelectedTitle}>
-                      Audit'X Demo Wallet
-                      <span style={S.oneClickPill}>1-CLICK INSTANT</span>
-                    </div>
-                    <div style={S.paymentMethodSelectedSub}>
-                      Paid through demo wallet • Balance: ₹{safeNum(customer?.walletBalance, WALLET_LIMIT).toLocaleString("en-IN")}
-                    </div>
-                  </div>
-                </div>
-                <div style={S.paymentMethodCheckActive}>
-                  <IconCheck size={14} color="#0c831f" />
-                </div>
-              </div>
-
-              <div
-                onClick={() => {
-                  if (hasOngoingOrder) return;
-                  if (cartItemsList.length > 0) {
-                    handleOpenPaymentModalWithReserve();
-                  } else {
-                    triggerToast("Your cart is empty. Add items from the catalog.");
-                    setIsCheckoutView(false);
-                  }
-                }}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: 10,
-                  marginTop: 10,
-                  padding: "10px 12px",
-                  borderRadius: 12,
-                  background: "#f8fafc",
-                  border: "1px solid #e2e8f0",
-                  cursor: hasOngoingOrder ? "default" : "pointer",
-                }}
-              >
-                <span style={{ fontSize: 11, fontWeight: 700, color: "#64748b" }}>
-                  UPI Apps
-                </span>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <IconRealLogoPhonePe size={28} />
-                  <IconRealLogoGooglePay size={28} />
-                  <IconRealLogoPaytm size={28} />
-                  <IconRealLogoUPI size={28} />
-                </div>
-              </div>
-            </section>
-
-            {/* Spacer for sticky footer */}
-            <div style={{ height: 20 }} />
-          </div>
-        </main>
-        </ErrorBoundary>
-      ) : (
-        /* ── CATALOG BROWSE VIEW (STORE WITH SMART CART BAR) ── */
-        <main style={S.catalogMain}>
-          <div style={S.catalogContainer}>
-            {/* Store Closed Notice Banner */}
-            {!isStoreOpen && (
-              <div
-                style={{
-                  background: "linear-gradient(135deg, #fff1f3 0%, #ffe4e6 100%)",
-                  border: "1.5px solid #fecdd3",
-                  borderRadius: 12,
-                  padding: "10px 14px",
-                  marginBottom: 12,
-                  boxShadow: "0 2px 8px rgba(225, 29, 72, 0.08)",
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={{ fontSize: 20 }}>🏪</span>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                    <span
-                      style={{
-                        background: "#e11d48",
-                        color: "#fff",
-                        fontSize: 10,
-                        fontWeight: 800,
-                        padding: "2px 6px",
-                        borderRadius: 6,
-                        letterSpacing: 0.5,
-                      }}
-                    >
-                      STORE CLOSED
-                    </span>
-                    <span style={{ fontSize: 13, fontWeight: 800, color: "#9f1239" }}>
-                      Store is closed right now • Ordering opening soon!
-                    </span>
-                  </div>
-                </div>
-              </div>
-            )}
-            {/* Delivered Order PDF Slip Banner on Home (non-blocking, dismissible) */}
-            {!hasOngoingOrder && latestDeliveredSlipOrder && (
-              <div
-                style={{
-                  background: "linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)",
-                  border: "1.5px solid #86efac",
-                  borderRadius: 14,
-                  padding: "11px 12px",
-                  marginBottom: 12,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: 8,
-                  boxShadow: "0 2px 10px rgba(12, 131, 31, 0.1)",
-                }}
-              >
-                <div style={{ minWidth: 0, flex: 1 }}>
-                  <div style={{ fontSize: 12.5, fontWeight: 900, color: "#14532D" }}>
-                    ✅ Order #{latestDeliveredSlipOrder.orderNumber || latestDeliveredSlipOrder.id} Delivered
-                  </div>
-                  <div style={{ fontSize: 11, color: "#166534", marginTop: 2 }}>
-                    {(latestDeliveredSlipOrder.items || []).length} delivered item(s) • ₹{latestDeliveredSlipOrder.totalAmount ?? latestDeliveredSlipOrder.total ?? 0}
-                  </div>
-                </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-                  <button
-                    type="button"
-                    onClick={() => handleDownloadPdfSlip(latestDeliveredSlipOrder)}
-                    style={{
-                      background: "#0C831F",
-                      color: "#FFFFFF",
-                      border: "none",
-                      borderRadius: 8,
-                      padding: "7px 11px",
-                      fontSize: 11.5,
-                      fontWeight: 800,
-                      cursor: "pointer",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    📄 PDF Slip
-                  </button>
-                  <button
-                    type="button"
-                    aria-label="Dismiss delivered slip banner"
-                    onClick={() => {
-                      const ordId = String(
-                        latestDeliveredSlipOrder.id ||
-                          latestDeliveredSlipOrder.orderId ||
-                          latestDeliveredSlipOrder.orderNumber ||
-                          ""
-                      );
-                      if (ordId) safeStorage.set("auditx_dismissed_slip_banner", ordId);
-                      setLatestDeliveredSlipOrder(null);
-                    }}
-                    style={{
-                      width: 26,
-                      height: 26,
-                      borderRadius: "50%",
-                      border: "1px solid #86efac",
-                      background: "#ffffff",
-                      color: "#166534",
-                      fontSize: 12,
-                      fontWeight: 800,
-                      cursor: "pointer",
-                      display: "grid",
-                      placeItems: "center",
-                      padding: 0,
-                    }}
-                  >
-                    ✕
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Top Ongoing Order Alert in Catalog */}
-            {hasOngoingOrder && (
-              <div
-                style={{
-                  background: "linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%)",
-                  border: "1.5px solid #f59e0b",
-                  borderRadius: 12,
-                  padding: "10px 14px",
-                  marginBottom: 12,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: 10,
-                  boxShadow: "0 2px 8px rgba(245, 158, 11, 0.15)",
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-                  <span style={{ fontSize: 20 }}>🛵</span>
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: 12.5, fontWeight: 800, color: "#92400e" }}>
-                      Order #{ongoingTrackedOrder.orderNumber || ongoingTrackedOrder.id} is Live &amp; Tracked
-                    </div>
-                    <div style={{ fontSize: 11, color: "#b45309" }}>
-                      Express delivery underway • New order checkout unlocks automatically once delivered!
-                    </div>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const ordId = ongoingTrackedOrder.orderNumber || ongoingTrackedOrder.id || ongoingTrackedOrder.orderId;
-                    router.push(`/track/${ordId}`);
-                  }}
-                  style={{
-                    background: "#d97706",
-                    color: "#ffffff",
-                    border: "none",
-                    borderRadius: 7,
-                    padding: "6px 12px",
-                    fontSize: 11,
-                    fontWeight: 800,
-                    cursor: "pointer",
-                    whiteSpace: "nowrap",
-                    flexShrink: 0,
-                  }}
-                >
-                  Track Live →
-                </button>
-              </div>
-            )}
-
-            {activeBottomTab === "home" && (
-              <>
-                {/* Isolated Search Bar */}
-                <OrderingSearchInput
-                  value={searchQuery}
-                  onChange={setSearchQuery}
-                  onClear={() => setSearchQuery("")}
-                  S={S}
-                />
-
-            {/* Quick Category Tabs: only Chocolates and Frames */}
-            <div style={S.categoryTabsRow}>
-              {categories.map((cat) => {
-                const active = selectedCategory === cat;
-                return (
-                  <button
-                    key={cat}
-                    type="button"
-                    data-dfx="chip"
-                    aria-pressed={active}
-                    style={{
-                      ...S.categoryTabPill,
-                      ...(active ? S.categoryTabActive : {}),
-                    }}
-                    onClick={() => setSelectedCategory(cat)}
-                  >
-                    {CATEGORY_DISPLAY[cat] || cat}
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* If anything except Frames and Chocolates is clicked, show the FULL PAGE Coming Soon Poster */}
-            {selectedCategory !== "Chocolates" && selectedCategory !== "Frames" ? (
-              <div style={S.fullPageComingSoonWrapper}>
-                {/* Sticky Top Status Bar */}
-                <div style={S.fullPageComingSoonTopBar}>
-                  <div style={S.fullPageCatTag}>
-                    <span style={S.fullPagePulseDot} />
-                    <span>{selectedCategory} — Coming Soon</span>
-                  </div>
-                  <div style={S.fullPageShortcuts}>
-                    <button
-                      type="button"
-                      style={S.quickTabChoc}
-                      onClick={() => setSelectedCategory("Chocolates")}
-                    >
-                      🍫 Chocolates
-                    </button>
-                    <button
-                      type="button"
-                      style={S.quickTabFrame}
-                      onClick={() => setSelectedCategory("Frames")}
-                    >
-                      🖼️ Wall Frames
-                    </button>
-                  </div>
-                </div>
-
-                {/* The Complete Full Page Image */}
-                <div style={S.fullPageImageContainer}>
-                  <img
-                    src="/coming-soon.jpg"
-                    alt="Coming Soon in Namma Tiptur KA 44 - AUDIT'X"
-                    style={S.fullPageImg}
-                  />
-                </div>
-
-                {/* Bottom Quick Return Shortcuts */}
-                <div style={S.fullPageComingSoonBottomBar}>
-                  <div style={{ fontSize: "0.86rem", fontWeight: 800, color: "#14532d", marginBottom: 8 }}>
-                    ⚡ Available In Dark Store Warehouse Now (10-Min Delivery):
-                  </div>
-                  <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
-                    <button
-                      type="button"
-                      style={S.fullPageBottomBtnChoc}
-                      onClick={() => setSelectedCategory("Chocolates")}
-                    >
-                      🍫 Shop Chocolates (24 Items)
-                    </button>
-                    <button
-                      type="button"
-                      style={S.fullPageBottomBtnFrames}
-                      onClick={() => setSelectedCategory("Frames")}
-                    >
-                      🖼️ Shop Wall Frames (35 Items)
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <>
-                {/* Catalog Grid Header */}
-                <div style={S.catalogGridHeader}>
-                  <div>
-                    <h2 style={S.catalogTitle}>
-                      {CATEGORY_DISPLAY[selectedCategory] || selectedCategory}
-                    </h2>
-                    {selectedCategory === "Chocolates" && (
-                      <p style={{ margin: "2px 0 0", fontSize: "0.78rem", color: "#0c831f", fontWeight: 700 }}>
-                        🍫 Dark Store Warehouse Special: {effectiveCatalog.filter((c) => c.category === "Chocolates").length} chocolate varieties tracked live!
-                      </p>
-                    )}
-                    {selectedCategory === "Frames" && (
-                      <p style={{ margin: "2px 0 0", fontSize: "0.78rem", color: "#6366f1", fontWeight: 700 }}>
-                        🖼️ Dark Store Warehouse Special: {effectiveCatalog.filter((c) => c.category === "Frames").length} Art &amp; Heritage Glass Frames!
-                      </p>
-                    )}
-                  </div>
-                  <span style={S.catalogItemCount}>
-                    {filteredCatalog.length} items
-                  </span>
-                </div>
-
-                {/* Product Cards Grid (Memoized + Virtualized Window + Lazy Images + ErrorBoundary) */}
-                <ErrorBoundary
-                  label="Product Catalog"
-                  compact
-                  onRetry={() => fetchCloudHubState({ force: true })}
-                >
-                  <CatalogBoundaryProbe />
-                  {loading && visibleCatalog.length === 0 ? (
-                    <OrderingSkeletonScreen />
-                  ) : visibleCatalog.length === 0 ? (
-                    <div
-                      className="ios-card"
-                      style={{
-                        padding: "32px 18px",
-                        textAlign: "center",
-                        margin: "10px 0 18px",
-                      }}
-                    >
-                      <div style={{ fontSize: 34, marginBottom: 8 }}>🔍</div>
-                      <h3 style={{ margin: "0 0 6px", fontSize: 16, fontWeight: 800, color: "var(--ios-label)" }}>
-                        No matching items found
-                      </h3>
-                      <p style={{ margin: "0 0 14px", fontSize: 13, color: "var(--ios-label-2)" }}>
-                        Try another keyword or clear your search filter to see all store items.
-                      </p>
-                      <IOSButton
-                        variant="green"
-                        fullWidth={false}
-                        minHeight={42}
-                        onClick={() => setSearchQuery("")}
-                      >
-                        Clear search
-                      </IOSButton>
-                    </div>
-                  ) : (
-                <div style={S.productGrid}>
-                  {visibleCatalog.map((item, idx) => {
-                    const qty = cart[item.sku] || 0;
-                    const availableUnits = getAvailableUnits(item);
-                    const isSoldOut = item.soldOut === true || item.inStock === false || String(item.name || "").toLowerCase().includes("pup");
-                    const isAutoOos = availableUnits <= 0;
-                    const isOos = oosList.includes(item.sku) || isSoldOut || isAutoOos;
-                    return (
-                      <OrderingProductCard
-                        key={item.sku}
-                        item={item}
-                        idx={idx}
-                        qty={qty}
-                        availableUnits={availableUnits}
-                        isOos={isOos}
-                        isSoldOut={isSoldOut}
-                        isChoc={item.category === "Chocolates"}
-                        isFrame={item.category === "Frames"}
-                        isStoreOpen={isStoreOpen}
-                        onUpdateQty={updateQty}
-                        onOpenComingSoon={handleOpenComingSoon}
-                        onStoreClosedToast={handleStoreClosedToast}
-                        S={S}
-                      />
-                    );
-                  })}
-                </div>
-                  )}
-                </ErrorBoundary>
-                {visibleCatalog.length < filteredCatalog.length && (
-                  <div ref={gridLoadMoreRef} style={{ padding: "16px 0", textAlign: "center" }}>
-                    <IOSButton
-                      variant="tinted"
-                      fullWidth={false}
-                      minHeight={40}
-                      onClick={() => setVisibleLimit((v) => Math.min(filteredCatalog.length, v + 30))}
-                    >
-                      Show more ({filteredCatalog.length - visibleCatalog.length} remaining)
-                    </IOSButton>
-                  </div>
-                )}
-              </>
-            )}
-          </>
-        )}
-
-        {/* ══════════════════════════════════════════
-            TAB: DEDICATED SEARCH (iOS SEARCH BAR + ALL CATALOG)
-            ══════════════════════════════════════════ */}
-        {activeBottomTab === "search" && (
-          <div className="ios-tab-crossfade" style={S.tabViewContainer}>
-            <OrderingSearchInput
-              value={searchQuery}
-              onChange={setSearchQuery}
-              onClear={() => setSearchQuery("")}
-              inputRef={searchInputRef}
-              sticky
-              S={S}
-            />
-
-            <ErrorBoundary
-              label="Search Results"
-              compact
-              onRetry={() => fetchCloudHubState({ force: true })}
-            >
-            {visibleCatalog.length === 0 ? (
-              <div
-                className="ios-card"
-                style={{
-                  padding: "36px 20px",
-                  textAlign: "center",
-                  marginTop: 12,
-                }}
-              >
-                <div style={{ fontSize: 36, marginBottom: 8 }}>🔎</div>
-                <h3 style={{ margin: "0 0 6px", fontSize: 16, fontWeight: 800, color: "var(--ios-label)" }}>
-                  No results for &ldquo;{searchQuery.trim()}&rdquo;
-                </h3>
-                <p style={{ margin: "0 0 14px", fontSize: 13, color: "var(--ios-label-2)" }}>
-                  Search chocolates like Beatss, Melody, Kopiko or A4 wall frames.
-                </p>
-                <IOSButton
-                  variant="green"
-                  fullWidth={false}
-                  minHeight={42}
-                  onClick={() => setSearchQuery("")}
-                >
-                  Show all items
-                </IOSButton>
-              </div>
-            ) : (
-            <div style={S.productGrid}>
-              {visibleCatalog.map((item, idx) => {
-                const qty = cart[item.sku] || 0;
-                const availableUnits = getAvailableUnits(item);
-                const isSoldOut = item.soldOut === true || item.inStock === false || String(item.name || "").toLowerCase().includes("pup");
-                const isAutoOos = availableUnits <= 0;
-                const isOos = oosList.includes(item.sku) || isSoldOut || isAutoOos;
-                return (
-                  <OrderingProductCard
-                    key={item.sku}
-                    item={item}
-                    idx={idx}
-                    qty={qty}
-                    availableUnits={availableUnits}
-                    isOos={isOos}
-                    isSoldOut={isSoldOut}
-                    isChoc={item.category === "Chocolates"}
-                    isFrame={item.category === "Frames"}
-                    isStoreOpen={isStoreOpen}
-                    onUpdateQty={updateQty}
-                    onOpenComingSoon={handleOpenComingSoon}
-                    onStoreClosedToast={handleStoreClosedToast}
+              {activeBottomTab === "home" && (
+                <>
+                  {/* Isolated Search Bar */}
+                  <OrderingSearchInput
+                    value={searchQuery}
+                    onChange={setSearchQuery}
+                    onClear={() => setSearchQuery("")}
                     S={S}
                   />
-                );
-              })}
-            </div>
-            )}
-            {visibleCatalog.length < filteredCatalog.length && (
-              <div style={{ padding: "16px 0", textAlign: "center" }}>
-                <IOSButton
-                  variant="tinted"
-                  fullWidth={false}
-                  minHeight={40}
-                  onClick={() => setVisibleLimit((v) => Math.min(filteredCatalog.length, v + 30))}
-                >
-                  Show more ({filteredCatalog.length - visibleCatalog.length} remaining)
-                </IOSButton>
-              </div>
-            )}
-            </ErrorBoundary>
-          </div>
-        )}
 
-        {/* ══════════════════════════════════════════
-            TAB 2: ORDERS & PROFILE (PAST ORDERS + ACCOUNT + EXPLORE)
-            ══════════════════════════════════════════ */}
-        {activeBottomTab === "order_again" && (
-          <div className="ios-tab-crossfade" style={S.tabViewContainer}>
-            <IOSGroupedList header="Account & Hub">
-              <IOSListRow
-                leading={
-                  <div style={{ width: 34, height: 34, borderRadius: "50%", background: "#007AFF", color: "#fff", display: "grid", placeItems: "center", fontWeight: 700 }}>
-                    {customer?.name ? customer.name.charAt(0).toUpperCase() : "A"}
+                  {/* Quick Category Tabs: only Chocolates and Frames */}
+                  <div style={S.categoryTabsRow}>
+                    {categories.map((cat) => {
+                      const active = selectedCategory === cat;
+                      return (
+                        <button
+                          key={cat}
+                          type="button"
+                          data-dfx="chip"
+                          aria-pressed={active}
+                          style={{
+                            ...S.categoryTabPill,
+                            ...(active ? S.categoryTabActive : {}),
+                          }}
+                          onClick={() => setSelectedCategory(cat)}
+                        >
+                          {CATEGORY_DISPLAY[cat] || cat}
+                        </button>
+                      );
+                    })}
                   </div>
-                }
-                title={customer?.name || "Customer Account"}
-                subtitle={`Demo Wallet: ₹${safeNum(customer?.walletBalance, WALLET_LIMIT).toLocaleString("en-IN")}`}
-                chevron
-                onClick={() => setShowProfileModal(true)}
-              />
-              <IOSListRow
-                leading={<span style={{ fontSize: 18 }}>🌴</span>}
-                title="Explore Namma Tiptur"
-                subtitle="Heritage temples, cafes & local highlights"
-                chevron
-                last
-                onClick={() => setActiveBottomTab("explore_tiptur")}
-              />
-            </IOSGroupedList>
-            <div style={S.tabHeaderRow}>
-              <div>
-                <h2 style={S.tabTitle}>Order Again</h2>
-                <p style={S.tabSubtitle}>Reorder your everyday dark store essentials</p>
-              </div>
-              <div style={S.reorderBadgePill}>
-                <IconClock size={13} color="#0c831f" />
-                <span>Fast 10-Min Reorder</span>
-              </div>
-            </div>
 
-            {/* Clean, Elegant Empty State */}
-            <ErrorBoundary label="Past Orders" compact onRetry={() => fetchCloudHubState({ force: true })}>
-            {pastOrders.length === 0 ? (
-            <div style={{
-              background: "#ffffff",
-              border: "1px solid #e2e8f0",
-              borderRadius: 16,
-              padding: "48px 24px",
-              textAlign: "center",
-              marginTop: 16,
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              gap: 12,
-              boxShadow: "0 2px 8px rgba(0,0,0,0.03)",
-            }}>
-              <div style={{
-                width: 76,
-                height: 76,
-                borderRadius: "50%",
-                background: "#f1f5f9",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: 34,
-                marginBottom: 4,
-              }}>
-                🛍️
-              </div>
-              <h3 style={{ fontSize: "1.15rem", fontWeight: 800, color: "#0f172a", margin: 0 }}>
-                No Past Orders Yet
-              </h3>
-              <p style={{ fontSize: "0.85rem", color: "#64748b", margin: 0, maxWidth: 300, lineHeight: 1.5 }}>
-                Your order history will appear here once you place your first order. You can easily reorder your favorite Chocolates & Frames with a single tap.
-              </p>
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveBottomTab("home");
-                  setIsCheckoutView(false);
-                }}
-                style={{
-                  marginTop: 8,
-                  padding: "11px 24px",
-                  borderRadius: 10,
-                  border: "none",
-                  background: "#0c831f",
-                  color: "#ffffff",
-                  fontWeight: 800,
-                  fontSize: "0.9rem",
-                  cursor: "pointer",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 8,
-                  boxShadow: "0 4px 14px rgba(12, 131, 31, 0.28)",
-                }}
-              >
-                <span>Start Shopping (Chocolates & Frames)</span>
-                <IconArrowRight size={15} color="#ffffff" />
-              </button>
-            </div>
-            ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 16 }}>
-                {pastOrders.map((po) => {
-                  const itemCount = (po.items || []).reduce((s, it) => s + (it.qty || 1), 0);
-                  const isOrderDelivered =
-                    String(po.status || "").toLowerCase() === "delivered" ||
-                    Boolean(po.deliveredAt);
-                  return (
-                    <div
-                      key={po.id || po.orderNumber}
-                      style={{
-                        background: "#ffffff",
-                        border: "1px solid #e2e8f0",
-                        borderRadius: 14,
-                        padding: 14,
-                        boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
-                      }}
-                    >
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-                        <div style={{ minWidth: 0 }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                            <span style={{ fontWeight: 800, fontSize: 13.5, color: "#0f172a" }}>
-                              Order #{po.orderNumber || po.id}
-                            </span>
-                            {isOrderDelivered ? (
-                              <span
-                                style={{
-                                  fontSize: 10,
-                                  fontWeight: 800,
-                                  color: "#15803d",
-                                  background: "#dcfce7",
-                                  padding: "2px 7px",
-                                  borderRadius: 999,
-                                }}
-                              >
-                                ✓ Delivered
-                              </span>
-                            ) : (
-                              <span
-                                style={{
-                                  fontSize: 10,
-                                  fontWeight: 700,
-                                  color: "#b45309",
-                                  background: "#fef3c7",
-                                  padding: "2px 7px",
-                                  borderRadius: 999,
-                                }}
-                              >
-                                In Progress
-                              </span>
-                            )}
-                          </div>
-                          <div style={{ fontSize: 11.5, color: "#64748b", marginTop: 2 }}>
-                            {po.placedAt ? new Date(po.placedAt).toLocaleString() : ""} • {itemCount} {itemCount === 1 ? "item" : "items"}
-                          </div>
+                  {/* If anything except Frames and Chocolates is clicked, show the FULL PAGE Coming Soon Poster */}
+                  {selectedCategory !== "Chocolates" && selectedCategory !== "Frames" ? (
+                    <div style={S.fullPageComingSoonWrapper}>
+                      {/* Sticky Top Status Bar */}
+                      <div style={S.fullPageComingSoonTopBar}>
+                        <div style={S.fullPageCatTag}>
+                          <span style={S.fullPagePulseDot} />
+                          <span>{selectedCategory} — Coming Soon</span>
                         </div>
-                        <div style={{ fontWeight: 900, fontSize: 14, color: "#0f172a", flexShrink: 0 }}>₹{po.total}</div>
+                        <div style={S.fullPageShortcuts}>
+                          <button
+                            type="button"
+                            style={S.quickTabChoc}
+                            onClick={() => setSelectedCategory("Chocolates")}
+                          >
+                            🍫 Chocolates
+                          </button>
+                          <button
+                            type="button"
+                            style={S.quickTabFrame}
+                            onClick={() => setSelectedCategory("Frames")}
+                          >
+                            🖼️ Wall Frames
+                          </button>
+                        </div>
                       </div>
 
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
-                        {(po.items || []).map((it) => (
+                      {/* The Complete Full Page Image */}
+                      <div style={S.fullPageImageContainer}>
+                        <img
+                          src="/coming-soon.jpg"
+                          alt="Coming Soon in Namma Tiptur KA 44 - AUDIT'X"
+                          style={S.fullPageImg}
+                        />
+                      </div>
+
+                      {/* Bottom Quick Return Shortcuts */}
+                      <div style={S.fullPageComingSoonBottomBar}>
+                        <div style={{ fontSize: "0.86rem", fontWeight: 800, color: "#14532d", marginBottom: 8 }}>
+                          ⚡ Available In Dark Store Warehouse Now (10-Min Delivery):
+                        </div>
+                        <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
+                          <button
+                            type="button"
+                            style={S.fullPageBottomBtnChoc}
+                            onClick={() => setSelectedCategory("Chocolates")}
+                          >
+                            🍫 Shop Chocolates (24 Items)
+                          </button>
+                          <button
+                            type="button"
+                            style={S.fullPageBottomBtnFrames}
+                            onClick={() => setSelectedCategory("Frames")}
+                          >
+                            🖼️ Shop Wall Frames (35 Items)
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      {/* Catalog Grid Header */}
+                      <div style={S.catalogGridHeader}>
+                        <div>
+                          <h2 style={S.catalogTitle}>
+                            {CATEGORY_DISPLAY[selectedCategory] || selectedCategory}
+                          </h2>
+                          {selectedCategory === "Chocolates" && (
+                            <p style={{ margin: "2px 0 0", fontSize: "0.78rem", color: "#0c831f", fontWeight: 700 }}>
+                              🍫 Dark Store Warehouse Special: {effectiveCatalog.filter((c) => c.category === "Chocolates").length} chocolate varieties tracked live!
+                            </p>
+                          )}
+                          {selectedCategory === "Frames" && (
+                            <p style={{ margin: "2px 0 0", fontSize: "0.78rem", color: "#6366f1", fontWeight: 700 }}>
+                              🖼️ Dark Store Warehouse Special: {effectiveCatalog.filter((c) => c.category === "Frames").length} Art &amp; Heritage Glass Frames!
+                            </p>
+                          )}
+                        </div>
+                        <span style={S.catalogItemCount}>
+                          {filteredCatalog.length} items
+                        </span>
+                      </div>
+
+                      {/* Product Cards Grid (Memoized + Virtualized Window + Lazy Images + ErrorBoundary) */}
+                      <ErrorBoundary
+                        label="Product Catalog"
+                        compact
+                        onRetry={() => fetchCloudHubState({ force: true })}
+                      >
+                        <CatalogBoundaryProbe />
+                        {loading && visibleCatalog.length === 0 ? (
+                          <OrderingSkeletonScreen />
+                        ) : visibleCatalog.length === 0 ? (
                           <div
-                            key={it.sku}
+                            className="ios-card"
                             style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: 8,
-                              background: "#f8fafc",
-                              border: "1px solid #e2e8f0",
-                              borderRadius: 10,
-                              padding: "6px 10px 6px 6px",
-                              maxWidth: "100%",
+                              padding: "32px 18px",
+                              textAlign: "center",
+                              margin: "10px 0 18px",
                             }}
                           >
-                            {it.image && (
-                              <img
-                                src={it.image}
-                                alt={it.name}
-                                style={{ width: 34, height: 34, objectFit: "cover", borderRadius: 8, flexShrink: 0 }}
-                              />
-                            )}
-                            <div style={{ minWidth: 0 }}>
-                              <div
-                                style={{
-                                  fontSize: 12,
-                                  fontWeight: 700,
-                                  color: "#0f172a",
-                                  maxWidth: 150,
-                                  whiteSpace: "nowrap",
-                                  overflow: "hidden",
-                                  textOverflow: "ellipsis",
-                                }}
-                              >
-                                {it.name}
-                              </div>
-                              <div style={{ fontSize: 11, color: "#64748b" }}>
-                                Qty {it.qty} • ₹{it.price}
-                              </div>
-                            </div>
-                            {isOrderDelivered && (
-                              <button
-                                type="button"
-                                onClick={() => handleDownloadPdfSlip(po, it)}
-                                title={`Download delivered item PDF slip for ${it.name}`}
-                                style={{
-                                  background: "#dcfce7",
-                                  color: "#15803d",
-                                  border: "1px solid #86efac",
-                                  borderRadius: 7,
-                                  padding: "4px 7px",
-                                  fontSize: 10.5,
-                                  fontWeight: 800,
-                                  cursor: "pointer",
-                                  whiteSpace: "nowrap",
-                                }}
-                              >
-                                📄 PDF
-                              </button>
-                            )}
+                            <div style={{ fontSize: 34, marginBottom: 8 }}>🔍</div>
+                            <h3 style={{ margin: "0 0 6px", fontSize: 16, fontWeight: 800, color: "var(--ios-label)" }}>
+                              No matching items found
+                            </h3>
+                            <p style={{ margin: "0 0 14px", fontSize: 13, color: "var(--ios-label-2)" }}>
+                              Try another keyword or clear your search filter to see all store items.
+                            </p>
+                            <IOSButton
+                              variant="green"
+                              fullWidth={false}
+                              minHeight={42}
+                              onClick={() => setSearchQuery("")}
+                            >
+                              Clear search
+                            </IOSButton>
                           </div>
-                        ))}
-                      </div>
+                        ) : (
+                          <div style={S.productGrid}>
+                            {visibleCatalog.map((item, idx) => {
+                              const qty = cart[item.sku] || 0;
+                              const availableUnits = getAvailableUnits(item);
+                              const isSoldOut = item.soldOut === true || item.inStock === false || String(item.name || "").toLowerCase().includes("pup");
+                              const isAutoOos = availableUnits <= 0;
+                              const isOos = oosList.includes(item.sku) || isSoldOut || isAutoOos;
+                              return (
+                                <OrderingProductCard
+                                  key={item.sku}
+                                  item={item}
+                                  idx={idx}
+                                  qty={qty}
+                                  availableUnits={availableUnits}
+                                  isOos={isOos}
+                                  isSoldOut={isSoldOut}
+                                  isChoc={item.category === "Chocolates"}
+                                  isFrame={item.category === "Frames"}
+                                  isStoreOpen={isStoreOpen}
+                                  onUpdateQty={updateQty}
+                                  onOpenComingSoon={handleOpenComingSoon}
+                                  onStoreClosedToast={handleStoreClosedToast}
+                                  S={S}
+                                />
+                              );
+                            })}
+                          </div>
+                        )}
+                      </ErrorBoundary>
+                      {visibleCatalog.length < filteredCatalog.length && (
+                        <div ref={gridLoadMoreRef} style={{ padding: "16px 0", textAlign: "center" }}>
+                          <IOSButton
+                            variant="tinted"
+                            fullWidth={false}
+                            minHeight={40}
+                            onClick={() => setVisibleLimit((v) => Math.min(filteredCatalog.length, v + 30))}
+                          >
+                            Show more ({filteredCatalog.length - visibleCatalog.length} remaining)
+                          </IOSButton>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </>
+              )}
 
-                      <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+              {/* ══════════════════════════════════════════
+            TAB: DEDICATED SEARCH (iOS SEARCH BAR + ALL CATALOG)
+            ══════════════════════════════════════════ */}
+              {activeBottomTab === "search" && (
+                <div className="ios-tab-crossfade" style={S.tabViewContainer}>
+                  <OrderingSearchInput
+                    value={searchQuery}
+                    onChange={setSearchQuery}
+                    onClear={() => setSearchQuery("")}
+                    inputRef={searchInputRef}
+                    sticky
+                    S={S}
+                  />
+
+                  <ErrorBoundary
+                    label="Search Results"
+                    compact
+                    onRetry={() => fetchCloudHubState({ force: true })}
+                  >
+                    {visibleCatalog.length === 0 ? (
+                      <div
+                        className="ios-card"
+                        style={{
+                          padding: "36px 20px",
+                          textAlign: "center",
+                          marginTop: 12,
+                        }}
+                      >
+                        <div style={{ fontSize: 36, marginBottom: 8 }}>🔎</div>
+                        <h3 style={{ margin: "0 0 6px", fontSize: 16, fontWeight: 800, color: "var(--ios-label)" }}>
+                          No results for &ldquo;{searchQuery.trim()}&rdquo;
+                        </h3>
+                        <p style={{ margin: "0 0 14px", fontSize: 13, color: "var(--ios-label-2)" }}>
+                          Search chocolates like Beatss, Melody, Kopiko or A4 wall frames.
+                        </p>
+                        <IOSButton
+                          variant="green"
+                          fullWidth={false}
+                          minHeight={42}
+                          onClick={() => setSearchQuery("")}
+                        >
+                          Show all items
+                        </IOSButton>
+                      </div>
+                    ) : (
+                      <div style={S.productGrid}>
+                        {visibleCatalog.map((item, idx) => {
+                          const qty = cart[item.sku] || 0;
+                          const availableUnits = getAvailableUnits(item);
+                          const isSoldOut = item.soldOut === true || item.inStock === false || String(item.name || "").toLowerCase().includes("pup");
+                          const isAutoOos = availableUnits <= 0;
+                          const isOos = oosList.includes(item.sku) || isSoldOut || isAutoOos;
+                          return (
+                            <OrderingProductCard
+                              key={item.sku}
+                              item={item}
+                              idx={idx}
+                              qty={qty}
+                              availableUnits={availableUnits}
+                              isOos={isOos}
+                              isSoldOut={isSoldOut}
+                              isChoc={item.category === "Chocolates"}
+                              isFrame={item.category === "Frames"}
+                              isStoreOpen={isStoreOpen}
+                              onUpdateQty={updateQty}
+                              onOpenComingSoon={handleOpenComingSoon}
+                              onStoreClosedToast={handleStoreClosedToast}
+                              S={S}
+                            />
+                          );
+                        })}
+                      </div>
+                    )}
+                    {visibleCatalog.length < filteredCatalog.length && (
+                      <div style={{ padding: "16px 0", textAlign: "center" }}>
+                        <IOSButton
+                          variant="tinted"
+                          fullWidth={false}
+                          minHeight={40}
+                          onClick={() => setVisibleLimit((v) => Math.min(filteredCatalog.length, v + 30))}
+                        >
+                          Show more ({filteredCatalog.length - visibleCatalog.length} remaining)
+                        </IOSButton>
+                      </div>
+                    )}
+                  </ErrorBoundary>
+                </div>
+              )}
+
+              {/* ══════════════════════════════════════════
+            TAB 2: ORDERS & PROFILE (PAST ORDERS + ACCOUNT + EXPLORE)
+            ══════════════════════════════════════════ */}
+              {activeBottomTab === "order_again" && (
+                <div className="ios-tab-crossfade" style={S.tabViewContainer}>
+                  <IOSGroupedList header="Account & Hub">
+                    <IOSListRow
+                      leading={
+                        <div style={{ width: 34, height: 34, borderRadius: "50%", background: "#007AFF", color: "#fff", display: "grid", placeItems: "center", fontWeight: 700 }}>
+                          {customer?.name ? customer.name.charAt(0).toUpperCase() : "A"}
+                        </div>
+                      }
+                      title={customer?.name || "Customer Account"}
+                      subtitle={`Demo Wallet: ₹${safeNum(customer?.walletBalance, WALLET_LIMIT).toLocaleString("en-IN")}`}
+                      chevron
+                      onClick={() => setShowProfileModal(true)}
+                    />
+                    <IOSListRow
+                      leading={<span style={{ fontSize: 18 }}>🌴</span>}
+                      title="Explore Namma Tiptur"
+                      subtitle="Heritage temples, cafes & local highlights"
+                      chevron
+                      last
+                      onClick={() => setActiveBottomTab("explore_tiptur")}
+                    />
+                  </IOSGroupedList>
+                  <div style={S.tabHeaderRow}>
+                    <div>
+                      <h2 style={S.tabTitle}>Order Again</h2>
+                      <p style={S.tabSubtitle}>Reorder your everyday dark store essentials</p>
+                    </div>
+                    <div style={S.reorderBadgePill}>
+                      <IconClock size={13} color="#0c831f" />
+                      <span>Fast 10-Min Reorder</span>
+                    </div>
+                  </div>
+
+                  {/* Clean, Elegant Empty State */}
+                  <ErrorBoundary label="Past Orders" compact onRetry={() => fetchCloudHubState({ force: true })}>
+                    {pastOrders.length === 0 ? (
+                      <div style={{
+                        background: "#ffffff",
+                        border: "1px solid #e2e8f0",
+                        borderRadius: 16,
+                        padding: "48px 24px",
+                        textAlign: "center",
+                        marginTop: 16,
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "center",
+                        gap: 12,
+                        boxShadow: "0 2px 8px rgba(0,0,0,0.03)",
+                      }}>
+                        <div style={{
+                          width: 76,
+                          height: 76,
+                          borderRadius: "50%",
+                          background: "#f1f5f9",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          fontSize: 34,
+                          marginBottom: 4,
+                        }}>
+                          🛍️
+                        </div>
+                        <h3 style={{ fontSize: "1.15rem", fontWeight: 800, color: "#0f172a", margin: 0 }}>
+                          No Past Orders Yet
+                        </h3>
+                        <p style={{ fontSize: "0.85rem", color: "#64748b", margin: 0, maxWidth: 300, lineHeight: 1.5 }}>
+                          Your order history will appear here once you place your first order. You can easily reorder your favorite Chocolates & Frames with a single tap.
+                        </p>
                         <button
                           type="button"
-                          onClick={() => handleReorderAll(po)}
+                          onClick={() => {
+                            setActiveBottomTab("home");
+                            setIsCheckoutView(false);
+                          }}
                           style={{
-                            flex: 1,
-                            minWidth: 110,
-                            padding: "11px 12px",
+                            marginTop: 8,
+                            padding: "11px 24px",
                             borderRadius: 10,
                             border: "none",
                             background: "#0c831f",
                             color: "#ffffff",
                             fontWeight: 800,
-                            fontSize: 13,
+                            fontSize: "0.9rem",
                             cursor: "pointer",
-                            boxShadow: "0 4px 14px rgba(12, 131, 31, 0.25)",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 8,
+                            boxShadow: "0 4px 14px rgba(12, 131, 31, 0.28)",
                           }}
                         >
-                          🛒 Reorder All
+                          <span>Start Shopping (Chocolates & Frames)</span>
+                          <IconArrowRight size={15} color="#ffffff" />
                         </button>
-                        {isOrderDelivered ? (
-                          <>
-                            <button
-                              type="button"
-                              onClick={() => handleDownloadPdfSlip(po)}
-                              style={{
-                                padding: "11px 13px",
-                                borderRadius: 10,
-                                border: "1.5px solid #0c831f",
-                                background: "#f0fdf4",
-                                color: "#0c831f",
-                                fontWeight: 800,
-                                fontSize: 12.5,
-                                cursor: "pointer",
-                                display: "inline-flex",
-                                alignItems: "center",
-                                gap: 5,
-                                whiteSpace: "nowrap",
-                              }}
-                              title="Download Delivered Order Slip in PDF"
-                            >
-                              📄 Download PDF Slip
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setReceiptOrder(po);
-                                setShowReceiptModal(true);
-                              }}
-                              style={{
-                                padding: "11px 12px",
-                                borderRadius: 10,
-                                border: "1px solid #cbd5e1",
-                                background: "#ffffff",
-                                color: "#0f172a",
-                                fontWeight: 700,
-                                fontSize: 12.5,
-                                cursor: "pointer",
-                                whiteSpace: "nowrap",
-                              }}
-                              title="View Receipt Preview"
-                            >
-                              🧾 Slip
-                            </button>
-                          </>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() =>
-                              triggerToast("🔒 PDF slip downloads once this item/order is delivered!")
-                            }
-                            style={{
-                              padding: "10px 12px",
-                              borderRadius: 10,
-                              border: "1px dashed #94a3b8",
-                              background: "#f8fafc",
-                              color: "#64748b",
-                              fontWeight: 700,
-                              fontSize: 11.5,
-                              cursor: "not-allowed",
-                              display: "inline-flex",
-                              alignItems: "center",
-                              gap: 5,
-                              whiteSpace: "nowrap",
-                            }}
-                            title="PDF slip unlocks after order is delivered"
-                          >
-                            🔒 PDF on delivery
-                          </button>
-                        )}
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-            </ErrorBoundary>
-          </div>
-        )}
+                    ) : (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 16 }}>
+                        {pastOrders.map((po) => {
+                          const itemCount = (po.items || []).reduce((s, it) => s + (it.qty || 1), 0);
+                          const isOrderDelivered =
+                            String(po.status || "").toLowerCase() === "delivered" ||
+                            Boolean(po.deliveredAt);
+                          return (
+                            <div
+                              key={po.id || po.orderNumber}
+                              style={{
+                                background: "#ffffff",
+                                border: "1px solid #e2e8f0",
+                                borderRadius: 14,
+                                padding: 14,
+                                boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
+                              }}
+                            >
+                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                                <div style={{ minWidth: 0 }}>
+                                  <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                                    <span style={{ fontWeight: 800, fontSize: 13.5, color: "#0f172a" }}>
+                                      Order #{po.orderNumber || po.id}
+                                    </span>
+                                    {isOrderDelivered ? (
+                                      <span
+                                        style={{
+                                          fontSize: 10,
+                                          fontWeight: 800,
+                                          color: "#15803d",
+                                          background: "#dcfce7",
+                                          padding: "2px 7px",
+                                          borderRadius: 999,
+                                        }}
+                                      >
+                                        ✓ Delivered
+                                      </span>
+                                    ) : (
+                                      <span
+                                        style={{
+                                          fontSize: 10,
+                                          fontWeight: 700,
+                                          color: "#b45309",
+                                          background: "#fef3c7",
+                                          padding: "2px 7px",
+                                          borderRadius: 999,
+                                        }}
+                                      >
+                                        In Progress
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div style={{ fontSize: 11.5, color: "#64748b", marginTop: 2 }}>
+                                    {po.placedAt ? new Date(po.placedAt).toLocaleString() : ""} • {itemCount} {itemCount === 1 ? "item" : "items"}
+                                  </div>
+                                </div>
+                                <div style={{ fontWeight: 900, fontSize: 14, color: "#0f172a", flexShrink: 0 }}>₹{po.total}</div>
+                              </div>
 
-                {/* ══════════════════════════════════════════
+                              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
+                                {(po.items || []).map((it) => (
+                                  <div
+                                    key={it.sku}
+                                    style={{
+                                      display: "flex",
+                                      alignItems: "center",
+                                      gap: 8,
+                                      background: "#f8fafc",
+                                      border: "1px solid #e2e8f0",
+                                      borderRadius: 10,
+                                      padding: "6px 10px 6px 6px",
+                                      maxWidth: "100%",
+                                    }}
+                                  >
+                                    {it.image && (
+                                      <img
+                                        src={it.image}
+                                        alt={it.name}
+                                        style={{ width: 34, height: 34, objectFit: "cover", borderRadius: 8, flexShrink: 0 }}
+                                      />
+                                    )}
+                                    <div style={{ minWidth: 0 }}>
+                                      <div
+                                        style={{
+                                          fontSize: 12,
+                                          fontWeight: 700,
+                                          color: "#0f172a",
+                                          maxWidth: 150,
+                                          whiteSpace: "nowrap",
+                                          overflow: "hidden",
+                                          textOverflow: "ellipsis",
+                                        }}
+                                      >
+                                        {it.name}
+                                      </div>
+                                      <div style={{ fontSize: 11, color: "#64748b" }}>
+                                        Qty {it.qty} • ₹{it.price}
+                                      </div>
+                                    </div>
+                                    {isOrderDelivered && (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleDownloadPdfSlip(po, it)}
+                                        title={`Download delivered item PDF slip for ${it.name}`}
+                                        style={{
+                                          background: "#dcfce7",
+                                          color: "#15803d",
+                                          border: "1px solid #86efac",
+                                          borderRadius: 7,
+                                          padding: "4px 7px",
+                                          fontSize: 10.5,
+                                          fontWeight: 800,
+                                          cursor: "pointer",
+                                          whiteSpace: "nowrap",
+                                        }}
+                                      >
+                                        📄 PDF
+                                      </button>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+
+                              <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+                                <button
+                                  type="button"
+                                  onClick={() => handleReorderAll(po)}
+                                  style={{
+                                    flex: 1,
+                                    minWidth: 110,
+                                    padding: "11px 12px",
+                                    borderRadius: 10,
+                                    border: "none",
+                                    background: "#0c831f",
+                                    color: "#ffffff",
+                                    fontWeight: 800,
+                                    fontSize: 13,
+                                    cursor: "pointer",
+                                    boxShadow: "0 4px 14px rgba(12, 131, 31, 0.25)",
+                                  }}
+                                >
+                                  🛒 Reorder All
+                                </button>
+                                {isOrderDelivered ? (
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDownloadPdfSlip(po)}
+                                      style={{
+                                        padding: "11px 13px",
+                                        borderRadius: 10,
+                                        border: "1.5px solid #0c831f",
+                                        background: "#f0fdf4",
+                                        color: "#0c831f",
+                                        fontWeight: 800,
+                                        fontSize: 12.5,
+                                        cursor: "pointer",
+                                        display: "inline-flex",
+                                        alignItems: "center",
+                                        gap: 5,
+                                        whiteSpace: "nowrap",
+                                      }}
+                                      title="Download Delivered Order Slip in PDF"
+                                    >
+                                      📄 Download PDF Slip
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setReceiptOrder(po);
+                                        setShowReceiptModal(true);
+                                      }}
+                                      style={{
+                                        padding: "11px 12px",
+                                        borderRadius: 10,
+                                        border: "1px solid #cbd5e1",
+                                        background: "#ffffff",
+                                        color: "#0f172a",
+                                        fontWeight: 700,
+                                        fontSize: 12.5,
+                                        cursor: "pointer",
+                                        whiteSpace: "nowrap",
+                                      }}
+                                      title="View Receipt Preview"
+                                    >
+                                      🧾 Slip
+                                    </button>
+                                  </>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      triggerToast("🔒 PDF slip downloads once this item/order is delivered!")
+                                    }
+                                    style={{
+                                      padding: "10px 12px",
+                                      borderRadius: 10,
+                                      border: "1px dashed #94a3b8",
+                                      background: "#f8fafc",
+                                      color: "#64748b",
+                                      fontWeight: 700,
+                                      fontSize: 11.5,
+                                      cursor: "not-allowed",
+                                      display: "inline-flex",
+                                      alignItems: "center",
+                                      gap: 5,
+                                      whiteSpace: "nowrap",
+                                    }}
+                                    title="PDF slip unlocks after order is delivered"
+                                  >
+                                    🔒 PDF on delivery
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </ErrorBoundary>
+                </div>
+              )}
+
+              {/* ══════════════════════════════════════════
             TAB 3: CATEGORIES
             ══════════════════════════════════════════ */}
-        {activeBottomTab === "categories" && (
-          <div style={S.tabViewContainer}>
-            <div style={S.tabHeaderRow}>
-              <div>
-                <h2 style={S.tabTitle}>All Categories</h2>
-                <p style={S.tabSubtitle}>Active warehouse departments & upcoming items in Namma Tiptur</p>
-              </div>
-              <div style={S.reorderBadgePill}>
-                <IconTag size={13} color="#0c831f" />
-                <span>2 In Warehouse</span>
-              </div>
-            </div>
+              {activeBottomTab === "categories" && (
+                <div style={S.tabViewContainer}>
+                  <div style={S.tabHeaderRow}>
+                    <div>
+                      <h2 style={S.tabTitle}>All Categories</h2>
+                      <p style={S.tabSubtitle}>Active warehouse departments & upcoming items in Namma Tiptur</p>
+                    </div>
+                    <div style={S.reorderBadgePill}>
+                      <IconTag size={13} color="#0c831f" />
+                      <span>2 In Warehouse</span>
+                    </div>
+                  </div>
 
-            {/* In-Warehouse Active Departments (Chocolates & Frames only) */}
-            <div style={S.categoriesVerticalGrid}>
-              {[
-                {
-                  name: "Chocolates",
-                  tag: "In Warehouse",
-                  desc: "Beatss, Melody, Kopiko, Boomer, Eclairs, Candyman & more varieties in warehouse",
-                  count: `${effectiveCatalog.filter((c) => c.category === "Chocolates").length} items`,
-                  bg: "#FEF3C7",
-                  accent: "#92400E",
-                },
-                {
-                  name: "Frames",
-                  tag: "In Warehouse",
-                  desc: "Kantara, D Boss, Yash KGF, Mahadev, Coding, Anime & A4 Glass Frames",
-                  count: `${effectiveCatalog.filter((c) => c.category === "Frames").length} items`,
-                  bg: "#EDE9FE",
-                  accent: "#6B21A8",
-                },
-              ].map((cat) => (
-                <div
-                  key={cat.name}
-                  style={S.categoryDepartmentCard}
-                  onClick={() => {
-                    setSelectedCategory(cat.name);
-                    setActiveBottomTab("home");
-                  }}
-                >
-                  <div style={S.categoryCardContent}>
-                    <div style={S.catBadgeRow}>
-                      <span style={{ ...S.catTagBadge, background: cat.bg, color: cat.accent }}>
-                        {cat.tag}
+                  {/* In-Warehouse Active Departments (Chocolates & Frames only) */}
+                  <div style={S.categoriesVerticalGrid}>
+                    {[
+                      {
+                        name: "Chocolates",
+                        tag: "In Warehouse",
+                        desc: "Beatss, Melody, Kopiko, Boomer, Eclairs, Candyman & more varieties in warehouse",
+                        count: `${effectiveCatalog.filter((c) => c.category === "Chocolates").length} items`,
+                        bg: "#FEF3C7",
+                        accent: "#92400E",
+                      },
+                      {
+                        name: "Frames",
+                        tag: "In Warehouse",
+                        desc: "Kantara, D Boss, Yash KGF, Mahadev, Coding, Anime & A4 Glass Frames",
+                        count: `${effectiveCatalog.filter((c) => c.category === "Frames").length} items`,
+                        bg: "#EDE9FE",
+                        accent: "#6B21A8",
+                      },
+                    ].map((cat) => (
+                      <div
+                        key={cat.name}
+                        style={S.categoryDepartmentCard}
+                        onClick={() => {
+                          setSelectedCategory(cat.name);
+                          setActiveBottomTab("home");
+                        }}
+                      >
+                        <div style={S.categoryCardContent}>
+                          <div style={S.catBadgeRow}>
+                            <span style={{ ...S.catTagBadge, background: cat.bg, color: cat.accent }}>
+                              {cat.tag}
+                            </span>
+                            <span style={S.catCountText}>{cat.count}</span>
+                          </div>
+                          <h3 style={S.catDepartmentTitle}>{cat.name}</h3>
+                          <p style={S.catDepartmentDesc}>{cat.desc}</p>
+                        </div>
+                        <div style={S.catArrowIcon}>
+                          <IconArrowRight size={16} color="#0c831f" />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Official Coming Soon Announcement Poster for all other categories */}
+                  <div style={{ marginTop: 20, width: "100%", textAlign: "center" }}>
+                    <div style={{
+                      background: "linear-gradient(135deg, #064e3b 0%, #065f46 100%)",
+                      borderRadius: 14,
+                      padding: "10px 14px",
+                      marginBottom: 10,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      boxShadow: "0 4px 12px rgba(6, 78, 59, 0.25)"
+                    }}>
+                      <div style={{ textAlign: "left" }}>
+                        <div style={{ color: "#a7f3d0", fontSize: "0.72rem", fontWeight: 800, letterSpacing: "0.05em" }}>
+                          NAMMA TIPTUR KA 44
+                        </div>
+                        <div style={{ color: "#ffffff", fontSize: "0.95rem", fontWeight: 900, marginTop: 1 }}>
+                          Groceries Coming Soon
+                        </div>
+                      </div>
+                      <span style={{
+                        background: "#10b981",
+                        color: "#ffffff",
+                        fontSize: 10,
+                        fontWeight: 800,
+                        padding: "3px 8px",
+                        borderRadius: 6,
+                      }}>
+                        SOON
                       </span>
-                      <span style={S.catCountText}>{cat.count}</span>
                     </div>
-                    <h3 style={S.catDepartmentTitle}>{cat.name}</h3>
-                    <p style={S.catDepartmentDesc}>{cat.desc}</p>
-                  </div>
-                  <div style={S.catArrowIcon}>
-                    <IconArrowRight size={16} color="#0c831f" />
-                  </div>
-                </div>
-              ))}
-            </div>
 
-            {/* Official Coming Soon Announcement Poster for all other categories */}
-            <div style={{ marginTop: 20, width: "100%", textAlign: "center" }}>
-              <div style={{
-                background: "linear-gradient(135deg, #064e3b 0%, #065f46 100%)",
-                borderRadius: 14,
-                padding: "10px 14px",
-                marginBottom: 10,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                boxShadow: "0 4px 12px rgba(6, 78, 59, 0.25)"
-              }}>
-                <div style={{ textAlign: "left" }}>
-                  <div style={{ color: "#a7f3d0", fontSize: "0.72rem", fontWeight: 800, letterSpacing: "0.05em" }}>
-                    NAMMA TIPTUR KA 44
-                  </div>
-                  <div style={{ color: "#ffffff", fontSize: "0.95rem", fontWeight: 900, marginTop: 1 }}>
-                    Groceries Coming Soon
-                  </div>
-                </div>
-                <span style={{
-                  background: "#10b981",
-                  color: "#ffffff",
-                  fontSize: 10,
-                  fontWeight: 800,
-                  padding: "3px 8px",
-                  borderRadius: 6,
-                }}>
-                  SOON
-                </span>
-              </div>
-
-              {/* Full Coming Soon Poster Image */}
-              <div
-                style={{
-                  width: "100%",
-                  borderRadius: 16,
-                  overflow: "hidden",
-                  boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
-                  border: "2px solid #86efac",
-                  background: "#080c14",
-                  cursor: "pointer",
-                }}
-                onClick={() => setShowComingSoonModal(true)}
-              >
-                <img
-                  src="/coming-soon.jpg"
-                  alt="Coming Soon in Namma Tiptur KA 44"
-                  style={{ width: "100%", height: "auto", display: "block" }}
-                />
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ══════════════════════════════════════════
-            TAB 4: EXPLORE NAMMA TIPTUR (ನಮ್ಮ ತಿಪಟೂರು)
-            ══════════════════════════════════════════ */}
-        {activeBottomTab === "explore_tiptur" && (
-          <div style={S.tabViewContainer}>
-            {/* ── CINEMATIC MERGED BACKGROUND VIDEO HERO (v1.mp4 -> v2.mp4) ── */}
-            <div style={S.tipturHeroVideoBanner}>
-              {/* Merged Background Video Element (Sound OFF permanently) */}
-              <video
-                key={bgVideoIdx}
-                src={MERGED_BACKGROUND_VIDEOS[bgVideoIdx].src}
-                autoPlay
-                muted
-                playsInline
-                preload="metadata"
-                style={S.mergedBgVideoElement}
-                onError={(e) => {
-                  const fb = MERGED_BACKGROUND_VIDEOS[bgVideoIdx]?.fallback;
-                  if (fb && e.target.src !== fb) {
-                    e.target.src = fb;
-                    e.target.play().catch(() => {});
-                  }
-                }}
-                onTimeUpdate={(e) => {
-                  const limit = MERGED_BACKGROUND_VIDEOS[bgVideoIdx].durationLimit;
-                  if (limit && e.target.currentTime >= limit) {
-                    setBgVideoIdx((prev) => (prev + 1) % MERGED_BACKGROUND_VIDEOS.length);
-                  }
-                }}
-                onEnded={() => {
-                  setBgVideoIdx((prev) => (prev + 1) % MERGED_BACKGROUND_VIDEOS.length);
-                }}
-              />
-
-              {/* Clean Video Overlay: Only Title Appears Directly Over Video (No Black Box) */}
-              <div style={S.tipturHeroOverlay}>
-                <h2 style={S.heroBannerTitle}>
-                  ನಮ್ಮ ತಿಪಟೂರು • ತೆಂಗಿನ ನಗರ • NAMMA TIPTUR 🥥
-                </h2>
-              </div>
-            </div>
-
-            {/* ── 1. ABOUT TIPTUR GANESHA ── */}
-            <div style={S.ganeshaCard}>
-              <div style={S.ganeshaHeader}>
-                <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-                  <img
-                    src="/images/sri-sathya-ganapathi-logo.jpg"
-                    alt="Sri Sathya Ganapathi Seva Sangha Tiptur Emblem"
-                    style={{
-                      width: 64,
-                      height: 64,
-                      borderRadius: "50%",
-                      objectFit: "cover",
-                      border: "3px solid #f59e0b",
-                      boxShadow: "0 4px 14px rgba(245, 158, 11, 0.4)",
-                      flexShrink: 0,
-                    }}
-                  />
-                  <div style={S.ganeshaTitleArea}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 4 }}>
-                      <span style={S.ganeshaHeritagePill}>{TIPTUR_GANESHA_INFO.yearsBadge}</span>
+                    {/* Full Coming Soon Poster Image */}
+                    <div
+                      style={{
+                        width: "100%",
+                        borderRadius: 16,
+                        overflow: "hidden",
+                        boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
+                        border: "2px solid #86efac",
+                        background: "#080c14",
+                        cursor: "pointer",
+                      }}
+                      onClick={() => setShowComingSoonModal(true)}
+                    >
+                      <img
+                        src="/coming-soon.jpg"
+                        alt="Coming Soon in Namma Tiptur KA 44"
+                        style={{ width: "100%", height: "auto", display: "block" }}
+                      />
                     </div>
-                    <h3 style={S.ganeshaMainTitle}>
-                      {ganeshaLang === "kannada"
-                        ? "ಶ್ರೀ ಸತ್ಯ ಗಣಪತಿ ಸೇವಾ ಸಂಘ (ರಿ.) — ತಿಪಟೂರು ಜಾತ್ರೆ"
-                        : ganeshaLang === "hindi"
-                        ? "श्री सत्य गणपति सेवा संघ (रजि.) तिप्तूर उत्सव"
-                        : "The Tiptur Ganesha Utsava • Sri Sathya Ganapathi Jatre"}
-                    </h3>
-                    <div style={S.ganeshaSubTitle}>
-                      {ganeshaLang === "kannada"
-                        ? "೯೬+ ವರ್ಷಗಳ ಐತಿಹಾಸಿಕ ಸಾಂಸ್ಕೃತಿಕ ಪರಂಪರೆ ಹಾಗೂ ಆಸ್ಥಾನ ಮಂಟಪ"
-                        : ganeshaLang === "hindi"
-                        ? "96+ वर्षों की ऐतिहासिक सांस्कृतिक परंपरा एवं भव्य महा महोत्सव"
-                        : "Sri Sathya Ganapathi Seva Sangha (Regd.) Tiptur • 96+ Years Cultural Heritage"}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Language Selector (Globe icon & 3-language dropdown) */}
-              <div style={S.ganeshaLangRow}>
-                <div style={S.ganeshaDropdownWrap}>
-                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#D97706" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <circle cx="12" cy="12" r="10" />
-                    <line x1="2" y1="12" x2="22" y2="12" />
-                    <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
-                  </svg>
-                  <select
-                    id="ganesha-lang-select"
-                    value={ganeshaLang}
-                    onChange={(e) => setGaneshaLang(e.target.value)}
-                    style={S.ganeshaSelectDropdown}
-                    aria-label="Select language"
-                  >
-                    <option value="english">English</option>
-                    <option value="kannada">ಕನ್ನಡ</option>
-                    <option value="hindi">हिंदी</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Authentic Historic Ganesha Image - Fully Clear Frame (100% visible, uncropped) */}
-              {TIPTUR_GANESHA_INFO.image && (
-                <div style={S.ganeshaImageCard}>
-                  <img
-                    src={TIPTUR_GANESHA_INFO.image}
-                    alt="Tiptur Sri Sathya Ganapathi Idol"
-                    style={S.ganeshaHeroImage}
-                  />
-                  <div style={S.ganeshaFrameCaption}>
-                    🕉️ ಶ್ರೀ ಸತ್ಯ ಗಣಪತಿ • Sri Sathya Ganapathi Historic Idol (Since 1929)
                   </div>
                 </div>
               )}
 
-              <div style={S.ganeshaStoryCol}>
-                {/* Kannada Section */}
-                {ganeshaLang === "kannada" && (
-                  <div style={S.ganeshaSectionBlock}>
-                    <div style={S.ganeshaLangHeaderBadge}>
-                      <span>🌺</span>
-                      <span>ಶ್ರೀ ಸತ್ಯ ಗಣಪತಿ ಜಾತ್ರೆ • ಐತಿಹಾಸಿಕ ಹಿನ್ನೆಲೆ</span>
-                    </div>
-                    {TIPTUR_GANESHA_INFO.kannadaStory.map((para, idx) => (
-                      <p key={idx} style={S.ganeshaPara}>
-                        {para}
-                      </p>
-                    ))}
-                  </div>
-                )}
+              {/* ══════════════════════════════════════════
+            TAB 4: EXPLORE NAMMA TIPTUR (ನಮ್ಮ ತಿಪಟೂರು)
+            ══════════════════════════════════════════ */}
+              {activeBottomTab === "explore_tiptur" && (
+                <div style={S.tabViewContainer}>
+                  {/* ── CINEMATIC MERGED BACKGROUND VIDEO HERO (v1.mp4 -> v2.mp4) ── */}
+                  <div style={S.tipturHeroVideoBanner}>
+                    {/* Merged Background Video Element (Sound OFF permanently) */}
+                    <video
+                      key={bgVideoIdx}
+                      src={MERGED_BACKGROUND_VIDEOS[bgVideoIdx].src}
+                      autoPlay
+                      muted
+                      playsInline
+                      preload="metadata"
+                      style={S.mergedBgVideoElement}
+                      onError={(e) => {
+                        const fb = MERGED_BACKGROUND_VIDEOS[bgVideoIdx]?.fallback;
+                        if (fb && e.target.src !== fb) {
+                          e.target.src = fb;
+                          e.target.play().catch(() => { });
+                        }
+                      }}
+                      onTimeUpdate={(e) => {
+                        const limit = MERGED_BACKGROUND_VIDEOS[bgVideoIdx].durationLimit;
+                        if (limit && e.target.currentTime >= limit) {
+                          setBgVideoIdx((prev) => (prev + 1) % MERGED_BACKGROUND_VIDEOS.length);
+                        }
+                      }}
+                      onEnded={() => {
+                        setBgVideoIdx((prev) => (prev + 1) % MERGED_BACKGROUND_VIDEOS.length);
+                      }}
+                    />
 
-                {/* Hindi Section */}
-                {ganeshaLang === "hindi" && (
-                  <div style={S.ganeshaSectionBlock}>
-                    <div style={S.ganeshaLangHeaderBadge}>
-                      <span>🪔</span>
-                      <span>श्री सत्य गणपति जात्रा • ऐतिहासिक धरोहर</span>
-                    </div>
-                    {TIPTUR_GANESHA_INFO.hindiStory.map((para, idx) => (
-                      <p key={idx} style={S.ganeshaPara}>
-                        {para}
-                      </p>
-                    ))}
-                  </div>
-                )}
-
-                {/* English Section */}
-                {ganeshaLang === "english" && (
-                  <div style={S.ganeshaSectionBlock}>
-                    <div style={S.ganeshaLangHeaderBadge}>
-                      <span>🚩</span>
-                      <span>Historical Heritage and Procession</span>
-                    </div>
-                    {TIPTUR_GANESHA_INFO.englishStory.map((para, idx) => (
-                      <p key={idx} style={S.ganeshaPara}>
-                        {para}
-                      </p>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Key Highlights Grid */}
-              <div style={S.ganeshaStatsGrid}>
-                {TIPTUR_GANESHA_INFO.stats.map((st, i) => (
-                  <div key={i} style={S.ganeshaStatCard}>
-                    <div style={S.ganeshaStatLabel}>{st.label}</div>
-                    <div style={S.ganeshaStatVal}>
-                      {ganeshaLang === "kannada"
-                        ? st.knVal
-                        : ganeshaLang === "hindi"
-                        ? st.hiVal
-                        : st.val}
+                    {/* Clean Video Overlay: Only Title Appears Directly Over Video (No Black Box) */}
+                    <div style={S.tipturHeroOverlay}>
+                      <h2 style={S.heroBannerTitle}>
+                        ನಮ್ಮ ತಿಪಟೂರು • ತೆಂಗಿನ ನಗರ • NAMMA TIPTUR 🥥
+                      </h2>
                     </div>
                   </div>
-                ))}
-              </div>
-            </div>
 
-            {/* ── 2. POPULAR RESTAURANTS & FINE DINING ── */}
-            <div style={S.placesSection}>
-              <div style={S.sectionHeadingRow}>
-                <div>
-                  <h3 style={S.sectionSubTitle}>Popular Restaurants & Fine Dining</h3>
-                </div>
-                <span style={S.sectionSubCount}>{TIPTUR_RESTAURANTS.length} Places</span>
-              </div>
-
-              <div style={S.placesListCol}>
-                {TIPTUR_RESTAURANTS.map((rest) => (
-                  <div key={rest.name} style={S.placeCard}>
-                    {rest.image && (
-                      <div style={S.restImageWrap}>
+                  {/* ── 1. ABOUT TIPTUR GANESHA ── */}
+                  <div style={S.ganeshaCard}>
+                    <div style={S.ganeshaHeader}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
                         <img
-                          src={rest.image}
-                          alt=""
+                          src="/images/sri-sathya-ganapathi-logo.jpg"
+                          alt="Sri Sathya Ganapathi Seva Sangha Tiptur Emblem"
                           style={{
-                            ...S.restThumbImg,
-                            objectPosition: rest.imagePos || "center center",
+                            width: 64,
+                            height: 64,
+                            borderRadius: "50%",
+                            objectFit: "cover",
+                            border: "3px solid #f59e0b",
+                            boxShadow: "0 4px 14px rgba(245, 158, 11, 0.4)",
+                            flexShrink: 0,
                           }}
                         />
+                        <div style={S.ganeshaTitleArea}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 4 }}>
+                            <span style={S.ganeshaHeritagePill}>{TIPTUR_GANESHA_INFO.yearsBadge}</span>
+                          </div>
+                          <h3 style={S.ganeshaMainTitle}>
+                            {ganeshaLang === "kannada"
+                              ? "ಶ್ರೀ ಸತ್ಯ ಗಣಪತಿ ಸೇವಾ ಸಂಘ (ರಿ.) — ತಿಪಟೂರು ಜಾತ್ರೆ"
+                              : ganeshaLang === "hindi"
+                                ? "श्री सत्य गणपति सेवा संघ (रजि.) तिप्तूर उत्सव"
+                                : "The Tiptur Ganesha Utsava • Sri Sathya Ganapathi Jatre"}
+                          </h3>
+                          <div style={S.ganeshaSubTitle}>
+                            {ganeshaLang === "kannada"
+                              ? "೯೬+ ವರ್ಷಗಳ ಐತಿಹಾಸಿಕ ಸಾಂಸ್ಕೃತಿಕ ಪರಂಪರೆ ಹಾಗೂ ಆಸ್ಥಾನ ಮಂಟಪ"
+                              : ganeshaLang === "hindi"
+                                ? "96+ वर्षों की ऐतिहासिक सांस्कृतिक परंपरा एवं भव्य महा महोत्सव"
+                                : "Sri Sathya Ganapathi Seva Sangha (Regd.) Tiptur • 96+ Years Cultural Heritage"}
+                          </div>
+                        </div>
                       </div>
-                    )}
-                    <div style={S.placeTopRow}>
-                      <div style={S.placeTitleRow}>
-                        <h4 style={S.placeMainName}>{rest.name}</h4>
+                    </div>
+
+                    {/* Language Selector (Globe icon & 3-language dropdown) */}
+                    <div style={S.ganeshaLangRow}>
+                      <div style={S.ganeshaDropdownWrap}>
+                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#D97706" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <circle cx="12" cy="12" r="10" />
+                          <line x1="2" y1="12" x2="22" y2="12" />
+                          <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+                        </svg>
+                        <select
+                          id="ganesha-lang-select"
+                          value={ganeshaLang}
+                          onChange={(e) => setGaneshaLang(e.target.value)}
+                          style={S.ganeshaSelectDropdown}
+                          aria-label="Select language"
+                        >
+                          <option value="english">English</option>
+                          <option value="kannada">ಕನ್ನಡ</option>
+                          <option value="hindi">हिंदी</option>
+                        </select>
                       </div>
-                      <span
-                        style={{
-                          ...S.placeBadge,
-                          background: rest.bg,
-                          color: rest.color,
-                        }}
-                      >
-                        {rest.type}
-                      </span>
                     </div>
-                    <div style={S.placeFooter}>
-                      <span style={S.placeLocText}>
-                        <IconMapPin size={11} color="#64748b" />
-                        <span>{rest.loc}</span>
-                      </span>
-                      <span style={S.placeRatingTag}>★ {rest.rating}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
 
-            {/* ── 3. TRENDING CAFES ── */}
-            <div style={S.placesSection}>
-              <div style={S.sectionHeadingRow}>
-                <div>
-                  <h3 style={S.sectionSubTitle}>Trending Cafes</h3>
-                </div>
-                <span style={S.sectionSubCount}>{TIPTUR_CAFES.length} Cafes</span>
-              </div>
-
-              <div style={S.cafesGrid}>
-                {TIPTUR_CAFES.map((cafe) => (
-                  <div key={cafe.name} style={S.cafeCard}>
-                    {cafe.image && (
-                      <div style={S.cafeImageWrap}>
+                    {/* Authentic Historic Ganesha Image - Fully Clear Frame (100% visible, uncropped) */}
+                    {TIPTUR_GANESHA_INFO.image && (
+                      <div style={S.ganeshaImageCard}>
                         <img
-                          src={cafe.image}
-                          alt=""
-                          style={{
-                            ...S.cafeThumbImg,
-                            objectPosition: cafe.imagePos || "center center",
-                          }}
+                          src={TIPTUR_GANESHA_INFO.image}
+                          alt="Tiptur Sri Sathya Ganapathi Idol"
+                          style={S.ganeshaHeroImage}
                         />
+                        <div style={S.ganeshaFrameCaption}>
+                          🕉️ ಶ್ರೀ ಸತ್ಯ ಗಣಪತಿ • Sri Sathya Ganapathi Historic Idol (Since 1929)
+                        </div>
                       </div>
                     )}
-                    <div style={S.cafeBody}>
-                      <div style={S.cafeTop}>
-                        <h4 style={S.cafeName} title={cafe.name}>{cafe.name}</h4>
-                        <span style={S.cafeRating}>★ {cafe.rating}</span>
-                      </div>
+
+                    <div style={S.ganeshaStoryCol}>
+                      {/* Kannada Section */}
+                      {ganeshaLang === "kannada" && (
+                        <div style={S.ganeshaSectionBlock}>
+                          <div style={S.ganeshaLangHeaderBadge}>
+                            <span>🌺</span>
+                            <span>ಶ್ರೀ ಸತ್ಯ ಗಣಪತಿ ಜಾತ್ರೆ • ಐತಿಹಾಸಿಕ ಹಿನ್ನೆಲೆ</span>
+                          </div>
+                          {TIPTUR_GANESHA_INFO.kannadaStory.map((para, idx) => (
+                            <p key={idx} style={S.ganeshaPara}>
+                              {para}
+                            </p>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Hindi Section */}
+                      {ganeshaLang === "hindi" && (
+                        <div style={S.ganeshaSectionBlock}>
+                          <div style={S.ganeshaLangHeaderBadge}>
+                            <span>🪔</span>
+                            <span>श्री सत्य गणपति जात्रा • ऐतिहासिक धरोहर</span>
+                          </div>
+                          {TIPTUR_GANESHA_INFO.hindiStory.map((para, idx) => (
+                            <p key={idx} style={S.ganeshaPara}>
+                              {para}
+                            </p>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* English Section */}
+                      {ganeshaLang === "english" && (
+                        <div style={S.ganeshaSectionBlock}>
+                          <div style={S.ganeshaLangHeaderBadge}>
+                            <span>🚩</span>
+                            <span>Historical Heritage and Procession</span>
+                          </div>
+                          {TIPTUR_GANESHA_INFO.englishStory.map((para, idx) => (
+                            <p key={idx} style={S.ganeshaPara}>
+                              {para}
+                            </p>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                    <div style={S.cafeBottom}>
-                      <span
-                        style={{
-                          ...S.cafeTypePill,
-                          background: cafe.bg,
-                          color: cafe.color,
-                        }}
-                      >
-                        {cafe.type}
-                      </span>
+
+                    {/* Key Highlights Grid */}
+                    <div style={S.ganeshaStatsGrid}>
+                      {TIPTUR_GANESHA_INFO.stats.map((st, i) => (
+                        <div key={i} style={S.ganeshaStatCard}>
+                          <div style={S.ganeshaStatLabel}>{st.label}</div>
+                          <div style={S.ganeshaStatVal}>
+                            {ganeshaLang === "kannada"
+                              ? st.knVal
+                              : ganeshaLang === "hindi"
+                                ? st.hiVal
+                                : st.val}
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
-                ))}
-              </div>
-            </div>
 
-            {/* ── 4. FARMS: AKSHAYAKALPA ORGANIC FARM ── */}
-            <div style={S.placesSection}>
-              <div style={S.sectionHeadingRow}>
-                <div>
-                  <h3 style={S.sectionSubTitle}>Farms</h3>
-                </div>
-                <span style={S.sectionSubCount}>Eco Agro-Farm</span>
-              </div>
-
-              {TIPTUR_FARMS.map((farm) => (
-                <div key={farm.name} style={S.farmCard}>
-                  <div style={S.farmHeader}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                      <img
-                        src="/images/akshayakalpa-logo.jpg"
-                        alt="Akshayakalpa Organic Logo"
-                        style={{
-                          width: 52,
-                          height: 52,
-                          borderRadius: 12,
-                          objectFit: "contain",
-                          background: "#ffffff",
-                          padding: 2,
-                          border: "2px solid #86efac",
-                          boxShadow: "0 2px 8px rgba(12, 131, 31, 0.15)",
-                          flexShrink: 0,
-                        }}
-                      />
+                  {/* ── 2. POPULAR RESTAURANTS & FINE DINING ── */}
+                  <div style={S.placesSection}>
+                    <div style={S.sectionHeadingRow}>
                       <div>
-                        <h4 style={S.farmTitle}>{farm.name}</h4>
-
+                        <h3 style={S.sectionSubTitle}>Popular Restaurants & Fine Dining</h3>
                       </div>
+                      <span style={S.sectionSubCount}>{TIPTUR_RESTAURANTS.length} Places</span>
                     </div>
-                    <span style={S.farmBadge}>{farm.badge}</span>
+
+                    <div style={S.placesListCol}>
+                      {TIPTUR_RESTAURANTS.map((rest) => (
+                        <div key={rest.name} style={S.placeCard}>
+                          {rest.image && (
+                            <div style={S.restImageWrap}>
+                              <img
+                                src={rest.image}
+                                alt=""
+                                style={{
+                                  ...S.restThumbImg,
+                                  objectPosition: rest.imagePos || "center center",
+                                }}
+                              />
+                            </div>
+                          )}
+                          <div style={S.placeTopRow}>
+                            <div style={S.placeTitleRow}>
+                              <h4 style={S.placeMainName}>{rest.name}</h4>
+                            </div>
+                            <span
+                              style={{
+                                ...S.placeBadge,
+                                background: rest.bg,
+                                color: rest.color,
+                              }}
+                            >
+                              {rest.type}
+                            </span>
+                          </div>
+                          <div style={S.placeFooter}>
+                            <span style={S.placeLocText}>
+                              <IconMapPin size={11} color="#64748b" />
+                              <span>{rest.loc}</span>
+                            </span>
+                            <span style={S.placeRatingTag}>★ {rest.rating}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                  <p style={S.farmDesc}>{farm.desc}</p>
 
-                  {/* Akshayakalpa Agro-Ecological Drone Tour Video (AK.mp4 - trimmed to 45s, stops at 45s, sound off permanently) */}
-                  {farm.video && (
-                    <div style={S.farmVideoBox}>
-                      <video
-                        ref={(el) => {
-                          if (el) {
-                            el.muted = true;
-                            el.defaultMuted = true;
-                            el.play().catch(() => {});
-                          }
-                        }}
-                        src={farm.video}
-                        autoPlay
-                        muted
-                        playsInline
-                        preload="auto"
-                        controls
-                        style={S.farmVideoPlayer}
-                        onError={(e) => {
-                          const fb = `${JSDELIVR_PUBLIC_CDN}/videos/AK.mp4`;
-                          if (e.target.src !== fb) {
-                            e.target.src = fb;
-                            e.target.play().catch(() => {});
-                          }
-                        }}
-                        onTimeUpdate={(e) => {
-                          if (e.target.currentTime >= 45) {
-                            e.target.pause();
-                            e.target.currentTime = 45;
-                          }
-                        }}
-                        onEnded={(e) => {
-                          e.target.pause();
-                        }}
-                      />
+                  {/* ── 3. TRENDING CAFES ── */}
+                  <div style={S.placesSection}>
+                    <div style={S.sectionHeadingRow}>
+                      <div>
+                        <h3 style={S.sectionSubTitle}>Trending Cafes</h3>
+                      </div>
+                      <span style={S.sectionSubCount}>{TIPTUR_CAFES.length} Cafes</span>
                     </div>
-                  )}
 
-                  <div style={S.farmHighlightsGrid}>
-                    {farm.highlights.map((h, i) => (
-                      <div key={i} style={S.farmChip}>
-                        <IconCheck size={12} color="#166534" />
-                        <span>{h}</span>
+                    <div style={S.cafesGrid}>
+                      {TIPTUR_CAFES.map((cafe) => (
+                        <div key={cafe.name} style={S.cafeCard}>
+                          {cafe.image && (
+                            <div style={S.cafeImageWrap}>
+                              <img
+                                src={cafe.image}
+                                alt=""
+                                style={{
+                                  ...S.cafeThumbImg,
+                                  objectPosition: cafe.imagePos || "center center",
+                                }}
+                              />
+                            </div>
+                          )}
+                          <div style={S.cafeBody}>
+                            <div style={S.cafeTop}>
+                              <h4 style={S.cafeName} title={cafe.name}>{cafe.name}</h4>
+                              <span style={S.cafeRating}>★ {cafe.rating}</span>
+                            </div>
+                          </div>
+                          <div style={S.cafeBottom}>
+                            <span
+                              style={{
+                                ...S.cafeTypePill,
+                                background: cafe.bg,
+                                color: cafe.color,
+                              }}
+                            >
+                              {cafe.type}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* ── 4. FARMS: AKSHAYAKALPA ORGANIC FARM ── */}
+                  <div style={S.placesSection}>
+                    <div style={S.sectionHeadingRow}>
+                      <div>
+                        <h3 style={S.sectionSubTitle}>Farms</h3>
+                      </div>
+                      <span style={S.sectionSubCount}>Eco Agro-Farm</span>
+                    </div>
+
+                    {TIPTUR_FARMS.map((farm) => (
+                      <div key={farm.name} style={S.farmCard}>
+                        <div style={S.farmHeader}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                            <img
+                              src="/images/akshayakalpa-logo.jpg"
+                              alt="Akshayakalpa Organic Logo"
+                              style={{
+                                width: 52,
+                                height: 52,
+                                borderRadius: 12,
+                                objectFit: "contain",
+                                background: "#ffffff",
+                                padding: 2,
+                                border: "2px solid #86efac",
+                                boxShadow: "0 2px 8px rgba(12, 131, 31, 0.15)",
+                                flexShrink: 0,
+                              }}
+                            />
+                            <div>
+                              <h4 style={S.farmTitle}>{farm.name}</h4>
+
+                            </div>
+                          </div>
+                          <span style={S.farmBadge}>{farm.badge}</span>
+                        </div>
+                        <p style={S.farmDesc}>{farm.desc}</p>
+
+                        {/* Akshayakalpa Agro-Ecological Drone Tour Video (AK.mp4 - trimmed to 45s, stops at 45s, sound off permanently) */}
+                        {farm.video && (
+                          <div style={S.farmVideoBox}>
+                            <video
+                              ref={(el) => {
+                                if (el) {
+                                  el.muted = true;
+                                  el.defaultMuted = true;
+                                  el.play().catch(() => { });
+                                }
+                              }}
+                              src={farm.video}
+                              autoPlay
+                              muted
+                              playsInline
+                              preload="auto"
+                              controls
+                              style={S.farmVideoPlayer}
+                              onError={(e) => {
+                                const fb = `${JSDELIVR_PUBLIC_CDN}/videos/AK.mp4`;
+                                if (e.target.src !== fb) {
+                                  e.target.src = fb;
+                                  e.target.play().catch(() => { });
+                                }
+                              }}
+                              onTimeUpdate={(e) => {
+                                if (e.target.currentTime >= 45) {
+                                  e.target.pause();
+                                  e.target.currentTime = 45;
+                                }
+                              }}
+                              onEnded={(e) => {
+                                e.target.pause();
+                              }}
+                            />
+                          </div>
+                        )}
+
+                        <div style={S.farmHighlightsGrid}>
+                          {farm.highlights.map((h, i) => (
+                            <div key={i} style={S.farmChip}>
+                              <IconCheck size={12} color="#166534" />
+                              <span>{h}</span>
+                            </div>
+                          ))}
+                        </div>
+
+                        <div style={S.farmFooter}>
+                          <IconMapPin size={12} color="#15803d" />
+                          <span>{farm.loc}</span>
+                          <span style={{ marginLeft: "auto", fontWeight: 800, color: "#15803d" }}>
+                            {farm.rating}
+                          </span>
+                        </div>
                       </div>
                     ))}
                   </div>
 
-                  <div style={S.farmFooter}>
-                    <IconMapPin size={12} color="#15803d" />
-                    <span>{farm.loc}</span>
-                    <span style={{ marginLeft: "auto", fontWeight: 800, color: "#15803d" }}>
-                      {farm.rating}
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {/* ── 5. EXPRESS DELIVERY HIGHLIGHTS ── */}
-            <div style={{ marginTop: 10 }}>
-              <div style={S.sectionHeadingRow}>
-                <h3 style={S.sectionSubTitle}>Express delivery</h3>
-                <span style={S.sectionSubCount}>Local store</span>
-              </div>
-              <div style={S.tipturHighlightsGrid}>
-                <div style={S.tipturHighlightCard}>
-                  <div style={S.highlightIconWrapper}>
-                    <IconShieldCheck size={18} color="#0c831f" />
-                  </div>
-                  <div>
-                    <h4 style={S.highlightTitle}>Fresh local sourcing</h4>
-                  </div>
-                </div>
-
-                <div style={S.tipturHighlightCard}>
-                  <div style={S.highlightIconWrapper}>
-                    <IconLightning size={18} color="#d97706" />
-                  </div>
-                  <div>
-                    <h4 style={S.highlightTitle}>10-min delivery</h4>
-                  </div>
-                </div>
-
-                <div style={S.tipturHighlightCard}>
-                  <div style={S.highlightIconWrapper}>
-                    <IconMapPin size={18} color="#2563eb" />
-                  </div>
-                  <div>
-                    <h4 style={S.highlightTitle}>Tiptur local dispatch</h4>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-          </div>
-        )}
-
-            {/* Floating Quick Cart Bar (Visible only when user clicks and adds items) */}
-            {totalItems > 0 && activeBottomTab !== "explore_tiptur" && (
-              <div style={S.catalogFloatingCartBar}>
-                <div style={S.floatingCartInner}>
-                  <div style={S.floatingCartLeft}>
-                    <div style={S.floatingBagPill}>
-                      <IconCartBag size={18} color="#ffffff" />
+                  {/* ── 5. EXPRESS DELIVERY HIGHLIGHTS ── */}
+                  <div style={{ marginTop: 10 }}>
+                    <div style={S.sectionHeadingRow}>
+                      <h3 style={S.sectionSubTitle}>Express delivery</h3>
+                      <span style={S.sectionSubCount}>Local store</span>
                     </div>
-                    <div>
-                      <div style={S.floatingCartCount}>
-                        {totalItems} {totalItems === 1 ? "ITEM" : "ITEMS"} • ₹{grandTotal}
+                    <div style={S.tipturHighlightsGrid}>
+                      <div style={S.tipturHighlightCard}>
+                        <div style={S.highlightIconWrapper}>
+                          <IconShieldCheck size={18} color="#0c831f" />
+                        </div>
+                        <div>
+                          <h4 style={S.highlightTitle}>Fresh local sourcing</h4>
+                        </div>
                       </div>
-                      <div style={S.floatingSavings}>
-                        {!isStoreOpen ? "Store closed • Saved for when store opens" : `Delivery in 10 mins to ${selectedAddress.type}`}
+
+                      <div style={S.tipturHighlightCard}>
+                        <div style={S.highlightIconWrapper}>
+                          <IconLightning size={18} color="#d97706" />
+                        </div>
+                        <div>
+                          <h4 style={S.highlightTitle}>10-min delivery</h4>
+                        </div>
+                      </div>
+
+                      <div style={S.tipturHighlightCard}>
+                        <div style={S.highlightIconWrapper}>
+                          <IconMapPin size={18} color="#2563eb" />
+                        </div>
+                        <div>
+                          <h4 style={S.highlightTitle}>Tiptur local dispatch</h4>
+                        </div>
                       </div>
                     </div>
                   </div>
 
-                  {hasOngoingOrder ? (
-                    <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                </div>
+              )}
+
+              {/* Floating Quick Cart Bar (Visible only when user clicks and adds items) */}
+              {totalItems > 0 && activeBottomTab !== "explore_tiptur" && (
+                <div style={S.catalogFloatingCartBar}>
+                  <div style={S.floatingCartInner}>
+                    <div style={S.floatingCartLeft}>
+                      <div style={S.floatingBagPill}>
+                        <IconCartBag size={18} color="#ffffff" />
+                      </div>
+                      <div>
+                        <div style={S.floatingCartCount}>
+                          {totalItems} {totalItems === 1 ? "ITEM" : "ITEMS"} • ₹{grandTotal}
+                        </div>
+                        <div style={S.floatingSavings}>
+                          {!isStoreOpen ? "Store closed • Saved for when store opens" : `Delivery in 10 mins to ${selectedAddress.type}`}
+                        </div>
+                      </div>
+                    </div>
+
+                    {hasOngoingOrder ? (
+                      <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                        <button
+                          type="button"
+                          style={{
+                            ...S.floatingViewCartCTA,
+                            background: "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)",
+                            padding: "7px 10px",
+                            fontSize: 11,
+                          }}
+                          onClick={() => {
+                            const ordId = ongoingTrackedOrder.orderNumber || ongoingTrackedOrder.id || ongoingTrackedOrder.orderId;
+                            router.push(`/track/${ordId}`);
+                          }}
+                          title="Delivery ongoing. Click to track."
+                        >
+                          <span>🛵 Track Live</span>
+                        </button>
+                        <button
+                          type="button"
+                          style={{ ...S.floatingViewCartCTA, padding: "7px 12px" }}
+                          onClick={() => setIsCheckoutView(true)}
+                        >
+                          <span>Cart ({totalItems})</span>
+                          <IconArrowRight size={14} color="#ffffff" />
+                        </button>
+                      </div>
+                    ) : !isStoreOpen ? (
                       <button
                         type="button"
                         style={{
                           ...S.floatingViewCartCTA,
-                          background: "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)",
-                          padding: "7px 10px",
-                          fontSize: 11,
+                          background: "#e11d48",
                         }}
-                        onClick={() => {
-                          const ordId = ongoingTrackedOrder.orderNumber || ongoingTrackedOrder.id || ongoingTrackedOrder.orderId;
-                          router.push(`/track/${ordId}`);
-                        }}
-                        title="Delivery ongoing. Click to track."
+                        onClick={() => triggerToast("🛑 Store is closed right now, ordering soon!")}
                       >
-                        <span>🛵 Track Live</span>
+                        <span>STORE CLOSED</span>
                       </button>
+                    ) : (
                       <button
                         type="button"
-                        style={{ ...S.floatingViewCartCTA, padding: "7px 12px" }}
+                        style={S.floatingViewCartCTA}
                         onClick={() => setIsCheckoutView(true)}
                       >
-                        <span>Cart ({totalItems})</span>
-                        <IconArrowRight size={14} color="#ffffff" />
+                        <span>View Cart & Checkout</span>
+                        <IconArrowRight size={16} color="#ffffff" />
                       </button>
-                    </div>
-                  ) : !isStoreOpen ? (
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </main>
+        )}
+
+        {/* ── LIVE FLOATING DELIVERY / HANDOVER / RATING STATUS BAR (DISAPPEARS ONCE RATED) ── */}
+        {activeDeliveryOrder &&
+          !rateCompleted &&
+          !dismissDeliveryBar &&
+          !activeDeliveryOrder.customerRatingSubmitted &&
+          activeDeliveryOrder.status !== "delivered" &&
+          orderingStage !== "delivered" &&
+          !isCheckoutView && (
+            <div
+              id="active-order-floating-bar"
+              style={{
+                position: "fixed",
+                bottom: totalItems > 0 ? 128 : 68,
+                left: "50%",
+                transform: "translateX(-50%)",
+                width: "calc(100% - 24px)",
+                maxWidth: 416,
+                background:
+                  activeDeliveryOrder.status === "delivered" || orderingStage === "delivered"
+                    ? "linear-gradient(135deg, #065f46 0%, #047857 100%)"
+                    : orderingStage === "rider_arrived"
+                      ? "linear-gradient(135deg, #0c831f 0%, #15803d 100%)"
+                      : "linear-gradient(135deg, #0f172a 0%, #1e293b 100%)",
+                borderRadius: 14,
+                padding: "10px 14px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                boxShadow: "0 10px 28px rgba(15, 23, 42, 0.4), 0 0 0 1.5px rgba(34, 197, 94, 0.75)",
+                zIndex: 60,
+                cursor: "pointer",
+                transition: "all 0.25s ease",
+              }}
+              onClick={() => {
+                if (
+                  (activeDeliveryOrder.status === "delivered" || orderingStage === "delivered") &&
+                  !rateCompleted
+                ) {
+                  setShowRateOrderModal(true);
+                } else {
+                  router.push(`/track/${activeDeliveryOrder.orderNumber || activeDeliveryOrder.id || activeDeliveryOrder.orderId}`);
+                }
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0, flex: 1 }}>
+                {/* Animated scooter delivery badge */}
+                <div
+                  style={{
+                    width: 38,
+                    height: 38,
+                    borderRadius: 10,
+                    background: "rgba(12, 131, 31, 0.2)",
+                    border: "1px solid rgba(12, 131, 31, 0.5)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    flexShrink: 0,
+                    position: "relative",
+                  }}
+                >
+                  <IconRealisticScooter size={22} color="#4ade80" animated={true} />
+                  <span
+                    style={{
+                      position: "absolute",
+                      top: -2,
+                      right: -2,
+                      width: 8,
+                      height: 8,
+                      borderRadius: "50%",
+                      background: "#22c55e",
+                      boxShadow: "0 0 8px #22c55e",
+                    }}
+                  />
+                </div>
+
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                    <span
+                      style={{
+                        fontSize: 13,
+                        fontWeight: 900,
+                        color: "#ffffff",
+                        letterSpacing: "-0.2px",
+                      }}
+                    >
+                      {customFloatingTitle ||
+                        (activeDeliveryOrder.status === "delivered" || orderingStage === "delivered"
+                          ? "Rate your order"
+                          : orderingStage === "rider_arrived"
+                            ? "Arrived at doorstep"
+                            : orderingStage === "almost_doorstep"
+                              ? "Almost at your doorstep"
+                              : orderingStage === "packed_assigning"
+                                ? "Order packed"
+                                : orderingStage === "rider_assigned"
+                                  ? "On the way"
+                                  : orderingStage === "picking"
+                                    ? "Packing your order"
+                                    : "On the way")}
+                    </span>
+                    <span
+                      style={{
+                        fontSize: 10,
+                        fontWeight: 800,
+                        color: pickerDelayMins > 0 && orderingStage === "picking" ? "#ef4444" : "#22c55e",
+                        background: pickerDelayMins > 0 && orderingStage === "picking" ? "rgba(239, 68, 68, 0.2)" : "rgba(34, 197, 94, 0.18)",
+                        padding: "2px 6px",
+                        borderRadius: 4,
+                      }}
+                    >
+                      {customFloatingBadge ||
+                        (activeDeliveryOrder.status === "delivered" || orderingStage === "delivered"
+                          ? "Delivered"
+                          : orderingStage === "rider_arrived"
+                            ? "Doorstep"
+                            : orderingStage === "almost_doorstep"
+                              ? `${deliveryCountdownSec}s`
+                              : orderingStage === "packed_assigning"
+                                ? "Packed"
+                                : `${Math.floor(deliveryCountdownSec / 60)}:${deliveryCountdownSec % 60 < 10 ? "0" : ""}${deliveryCountdownSec % 60}`)}
+                    </span>
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 11,
+                      color: "#cbd5e1",
+                      fontWeight: 600,
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                  >
+                    {customFloatingSub ||
+                      (activeDeliveryOrder.status === "delivered" || orderingStage === "delivered"
+                        ? "Tap to rate delivery & items"
+                        : orderingStage === "rider_arrived"
+                        ? "Delivery Partner is at your doorstep"
+                        : orderingStage === "almost_doorstep"
+                        ? "Delivery Partner is reaching now"
+                        : orderingStage === "packed_assigning"
+                        ? "Assigning delivery partner"
+                        : orderingStage === "rider_assigned"
+                        ? "Delivery Partner is heading to you"
+                        : orderingStage === "picking" && pickerDelayMins > 0
+                        ? `Picking is taking slightly longer (+${pickerDelayMins} min)`
+                        : "Track order")}
+                  </div>
+                </div>
+              </div>
+
+              {/* RATE / VIEW & COMPLAINT Buttons */}
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0, marginLeft: 10 }}>
+                {(activeDeliveryOrder.status === "delivered" || orderingStage === "delivered" || orderingStage === "rider_arrived") && !rateCompleted ? (
+                  <button
+                    type="button"
+                    style={{
+                      background: "#f59e0b",
+                      color: "#0f172a",
+                      border: "none",
+                      borderRadius: 8,
+                      padding: "7px 13px",
+                      fontSize: 12,
+                      fontWeight: 900,
+                      cursor: "pointer",
+                      whiteSpace: "nowrap",
+                      boxShadow: "0 3px 10px rgba(245, 158, 11, 0.45)",
+                    }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowRateOrderModal(true);
+                    }}
+                  >
+                    {activeDeliveryOrder.status === "delivered" || orderingStage === "delivered" ? "⭐ Rate Now" : "⭐ Rate to Deliver"}
+                  </button>
+                ) : (
+                  <>
                     <button
                       type="button"
                       style={{
-                        ...S.floatingViewCartCTA,
-                        background: "#e11d48",
+                        background: "rgba(225, 29, 72, 0.2)",
+                        color: "#fda4af",
+                        border: "1px solid rgba(225, 29, 72, 0.45)",
+                        borderRadius: 8,
+                        padding: "6px 10px",
+                        fontSize: 11,
+                        fontWeight: 800,
+                        cursor: "pointer",
+                        whiteSpace: "nowrap",
                       }}
-                      onClick={() => triggerToast("🛑 Store is closed right now, ordering soon!")}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setComplaintOrderId(activeDeliveryOrder.orderNumber || activeDeliveryOrder.id || activeDeliveryOrder.orderId);
+                        setShowComplaintModal(true);
+                      }}
+                      title="Need help or have an issue with this order?"
                     >
-                      <span>STORE CLOSED</span>
+                      ⚠️ Issue?
                     </button>
-                  ) : (
                     <button
                       type="button"
-                      style={S.floatingViewCartCTA}
-                      onClick={() => setIsCheckoutView(true)}
+                      style={{
+                        background: "#0c831f",
+                        color: "#ffffff",
+                        border: "none",
+                        borderRadius: 8,
+                        padding: "7px 14px",
+                        fontSize: 12,
+                        fontWeight: 800,
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 4,
+                        boxShadow: "0 3px 8px rgba(12, 131, 31, 0.4)",
+                      }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        router.push(`/track/${activeDeliveryOrder.orderNumber || activeDeliveryOrder.id || activeDeliveryOrder.orderId}`);
+                      }}
                     >
-                      <span>View Cart & Checkout</span>
-                      <IconArrowRight size={16} color="#ffffff" />
+                      <span>View Details</span>
+                      <IconArrowRight size={14} color="#ffffff" />
                     </button>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-        </main>
-      )}
-
-      {/* ── LIVE FLOATING DELIVERY / HANDOVER / RATING STATUS BAR (DISAPPEARS ONCE RATED) ── */}
-      {activeDeliveryOrder &&
-        !rateCompleted &&
-        !dismissDeliveryBar &&
-        !activeDeliveryOrder.customerRatingSubmitted &&
-        activeDeliveryOrder.status !== "delivered" &&
-        orderingStage !== "delivered" &&
-        !isCheckoutView && (
-        <div
-          id="active-order-floating-bar"
-          style={{
-            position: "fixed",
-            bottom: totalItems > 0 ? 128 : 68,
-            left: "50%",
-            transform: "translateX(-50%)",
-            width: "calc(100% - 24px)",
-            maxWidth: 416,
-            background:
-              activeDeliveryOrder.status === "delivered" || orderingStage === "delivered"
-                ? "linear-gradient(135deg, #065f46 0%, #047857 100%)"
-                : orderingStage === "rider_arrived"
-                ? "linear-gradient(135deg, #0c831f 0%, #15803d 100%)"
-                : "linear-gradient(135deg, #0f172a 0%, #1e293b 100%)",
-            borderRadius: 14,
-            padding: "10px 14px",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            boxShadow: "0 10px 28px rgba(15, 23, 42, 0.4), 0 0 0 1.5px rgba(34, 197, 94, 0.75)",
-            zIndex: 60,
-            cursor: "pointer",
-            transition: "all 0.25s ease",
-          }}
-          onClick={() => {
-            if (
-              (activeDeliveryOrder.status === "delivered" || orderingStage === "delivered") &&
-              !rateCompleted
-            ) {
-              setShowRateOrderModal(true);
-            } else {
-              router.push(`/track/${activeDeliveryOrder.orderNumber || activeDeliveryOrder.id || activeDeliveryOrder.orderId}`);
-            }
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0, flex: 1 }}>
-            {/* Animated scooter delivery badge */}
-            <div
-              style={{
-                width: 38,
-                height: 38,
-                borderRadius: 10,
-                background: "rgba(12, 131, 31, 0.2)",
-                border: "1px solid rgba(12, 131, 31, 0.5)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                flexShrink: 0,
-                position: "relative",
-              }}
-            >
-              <IconRealisticScooter size={22} color="#4ade80" animated={true} />
-              <span
-                style={{
-                  position: "absolute",
-                  top: -2,
-                  right: -2,
-                  width: 8,
-                  height: 8,
-                  borderRadius: "50%",
-                  background: "#22c55e",
-                  boxShadow: "0 0 8px #22c55e",
-                }}
-              />
-            </div>
-
-            <div style={{ minWidth: 0, flex: 1 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                <span
-                  style={{
-                    fontSize: 13,
-                    fontWeight: 900,
-                    color: "#ffffff",
-                    letterSpacing: "-0.2px",
-                  }}
-                >
-                  {customFloatingTitle ||
-                    (activeDeliveryOrder.status === "delivered" || orderingStage === "delivered"
-                      ? "Rate your order"
-                      : orderingStage === "rider_arrived"
-                      ? "Arrived at doorstep"
-                      : orderingStage === "almost_doorstep"
-                      ? "Almost at your doorstep"
-                      : orderingStage === "packed_assigning"
-                      ? "Order packed"
-                      : orderingStage === "rider_assigned"
-                      ? "On the way"
-                      : orderingStage === "picking"
-                      ? "Packing your order"
-                      : "On the way")}
-                </span>
-                <span
-                  style={{
-                    fontSize: 10,
-                    fontWeight: 800,
-                    color: pickerDelayMins > 0 && orderingStage === "picking" ? "#ef4444" : "#22c55e",
-                    background: pickerDelayMins > 0 && orderingStage === "picking" ? "rgba(239, 68, 68, 0.2)" : "rgba(34, 197, 94, 0.18)",
-                    padding: "2px 6px",
-                    borderRadius: 4,
-                  }}
-                >
-                  {customFloatingBadge ||
-                    (activeDeliveryOrder.status === "delivered" || orderingStage === "delivered"
-                      ? "Delivered"
-                      : orderingStage === "rider_arrived"
-                      ? "Doorstep"
-                      : orderingStage === "almost_doorstep"
-                      ? `${deliveryCountdownSec}s`
-                      : orderingStage === "packed_assigning"
-                      ? "Packed"
-                      : `${Math.floor(deliveryCountdownSec / 60)}:${deliveryCountdownSec % 60 < 10 ? "0" : ""}${deliveryCountdownSec % 60}`)}
-                </span>
-              </div>
-              <div
-                style={{
-                  fontSize: 11,
-                  color: "#cbd5e1",
-                  fontWeight: 600,
-                  whiteSpace: "nowrap",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                }}
-              >
-                {customFloatingSub ||
-                  (activeDeliveryOrder.status === "delivered" || orderingStage === "delivered"
-                    ? "Tap to rate rider & items"
-                    : orderingStage === "rider_arrived"
-                    ? "Sinchana B R is at your doorstep"
-                    : orderingStage === "almost_doorstep"
-                    ? "Sinchana B R is reaching now"
-                    : orderingStage === "packed_assigning"
-                    ? "Assigning rider"
-                    : orderingStage === "rider_assigned"
-                    ? "Sinchana B R is heading to you"
-                    : orderingStage === "picking" && pickerDelayMins > 0
-                    ? `Picking is taking slightly longer (+${pickerDelayMins} min)`
-                    : "Track order")}
-              </div>
-            </div>
-          </div>
-
-          {/* RATE / VIEW & COMPLAINT Buttons */}
-          <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0, marginLeft: 10 }}>
-            {(activeDeliveryOrder.status === "delivered" || orderingStage === "delivered" || orderingStage === "rider_arrived") && !rateCompleted ? (
-              <button
-                type="button"
-                style={{
-                  background: "#f59e0b",
-                  color: "#0f172a",
-                  border: "none",
-                  borderRadius: 8,
-                  padding: "7px 13px",
-                  fontSize: 12,
-                  fontWeight: 900,
-                  cursor: "pointer",
-                  whiteSpace: "nowrap",
-                  boxShadow: "0 3px 10px rgba(245, 158, 11, 0.45)",
-                }}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowRateOrderModal(true);
-                }}
-              >
-                {activeDeliveryOrder.status === "delivered" || orderingStage === "delivered" ? "⭐ Rate Now" : "⭐ Rate to Deliver"}
-              </button>
-            ) : (
-              <>
+                  </>
+                )}
                 <button
                   type="button"
-                  style={{
-                    background: "rgba(225, 29, 72, 0.2)",
-                    color: "#fda4af",
-                    border: "1px solid rgba(225, 29, 72, 0.45)",
-                    borderRadius: 8,
-                    padding: "6px 10px",
-                    fontSize: 11,
-                    fontWeight: 800,
-                    cursor: "pointer",
-                    whiteSpace: "nowrap",
-                  }}
+                  aria-label="Dismiss delivery status bar"
+                  title="Close"
                   onClick={(e) => {
                     e.stopPropagation();
-                    setComplaintOrderId(activeDeliveryOrder.orderNumber || activeDeliveryOrder.id || activeDeliveryOrder.orderId);
-                    setShowComplaintModal(true);
+                    setDismissDeliveryBar(true);
                   }}
-                  title="Need help or have an issue with this order?"
-                >
-                  ⚠️ Issue?
-                </button>
-                <button
-                  type="button"
                   style={{
-                    background: "#0c831f",
+                    width: 26,
+                    height: 26,
+                    borderRadius: "50%",
+                    border: "1px solid rgba(255,255,255,0.35)",
+                    background: "rgba(255,255,255,0.12)",
                     color: "#ffffff",
-                    border: "none",
-                    borderRadius: 8,
-                    padding: "7px 14px",
-                    fontSize: 12,
-                    fontWeight: 800,
+                    fontSize: 13,
+                    fontWeight: 900,
+                    lineHeight: 1,
                     cursor: "pointer",
                     display: "flex",
                     alignItems: "center",
-                    gap: 4,
-                    boxShadow: "0 3px 8px rgba(12, 131, 31, 0.4)",
-                  }}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    router.push(`/track/${activeDeliveryOrder.orderNumber || activeDeliveryOrder.id || activeDeliveryOrder.orderId}`);
+                    justifyContent: "center",
+                    flexShrink: 0,
+                    padding: 0,
                   }}
                 >
-                  <span>View Details</span>
-                  <IconArrowRight size={14} color="#ffffff" />
+                  ✕
                 </button>
-              </>
-            )}
-            <button
-              type="button"
-              aria-label="Dismiss delivery status bar"
-              title="Close"
-              onClick={(e) => {
-                e.stopPropagation();
-                setDismissDeliveryBar(true);
-              }}
-              style={{
-                width: 26,
-                height: 26,
-                borderRadius: "50%",
-                border: "1px solid rgba(255,255,255,0.35)",
-                background: "rgba(255,255,255,0.12)",
-                color: "#ffffff",
-                fontSize: 13,
-                fontWeight: 900,
-                lineHeight: 1,
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                flexShrink: 0,
-                padding: 0,
-              }}
-            >
-              ✕
-            </button>
-          </div>
-        </div>
-      )}
+              </div>
+            </div>
+          )}
 
-      {/* ── RATE THE RIDER & ORDERED ITEMS MODAL IN ORDERING APP ── */}
-      {showRateOrderModal && activeDeliveryOrder && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(15, 23, 42, 0.78)",
-            backdropFilter: "blur(6px)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: 16,
-            zIndex: 9999,
-          }}
-          onClick={() => setShowRateOrderModal(false)}
-        >
+        {/* ── RATE THE RIDER & ORDERED ITEMS MODAL IN ORDERING APP ── */}
+        {showRateOrderModal && activeDeliveryOrder && (
           <div
             style={{
-              width: "100%",
-              maxWidth: 420,
-              background: "#ffffff",
-              borderRadius: 20,
-              padding: 20,
-              boxShadow: "0 20px 48px rgba(0,0,0,0.35)",
-              border: "2px solid #86efac",
+              position: "fixed",
+              inset: 0,
+              background: "rgba(15, 23, 42, 0.78)",
+              backdropFilter: "blur(6px)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: 16,
+              zIndex: 9999,
             }}
-            onClick={(e) => e.stopPropagation()}
+            onClick={() => setShowRateOrderModal(false)}
           >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
-              <div>
-                <span
+            <div
+              style={{
+                width: "100%",
+                maxWidth: 420,
+                background: "#ffffff",
+                borderRadius: 20,
+                padding: 20,
+                boxShadow: "0 20px 48px rgba(0,0,0,0.35)",
+                border: "2px solid #86efac",
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
+                <div>
+                  <span
+                    style={{
+                      fontSize: 10,
+                      fontWeight: 900,
+                      background: "#dcfce7",
+                      color: "#15803d",
+                      padding: "3px 8px",
+                      borderRadius: 6,
+                      textTransform: "uppercase",
+                    }}
+                  >
+                    {activeDeliveryOrder.status === "delivered" ? "Doorstep Delivery Completed" : "🛵 Rider at Doorstep • Submit to Complete Delivery"}
+                  </span>
+                  <h3 style={{ margin: "6px 0 2px", fontSize: 17, fontWeight: 900, color: "#0f172a" }}>
+                    Rate Rider &amp; Ordered Items
+                  </h3>
+                  <p style={{ margin: 0, fontSize: 12, color: "#64748b" }}>
+                    Order #{activeDeliveryOrder.orderNumber || activeDeliveryOrder.id} delivered by Sinchana B R
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowRateOrderModal(false)}
                   style={{
-                    fontSize: 10,
-                    fontWeight: 900,
-                    background: "#dcfce7",
-                    color: "#15803d",
-                    padding: "3px 8px",
-                    borderRadius: 6,
-                    textTransform: "uppercase",
+                    background: "#f1f5f9",
+                    border: "none",
+                    borderRadius: "50%",
+                    width: 30,
+                    height: 30,
+                    cursor: "pointer",
+                    fontWeight: 800,
                   }}
                 >
                   {activeDeliveryOrder.status === "delivered" ? "Doorstep Delivery Completed" : "🛵 Rider at Doorstep • Submit to Complete Delivery"}
                 </span>
                 <h3 style={{ margin: "6px 0 2px", fontSize: 17, fontWeight: 900, color: "#0f172a" }}>
-                  Rate Rider &amp; Ordered Items
+                  Rate Delivery &amp; Ordered Items
                 </h3>
                 <p style={{ margin: 0, fontSize: 12, color: "#64748b" }}>
-                  Order #{activeDeliveryOrder.orderNumber || activeDeliveryOrder.id} delivered by Sinchana B R
+                  Order #{activeDeliveryOrder.orderNumber || activeDeliveryOrder.id} delivered
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={() => setShowRateOrderModal(false)}
-                style={{
-                  background: "#f1f5f9",
-                  border: "none",
-                  borderRadius: "50%",
-                  width: 30,
-                  height: 30,
-                  cursor: "pointer",
-                  fontWeight: 800,
-                }}
-              >
-                ✕
-              </button>
-            </div>
 
             <form onSubmit={handleSubmitOrderingRating}>
-              {/* Rider Rating */}
+              {/* Delivery Partner Rating */}
               <div
                 style={{
                   background: "#f8fafc",
@@ -4946,70 +4951,157 @@ export default function OrderingAppPage() {
                 }}
               >
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <img
-                    src="/sinchana-logo.png"
-                    alt="Sinchana B R"
+                  <div
                     style={{
                       width: 38,
                       height: 38,
                       borderRadius: "50%",
-                      objectFit: "cover",
-                      border: "2px solid #ca8a04",
+                      background: "#dcfce7",
+                      display: "grid",
+                      placeItems: "center",
+                      fontSize: 18,
                     }}
-                  />
+                  >
+                    🛵
+                  </div>
                   <div>
-                    <div style={{ fontSize: 13, fontWeight: 800, color: "#0f172a" }}>Rider: Sinchana B R</div>
-                    <div style={{ fontSize: 11, color: "#64748b" }}>Order Captain</div>
+                    <div style={{ fontSize: 13, fontWeight: 800, color: "#0f172a" }}>Delivery Partner</div>
+                    <div style={{ fontSize: 11, color: "#64748b" }}>AuditX Express</div>
+                  </div>
+                  <div style={{ display: "flex", gap: 3 }}>
+                    {[1, 2, 3, 4, 5].map((st) => (
+                      <button
+                        key={st}
+                        type="button"
+                        onClick={() => setRiderStars(st)}
+                        style={{
+                          background: "none",
+                          border: "none",
+                          fontSize: 22,
+                          cursor: "pointer",
+                          padding: 1,
+                          color: st <= riderStars ? "#f59e0b" : "#cbd5e1",
+                        }}
+                      >
+                        ★
+                      </button>
+                    ))}
                   </div>
                 </div>
-                <div style={{ display: "flex", gap: 3 }}>
-                  {[1, 2, 3, 4, 5].map((st) => (
-                    <button
-                      key={st}
-                      type="button"
-                      onClick={() => setRiderStars(st)}
-                      style={{
-                        background: "none",
-                        border: "none",
-                        fontSize: 22,
-                        cursor: "pointer",
-                        padding: 1,
-                        color: st <= riderStars ? "#f59e0b" : "#cbd5e1",
-                      }}
-                    >
-                      ★
-                    </button>
-                  ))}
-                </div>
-              </div>
 
-              {/* Item Ratings */}
-              <div
-                style={{
-                  background: "#f8fafc",
-                  border: "1px solid #e2e8f0",
-                  borderRadius: 12,
-                  padding: 12,
-                  marginBottom: 12,
-                  maxHeight: 160,
-                  overflowY: "auto",
-                }}
-              >
-                <div style={{ fontSize: 12, fontWeight: 800, color: "#334155", marginBottom: 6 }}>
-                  📦 Rate Ordered Items:
+                {/* Item Ratings */}
+                <div
+                  style={{
+                    background: "#f8fafc",
+                    border: "1px solid #e2e8f0",
+                    borderRadius: 12,
+                    padding: 12,
+                    marginBottom: 12,
+                    maxHeight: 160,
+                    overflowY: "auto",
+                  }}
+                >
+                  <div style={{ fontSize: 12, fontWeight: 800, color: "#334155", marginBottom: 6 }}>
+                    📦 Rate Ordered Items:
+                  </div>
+                  {(activeDeliveryOrder.items || []).map((it, idx) => {
+                    const key = it.skuId || it.sku || it.name || idx;
+                    const val = itemStarsMap[key] ?? 5;
+                    return (
+                      <div
+                        key={key}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          padding: "5px 0",
+                          borderBottom: idx < (activeDeliveryOrder.items || []).length - 1 ? "1px solid #e2e8f0" : "none",
+                        }}
+                      >
+                        <span style={{ fontSize: 12, fontWeight: 700, color: "#0f172a" }}>
+                          {it.name} (x{it.qty || 1})
+                        </span>
+                        <div style={{ display: "flex", gap: 2 }}>
+                          {[1, 2, 3, 4, 5].map((st) => (
+                            <button
+                              key={st}
+                              type="button"
+                              onClick={() => setItemStarsMap((prev) => ({ ...prev, [key]: st }))}
+                              style={{
+                                background: "none",
+                                border: "none",
+                                fontSize: 18,
+                                cursor: "pointer",
+                                padding: 1,
+                                color: st <= val ? "#f59e0b" : "#cbd5e1",
+                              }}
+                            >
+                              ★
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
-                {(activeDeliveryOrder.items || []).map((it, idx) => {
-                  const key = it.skuId || it.sku || it.name || idx;
-                  const val = itemStarsMap[key] ?? 5;
-                  return (
-                    <div
-                      key={key}
+
+                <input
+                  type="text"
+                  placeholder="Write a quick note for Rider Sinchana B R or item quality..."
+                  value={rateFeedbackText}
+                  onChange={(e) => setRateFeedbackText(e.target.value)}
+                  style={{
+                    width: "100%",
+                    padding: "10px 12px",
+                    borderRadius: 10,
+                    border: "1px solid #cbd5e1",
+                    fontSize: 12.5,
+                    marginBottom: 12,
+                    boxSizing: "border-box",
+                    outline: "none",
+                  }}
+                />
+
+                <button
+                  type="submit"
+                  style={{
+                    width: "100%",
+                    background: "linear-gradient(135deg, #0c831f 0%, #15803d 100%)",
+                    color: "#ffffff",
+                    border: "none",
+                    borderRadius: 12,
+                    padding: "12px 16px",
+                    fontSize: 13.5,
+                    fontWeight: 900,
+                    cursor: "pointer",
+                    boxShadow: "0 4px 14px rgba(12, 131, 31, 0.3)",
+                  }}
+                >
+                  ⭐ Submit Rating &amp; Complete Delivery
+                </button>
+
+                {(activeDeliveryOrder.status === "delivered" || orderingStage === "delivered") && (
+                  <div style={{ marginTop: 10 }}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setReceiptOrder(activeDeliveryOrder);
+                        setShowReceiptModal(true);
+                      }}
                       style={{
+                        width: "100%",
+                        padding: "10px 14px",
+                        borderRadius: 10,
+                        border: "1.5px solid #0c831f",
+                        background: "#f0fdf4",
+                        color: "#0c831f",
+                        fontWeight: 800,
+                        fontSize: 12.5,
+                        cursor: "pointer",
                         display: "flex",
                         alignItems: "center",
-                        justifyContent: "space-between",
-                        padding: "5px 0",
-                        borderBottom: idx < (activeDeliveryOrder.items || []).length - 1 ? "1px solid #e2e8f0" : "none",
+                        justifyContent: "center",
+                        gap: 6,
                       }}
                     >
                       <span style={{ fontSize: 12, fontWeight: 700, color: "#0f172a" }}>
@@ -5041,7 +5133,7 @@ export default function OrderingAppPage() {
 
               <input
                 type="text"
-                placeholder="Write a quick note for Rider Sinchana B R or item quality..."
+                placeholder="Write a quick note for delivery partner or item quality..."
                 value={rateFeedbackText}
                 onChange={(e) => setRateFeedbackText(e.target.value)}
                 style={{
@@ -5104,8 +5196,7 @@ export default function OrderingAppPage() {
               )}
             </form>
           </div>
-        </div>
-      )}
+        )}
 
       </IOSMobileShell>
 
@@ -5119,215 +5210,215 @@ export default function OrderingAppPage() {
         subtitle={`Amount Payable: ₹${grandTotal}`}
         detent="large"
       >
-            <ErrorBoundary label="Payment Sheet" compact>
-            <div style={S.paymentOptionsList}>
-              {/* Option 1: Audit'X Demo Wallet (ACTIVE & DEFAULT) */}
+        <ErrorBoundary label="Payment Sheet" compact>
+          <div style={S.paymentOptionsList}>
+            {/* Option 1: Audit'X Demo Wallet (ACTIVE & DEFAULT) */}
+            <div
+              style={{
+                ...S.paymentCardOption,
+                ...(selectedPaymentMethod === "wallet" ? S.paymentCardOptionActive : {}),
+                border: selectedPaymentMethod === "wallet" ? "2px solid #0c831f" : "1px solid #E2E8F0",
+                background: selectedPaymentMethod === "wallet" ? "#f0fdf4" : "#ffffff",
+              }}
+              onClick={() => setSelectedPaymentMethod("wallet")}
+            >
+              <div style={S.paymentOptionLeft}>
+                <div style={{ flexShrink: 0 }}>
+                  <IconRealLogoAuditxWallet size={40} />
+                </div>
+                <div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <span style={{ ...S.paymentMethodTitle, color: "#0c831f", fontSize: 14 }}>
+                      Audit'X Demo Wallet
+                    </span>
+                    <span style={S.activeMethodPill}>ACTIVE • DEFAULT</span>
+                  </div>
+                  <div style={S.paymentMethodSub}>
+                    Paid through demo wallet • Balance: ₹{safeNum(customer?.walletBalance, WALLET_LIMIT).toLocaleString("en-IN")}
+                  </div>
+                  <div style={{ fontSize: 10, color: "#15803d", fontWeight: 700, marginTop: 2 }}>
+                    ⚡ Instant 1-Click Zero Friction Checkout
+                  </div>
+                </div>
+              </div>
+              <input
+                type="radio"
+                name="payment"
+                checked={selectedPaymentMethod === "wallet"}
+                onChange={() => setSelectedPaymentMethod("wallet")}
+                style={{ ...S.radioBtn, accentColor: "#0c831f" }}
+              />
+            </div>
+
+            {/* SECTION: UPI & DIGITAL APPS */}
+            <div style={{ marginTop: 14, marginBottom: 4 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10, padding: "0 2px" }}>
+                <span style={{ fontSize: 11, fontWeight: 900, color: "#475569", letterSpacing: "0.5px", textTransform: "uppercase" }}>
+                  Pay via UPI App
+                </span>
+                <span style={S.comingSoonHeaderBadge}>COMING SOON</span>
+              </div>
+
+              <div style={S.comingSoonMethodsGrid}>
+                {[
+                  {
+                    id: "phonepe",
+                    label: "PhonePe",
+                    toast: "⚡ PhonePe integration coming soon! Paid through Audit'X Demo Wallet for now.",
+                    icon: <IconRealLogoPhonePe size={56} style={{ borderRadius: 15 }} />,
+                  },
+                  {
+                    id: "gpay",
+                    label: "Google Pay",
+                    toast: "⚡ Google Pay integration coming soon! Paid through Audit'X Demo Wallet for now.",
+                    icon: <IconRealLogoGooglePay size={56} style={{ borderRadius: 15 }} />,
+                  },
+                  {
+                    id: "paytm",
+                    label: "Paytm",
+                    toast: "⚡ Paytm integration coming soon! Paid through Audit'X Demo Wallet for now.",
+                    icon: <IconRealLogoPaytm size={56} style={{ borderRadius: 15 }} />,
+                  },
+                  {
+                    id: "upi",
+                    label: "UPI",
+                    toast: "⚡ NPCI UPI integration coming soon! Paid through Audit'X Demo Wallet for now.",
+                    icon: <IconRealLogoUPI size={56} style={{ borderRadius: 15 }} />,
+                  },
+                ].map((app) => (
+                  <button
+                    key={app.id}
+                    type="button"
+                    style={S.comingSoonMethodCard}
+                    onClick={() => triggerToast(app.toast)}
+                  >
+                    <div style={S.comingSoonLogoWrap}>{app.icon}</div>
+                    <span style={S.comingSoonMethodName}>{app.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* SECTION: CARDS & COD */}
+            <div style={{ marginTop: 10 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8, padding: "0 2px" }}>
+                <span style={{ fontSize: 11, fontWeight: 900, color: "#475569", letterSpacing: "0.5px", textTransform: "uppercase" }}>
+                  Other Payment Methods
+                </span>
+              </div>
+
+              {/* Cards (Coming Soon) */}
+              <div
+                style={{ ...S.paymentCardOption, opacity: 0.75, cursor: "not-allowed", marginBottom: 8 }}
+                onClick={() => triggerToast("⚡ Card payments coming soon! Paid through Audit'X Demo Wallet for now.")}
+              >
+                <div style={S.paymentOptionLeft}>
+                  <div style={S.paymentIconBadge}>
+                    <IconCreditCard size={20} color="#64748b" />
+                  </div>
+                  <div>
+                    <div style={S.paymentMethodTitle}>Saved Credit / Debit Cards</div>
+                    <div style={S.paymentMethodSub}>Visa, MasterCard, RuPay</div>
+                  </div>
+                </div>
+                <span style={S.comingSoonSmallPill}>Coming Soon</span>
+              </div>
+
+              {/* Cash on Delivery */}
               <div
                 style={{
                   ...S.paymentCardOption,
-                  ...(selectedPaymentMethod === "wallet" ? S.paymentCardOptionActive : {}),
-                  border: selectedPaymentMethod === "wallet" ? "2px solid #0c831f" : "1px solid #E2E8F0",
-                  background: selectedPaymentMethod === "wallet" ? "#f0fdf4" : "#ffffff",
+                  ...(selectedPaymentMethod === "cod" ? S.paymentCardOptionActive : {}),
                 }}
-                onClick={() => setSelectedPaymentMethod("wallet")}
+                onClick={() => setSelectedPaymentMethod("cod")}
               >
                 <div style={S.paymentOptionLeft}>
-                  <div style={{ flexShrink: 0 }}>
-                    <IconRealLogoAuditxWallet size={40} />
+                  <div style={S.paymentIconBadge}>
+                    <IconCash size={20} color="#0c831f" />
                   </div>
                   <div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                      <span style={{ ...S.paymentMethodTitle, color: "#0c831f", fontSize: 14 }}>
-                        Audit'X Demo Wallet
-                      </span>
-                      <span style={S.activeMethodPill}>ACTIVE • DEFAULT</span>
-                    </div>
-                    <div style={S.paymentMethodSub}>
-                      Paid through demo wallet • Balance: ₹{safeNum(customer?.walletBalance, WALLET_LIMIT).toLocaleString("en-IN")}
-                    </div>
-                    <div style={{ fontSize: 10, color: "#15803d", fontWeight: 700, marginTop: 2 }}>
-                      ⚡ Instant 1-Click Zero Friction Checkout
-                    </div>
+                    <div style={S.paymentMethodTitle}>Cash on Delivery (COD)</div>
+                    <div style={S.paymentMethodSub}>Pay cash at your doorstep in Tiptur</div>
                   </div>
                 </div>
                 <input
                   type="radio"
                   name="payment"
-                  checked={selectedPaymentMethod === "wallet"}
-                  onChange={() => setSelectedPaymentMethod("wallet")}
-                  style={{ ...S.radioBtn, accentColor: "#0c831f" }}
+                  checked={selectedPaymentMethod === "cod"}
+                  onChange={() => setSelectedPaymentMethod("cod")}
+                  style={S.radioBtn}
                 />
               </div>
+            </div>
+          </div>
 
-              {/* SECTION: UPI & DIGITAL APPS */}
-              <div style={{ marginTop: 14, marginBottom: 4 }}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10, padding: "0 2px" }}>
-                  <span style={{ fontSize: 11, fontWeight: 900, color: "#475569", letterSpacing: "0.5px", textTransform: "uppercase" }}>
-                    Pay via UPI App
-                  </span>
-                  <span style={S.comingSoonHeaderBadge}>COMING SOON</span>
-                </div>
-
-                <div style={S.comingSoonMethodsGrid}>
-                  {[
-                    {
-                      id: "phonepe",
-                      label: "PhonePe",
-                      toast: "⚡ PhonePe integration coming soon! Paid through Audit'X Demo Wallet for now.",
-                      icon: <IconRealLogoPhonePe size={56} style={{ borderRadius: 15 }} />,
-                    },
-                    {
-                      id: "gpay",
-                      label: "Google Pay",
-                      toast: "⚡ Google Pay integration coming soon! Paid through Audit'X Demo Wallet for now.",
-                      icon: <IconRealLogoGooglePay size={56} style={{ borderRadius: 15 }} />,
-                    },
-                    {
-                      id: "paytm",
-                      label: "Paytm",
-                      toast: "⚡ Paytm integration coming soon! Paid through Audit'X Demo Wallet for now.",
-                      icon: <IconRealLogoPaytm size={56} style={{ borderRadius: 15 }} />,
-                    },
-                    {
-                      id: "upi",
-                      label: "UPI",
-                      toast: "⚡ NPCI UPI integration coming soon! Paid through Audit'X Demo Wallet for now.",
-                      icon: <IconRealLogoUPI size={56} style={{ borderRadius: 15 }} />,
-                    },
-                  ].map((app) => (
-                    <button
-                      key={app.id}
-                      type="button"
-                      style={S.comingSoonMethodCard}
-                      onClick={() => triggerToast(app.toast)}
-                    >
-                      <div style={S.comingSoonLogoWrap}>{app.icon}</div>
-                      <span style={S.comingSoonMethodName}>{app.label}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* SECTION: CARDS & COD */}
-              <div style={{ marginTop: 10 }}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8, padding: "0 2px" }}>
-                  <span style={{ fontSize: 11, fontWeight: 900, color: "#475569", letterSpacing: "0.5px", textTransform: "uppercase" }}>
-                    Other Payment Methods
-                  </span>
-                </div>
-
-                {/* Cards (Coming Soon) */}
-                <div
-                  style={{ ...S.paymentCardOption, opacity: 0.75, cursor: "not-allowed", marginBottom: 8 }}
-                  onClick={() => triggerToast("⚡ Card payments coming soon! Paid through Audit'X Demo Wallet for now.")}
-                >
-                  <div style={S.paymentOptionLeft}>
-                    <div style={S.paymentIconBadge}>
-                      <IconCreditCard size={20} color="#64748b" />
-                    </div>
-                    <div>
-                      <div style={S.paymentMethodTitle}>Saved Credit / Debit Cards</div>
-                      <div style={S.paymentMethodSub}>Visa, MasterCard, RuPay</div>
-                    </div>
-                  </div>
-                  <span style={S.comingSoonSmallPill}>Coming Soon</span>
-                </div>
-
-                {/* Cash on Delivery */}
+          <div style={S.modalFooterCTA}>
+            {hasOngoingOrder ? (
+              <div style={{ width: "100%", textAlign: "center" }}>
                 <div
                   style={{
-                    ...S.paymentCardOption,
-                    ...(selectedPaymentMethod === "cod" ? S.paymentCardOptionActive : {}),
+                    background: "#fef3c7",
+                    border: "1px solid #f59e0b",
+                    borderRadius: 8,
+                    padding: "8px 12px",
+                    marginBottom: 8,
+                    color: "#92400e",
+                    fontSize: 11.5,
+                    fontWeight: 700,
                   }}
-                  onClick={() => setSelectedPaymentMethod("cod")}
                 >
-                  <div style={S.paymentOptionLeft}>
-                    <div style={S.paymentIconBadge}>
-                      <IconCash size={20} color="#0c831f" />
-                    </div>
-                    <div>
-                      <div style={S.paymentMethodTitle}>Cash on Delivery (COD)</div>
-                      <div style={S.paymentMethodSub}>Pay cash at your doorstep in Tiptur</div>
-                    </div>
-                  </div>
-                  <input
-                    type="radio"
-                    name="payment"
-                    checked={selectedPaymentMethod === "cod"}
-                    onChange={() => setSelectedPaymentMethod("cod")}
-                    style={S.radioBtn}
-                  />
+                  ⚠️ Order #{ongoingTrackedOrder.orderNumber || ongoingTrackedOrder.id} is actively in transit. New orders cannot be placed at the same time.
                 </div>
-              </div>
-            </div>
-
-            <div style={S.modalFooterCTA}>
-              {hasOngoingOrder ? (
-                <div style={{ width: "100%", textAlign: "center" }}>
-                  <div
-                    style={{
-                      background: "#fef3c7",
-                      border: "1px solid #f59e0b",
-                      borderRadius: 8,
-                      padding: "8px 12px",
-                      marginBottom: 8,
-                      color: "#92400e",
-                      fontSize: 11.5,
-                      fontWeight: 700,
-                    }}
-                  >
-                    ⚠️ Order #{ongoingTrackedOrder.orderNumber || ongoingTrackedOrder.id} is actively in transit. New orders cannot be placed at the same time.
-                  </div>
-                  <button
-                    type="button"
-                    style={{
-                      ...S.confirmPayBtn,
-                      background: "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)",
-                    }}
-                    onClick={() => {
-                      setShowPaymentModal(false);
-                      const ordId = ongoingTrackedOrder.orderNumber || ongoingTrackedOrder.id || ongoingTrackedOrder.orderId;
-                      router.push(`/track/${ordId}`);
-                    }}
-                  >
-                    <span>🛵 TRACK ACTIVE ORDER →</span>
-                  </button>
-                </div>
-              ) : cartItemsList.length === 0 ? (
                 <button
                   type="button"
                   style={{
                     ...S.confirmPayBtn,
-                    background: "#0c831f",
-                    cursor: "pointer",
+                    background: "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)",
                   }}
                   onClick={() => {
                     setShowPaymentModal(false);
-                    setIsCheckoutView(false);
+                    const ordId = ongoingTrackedOrder.orderNumber || ongoingTrackedOrder.id || ongoingTrackedOrder.orderId;
+                    router.push(`/track/${ordId}`);
                   }}
                 >
-                  <span>🛍️ Cart is Empty — Add Items</span>
-                  <IconArrowRight size={18} color="#ffffff" />
+                  <span>🛵 TRACK ACTIVE ORDER →</span>
                 </button>
-              ) : (
-                <button
-                  type="button"
-                  style={S.confirmPayBtn}
-                  onClick={handleFinalOrderPlacement}
-                  disabled={placingOrder || !isOnline || grandTotal <= 0}
-                >
-                  <span>
-                    {!isOnline
-                      ? "Offline — reconnect to pay"
-                      : placingOrder
+              </div>
+            ) : cartItemsList.length === 0 ? (
+              <button
+                type="button"
+                style={{
+                  ...S.confirmPayBtn,
+                  background: "#0c831f",
+                  cursor: "pointer",
+                }}
+                onClick={() => {
+                  setShowPaymentModal(false);
+                  setIsCheckoutView(false);
+                }}
+              >
+                <span>🛍️ Cart is Empty — Add Items</span>
+                <IconArrowRight size={18} color="#ffffff" />
+              </button>
+            ) : (
+              <button
+                type="button"
+                style={S.confirmPayBtn}
+                onClick={handleFinalOrderPlacement}
+                disabled={placingOrder || !isOnline || grandTotal <= 0}
+              >
+                <span>
+                  {!isOnline
+                    ? "Offline — reconnect to pay"
+                    : placingOrder
                       ? "Placing order..."
                       : `Pay ₹${grandTotal} (${selectedPaymentMethod === "wallet" ? "Wallet" : "Cash on Delivery"})`}
-                  </span>
-                  <IconArrowRight size={18} color="#ffffff" />
-                </button>
-              )}
-            </div>
-            </ErrorBoundary>
+                </span>
+                <IconArrowRight size={18} color="#ffffff" />
+              </button>
+            )}
+          </div>
+        </ErrorBoundary>
       </IOSBottomSheet>
 
       {/* ═══════════════════════════════════════════════════════════
@@ -5342,10 +5433,27 @@ export default function OrderingAppPage() {
       >
         <div>
 
-            {/* Profile Hero Card */}
-            <div style={S.profileHeroCard}>
-              <div style={S.profileHeroAvatar}>
-                {customer?.name ? customer.name.charAt(0).toUpperCase() : "U"}
+          {/* Profile Hero Card */}
+          <div style={S.profileHeroCard}>
+            <div style={S.profileHeroAvatar}>
+              {customer?.name ? customer.name.charAt(0).toUpperCase() : "U"}
+            </div>
+            <div style={S.profileHeroInfo}>
+              <div style={{ ...S.profileHeroName, display: "flex", alignItems: "center", gap: 6 }}>
+                <span>{customer?.name || "Customer"}</span>
+                <span
+                  title="Verified customer"
+                  style={{
+                    display: "inline-grid",
+                    placeItems: "center",
+                    width: 16,
+                    height: 16,
+                    borderRadius: "50%",
+                    background: "#dcfce7",
+                  }}
+                >
+                  <IconCheck size={10} color="#0c831f" />
+                </span>
               </div>
               <div style={S.profileHeroInfo}>
                 <div style={{ ...S.profileHeroName, display: "flex", alignItems: "center", gap: 6 }}>
@@ -5364,61 +5472,62 @@ export default function OrderingAppPage() {
                     <IconCheck size={10} color="#0c831f" />
                   </span>
                 </div>
-                <div style={S.profileHeroPhone}>🔒 +91 ••••••••••</div>
+                <div style={S.profileHeroPhone}>{customer?.email || "Google Account"}</div>
               </div>
-            </div>
-
-            {/* Delivery Location Display (single concise address line) */}
-            <div style={S.profileSectionBox}>
-              <div style={S.profileSectionHeading}>
-                <IconMapPin size={14} color="#0c831f" />
-                <span>Delivery location</span>
-              </div>
-              <div style={S.profileAddressText}>
-                <b style={{ color: "#0f172a" }}>KFGSC Campus, Tiptur 572201</b>
-              </div>
-            </div>
-
-            {/* Compact Wallet Row */}
-            <div style={S.profileStatsRow}>
-              <div style={S.profileStatCol}>
-                <span style={S.statLabel}>Wallet</span>
-                <span style={S.statValue}>₹{safeNum(customer?.walletBalance, WALLET_LIMIT).toLocaleString("en-IN")}</span>
-              </div>
-            </div>
-
-            {/* Action Buttons */}
-            <div style={S.profileActionsCol}>
-              <button
-                type="button"
-                style={{ ...S.profileEditBtn, minHeight: 44 }}
-                onClick={() => {
-                  setShowProfileModal(false);
-                  setShowLoginModal(true);
-                }}
-              >
-                <span>Switch account</span>
-                <IconArrowRight size={14} color="#0c831f" />
-              </button>
-
-              <button
-                type="button"
-                style={{ ...S.profileLogoutBtn, minHeight: 44 }}
-                onClick={() => {
-                  safeStorage.remove("auditx_customer");
-                  safeStorage.remove("blinkit_customer");
-                  safeStorage.remove("auditx_play_team_intro_once", "session");
-                  safeStorage.remove("auditx_play_team_intro_once", "local");
-                  setCustomer(null);
-                  setShowProfileModal(false);
-                  triggerToast("Logged out successfully.");
-                  router.replace("/ordering/login");
-                }}
-              >
-                <span>Log out</span>
-              </button>
             </div>
           </div>
+
+          {/* Delivery Location Display (single concise address line) */}
+          <div style={S.profileSectionBox}>
+            <div style={S.profileSectionHeading}>
+              <IconMapPin size={14} color="#0c831f" />
+              <span>Delivery location</span>
+            </div>
+            <div style={S.profileAddressText}>
+              <b style={{ color: "#0f172a" }}>KFGSC Campus, Tiptur 572201</b>
+            </div>
+          </div>
+
+          {/* Compact Wallet Row */}
+          <div style={S.profileStatsRow}>
+            <div style={S.profileStatCol}>
+              <span style={S.statLabel}>Wallet</span>
+              <span style={S.statValue}>₹{safeNum(customer?.walletBalance, WALLET_LIMIT).toLocaleString("en-IN")}</span>
+            </div>
+          </div>
+
+          {/* Action Buttons */}
+          <div style={S.profileActionsCol}>
+            <button
+              type="button"
+              style={{ ...S.profileEditBtn, minHeight: 44 }}
+              onClick={() => {
+                setShowProfileModal(false);
+                setShowLoginModal(true);
+              }}
+            >
+              <span>Switch account</span>
+              <IconArrowRight size={14} color="#0c831f" />
+            </button>
+
+            <button
+              type="button"
+              style={{ ...S.profileLogoutBtn, minHeight: 44 }}
+              onClick={() => {
+                safeStorage.remove("auditx_customer");
+                safeStorage.remove("blinkit_customer");
+                safeStorage.remove("auditx_play_team_intro_once", "session");
+                safeStorage.remove("auditx_play_team_intro_once", "local");
+                setCustomer(null);
+                setShowProfileModal(false);
+                triggerToast("Logged out successfully.");
+                router.replace("/ordering/login");
+              }}
+            >
+              <span>Log out</span>
+            </button>
+          </div>
+        </div>
       </IOSBottomSheet>
 
       {/* ═══════════════════════════════════════════════════════════
@@ -5431,42 +5540,42 @@ export default function OrderingAppPage() {
         subtitle="AUDIT'X Dark Store • KFGSC Tiptur 572201"
         detent="medium"
       >
-            {loginError && (
-              <div style={S.loginErrorBanner}>{loginError}</div>
-            )}
+        {loginError && (
+          <div style={S.loginErrorBanner}>{loginError}</div>
+        )}
 
-            <div style={{ padding: "8px 0 4px 0" }}>
-              <div style={{ marginBottom: 4 }}>
-                <GoogleAuthButton
-                  context="ordering"
-                  roleCode="CUSTOMER"
-                  variant="small-bar"
-                  size="medium"
-                  label="Sign in with Google"
-                  theme="light"
-                  onSuccess={(authData) => {
-                    if (authData?.name) {
-                      const custObj = authData.customer || {
-                        customerId: `google_${authData.email ? authData.email.replace(/[^a-zA-Z0-9]/g, "_") : Date.now()}`,
-                        name: authData.name,
-                        email: authData.email || "",
-                        picture: authData.picture || "https://lh3.googleusercontent.com/a/default-user=s96-c",
-                        phone: "9845112233",
-                        location: "KFGSC , Tiptur 572201",
-                        walletBalance: 1000000,
-                        provider: "google",
-                        loginMethod: "Official Google OAuth 2.0",
-                        verifiedAt: new Date().toISOString(),
-                      };
-                      setCustomer(custObj);
-                      setShowLoginModal(false);
-                      triggerTeamIntroOnce();
-                      triggerToast(`Welcome, ${authData.name}! Signed in with Google.`);
-                    }
-                  }}
-                />
-              </div>
-            </div>
+        <div style={{ padding: "8px 0 4px 0" }}>
+          <div style={{ marginBottom: 4 }}>
+            <GoogleAuthButton
+              context="ordering"
+              roleCode="CUSTOMER"
+              variant="small-bar"
+              size="medium"
+              label="Sign in with Google"
+              theme="light"
+              onSuccess={(authData) => {
+                if (authData?.name) {
+                  const custObj = authData.customer || {
+                    customerId: `google_${authData.email ? authData.email.replace(/[^a-zA-Z0-9]/g, "_") : Date.now()}`,
+                    name: authData.name,
+                    email: authData.email || "",
+                    picture: authData.picture || "https://lh3.googleusercontent.com/a/default-user=s96-c",
+                    phone: "9845112233",
+                    location: "KFGSC , Tiptur 572201",
+                    walletBalance: 1000000,
+                    provider: "google",
+                    loginMethod: "Official Google OAuth 2.0",
+                    verifiedAt: new Date().toISOString(),
+                  };
+                  setCustomer(custObj);
+                  setShowLoginModal(false);
+                  triggerTeamIntroOnce();
+                  triggerToast(`Welcome, ${authData.name}! Signed in with Google.`);
+                }
+              }}
+            />
+          </div>
+        </div>
       </IOSBottomSheet>
 
       {/* ═══════════════════════════════════════════════════════════
@@ -5480,117 +5589,117 @@ export default function OrderingAppPage() {
         detent="medium"
       >
 
-            <div style={S.addressCardsList}>
-              {SAVED_ADDRESSES.map((addr) => {
-                const isSelected = selectedAddress.id === addr.id;
-                return (
-                  <div
-                    key={addr.id}
-                    style={{
-                      ...S.addressSelectCard,
-                      ...(isSelected ? S.addressSelectCardActive : {}),
-                    }}
-                    onClick={() => {
-                      setSelectedAddress(addr);
-                      setShowAddressModal(false);
-                      triggerToast(`Switched address to ${addr.type} (${addr.title})`);
-                    }}
-                  >
-                    <div style={S.addressCardTop}>
-                      <div style={S.addressCardTypeTitle}>
-                        {renderAddressIcon(addr.type)}
-                        <span style={S.addressTypeName}>{addr.title}</span>
-                      </div>
-                      {isSelected && (
-                        <span style={S.selectedAddressTag}>
-                          <IconCheck size={12} color="#0c831f" /> Current
-                        </span>
-                      )}
-                    </div>
-                    <div style={S.addressFlat}>{addr.flat}</div>
-                    <div style={S.addressFullText}>{addr.address}</div>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Custom Address Input + Safe Geolocation Fallback */}
-            <div style={S.customAddressBox}>
-              <input
-                type="text"
-                placeholder="Or type custom street / landmark in Tiptur..."
-                value={customAddressInput}
-                onChange={(e) => setCustomAddressInput(e.target.value)}
-                style={S.customInput}
-              />
-              <button
-                type="button"
-                style={S.useCustomBtn}
+        <div style={S.addressCardsList}>
+          {SAVED_ADDRESSES.map((addr) => {
+            const isSelected = selectedAddress.id === addr.id;
+            return (
+              <div
+                key={addr.id}
+                style={{
+                  ...S.addressSelectCard,
+                  ...(isSelected ? S.addressSelectCardActive : {}),
+                }}
                 onClick={() => {
-                  if (customAddressInput.trim()) {
-                    const customAddr = {
-                      id: `addr_${Date.now()}`,
-                      type: "Custom",
-                      title: "Custom Location",
-                      flat: "Doorstep",
-                      address: `${customAddressInput.trim()}, Tiptur 572201`,
-                      tag: "Custom",
-                      iconType: "other",
-                    };
-                    setSelectedAddress(customAddr);
-                    setShowAddressModal(false);
-                    triggerToast("Custom delivery address saved!");
-                  }
+                  setSelectedAddress(addr);
+                  setShowAddressModal(false);
+                  triggerToast(`Switched address to ${addr.type} (${addr.title})`);
                 }}
               >
-                Save
-              </button>
-            </div>
-            <button
-              type="button"
-              onClick={() => {
-                if (typeof navigator === "undefined" || !navigator.geolocation) {
-                  triggerToast("GPS unavailable on this browser — type your address above.");
-                  return;
-                }
-                navigator.geolocation.getCurrentPosition(
-                  (pos) => {
-                    const lat = pos?.coords?.latitude?.toFixed?.(4);
-                    const lng = pos?.coords?.longitude?.toFixed?.(4);
-                    const gpsAddr = {
-                      id: `gps_${Date.now()}`,
-                      type: "Current",
-                      title: "Current GPS Location",
-                      flat: "PIN 572201",
-                      address: lat && lng ? `GPS (${lat}, ${lng}), Tiptur 572201` : "KFGSC , Tiptur 572201",
-                      tag: "GPS",
-                      iconType: "other",
-                    };
-                    setSelectedAddress(gpsAddr);
-                    setShowAddressModal(false);
-                    triggerToast("Delivery location set via GPS.");
-                  },
-                  () => {
-                    triggerToast("Location permission denied — type your street or landmark above.");
-                  },
-                  { timeout: 6000, maximumAge: 60000 }
-                );
-              }}
-              style={{
-                width: "100%",
-                marginTop: 8,
-                padding: "9px 12px",
-                borderRadius: 10,
-                border: "1px solid var(--ios-sep)",
-                background: "var(--ios-fill-secondary)",
-                color: "#0C831F",
-                fontSize: 12.5,
-                fontWeight: 700,
-                cursor: "pointer",
-              }}
-            >
-              📍 Use Current Location (or type above)
-            </button>
+                <div style={S.addressCardTop}>
+                  <div style={S.addressCardTypeTitle}>
+                    {renderAddressIcon(addr.type)}
+                    <span style={S.addressTypeName}>{addr.title}</span>
+                  </div>
+                  {isSelected && (
+                    <span style={S.selectedAddressTag}>
+                      <IconCheck size={12} color="#0c831f" /> Current
+                    </span>
+                  )}
+                </div>
+                <div style={S.addressFlat}>{addr.flat}</div>
+                <div style={S.addressFullText}>{addr.address}</div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Custom Address Input + Safe Geolocation Fallback */}
+        <div style={S.customAddressBox}>
+          <input
+            type="text"
+            placeholder="Or type custom street / landmark in Tiptur..."
+            value={customAddressInput}
+            onChange={(e) => setCustomAddressInput(e.target.value)}
+            style={S.customInput}
+          />
+          <button
+            type="button"
+            style={S.useCustomBtn}
+            onClick={() => {
+              if (customAddressInput.trim()) {
+                const customAddr = {
+                  id: `addr_${Date.now()}`,
+                  type: "Custom",
+                  title: "Custom Location",
+                  flat: "Doorstep",
+                  address: `${customAddressInput.trim()}, Tiptur 572201`,
+                  tag: "Custom",
+                  iconType: "other",
+                };
+                setSelectedAddress(customAddr);
+                setShowAddressModal(false);
+                triggerToast("Custom delivery address saved!");
+              }
+            }}
+          >
+            Save
+          </button>
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            if (typeof navigator === "undefined" || !navigator.geolocation) {
+              triggerToast("GPS unavailable on this browser — type your address above.");
+              return;
+            }
+            navigator.geolocation.getCurrentPosition(
+              (pos) => {
+                const lat = pos?.coords?.latitude?.toFixed?.(4);
+                const lng = pos?.coords?.longitude?.toFixed?.(4);
+                const gpsAddr = {
+                  id: `gps_${Date.now()}`,
+                  type: "Current",
+                  title: "Current GPS Location",
+                  flat: "PIN 572201",
+                  address: lat && lng ? `GPS (${lat}, ${lng}), Tiptur 572201` : "KFGSC , Tiptur 572201",
+                  tag: "GPS",
+                  iconType: "other",
+                };
+                setSelectedAddress(gpsAddr);
+                setShowAddressModal(false);
+                triggerToast("Delivery location set via GPS.");
+              },
+              () => {
+                triggerToast("Location permission denied — type your street or landmark above.");
+              },
+              { timeout: 6000, maximumAge: 60000 }
+            );
+          }}
+          style={{
+            width: "100%",
+            marginTop: 8,
+            padding: "9px 12px",
+            borderRadius: 10,
+            border: "1px solid var(--ios-sep)",
+            background: "var(--ios-fill-secondary)",
+            color: "#0C831F",
+            fontSize: 12.5,
+            fontWeight: 700,
+            cursor: "pointer",
+          }}
+        >
+          📍 Use Current Location (or type above)
+        </button>
       </IOSBottomSheet>
 
       {/* ═══════════════════════════════════════════════════════════
@@ -5604,27 +5713,27 @@ export default function OrderingAppPage() {
         detent="medium"
       >
 
-            <div style={S.couponListModal}>
-              {AVAILABLE_COUPONS.map((cp) => (
-                <div key={cp.code} style={S.couponItemCard}>
-                  <div style={S.couponItemTop}>
-                    <span style={S.couponCodeBadge}>{cp.code}</span>
-                    <button
-                      type="button"
-                      style={S.applyCouponCTA}
-                      onClick={() => handleApplyCoupon(cp)}
-                    >
-                      APPLY
-                    </button>
-                  </div>
-                  <div style={S.couponLabel}>{cp.label}</div>
-                  <div style={S.couponDesc}>{cp.description}</div>
-                  <div style={S.couponMinOrder}>
-                    Minimum order: <b>₹{cp.minOrder}</b>
-                  </div>
-                </div>
-              ))}
+        <div style={S.couponListModal}>
+          {AVAILABLE_COUPONS.map((cp) => (
+            <div key={cp.code} style={S.couponItemCard}>
+              <div style={S.couponItemTop}>
+                <span style={S.couponCodeBadge}>{cp.code}</span>
+                <button
+                  type="button"
+                  style={S.applyCouponCTA}
+                  onClick={() => handleApplyCoupon(cp)}
+                >
+                  APPLY
+                </button>
+              </div>
+              <div style={S.couponLabel}>{cp.label}</div>
+              <div style={S.couponDesc}>{cp.description}</div>
+              <div style={S.couponMinOrder}>
+                Minimum order: <b>₹{cp.minOrder}</b>
+              </div>
             </div>
+          ))}
+        </div>
       </IOSBottomSheet>
 
       {/* Coming Soon Fullscreen Image Modal */}
@@ -5927,7 +6036,7 @@ export default function OrderingAppPage() {
                     </label>
                     <textarea
                       rows={3}
-                      placeholder="e.g. Received the delivery from Sinchana B R, but 1x Beatss Milk Chocolate was missing from the bag. Please refund or replace."
+                      placeholder="e.g. Received the delivery, but 1x Beatss Milk Chocolate was missing from the bag. Please refund or replace."
                       value={complaintText}
                       onChange={(e) => setComplaintText(e.target.value)}
                       style={{
