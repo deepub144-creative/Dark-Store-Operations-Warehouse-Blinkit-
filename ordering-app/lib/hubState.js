@@ -104,17 +104,87 @@ export function buildDefaultOosList(inventoryMap = {}, customItems = []) {
   return oos;
 }
 
+export function getLowStockThreshold(item) {
+  if (!item) return 2;
+  if (Number.isFinite(Number(item.lowStockThreshold))) {
+    return Math.max(0, Number(item.lowStockThreshold));
+  }
+  if (
+    item.category === "Frames" ||
+    String(item.sku || item.skuId || "").startsWith("FRAME-")
+  ) {
+    return 0;
+  }
+  return 2;
+}
+
+export function buildDefaultStockBySku(customItems = [], existingMap = null, existingStockBySku = null) {
+  const all = mergeCatalogItems(getActiveBaseCatalog(), customItems);
+  const storeId = "TIPTUR-HUB-KA44";
+  const nowIso = new Date().toISOString();
+  const out = {};
+
+  for (const item of all) {
+    if (!item?.sku) continue;
+    const prevRec = existingStockBySku?.[item.sku];
+    const defaultQty =
+      item.isCustomPutaway && Number.isFinite(Number(item.units))
+        ? Math.max(0, Number(item.units))
+        : getDefaultItemStock(item);
+    const unitsInStock =
+      prevRec && Number.isFinite(Number(prevRec.unitsInStock))
+        ? Math.max(0, Math.floor(Number(prevRec.unitsInStock)))
+        : existingMap && Number.isFinite(Number(existingMap[item.sku]))
+        ? Math.max(0, Math.floor(Number(existingMap[item.sku])))
+        : defaultQty;
+    const reservedUnits =
+      prevRec && Number.isFinite(Number(prevRec.reservedUnits))
+        ? Math.max(0, Math.min(unitsInStock, Math.floor(Number(prevRec.reservedUnits))))
+        : 0;
+    const availableUnits = Math.max(0, unitsInStock - reservedUnits);
+
+    out[item.sku] = {
+      skuId: item.sku,
+      storeId,
+      unitsInStock,
+      reservedUnits,
+      availableUnits,
+      soldToday: Math.max(0, Number(prevRec?.soldToday || 0)),
+      lowStockThreshold: getLowStockThreshold(item),
+      version: Math.max(1, Number(prevRec?.version || 1)),
+      updatedAt: prevRec?.updatedAt || nowIso,
+    };
+  }
+  return out;
+}
+
 export function createInitialHubState(dateKey = getTodayISTDateKey()) {
   const customCatalogItems = [];
   const inventoryStockMap = buildDefaultInventoryMap(customCatalogItems);
+  const stockBySku = buildDefaultStockBySku(customCatalogItems, inventoryStockMap, null);
   const oosList = buildDefaultOosList(inventoryStockMap, customCatalogItems);
+  const ledgerSummaryBySku = {};
+  for (const [sku, rec] of Object.entries(stockBySku)) {
+    ledgerSummaryBySku[sku] = {
+      openingUnits: rec.unitsInStock,
+      netUnitsDelta: 0,
+      movementCount: 0,
+    };
+  }
   return {
     hubId: "TIPTUR-HUB-KA44",
+    areaId: "SOUTH-TUMKUR-AREA",
     dateKey,
     isStoreOpen: true,
     storeStatusUpdatedAt: 0,
     customCatalogItems,
     inventoryStockMap,
+    stockBySku,
+    activeReservations: [],
+    inventoryMovements: [],
+    ledgerSummaryBySku,
+    lowStockAlerts: [],
+    reconciliationReport: null,
     oosList,
     orders: [],
     complaints: [],
@@ -122,6 +192,9 @@ export function createInitialHubState(dateKey = getTodayISTDateKey()) {
     loginDevicesToday: {},
     newSignupsToday: {},
     allCustomerDevices: {},
+    usersBySub: {},
+    usersByEmail: {},
+    orderIdempotencyMap: {},
     cumulativeStats: {
       totalRevenueSaved: 0,
       totalSalesCount: 0,
@@ -156,6 +229,7 @@ export function createInitialHubState(dateKey = getTodayISTDateKey()) {
     ],
     dailyHistory: [],
     revision: 1,
+    stockVersion: 1,
     updatedAt: new Date().toISOString(),
   };
 }
@@ -202,21 +276,43 @@ export function normalizeHubState(raw) {
     ? raw.customCatalogItems
     : [];
   const defaultInv = buildDefaultInventoryMap(customCatalogItems);
+  const rawInvMap =
+    raw.inventoryStockMap && typeof raw.inventoryStockMap === "object"
+      ? raw.inventoryStockMap
+      : {};
+  const rawStockBySku =
+    raw.stockBySku && typeof raw.stockBySku === "object" ? raw.stockBySku : null;
+  const stockBySku = buildDefaultStockBySku(
+    customCatalogItems,
+    { ...defaultInv, ...rawInvMap },
+    rawStockBySku
+  );
+
   const inventoryStockMap = {
     ...defaultInv,
-    ...(raw.inventoryStockMap && typeof raw.inventoryStockMap === "object"
-      ? raw.inventoryStockMap
-      : {}),
+    ...rawInvMap,
   };
 
-  // Ensure permanently sold-out base items stay 0 & OOS, and any 0-unit SKU is in oosList
+  // Ensure permanently sold-out base items stay 0 & OOS, and keep stockBySku + inventoryStockMap synchronized
   const rawOos = Array.isArray(raw.oosList) ? raw.oosList : [];
   const oosSet = new Set(rawOos);
   for (const item of getActiveBaseCatalog()) {
     if (item.soldOut || item.inStock === false) {
       inventoryStockMap[item.sku] = 0;
+      if (stockBySku[item.sku]) {
+        stockBySku[item.sku].unitsInStock = 0;
+        stockBySku[item.sku].reservedUnits = 0;
+        stockBySku[item.sku].availableUnits = 0;
+      }
       oosSet.add(item.sku);
     }
+  }
+
+  for (const [sku, rec] of Object.entries(stockBySku)) {
+    const avail = Math.max(0, Number(rec.unitsInStock || 0) - Number(rec.reservedUnits || 0));
+    rec.availableUnits = avail;
+    inventoryStockMap[sku] = avail;
+    if (avail <= 0) oosSet.add(sku);
   }
   for (const [sku, qty] of Object.entries(inventoryStockMap)) {
     if (Number(qty) <= 0) {
@@ -224,13 +320,34 @@ export function normalizeHubState(raw) {
     }
   }
 
+  const ledgerSummaryBySku =
+    raw.ledgerSummaryBySku && typeof raw.ledgerSummaryBySku === "object"
+      ? { ...raw.ledgerSummaryBySku }
+      : {};
+  for (const [sku, rec] of Object.entries(stockBySku)) {
+    if (!ledgerSummaryBySku[sku]) {
+      ledgerSummaryBySku[sku] = {
+        openingUnits: rec.unitsInStock,
+        netUnitsDelta: 0,
+        movementCount: 0,
+      };
+    }
+  }
+
   return {
     hubId: raw.hubId || "TIPTUR-HUB-KA44",
+    areaId: raw.areaId || "SOUTH-TUMKUR-AREA",
     dateKey: raw.dateKey || todayKey,
     isStoreOpen: raw.isStoreOpen !== false,
     storeStatusUpdatedAt: Number(raw.storeStatusUpdatedAt || 0),
     customCatalogItems,
     inventoryStockMap,
+    stockBySku,
+    activeReservations: Array.isArray(raw.activeReservations) ? raw.activeReservations : [],
+    inventoryMovements: Array.isArray(raw.inventoryMovements) ? raw.inventoryMovements : [],
+    ledgerSummaryBySku,
+    lowStockAlerts: Array.isArray(raw.lowStockAlerts) ? raw.lowStockAlerts : [],
+    reconciliationReport: raw.reconciliationReport || null,
     oosList: Array.from(oosSet),
     orders: Array.isArray(raw.orders) ? raw.orders : [],
     complaints: Array.isArray(raw.complaints) ? raw.complaints : [],
@@ -246,6 +363,14 @@ export function normalizeHubState(raw) {
     allCustomerDevices:
       raw.allCustomerDevices && typeof raw.allCustomerDevices === "object"
         ? raw.allCustomerDevices
+        : {},
+    usersBySub:
+      raw.usersBySub && typeof raw.usersBySub === "object" ? raw.usersBySub : {},
+    usersByEmail:
+      raw.usersByEmail && typeof raw.usersByEmail === "object" ? raw.usersByEmail : {},
+    orderIdempotencyMap:
+      raw.orderIdempotencyMap && typeof raw.orderIdempotencyMap === "object"
+        ? raw.orderIdempotencyMap
         : {},
     cumulativeStats: {
       totalRevenueSaved: Number(raw.cumulativeStats?.totalRevenueSaved || 0),
@@ -266,6 +391,7 @@ export function normalizeHubState(raw) {
     capLogs: Array.isArray(raw.capLogs) ? raw.capLogs : [],
     dailyHistory: Array.isArray(raw.dailyHistory) ? raw.dailyHistory : [],
     revision: Number(raw.revision || 1),
+    stockVersion: Number(raw.stockVersion || raw.revision || 1),
     updatedAt: raw.updatedAt || new Date().toISOString(),
   };
 }
@@ -350,6 +476,23 @@ export function rolloverStateIfNewDay(rawState, targetDateKey = getTodayISTDateK
     ? state.dailyHistory.filter((h) => h && h.dateKey !== archived.dateKey)
     : [];
 
+  const nextStockBySku = {};
+  const nextLedgerSummary = {};
+  for (const [sku, rec] of Object.entries(state.stockBySku || {})) {
+    const unitsInStock = Math.max(0, Number(rec?.unitsInStock || 0));
+    const reservedUnits = Math.max(0, Number(rec?.reservedUnits || 0));
+    nextStockBySku[sku] = {
+      ...rec,
+      soldToday: 0,
+    };
+    nextLedgerSummary[sku] = {
+      openingUnits: unitsInStock,
+      netUnitsDelta: 0,
+      movementCount: 0,
+      reservedUnits,
+    };
+  }
+
   const nextState = {
     ...state,
     dateKey: targetDateKey,
@@ -358,7 +501,9 @@ export function rolloverStateIfNewDay(rawState, targetDateKey = getTodayISTDateK
     ratingsToday: [],
     loginDevicesToday: {},
     newSignupsToday: {},
-    dailyHistory: [archived, ...existingHistory].slice(0, 60),
+    stockBySku: nextStockBySku,
+    ledgerSummaryBySku: nextLedgerSummary,
+    dailyHistory: [archived, ...existingHistory].slice(0, 45),
     capLogs: [
       {
         id: Date.now(),
@@ -368,6 +513,7 @@ export function rolloverStateIfNewDay(rawState, targetDateKey = getTodayISTDateK
       ...(state.capLogs || []).slice(0, 29),
     ],
     revision: (state.revision || 1) + 1,
+    stockVersion: (state.stockVersion || state.revision || 1) + 1,
     updatedAt: new Date().toISOString(),
   };
 
@@ -378,28 +524,55 @@ export function applyOrderInventoryAndStats(state, order) {
   if (!order) return order;
   const nextOrder = { ...order };
   const statusLower = String(nextOrder.status || "").toLowerCase();
-  if (statusLower === "cancelled") return nextOrder;
+  if (statusLower === "cancelled" || statusLower === "payment_failed") return nextOrder;
 
   if (!nextOrder.stockDeducted) {
     const items = Array.isArray(nextOrder.items) ? nextOrder.items : [];
     const nextInv = { ...(state.inventoryStockMap || {}) };
+    const nextStock = { ...(state.stockBySku || {}) };
     const oosSet = new Set(Array.isArray(state.oosList) ? state.oosList : []);
+    const nowIso = new Date().toISOString();
 
     for (const item of items) {
       const sku = item?.skuId || item?.sku;
       if (!sku) continue;
       const fallbackDefault =
         item.category === "Frames" || String(sku).startsWith("FRAME-") ? 1 : 5;
-      const cur =
-        nextInv[sku] !== undefined ? Number(nextInv[sku]) : fallbackDefault;
-      const orderedQty = Math.max(1, Number(item.qty) || 1);
-      const updated = Math.max(0, cur - orderedQty);
-      nextInv[sku] = updated;
-      if (updated <= 0) {
+      const existingRec = nextStock[sku];
+      const curUnits =
+        existingRec && Number.isFinite(Number(existingRec.unitsInStock))
+          ? Number(existingRec.unitsInStock)
+          : nextInv[sku] !== undefined
+          ? Number(nextInv[sku])
+          : fallbackDefault;
+      const curReserved =
+        existingRec && Number.isFinite(Number(existingRec.reservedUnits))
+          ? Number(existingRec.reservedUnits)
+          : 0;
+      const orderedQty = Math.max(1, Math.floor(Number(item.qty) || 1));
+      const updatedUnits = Math.max(0, curUnits - orderedQty);
+      const updatedAvail = Math.max(0, updatedUnits - curReserved);
+
+      nextStock[sku] = {
+        skuId: sku,
+        storeId: existingRec?.storeId || state.hubId || "TIPTUR-HUB-KA44",
+        unitsInStock: updatedUnits,
+        reservedUnits: Math.min(updatedUnits, curReserved),
+        availableUnits: updatedAvail,
+        soldToday: Math.max(0, Number(existingRec?.soldToday || 0)) + orderedQty,
+        lowStockThreshold: Number(existingRec?.lowStockThreshold ?? getLowStockThreshold(item)),
+        version: Math.max(1, Number(existingRec?.version || 1)) + 1,
+        updatedAt: nowIso,
+      };
+      nextInv[sku] = updatedAvail;
+      if (updatedAvail <= 0) {
         oosSet.add(sku);
+      } else {
+        oosSet.delete(sku);
       }
     }
 
+    state.stockBySku = nextStock;
     state.inventoryStockMap = nextInv;
     state.oosList = Array.from(oosSet);
     nextOrder.stockDeducted = true;
@@ -589,6 +762,50 @@ export function mergeHubStates(
       Object.keys(merged.allCustomerDevices).length
     ),
   };
+
+  // 4. Per-SKU monotonic stock version reconciliation (ignore stale/out-of-order stock snapshots)
+  const mergedStock = {};
+  const mergedInvMap = {};
+  const allSkus = new Set([
+    ...Object.keys(cur.stockBySku || {}),
+    ...Object.keys(inc.stockBySku || {}),
+  ]);
+  const oosSet = new Set(merged.oosList || []);
+  for (const sku of allSkus) {
+    const cRec = cur.stockBySku?.[sku];
+    const iRec = inc.stockBySku?.[sku];
+    let winner = iRec || cRec;
+    if (cRec && iRec) {
+      const cVer = Number(cRec.version || 0);
+      const iVer = Number(iRec.version || 0);
+      if (cVer > iVer && !(!preferCurrentBase && incRev > curRev && !incomingIsColdFallback)) {
+        winner = cRec;
+      } else if (iVer > cVer) {
+        winner = iRec;
+      } else if (preferCurrentBase && String(cRec.updatedAt || "") >= String(iRec.updatedAt || "")) {
+        winner = cRec;
+      }
+    }
+    if (winner) {
+      const avail = Math.max(
+        0,
+        Number(winner.unitsInStock || 0) - Number(winner.reservedUnits || 0)
+      );
+      mergedStock[sku] = { ...winner, availableUnits: avail };
+      mergedInvMap[sku] = avail;
+      if (avail <= 0) oosSet.add(sku);
+      else oosSet.delete(sku);
+    }
+  }
+  if (allSkus.size > 0) {
+    merged.stockBySku = mergedStock;
+    merged.inventoryStockMap = mergedInvMap;
+    merged.oosList = Array.from(oosSet);
+  }
+  merged.stockVersion = Math.max(
+    Number(cur.stockVersion || 1),
+    Number(inc.stockVersion || 1)
+  );
 
   merged.revision = Math.max(curRev, incRev);
   merged.updatedAt =
