@@ -65,9 +65,6 @@ export default function CustomerInteractiveLoginPage() {
 
           <div style={styles.welcomeBox}>
             <h1 style={styles.welcomeTitle}>Welcome to AUDIT&apos;X</h1>
-            <p style={styles.welcomeSub}>
-              Tiptur Dark Store • Instant 8-Min Delivery. Sign in with Google to browse chocolates &amp; frames.
-            </p>
           </div>
 
           {errorMsg && <div style={styles.errorBanner}>{errorMsg}</div>}
@@ -87,12 +84,6 @@ export default function CustomerInteractiveLoginPage() {
                 router.replace(resolveSafeReturnUrl());
               }}
             />
-          </div>
-
-          <div style={styles.trustFooter}>
-            <span>🔒 Secure 1-Tap Google Sign-In</span>
-            <span>•</span>
-            <span>Dark Store Dispatch &lt; 0.1s</span>
           </div>
         </div>
       </div>
@@ -138,14 +129,8 @@ const styles = {
     fontSize: 20,
     fontWeight: 800,
     color: "#0F172A",
-    margin: "0 0 6px",
-    letterSpacing: "-0.3px",
-  },
-  welcomeSub: {
-    fontSize: 13,
-    color: "#64748B",
     margin: 0,
-    lineHeight: 1.45,
+    letterSpacing: "-0.3px",
   },
   errorBanner: {
     background: "rgba(255, 59, 48, 0.12)",
@@ -163,15 +148,5 @@ const styles = {
     flexDirection: "column",
     gap: 12,
     paddingTop: 4,
-  },
-  trustFooter: {
-    marginTop: 20,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    fontSize: 11,
-    color: "#94A3B8",
-    fontWeight: 600,
   },
 };
