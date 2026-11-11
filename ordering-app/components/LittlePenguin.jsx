@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { memo, useEffect, useRef } from "react";
 
 /**
  * Interactive animated Little Penguin overlay scoped strictly inside the Ordering App shell.
  * Waddles in from edge, breathes/blinks/looks around, waves & talks ("hii" waves),
  * and on tap/click belly-flops onto ice with snow spray and scratch trail.
  */
-export default function LittlePenguin({
+const LittlePenguin = memo(function LittlePenguin({
   rootSelector = "#ax-ordering-shell",
   pos = "left",
   ground = 60,
@@ -22,6 +22,7 @@ export default function LittlePenguin({
   useEffect(() => {
     if (typeof window === "undefined" || typeof document === "undefined") return;
     if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    if (navigator?.connection?.saveData) return;
 
     const stage = stageRef.current;
     const p = pRef.current;
@@ -29,14 +30,17 @@ export default function LittlePenguin({
     const f = fRef.current;
     if (!stage || !p || !t || !f) return;
 
+    const timers = new Set();
+    const activeAnims = new Set();
     const edge = ["left", "right", "center"].includes(pos) ? pos : "left";
     const clampedScale = Math.min(Math.max(Number(scale) || 1, 0.4), 2);
+    const safeGround = Number.isFinite(Number(ground)) ? Number(ground) : 60;
     const awayMs = Math.max(Number(awaySeconds) || 180, 1) * 1000;
     const H = 56 * clampedScale;
 
     p.style.height = `${H}px`;
     p.style.width = `${(H * 72) / 94}px`;
-    p.style.bottom = `${edge === "center" ? 0 : Math.max(Number(ground) - 2, 0)}px`;
+    p.style.bottom = `${edge === "center" ? 0 : Math.max(safeGround - 2, 0)}px`;
     if (edge === "right") f.style.transform = "scaleX(-1)";
 
     let shellWidth = Math.min(window.innerWidth, 440);
@@ -73,9 +77,16 @@ export default function LittlePenguin({
         : [(VW() - W()) / 2, H * 1.4];
 
     const put = (a) => {
-      p.style.transform = `translate(${a[0]}px,${a[1]}px)`;
+      p.style.transform = `translate3d(${a[0]}px,${a[1]}px,0)`;
     };
-    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    const sleep = (ms) =>
+      new Promise((r) => {
+        const id = setTimeout(() => {
+          timers.delete(id);
+          r();
+        }, ms);
+        timers.add(id);
+      });
     const tilt = (deg, lift, sx, sy, ms, ease) => {
       t.style.transition = ms ? `transform ${ms}ms ${ease || "ease-out"}` : "none";
       t.style.transform = `translateY(${lift}px) rotate(${deg}deg) scale(${sx},${sy})`;
@@ -89,18 +100,23 @@ export default function LittlePenguin({
         }
         const an = p.animate(
           [
-            { transform: `translate(${a[0]}px,${a[1]}px)` },
-            { transform: `translate(${b[0]}px,${b[1]}px)` },
+            { transform: `translate3d(${a[0]}px,${a[1]}px,0)` },
+            { transform: `translate3d(${b[0]}px,${b[1]}px,0)` },
           ],
           { duration: dur, easing: ease, fill: "forwards" }
         );
+        activeAnims.add(an);
         an.finished
           .then(() => {
+            activeAnims.delete(an);
             if (mounted) put(b);
             an.cancel();
             res();
           })
-          .catch(() => res());
+          .catch(() => {
+            activeAnims.delete(an);
+            res();
+          });
       });
 
     let mounted = true;
@@ -289,6 +305,14 @@ export default function LittlePenguin({
       clearTimeout(waveTimer);
       clearTimeout(lookTimer);
       clearTimeout(backTimer);
+      timers.forEach((id) => clearTimeout(id));
+      timers.clear();
+      activeAnims.forEach((an) => {
+        try {
+          an.cancel();
+        } catch {}
+      });
+      activeAnims.clear();
       stopFx(activeFx);
       p.removeEventListener("click", onClick);
       p.removeEventListener("touchstart", onTouchStart);
@@ -450,4 +474,7 @@ export default function LittlePenguin({
       </div>
     </>
   );
-}
+});
+
+export default LittlePenguin;
+

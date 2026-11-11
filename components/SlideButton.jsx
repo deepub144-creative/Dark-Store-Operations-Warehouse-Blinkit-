@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import {
   IconRealisticSliderArrow,
   IconRealisticCheck,
@@ -11,11 +11,17 @@ export default function SlideButton({ text, onSlideComplete, color = "#0c831f", 
   const [dragX, setDragX] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
   const [completed, setCompleted] = useState(false);
-  const trackRef = useRef(null);
-
   const [trackWidth, setTrackWidth] = useState(320);
 
+  const trackRef = useRef(null);
+  const isDraggingRef = useRef(false);
+  const completedRef = useRef(false);
+  const onSlideCompleteRef = useRef(onSlideComplete);
+  onSlideCompleteRef.current = onSlideComplete;
+
   useEffect(() => {
+    completedRef.current = false;
+    isDraggingRef.current = false;
     setCompleted(false);
     setDragX(0);
     setIsDragging(false);
@@ -23,82 +29,87 @@ export default function SlideButton({ text, onSlideComplete, color = "#0c831f", 
 
   useEffect(() => {
     if (trackRef.current) {
-      setTrackWidth(trackRef.current.clientWidth || 320);
+      setTrackWidth(Math.max(120, trackRef.current.clientWidth || 320));
     }
   }, []);
 
-  const handleStart = (clientX) => {
-    if (completed) return;
+  const handleStart = useCallback((clientX) => {
+    if (completedRef.current || !Number.isFinite(clientX)) return;
     if (trackRef.current) {
-      setTrackWidth(trackRef.current.clientWidth || 320);
+      setTrackWidth(Math.max(120, trackRef.current.clientWidth || 320));
     }
+    isDraggingRef.current = true;
     setIsDragging(true);
     try {
       navigator.vibrate?.(8);
     } catch {}
-  };
+  }, []);
 
-  const handleMove = (clientX) => {
-    if (!isDragging || !trackRef.current || completed) return;
+  const handleMove = useCallback((clientX) => {
+    if (!isDraggingRef.current || !trackRef.current || completedRef.current) return;
+    if (!Number.isFinite(clientX)) return;
     const rect = trackRef.current.getBoundingClientRect();
-    const maxDrag = Math.max(10, rect.width - 56);
+    const maxDrag = Math.max(10, (rect.width || 320) - 56);
     let newX = clientX - rect.left - 28;
+    if (!Number.isFinite(newX)) return;
     if (newX < 0) newX = 0;
     if (newX > maxDrag) newX = maxDrag;
     setDragX(newX);
 
-    if (newX >= maxDrag * 0.68) {
+    if (newX >= maxDrag * 0.68 && !completedRef.current) {
+      completedRef.current = true;
+      isDraggingRef.current = false;
       setCompleted(true);
       setIsDragging(false);
       setDragX(maxDrag);
       try {
         navigator.vibrate?.(15);
       } catch {}
-      if (onSlideComplete) onSlideComplete();
+      try {
+        onSlideCompleteRef.current?.();
+      } catch {}
     }
-  };
+  }, []);
 
-  const handleEnd = () => {
-    if (!completed) {
+  const handleEnd = useCallback(() => {
+    if (!completedRef.current) {
+      isDraggingRef.current = false;
       setIsDragging(false);
       setDragX(0);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    const onTouchMove = (e) => handleMove(e.touches[0].clientX);
-    const onTouchEnd = () => handleEnd();
-    const onMouseMove = (e) => handleMove(e.clientX);
-    const onMouseUp = () => handleEnd();
-
-    if (isDragging) {
-      window.addEventListener("touchmove", onTouchMove);
-      window.addEventListener("touchend", onTouchEnd);
-      window.addEventListener("mousemove", onMouseMove);
-      window.addEventListener("mouseup", onMouseUp);
-    }
-
+    const onTouchMove = (e) => {
+      const cx = e.touches?.[0]?.clientX;
+      if (Number.isFinite(cx)) handleMove(cx);
+    };
+    const onMouseMove = (e) => {
+      if (Number.isFinite(e?.clientX)) handleMove(e.clientX);
+    };
+    window.addEventListener("touchmove", onTouchMove, { passive: true });
+    window.addEventListener("touchend", handleEnd, { passive: true });
+    window.addEventListener("touchcancel", handleEnd, { passive: true });
+    window.addEventListener("mousemove", onMouseMove, { passive: true });
+    window.addEventListener("mouseup", handleEnd);
+    window.addEventListener("blur", handleEnd);
     return () => {
       window.removeEventListener("touchmove", onTouchMove);
-      window.removeEventListener("touchend", onTouchEnd);
+      window.removeEventListener("touchend", handleEnd);
+      window.removeEventListener("touchcancel", handleEnd);
       window.removeEventListener("mousemove", onMouseMove);
-      window.removeEventListener("mouseup", onMouseUp);
+      window.removeEventListener("mouseup", handleEnd);
+      window.removeEventListener("blur", handleEnd);
     };
-  }, [isDragging]);
+  }, [handleMove, handleEnd]);
 
-  // Determine handle icon: custom realistic icon, or fallback to realistic slider arrow
-  const renderHandleIcon = () => {
-    if (completed) {
-      return <IconRealisticCheck size={22} color="#ffffff" />;
-    }
-    if (icon) {
-      if (typeof icon === "string") {
-        return <span style={{ fontSize: 18 }}>{icon}</span>;
-      }
-      return icon;
-    }
-    return <IconRealisticSliderArrow size={22} color="#ffffff" />;
+  const safeRenderHandleIcon = () => {
+    if (icon) return icon;
+    return <IconRealisticSliderArrow size={24} color="#ffffff" />;
   };
+
+  const safeDragX = Number.isFinite(dragX) ? dragX : 0;
+  const safeScaleX = Math.max(0.15, Math.min(1, (safeDragX + 56) / Math.max(120, trackWidth)));
 
   return (
     <div
@@ -113,6 +124,7 @@ export default function SlideButton({ text, onSlideComplete, color = "#0c831f", 
         alignItems: "center",
         justifyContent: "center",
         userSelect: "none",
+        touchAction: "none",
         overflow: "hidden",
         border: `2px solid ${completed ? "#10b981" : color}`,
         boxShadow: "0 4px 15px rgba(0,0,0,0.18)",
@@ -121,7 +133,6 @@ export default function SlideButton({ text, onSlideComplete, color = "#0c831f", 
         cursor: completed ? "default" : "pointer",
       }}
     >
-      {/* GPU-accelerated Slide Background Fill */}
       <div
         style={{
           position: "absolute",
@@ -130,13 +141,12 @@ export default function SlideButton({ text, onSlideComplete, color = "#0c831f", 
           opacity: completed ? 1 : 0.45,
           borderRadius: 28,
           transformOrigin: "left center",
-          transform: `scaleX(${Math.min(1, (dragX + 56) / Math.max(1, trackWidth))})`,
+          transform: `scaleX(${safeScaleX})`,
           transition: isDragging ? "none" : "transform 280ms var(--ios-spring)",
           willChange: "transform",
         }}
       />
 
-      {/* Shimmer Track Directional Chevrons */}
       {!completed && (
         <div
           style={{
@@ -145,14 +155,13 @@ export default function SlideButton({ text, onSlideComplete, color = "#0c831f", 
             display: "flex",
             alignItems: "center",
             pointerEvents: "none",
-            opacity: Math.max(0.1, 1 - dragX / 100),
+            opacity: Math.max(0.1, 1 - safeDragX / 100),
           }}
         >
           <IconRealisticTrackChevrons count={3} color="#ffffff" />
         </div>
       )}
 
-      {/* Slide Text */}
       <span
         style={{
           color: "#ffffff",
@@ -161,7 +170,7 @@ export default function SlideButton({ text, onSlideComplete, color = "#0c831f", 
           letterSpacing: "0.6px",
           pointerEvents: "none",
           zIndex: 1,
-          opacity: Math.max(0.2, 1 - dragX / 150),
+          opacity: Math.max(0.2, 1 - safeDragX / 150),
           textTransform: "uppercase",
           padding: "0 40px",
           textAlign: "center",
@@ -174,10 +183,12 @@ export default function SlideButton({ text, onSlideComplete, color = "#0c831f", 
         {completed ? "✓ CONFIRMED & VERIFIED" : text}
       </span>
 
-      {/* Draggable GPU-Accelerated Realistic Handle */}
       <div
-        onMouseDown={(e) => handleStart(e.clientX)}
-        onTouchStart={(e) => handleStart(e.touches[0].clientX)}
+        onMouseDown={(e) => handleStart(e?.clientX)}
+        onTouchStart={(e) => {
+          const cx = e.touches?.[0]?.clientX;
+          if (Number.isFinite(cx)) handleStart(cx);
+        }}
         style={{
           position: "absolute",
           left: 4,
@@ -195,13 +206,12 @@ export default function SlideButton({ text, onSlideComplete, color = "#0c831f", 
           border: completed ? "2px solid #10b981" : "2px solid rgba(255,255,255,0.4)",
           zIndex: 2,
           transition: isDragging ? "none" : "transform 300ms var(--ios-spring)",
-          transform: `translate3d(${dragX}px, 0, 0) scale(${isDragging ? 1.06 : 1})`,
+          transform: `translate3d(${safeDragX}px, 0, 0) scale(${isDragging ? 1.06 : 1})`,
           willChange: "transform",
         }}
       >
-        {completed ? <IconRealisticCheck size={24} color="#10b981" /> : renderHandleIcon()}
+        {completed ? <IconRealisticCheck size={24} color="#10b981" /> : safeRenderHandleIcon()}
       </div>
     </div>
   );
 }
-

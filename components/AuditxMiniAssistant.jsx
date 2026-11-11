@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { memo, useState, useEffect, useRef } from "react";
 import { CATALOG } from "@/lib/items";
 import { STAFF, STAGING_RACKS } from "@/lib/roles";
 import { getAllLiveOrders, getAllLiveComplaints } from "@/lib/realtimeSync";
 import { playSuccessChime } from "@/lib/soundSystem";
+import { safeStorage } from "@/lib/safeData";
 import {
   INTENT_TYPES,
   classifyUserIntent,
@@ -12,6 +13,8 @@ import {
 } from "@/lib/intentRouter";
 
 const STORAGE_KEY = "auditx_mini_chat_history";
+const MAX_STORED_MESSAGES = 40;
+const MAX_ARCHIVED_SESSIONS = 8;
 
 // ============================================================================
 // PLAIN-TEXT SANITIZER (NO MARKDOWN SYMBOLS IN CHAT OR PDF)
@@ -323,11 +326,11 @@ function formatWelcomeGreeting(userName) {
   return "Hello! I am AUDIT'X Mini.";
 }
 
-export default function AuditxMiniAssistant({ isStoreOpen = true, customer = null }) {
+const AuditxMiniAssistant = memo(function AuditxMiniAssistant({ isStoreOpen = true, customer = null }) {
   const [isOpen, setIsOpen] = useState(false);
   const [detectedUser, setDetectedUser] = useState(null);
 
-  // Persistent Chat State (auto-restored from localStorage key `auditx_mini_chat_history`)
+  // Persistent Chat State (auto-restored from safeStorage key `auditx_mini_chat_history`)
   const [messages, setMessages] = useState([
     {
       id: "welcome_initial",
@@ -355,24 +358,22 @@ export default function AuditxMiniAssistant({ isStoreOpen = true, customer = nul
   const streamIntervalRef = useRef(null);
   const streamPendingMsgRef = useRef(null);
   const chatScrollRef = useRef(null);
+  const blobUrlsRef = useRef(new Set());
 
-  // Auto-detect customer name from Google OAuth (prop or localStorage)
+  // Auto-detect customer name from Google OAuth (prop or safeStorage)
   useEffect(() => {
     function resolveUserName() {
       if (customer?.name) {
         setDetectedUser(customer.name);
         return;
       }
-      try {
-        const raw = localStorage.getItem("auditx_customer") || localStorage.getItem("blinkit_customer");
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          if (parsed?.name) {
-            setDetectedUser(parsed.name);
-            return;
-          }
-        }
-      } catch (e) {}
+      const parsed =
+        safeStorage.getJson("auditx_customer", null) ||
+        safeStorage.getJson("blinkit_customer", null);
+      if (parsed?.name) {
+        setDetectedUser(parsed.name);
+        return;
+      }
       setDetectedUser(null);
     }
 
@@ -391,11 +392,15 @@ export default function AuditxMiniAssistant({ isStoreOpen = true, customer = nul
   useEffect(() => {
     const greeting = formatWelcomeGreeting(detectedUser);
     setMessages((prev) => {
-      if (prev.length === 1 && (prev[0].id === "welcome_initial" || prev[0].text.includes("AUDIT'X Mini"))) {
+      if (
+        prev.length === 1 &&
+        (prev[0]?.id === "welcome_initial" || String(prev[0]?.text || "").includes("AUDIT'X Mini"))
+      ) {
         return [{ ...prev[0], text: greeting }];
       }
       return prev.map((m, idx) => {
-        if (idx === 0 && (m.id === "welcome_initial" || m.text.includes("AUDIT'X Mini") || m.text.includes("Ask me anything"))) {
+        const txt = String(m?.text || "");
+        if (idx === 0 && (m?.id === "welcome_initial" || txt.includes("AUDIT'X Mini") || txt.includes("Ask me anything"))) {
           return { ...m, text: greeting };
         }
         return m;
@@ -409,13 +414,13 @@ export default function AuditxMiniAssistant({ isStoreOpen = true, customer = nul
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw);
+      const parsed = safeStorage.getJson(STORAGE_KEY, null);
+      if (parsed && typeof parsed === "object") {
         if (Array.isArray(parsed.currentMessages) && parsed.currentMessages.length > 0) {
           const targetGreeting = formatWelcomeGreeting(detectedUser);
-          const sanitizedMessages = parsed.currentMessages.map((m, idx) => {
-            if (idx === 0 && (m.id === "welcome_initial" || m.text.includes("AUDIT'X Mini") || m.text.includes("Ask me anything"))) {
+          const sanitizedMessages = parsed.currentMessages.slice(-MAX_STORED_MESSAGES).map((m, idx) => {
+            const txt = String(m?.text || "");
+            if (idx === 0 && (m?.id === "welcome_initial" || txt.includes("AUDIT'X Mini") || txt.includes("Ask me anything"))) {
               return { ...m, text: targetGreeting };
             }
             return m;
@@ -423,41 +428,48 @@ export default function AuditxMiniAssistant({ isStoreOpen = true, customer = nul
           setMessages(sanitizedMessages);
         }
         if (Array.isArray(parsed.archivedSessions)) {
-          setArchivedSessions(parsed.archivedSessions);
+          setArchivedSessions(parsed.archivedSessions.slice(0, MAX_ARCHIVED_SESSIONS));
         }
         if (Array.isArray(parsed.keyPoints)) {
-          setKeyPoints(parsed.keyPoints);
+          setKeyPoints(parsed.keyPoints.slice(0, 30));
         }
         if (parsed.pendingState && typeof parsed.pendingState === "object") {
           setPendingState((prev) => ({ ...prev, ...parsed.pendingState }));
         }
       }
-    } catch (e) {
-      // Silent fallback if storage is blocked
     } finally {
       setHistoryLoaded(true);
     }
 
     return () => {
       if (streamIntervalRef.current) clearInterval(streamIntervalRef.current);
+      try {
+        window.speechSynthesis?.cancel?.();
+      } catch {}
+      blobUrlsRef.current.forEach((u) => {
+        try {
+          URL.revokeObjectURL(u);
+        } catch {}
+      });
+      blobUrlsRef.current.clear();
     };
   }, []);
 
-  // Save every message and state change automatically to `auditx_mini_chat_history`
+  // Save every message and state change cleanly without storing ephemeral blob: URLs
   useEffect(() => {
     if (typeof window === "undefined" || !historyLoaded) return;
-    try {
-      const payload = {
-        currentMessages: messages,
-        archivedSessions,
-        keyPoints,
-        pendingState,
-        updatedAt: new Date().toISOString(),
-      };
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-    } catch (e) {
-      // Silent catch
-    }
+    const persistableMessages = messages.slice(-MAX_STORED_MESSAGES).map((m) =>
+      m?.pdfDownload?.blobUrl
+        ? { ...m, pdfDownload: { ...m.pdfDownload, blobUrl: null } }
+        : m
+    );
+    safeStorage.setJson(STORAGE_KEY, {
+      currentMessages: persistableMessages,
+      archivedSessions: archivedSessions.slice(0, MAX_ARCHIVED_SESSIONS),
+      keyPoints: keyPoints.slice(0, 30),
+      pendingState,
+      updatedAt: new Date().toISOString(),
+    });
   }, [messages, archivedSessions, keyPoints, pendingState, historyLoaded]);
 
   // Smooth auto-scroll on new messages or streaming text
@@ -881,11 +893,12 @@ export default function AuditxMiniAssistant({ isStoreOpen = true, customer = nul
         doc.text(`Page ${p} of ${totalPages}`, pageWidth - marginX, pageHeight - 8, { align: "right" });
       }
 
-      // Create blob URL for fallback download link + trigger auto-download
+      // Create blob URL for fallback download link + track for cleanup
       let blobUrl = null;
       try {
         const blob = doc.output("blob");
         blobUrl = URL.createObjectURL(blob);
+        if (blobUrl) blobUrlsRef.current.add(blobUrl);
       } catch (e) {}
 
       doc.save(fileName);
@@ -2092,4 +2105,6 @@ export default function AuditxMiniAssistant({ isStoreOpen = true, customer = nul
       )}
     </>
   );
-}
+});
+
+export default AuditxMiniAssistant;

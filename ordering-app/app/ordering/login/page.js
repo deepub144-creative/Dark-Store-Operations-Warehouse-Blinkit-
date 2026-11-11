@@ -2,10 +2,12 @@
 
 export const dynamic = "force-dynamic";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import GoogleAuthButton, { GOOGLE_CLIENT_ID } from "@/components/GoogleAuthButton";
 import { dispatchCloudAction, getOrCreateDeviceUid } from "@/lib/realtimeSync";
+import { apiFetch, isOnlineNow, withIdempotentLock } from "@/lib/apiClient";
+import { safeStorage, validateCustomerBoundary } from "@/lib/safeData";
 import { playSuccessChime } from "@/lib/soundSystem";
 import {
   IOSMobileShell,
@@ -13,6 +15,21 @@ import {
   IOSOtpInput,
   IOSSegmentedControl,
 } from "@/components/ios";
+
+function resolveSafeReturnUrl() {
+  if (typeof window === "undefined") return "/ordering";
+  try {
+    const params = new URLSearchParams(window.location.search || "");
+    const paramTarget = params.get("returnTo") || "";
+    const storedTarget = safeStorage.get("auditx_auth_return_to", "", "session") || "";
+    const candidate = paramTarget || storedTarget;
+    if (candidate && candidate.startsWith("/") && !candidate.startsWith("//") && !candidate.startsWith("/ordering/login")) {
+      safeStorage.remove("auditx_auth_return_to", "session");
+      return candidate;
+    }
+  } catch {}
+  return "/ordering";
+}
 
 export default function CustomerInteractiveLoginPage() {
   const router = useRouter();
@@ -25,21 +42,39 @@ export default function CustomerInteractiveLoginPage() {
   const [demoOtpHint, setDemoOtpHint] = useState("");
   const [customerName, setCustomerName] = useState("");
   const [loading, setLoading] = useState(false);
+  const [resendCooldownSec, setResendCooldownSec] = useState(0);
+  const [smsFailedCanRetry, setSmsFailedCanRetry] = useState(false);
+  const abortRef = useRef(null);
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      try {
-        const raw = localStorage.getItem("auditx_customer");
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          if (parsed?.name && (parsed?.customerId || parsed?.email || parsed?.phone)) {
-            router.replace("/ordering");
-            return;
-          }
-        }
-      } catch (e) {
-        console.warn(e);
+    return () => {
+      abortRef.current?.abort?.("unmount");
+    };
+  }, []);
+
+  useEffect(() => {
+    if (resendCooldownSec <= 0) return;
+    const t = setTimeout(() => setResendCooldownSec((s) => Math.max(0, s - 1)), 1000);
+    return () => clearTimeout(t);
+  }, [resendCooldownSec]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const params = new URLSearchParams(window.location.search || "");
+      const rt = params.get("returnTo");
+      if (rt && rt.startsWith("/") && !rt.startsWith("//") && !rt.startsWith("/ordering/login")) {
+        safeStorage.set("auditx_auth_return_to", rt, "session");
       }
+      const parsed = validateCustomerBoundary(
+        safeStorage.getJson("auditx_customer", null) ||
+          safeStorage.getJson("blinkit_customer", null)
+      );
+      if (parsed) {
+        router.replace(resolveSafeReturnUrl());
+      }
+    } catch (e) {
+      console.warn(e);
     }
   }, [router]);
 
@@ -49,82 +84,142 @@ export default function CustomerInteractiveLoginPage() {
       setErrorMsg("Enter a valid 10-digit mobile number");
       return;
     }
-    setErrorMsg("");
-    setLoading(true);
-    try {
-      const res = await fetch("/api/auth/send-otp", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: cleanPhone }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (data?.otpToken) setOtpToken(data.otpToken);
-      if (data?.demoOtp) setDemoOtpHint(String(data.demoOtp));
-      setOtpStep("otp");
-    } catch {
-      setDemoOtpHint("4444");
-      setOtpStep("otp");
-    } finally {
-      setLoading(false);
-    }
+
+    await withIdempotentLock("customer_send_otp", async () => {
+      setErrorMsg("");
+      setSmsFailedCanRetry(false);
+      setLoading(true);
+
+      abortRef.current?.abort?.("superseded");
+      const ctrl = new AbortController();
+      abortRef.current = ctrl;
+
+      try {
+        if (!isOnlineNow()) {
+          setSmsFailedCanRetry(true);
+          setDemoOtpHint("4444");
+          setErrorMsg("You appear offline. Retry when connected or enter demo OTP 4444.");
+          setOtpStep("otp");
+          setResendCooldownSec(10);
+          return;
+        }
+        const res = await apiFetch("/api/auth/send-otp", {
+          method: "POST",
+          body: { phone: cleanPhone },
+          timeoutMs: 10000,
+          retries: 1,
+          signal: ctrl.signal,
+        });
+        if (res.aborted) return;
+        if (res.ok && res.data) {
+          if (res.data.otpToken) setOtpToken(res.data.otpToken);
+          if (res.data.demoOtp) setDemoOtpHint(String(res.data.demoOtp));
+          setOtpStep("otp");
+          setResendCooldownSec(30);
+        } else {
+          setSmsFailedCanRetry(true);
+          setDemoOtpHint("4444");
+          setErrorMsg(res.error || "SMS gateway busy — tap Retry or use demo OTP 4444.");
+          setOtpStep("otp");
+          setResendCooldownSec(10);
+        }
+      } catch {
+        setSmsFailedCanRetry(true);
+        setDemoOtpHint("4444");
+        setErrorMsg("Could not reach OTP service — tap Retry or continue with 4444.");
+        setOtpStep("otp");
+        setResendCooldownSec(10);
+      } finally {
+        setLoading(false);
+      }
+    });
   }
 
   async function handleVerifyOtp() {
     const cleanPhone = phone.replace(/\D/g, "");
     const cleanOtp = otp.replace(/\D/g, "");
     if (cleanOtp.length < 4) {
-      setErrorMsg("Enter the 4-digit OTP code");
+      setErrorMsg("Enter the verification OTP code");
       return;
     }
-    setErrorMsg("");
-    setLoading(true);
-    let ok = false;
-    try {
-      const res = await fetch("/api/auth/verify-otp", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: cleanPhone, otp: cleanOtp, otpToken }),
-      });
-      if (res.ok) ok = true;
-      else {
-        const d = await res.json().catch(() => ({}));
-        setErrorMsg(d?.error || "Invalid OTP code");
+
+    await withIdempotentLock("customer_verify_otp", async () => {
+      setErrorMsg("");
+      setLoading(true);
+
+      abortRef.current?.abort?.("superseded");
+      const ctrl = new AbortController();
+      abortRef.current = ctrl;
+
+      let ok = false;
+      try {
+        const res = await apiFetch("/api/auth/verify-otp", {
+          method: "POST",
+          body: { phone: cleanPhone, otp: cleanOtp, otpToken },
+          timeoutMs: 10000,
+          retries: 0,
+          signal: ctrl.signal,
+        });
+        if (res.aborted) return;
+        if (res.ok) {
+          ok = true;
+        } else if (res.status === 0 && ["4444", "1234", "123456", "000000", demoOtpHint].includes(cleanOtp)) {
+          ok = true;
+        } else {
+          setErrorMsg(res.error || "Invalid OTP code. Check the digits and try again.");
+        }
+      } catch {
+        if (["4444", "1234", "123456", "000000", demoOtpHint].includes(cleanOtp)) ok = true;
+        else setErrorMsg("Verification failed. Try again.");
       }
-    } catch {
-      if (["4444", "1234", "123456", demoOtpHint].includes(cleanOtp)) ok = true;
-      else setErrorMsg("Verification failed. Try again.");
-    }
 
-    if (!ok) {
-      setLoading(false);
-      return;
-    }
+      if (!ok) {
+        setLoading(false);
+        return;
+      }
 
-    const displayName = customerName.trim() || `Customer ${cleanPhone.slice(-4)}`;
-    const custObj = {
-      customerId: `phone_${cleanPhone}`,
-      name: displayName,
-      phone: cleanPhone,
-      email: "",
-      location: "KFGSC , Tiptur 572201",
-      walletBalance: 1000000,
-      provider: "otp",
-      loginMethod: "Mobile OTP",
-      verifiedAt: new Date().toISOString(),
-    };
-    try {
-      localStorage.setItem("auditx_customer", JSON.stringify(custObj));
-      await dispatchCloudAction("REGISTER_LOGIN", {
-        deviceUid: getOrCreateDeviceUid(),
+      const displayName = customerName.trim() || `Customer ${cleanPhone.slice(-4)}`;
+      const custObj = {
+        customerId: `phone_${cleanPhone}`,
         name: displayName,
         phone: cleanPhone,
         email: "",
+        location: "KFGSC , Tiptur 572201",
+        walletBalance: 1000000,
+        provider: "otp",
         loginMethod: "Mobile OTP",
-      });
-    } catch {}
-    playSuccessChime();
-    setLoading(false);
-    router.replace("/ordering");
+        verifiedAt: new Date().toISOString(),
+      };
+
+      try {
+        const regRes = await dispatchCloudAction("REGISTER_LOGIN", {
+          deviceUid: getOrCreateDeviceUid(),
+          name: displayName,
+          phone: cleanPhone,
+          email: "",
+          loginMethod: "Mobile OTP",
+        });
+        if (regRes && !regRes.ok && regRes.status === 403) {
+          setErrorMsg(
+            regRes.error || "Ordering app reached maximum daily capacity (400 devices today)."
+          );
+          setLoading(false);
+          return;
+        }
+        safeStorage.setJson("auditx_customer", custObj);
+        safeStorage.setJson("blinkit_customer", custObj);
+        safeStorage.set("auditx_play_team_intro_once", "1", "session");
+        safeStorage.set("auditx_play_team_intro_once", "1", "local");
+      } catch {
+        safeStorage.setJson("auditx_customer", custObj);
+        safeStorage.setJson("blinkit_customer", custObj);
+      } finally {
+        setLoading(false);
+      }
+
+      playSuccessChime();
+      router.replace(resolveSafeReturnUrl());
+    });
   }
 
   return (
@@ -171,7 +266,7 @@ export default function CustomerInteractiveLoginPage() {
                 theme="light"
                 onError={(msg) => setErrorMsg(msg)}
                 onSuccess={() => {
-                  router.replace("/ordering");
+                  router.replace(resolveSafeReturnUrl());
                 }}
               />
             </div>
@@ -216,7 +311,7 @@ export default function CustomerInteractiveLoginPage() {
               </div>
               <IOSOtpInput
                 value={otp}
-                length={4}
+                length={6}
                 disabled={loading}
                 onChange={(val) => {
                   setOtp(val);
@@ -230,6 +325,18 @@ export default function CustomerInteractiveLoginPage() {
                 onClick={handleVerifyOtp}
               >
                 Verify &amp; Continue
+              </IOSButton>
+              <IOSButton
+                variant="plain"
+                minHeight={36}
+                disabled={loading || (!smsFailedCanRetry && resendCooldownSec > 0)}
+                onClick={handleSendOtp}
+              >
+                {smsFailedCanRetry
+                  ? "Retry SMS OTP"
+                  : resendCooldownSec > 0
+                  ? `Resend OTP in ${resendCooldownSec}s`
+                  : "Resend OTP"}
               </IOSButton>
               <IOSButton
                 variant="plain"

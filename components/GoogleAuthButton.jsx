@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { STAFF } from "@/lib/roles";
 import { dispatchCloudAction, getOrCreateDeviceUid } from "@/lib/realtimeSync";
+import { apiFetch, withIdempotentLock } from "@/lib/apiClient";
+import { safeStorage } from "@/lib/safeData";
 
 export const GOOGLE_CLIENT_ID = "925739101724-pjo6hpncuvgt62ovuqg3splvd3711m0e.apps.googleusercontent.com";
 
@@ -40,21 +42,36 @@ export default function GoogleAuthButton({
 }) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const abortRef = useRef(null);
+  const navTimerRef = useRef(null);
+  const popupTimerRef = useRef(null);
+  const mountedRef = useRef(true);
 
-  // 1. Load Google Identity Services SDK script in background
+  // 1. Load Google Identity Services SDK script once cleanly
   useEffect(() => {
+    mountedRef.current = true;
     if (typeof window === "undefined") return;
-
     if (window.google?.accounts?.oauth2) return;
 
-    const script = document.createElement("script");
-    script.src = "https://accounts.google.com/gsi/client";
-    script.async = true;
-    script.defer = true;
-    script.onerror = () => {
-      console.warn("Google Identity Services script failed to load from CDN.");
+    const existing = document.querySelector('script[data-auditx-gis="1"], script[src*="accounts.google.com/gsi/client"]');
+    if (!existing) {
+      const script = document.createElement("script");
+      script.src = "https://accounts.google.com/gsi/client";
+      script.async = true;
+      script.defer = true;
+      script.dataset.auditxGis = "1";
+      script.onerror = () => {
+        console.warn("Google Identity Services script failed to load from CDN.");
+      };
+      document.head.appendChild(script);
+    }
+
+    return () => {
+      mountedRef.current = false;
+      abortRef.current?.abort?.("unmount");
+      if (navTimerRef.current) clearTimeout(navTimerRef.current);
+      if (popupTimerRef.current) clearTimeout(popupTimerRef.current);
     };
-    document.head.appendChild(script);
   }, []);
 
   // 2. Handle return from Google OAuth when redirected via URL hash (#id_token=... or #access_token=...)
@@ -66,7 +83,7 @@ export default function GoogleAuthButton({
     if (search.includes("error=") || hash.includes("error=")) {
       try {
         window.history.replaceState(null, "", window.location.pathname);
-      } catch (e) {}
+      } catch {}
     }
 
     if (!hash || (!hash.includes("id_token=") && !hash.includes("access_token="))) return;
@@ -95,13 +112,21 @@ export default function GoogleAuthButton({
       }
 
       if (accessToken) {
-        fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
+        const ctrl = new AbortController();
+        abortRef.current = ctrl;
+        apiFetch("https://www.googleapis.com/oauth2/v3/userinfo", {
           headers: { Authorization: `Bearer ${accessToken}` },
+          timeoutMs: 8000,
+          retries: 1,
+          signal: ctrl.signal,
         })
-          .then((res) => res.json())
-          .then((userInfo) => {
-            if (userInfo && (userInfo.name || userInfo.email)) {
-              window.history.replaceState(null, "", window.location.pathname);
+          .then((res) => {
+            if (!mountedRef.current || res.aborted) return;
+            const userInfo = res.data;
+            if (res.ok && userInfo && (userInfo.name || userInfo.email)) {
+              try {
+                window.history.replaceState(null, "", window.location.pathname);
+              } catch {}
               const realName = userInfo.name || userInfo.given_name || userInfo.email.split("@")[0];
               finalizeLogin({
                 name: realName,
@@ -112,9 +137,11 @@ export default function GoogleAuthButton({
                 provider: "google",
                 authTime: new Date().toISOString(),
               });
+            } else if (!res.ok) {
+              finalizeLogin(getDefaultGoogleUser());
             }
           })
-          .catch((err) => console.error("Error fetching Google userinfo:", err));
+          .catch(() => {});
       }
     } catch (e) {
       console.warn("OAuth hash parse error:", e);
@@ -122,13 +149,10 @@ export default function GoogleAuthButton({
   }, []);
 
   function getDefaultGoogleUser() {
-    try {
-      const saved = localStorage.getItem("auditx_last_google_account") || localStorage.getItem("auditx_google_user");
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed.name && parsed.email) return parsed;
-      }
-    } catch (e) {}
+    const parsed =
+      safeStorage.getJson("auditx_last_google_account", null) ||
+      safeStorage.getJson("auditx_google_user", null);
+    if (parsed?.name && parsed?.email) return parsed;
     const uid = getOrCreateDeviceUid();
     const shortTag = uid.slice(-4).toUpperCase();
     return {
@@ -144,6 +168,10 @@ export default function GoogleAuthButton({
 
   // 3. Finalize Login, register daily device count (400 max), and enter ordering app
   async function finalizeLogin(googleUser, chosenRole = null) {
+    if (popupTimerRef.current) {
+      clearTimeout(popupTimerRef.current);
+      popupTimerRef.current = null;
+    }
     const effectiveRole = chosenRole || roleCode || (context === "ordering" ? "CUSTOMER" : null);
 
     if (effectiveRole === "CUSTOMER" || context === "ordering") {
@@ -165,38 +193,44 @@ export default function GoogleAuthButton({
         verifiedAt: new Date().toISOString(),
       };
 
-      const regRes = await dispatchCloudAction("REGISTER_LOGIN", {
-        deviceUid,
-        name: custObj.name,
-        email: custObj.email,
-        phone: custObj.phone,
-        loginMethod: custObj.loginMethod,
-      });
-
-      if (regRes && !regRes.ok && regRes.status === 403) {
-        setLoading(false);
-        const msg = regRes.error || "Ordering app reached maximum capacity (400 devices today).";
-        if (onError) onError(msg);
-        else alert(msg);
-        return;
-      }
-
       try {
-        localStorage.setItem("auditx_google_user", JSON.stringify(googleUser));
-        localStorage.setItem("auditx_last_google_account", JSON.stringify(googleUser));
-        localStorage.setItem("auditx_customer", JSON.stringify(custObj));
-        localStorage.setItem("blinkit_customer", JSON.stringify(custObj));
-        sessionStorage.setItem("auditx_play_team_intro_once", "1");
-        localStorage.setItem("auditx_play_team_intro_once", "1");
-      } catch (e) {
-        console.warn(e);
-      }
+        const regRes = await dispatchCloudAction("REGISTER_LOGIN", {
+          deviceUid,
+          name: custObj.name,
+          email: custObj.email,
+          phone: custObj.phone,
+          loginMethod: custObj.loginMethod,
+        });
 
-      setLoading(false);
-      if (onSuccess) onSuccess({ ...googleUser, role: "CUSTOMER", customer: custObj });
+        if (regRes && !regRes.ok && regRes.status === 403) {
+          if (mountedRef.current) setLoading(false);
+          const msg = regRes.error || "Ordering app reached maximum capacity (400 devices today).";
+          onError?.(msg);
+          return;
+        }
+      } catch {}
 
-      setTimeout(() => {
-        router.push("/ordering");
+      safeStorage.setJson("auditx_google_user", googleUser);
+      safeStorage.setJson("auditx_last_google_account", googleUser);
+      safeStorage.setJson("auditx_customer", custObj);
+      safeStorage.setJson("blinkit_customer", custObj);
+      safeStorage.set("auditx_play_team_intro_once", "1", "session");
+      safeStorage.set("auditx_play_team_intro_once", "1", "local");
+
+      if (mountedRef.current) setLoading(false);
+      onSuccess?.({ ...googleUser, role: "CUSTOMER", customer: custObj });
+
+      let dest = "/ordering";
+      try {
+        const rt = safeStorage.get("auditx_auth_return_to", "", "session") || "";
+        if (rt && rt.startsWith("/") && !rt.startsWith("//") && !rt.startsWith("/ordering/login")) {
+          dest = rt;
+          safeStorage.remove("auditx_auth_return_to", "session");
+        }
+      } catch {}
+
+      navTimerRef.current = setTimeout(() => {
+        if (mountedRef.current) router.push(dest);
       }, 100);
     } else {
       let staffMember = STAFF[0];
@@ -237,62 +271,73 @@ export default function GoogleAuthButton({
   // 4. CLICK HANDLER: Directly authenticates without showing ANY intermediate message or modal,
   // and in a fraction of a second returns to the main ordering catalog!
   function handleButtonClick() {
-    setLoading(true);
+    if (loading) return;
+    withIdempotentLock("google_auth_click", async () => {
+      if (mountedRef.current) setLoading(true);
 
-    // Option A: Try official Google OAuth2 Token Client (Opens official Google Account Chooser without redirect URI mismatch)
-    if (typeof window !== "undefined" && window.google?.accounts?.oauth2) {
-      try {
-        let isResolved = false;
-        const client = window.google.accounts.oauth2.initTokenClient({
-          client_id: clientId,
-          scope: "openid profile email",
-          prompt: "select_account",
-          callback: async (tokenResponse) => {
-            isResolved = true;
-            if (tokenResponse?.access_token) {
-              try {
-                const res = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
-                  headers: { Authorization: `Bearer ${tokenResponse.access_token}` },
-                });
-                const userInfo = await res.json();
-                if (userInfo && (userInfo.name || userInfo.email)) {
-                  const realName = userInfo.name || userInfo.given_name || "Deepu B";
-                  const email = userInfo.email || "deepub1235@gmail.com";
-                  const picture = userInfo.picture || "https://lh3.googleusercontent.com/a/default-user=s96-c";
+      if (typeof window !== "undefined" && window.google?.accounts?.oauth2) {
+        try {
+          if (popupTimerRef.current) clearTimeout(popupTimerRef.current);
+          popupTimerRef.current = setTimeout(() => {
+            if (mountedRef.current) setLoading(false);
+          }, 12000);
 
-                  finalizeLogin({
-                    name: realName,
-                    email,
-                    picture,
-                    sub: userInfo.sub || `google_${Date.now()}`,
-                    emailVerified: true,
-                    provider: "google",
-                    authTime: new Date().toISOString(),
-                  });
-                  return;
-                }
-              } catch (err) {
-                console.warn("Userinfo error, proceeding with user:", err);
+          const client = window.google.accounts.oauth2.initTokenClient({
+            client_id: clientId,
+            scope: "openid profile email",
+            prompt: "select_account",
+            callback: async (tokenResponse) => {
+              if (popupTimerRef.current) {
+                clearTimeout(popupTimerRef.current);
+                popupTimerRef.current = null;
               }
-            }
-            // Fallback if token client returns without access token
-            finalizeLogin(getDefaultGoogleUser());
-          },
-          error_callback: (err) => {
-            console.warn("Google OAuth2 token client error, proceeding with instant login:", err);
-            finalizeLogin(getDefaultGoogleUser());
-          },
-        });
+              if (tokenResponse?.access_token) {
+                try {
+                  const ctrl = new AbortController();
+                  abortRef.current = ctrl;
+                  const res = await apiFetch("https://www.googleapis.com/oauth2/v3/userinfo", {
+                    headers: { Authorization: `Bearer ${tokenResponse.access_token}` },
+                    timeoutMs: 8000,
+                    retries: 1,
+                    signal: ctrl.signal,
+                  });
+                  const userInfo = res.data;
+                  if (res.ok && userInfo && (userInfo.name || userInfo.email)) {
+                    const realName = userInfo.name || userInfo.given_name || "Deepu B";
+                    const email = userInfo.email || "deepub1235@gmail.com";
+                    const picture = userInfo.picture || "https://lh3.googleusercontent.com/a/default-user=s96-c";
 
-        client.requestAccessToken({ prompt: "select_account" });
-        return;
-      } catch (err) {
-        console.warn("Google token client failed, performing instant login:", err);
+                    await finalizeLogin({
+                      name: realName,
+                      email,
+                      picture,
+                      sub: userInfo.sub || `google_${Date.now()}`,
+                      emailVerified: true,
+                      provider: "google",
+                      authTime: new Date().toISOString(),
+                    });
+                    return;
+                  }
+                } catch {}
+              }
+              await finalizeLogin(getDefaultGoogleUser());
+            },
+            error_callback: () => {
+              if (popupTimerRef.current) {
+                clearTimeout(popupTimerRef.current);
+                popupTimerRef.current = null;
+              }
+              finalizeLogin(getDefaultGoogleUser());
+            },
+          });
+
+          client.requestAccessToken({ prompt: "select_account" });
+          return;
+        } catch {}
       }
-    }
 
-    // Option B: Instant seamless Google login (fraction of a second -> /ordering)
-    finalizeLogin(getDefaultGoogleUser());
+      await finalizeLogin(getDefaultGoogleUser());
+    });
   }
 
   const defaultButtonText =

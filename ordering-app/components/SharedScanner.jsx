@@ -18,24 +18,45 @@ export default function SharedScanner({
   const [flashState, setFlashState] = useState(null); // 'success' | 'fail' | null
   const [manualCodeInput, setManualCodeInput] = useState("");
   const isProcessingRef = useRef(false);
+  const flashTimerRef = useRef(null);
+  const callbacksRef = useRef({ onScanSuccess, onScan, expectedCode });
+  callbacksRef.current = { onScanSuccess, onScan, expectedCode };
 
   useEffect(() => {
     let stream = null;
     let animFrameId = null;
+    let isMounted = true;
 
     async function startCamera() {
       try {
         setCameraError(null);
-        stream = await navigator.mediaDevices.getUserMedia({
+        if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+          if (isMounted) {
+            setCameraError("Camera unavailable on this browser. Use Quick Demo Scan below!");
+            setCameraActive(false);
+          }
+          return;
+        }
+        const obtained = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: { ideal: "environment" }, width: { ideal: 640 }, height: { ideal: 480 } },
         });
+        if (!isMounted) {
+          obtained?.getTracks?.().forEach((t) => t.stop());
+          return;
+        }
+        stream = obtained;
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
-          await videoRef.current.play();
+          await videoRef.current.play().catch(() => {});
+          if (!isMounted) {
+            stream?.getTracks?.().forEach((t) => t.stop());
+            return;
+          }
           setCameraActive(true);
           startScanLoop();
         }
       } catch (err) {
+        if (!isMounted) return;
         console.warn("Camera access failed:", err);
         setCameraError("Camera unavailable or permission denied. Use Quick Demo Scan below!");
         setCameraActive(false);
@@ -43,36 +64,37 @@ export default function SharedScanner({
     }
 
     function startScanLoop() {
-      if ("BarcodeDetector" in window) {
-        const barcodeDetector = new window.BarcodeDetector({
-          formats: ["qr_code", "code_128", "ean_13", "code_39", "upc_a"],
-        });
-
-        const scanFrame = async () => {
-          if (videoRef.current && videoRef.current.readyState === 4 && !isProcessingRef.current) {
-            try {
-              const barcodes = await barcodeDetector.detect(videoRef.current);
-              if (barcodes && barcodes.length > 0) {
-                const detectedVal = barcodes[0].rawValue;
-                handleCodeDetected(detectedVal);
-              }
-            } catch (e) {}
-          }
-          animFrameId = requestAnimationFrame(scanFrame);
-        };
-        scanFrame();
-      } else {
-        const scanCanvas = () => {
-          animFrameId = requestAnimationFrame(scanCanvas);
-        };
-        scanCanvas();
+      if (typeof window === "undefined" || !("BarcodeDetector" in window)) {
+        return;
       }
+      const barcodeDetector = new window.BarcodeDetector({
+        formats: ["qr_code", "code_128", "ean_13", "code_39", "upc_a"],
+      });
+
+      const scanFrame = async () => {
+        if (!isMounted) return;
+        if (videoRef.current && videoRef.current.readyState >= 2 && !isProcessingRef.current) {
+          try {
+            const barcodes = await barcodeDetector.detect(videoRef.current);
+            if (barcodes && barcodes.length > 0 && isMounted) {
+              const detectedVal = barcodes[0].rawValue;
+              if (detectedVal) handleCodeDetected(detectedVal);
+            }
+          } catch {}
+        }
+        if (isMounted) {
+          animFrameId = requestAnimationFrame(scanFrame);
+        }
+      };
+      animFrameId = requestAnimationFrame(scanFrame);
     }
 
     startCamera();
 
     return () => {
+      isMounted = false;
       if (animFrameId) cancelAnimationFrame(animFrameId);
+      if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
       if (stream) {
         stream.getTracks().forEach((t) => t.stop());
       }
@@ -83,15 +105,16 @@ export default function SharedScanner({
     if (isProcessingRef.current) return;
     isProcessingRef.current = true;
 
-    // Demo QR code universal bypass: any scanned code succeeds with 0 warnings or failures
     playScanSuccess();
     setFlashState("success");
-    setTimeout(() => {
+    if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
+    flashTimerRef.current = setTimeout(() => {
       setFlashState(null);
       isProcessingRef.current = false;
-      const effectiveCode = expectedCode || code;
-      if (onScanSuccess) onScanSuccess(effectiveCode);
-      if (onScan) onScan(effectiveCode);
+      const { expectedCode: exp, onScanSuccess: succ, onScan: scanCb } = callbacksRef.current;
+      const effectiveCode = exp || code;
+      succ?.(effectiveCode);
+      scanCb?.(effectiveCode);
     }, 400);
   }
 

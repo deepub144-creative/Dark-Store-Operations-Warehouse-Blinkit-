@@ -50,6 +50,7 @@ export default function IOSMobileShell({
   const [isScrolled, setIsScrolled] = useState(false);
   const [isLargeCollapsed, setIsLargeCollapsed] = useState(false);
   const [keyboardOpen, setKeyboardOpen] = useState(false);
+  const [keyboardInset, setKeyboardInset] = useState(0);
 
   // Pull-to-refresh state
   const [pullDist, setPullDist] = useState(0);
@@ -70,17 +71,38 @@ export default function IOSMobileShell({
     };
   }, []);
 
-  // VisualViewport keyboard awareness: avoids squishing fixed bars when mobile keyboard opens
+  // VisualViewport keyboard awareness: updates baseline across orientation changes & keeps sticky CTAs above keyboard
   useEffect(() => {
-    if (typeof window === "undefined" || !window.visualViewport) return;
-    const vv = window.visualViewport;
-    const baseHeight = window.innerHeight;
+    if (typeof window === "undefined") return;
+    let baselineHeight = Math.max(window.innerHeight || 0, window.visualViewport?.height || 0);
+
     const handleResize = () => {
-      const heightDiff = baseHeight - vv.height;
-      setKeyboardOpen(heightDiff > 150);
+      const vv = window.visualViewport;
+      const currentH = vv ? vv.height : window.innerHeight;
+      if (currentH >= baselineHeight - 40) {
+        baselineHeight = Math.max(baselineHeight, window.innerHeight || currentH);
+      }
+      const heightDiff = Math.max(0, baselineHeight - currentH);
+      const isKb = heightDiff > 150;
+      setKeyboardOpen(isKb);
+      setKeyboardInset(isKb && vv ? Math.max(0, Math.round(window.innerHeight - vv.height - (vv.offsetTop || 0))) : 0);
     };
-    vv.addEventListener("resize", handleResize, { passive: true });
-    return () => vv.removeEventListener("resize", handleResize);
+
+    const onOrientation = () => {
+      baselineHeight = window.innerHeight || 0;
+      setKeyboardOpen(false);
+      setKeyboardInset(0);
+    };
+
+    const vv = window.visualViewport;
+    vv?.addEventListener("resize", handleResize, { passive: true });
+    vv?.addEventListener("scroll", handleResize, { passive: true });
+    window.addEventListener("orientationchange", onOrientation);
+    return () => {
+      vv?.removeEventListener("resize", handleResize);
+      vv?.removeEventListener("scroll", handleResize);
+      window.removeEventListener("orientationchange", onOrientation);
+    };
   }, []);
 
   // Observe sentinel at top of scroll view for hairline separator & large-title collapse (no layout read inside scroll!)
@@ -336,7 +358,11 @@ export default function IOSMobileShell({
           </div>
 
           {/* Sticky CTA Footer (when outside scroll) */}
-          {stickyFooter}
+          {stickyFooter && (
+            <div style={keyboardInset > 0 ? { paddingBottom: Math.min(340, keyboardInset) } : undefined}>
+              {stickyFooter}
+            </div>
+          )}
 
           {/* Native Blurred Bottom TabBar (hidden automatically during mobile virtual keyboard) */}
           {!keyboardOpen && tabBar}
