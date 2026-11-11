@@ -1,5 +1,7 @@
 import "./globals.css";
 import PwaRegistrar from "@/components/ios/PwaRegistrar";
+import GlobalCrashGuard from "@/components/GlobalCrashGuard";
+import ErrorBoundary from "@/components/ErrorBoundary";
 
 /** @type {import("next").Viewport} */
 export const viewport = {
@@ -58,7 +60,8 @@ export default function RootLayout({ children }) {
       </head>
       <body>
         <PwaRegistrar />
-        {children}
+        <GlobalCrashGuard />
+        <ErrorBoundary label="AUDIT'X App">{children}</ErrorBoundary>
       </body>
     </html>
   );

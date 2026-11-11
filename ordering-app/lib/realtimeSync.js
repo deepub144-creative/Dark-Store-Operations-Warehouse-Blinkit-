@@ -1,5 +1,13 @@
 "use client";
 
+import { apiFetch, createIdempotencyKey, isOnlineNow } from "./apiClient";
+import {
+  safeArr,
+  safeJsonParse,
+  safeNum,
+  safeStorage,
+  validateHubStateBoundary,
+} from "./safeData";
 import {
   applyOrderInventoryAndStats,
   createInitialHubState,
@@ -14,11 +22,13 @@ const STORAGE_EVENT_KEY = "auditx_last_event";
 const STORAGE_CLOUD_CACHE_KEY = "auditx_hub_state_cache";
 const STORAGE_DEVICE_UID_KEY = "auditx_device_uid";
 const STORAGE_STORE_TS_KEY = "auditx_store_status_updated_at";
+const MAX_LOCAL_ORDERS = 120;
 
 let syncChannel = null;
 let inFlightPoll = null;
 let lastKnownRevision = 0;
 let lastKnownDateKey = "";
+let lastSeenServerBootId = "";
 const hydratedServerBoots = new Set();
 
 export function getSyncChannel() {
@@ -27,7 +37,7 @@ export function getSyncChannel() {
       try {
         syncChannel = new BroadcastChannel("auditx_quick_commerce_bus");
       } catch (e) {
-        console.warn("BroadcastChannel error:", e);
+        // Ignore unsupported private contexts
       }
     }
     return syncChannel;
@@ -37,19 +47,15 @@ export function getSyncChannel() {
 
 export function getOrCreateDeviceUid() {
   if (typeof window === "undefined") return "server_device";
-  try {
-    let uid = localStorage.getItem(STORAGE_DEVICE_UID_KEY);
-    if (!uid) {
-      uid =
-        typeof crypto !== "undefined" && crypto.randomUUID
-          ? `dev_${crypto.randomUUID()}`
-          : `dev_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
-      localStorage.setItem(STORAGE_DEVICE_UID_KEY, uid);
-    }
-    return uid;
-  } catch (e) {
-    return `dev_${Date.now()}`;
+  let uid = safeStorage.get(STORAGE_DEVICE_UID_KEY, null);
+  if (!uid) {
+    uid =
+      typeof crypto !== "undefined" && crypto.randomUUID
+        ? `dev_${crypto.randomUUID()}`
+        : `dev_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+    safeStorage.set(STORAGE_DEVICE_UID_KEY, uid);
   }
+  return uid;
 }
 
 const DEMO_COMPLAINT_IDS = new Set([
@@ -160,18 +166,17 @@ export function getCachedCloudHubState() {
   }
   let baseState = createInitialHubState(getTodayISTDateKey());
   try {
-    const raw = localStorage.getItem(STORAGE_CLOUD_CACHE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
+    const parsed = safeStorage.getJson(STORAGE_CLOUD_CACHE_KEY, null);
+    if (parsed) {
       baseState = rolloverStateIfNewDay(parsed, getTodayISTDateKey()).state;
     }
 
     // Reconcile standalone flags so individual keys & hub cache never contradict
-    const rawStore = localStorage.getItem("auditx_store_open");
-    const rawStoreTs = Number(localStorage.getItem(STORAGE_STORE_TS_KEY) || 0);
+    const rawStore = safeStorage.get("auditx_store_open", null);
+    const rawStoreTs = safeNum(safeStorage.get(STORAGE_STORE_TS_KEY, 0), 0);
     if (
       rawStore !== null &&
-      rawStoreTs >= Number(baseState.storeStatusUpdatedAt || 0)
+      rawStoreTs >= safeNum(baseState.storeStatusUpdatedAt, 0)
     ) {
       baseState.isStoreOpen = rawStore !== "false";
       baseState.storeStatusUpdatedAt = rawStoreTs;
@@ -179,13 +184,11 @@ export function getCachedCloudHubState() {
 
     const nextStaff = { ...(baseState.staffStatus || {}) };
     for (const id of ["thrupthi", "sinchana"]) {
-      const rawStatus = localStorage.getItem(`auditx_device_${id}`);
-      const rawTs = Number(
-        localStorage.getItem(`auditx_device_${id}_updated_at`) || 0
-      );
+      const rawStatus = safeStorage.get(`auditx_device_${id}`, null);
+      const rawTs = safeNum(safeStorage.get(`auditx_device_${id}_updated_at`, 0), 0);
       if (
         rawStatus &&
-        rawTs >= Number(nextStaff[id]?.statusUpdatedAt || 0)
+        rawTs >= safeNum(nextStaff[id]?.statusUpdatedAt, 0)
       ) {
         nextStaff[id] = {
           ...(nextStaff[id] || {}),
@@ -198,8 +201,8 @@ export function getCachedCloudHubState() {
       }
     }
     baseState.staffStatus = nextStaff;
-  } catch (e) {
-    // ignore parse glitch
+  } catch {
+    // ignore storage glitch
   }
   return baseState;
 }
@@ -207,56 +210,43 @@ export function getCachedCloudHubState() {
 function writeCloudStateToStorage(state) {
   lastKnownRevision = Math.max(
     lastKnownRevision,
-    Number(state.revision || 1)
+    safeNum(state?.revision, 1)
   );
-  lastKnownDateKey = state.dateKey || getTodayISTDateKey();
+  lastKnownDateKey = state?.dateKey || getTodayISTDateKey();
 
-  localStorage.setItem(STORAGE_CLOUD_CACHE_KEY, JSON.stringify(state));
-  localStorage.setItem(
+  safeStorage.setJson(STORAGE_CLOUD_CACHE_KEY, state);
+  safeStorage.setJson(
     STORAGE_ORDERS_KEY,
-    JSON.stringify(Array.isArray(state.orders) ? state.orders : [])
+    safeArr(state?.orders).slice(0, MAX_LOCAL_ORDERS)
   );
-  localStorage.setItem(
+  safeStorage.setJson(
     "auditx_complaints",
-    JSON.stringify(Array.isArray(state.complaints) ? state.complaints : [])
+    safeArr(state?.complaints).slice(0, MAX_LOCAL_ORDERS)
   );
-  localStorage.setItem(
+  safeStorage.set(
     "auditx_store_open",
-    state.isStoreOpen !== false ? "true" : "false"
+    state?.isStoreOpen !== false ? "true" : "false"
   );
-  localStorage.setItem(
+  safeStorage.set(
     STORAGE_STORE_TS_KEY,
-    String(Number(state.storeStatusUpdatedAt || 0))
+    String(safeNum(state?.storeStatusUpdatedAt, 0))
   );
-  localStorage.setItem(
-    "auditx_oos_items",
-    JSON.stringify(Array.isArray(state.oosList) ? state.oosList : [])
-  );
-  localStorage.setItem(
-    "auditx_inventory_units",
-    JSON.stringify(state.inventoryStockMap || {})
-  );
-  localStorage.setItem(
+  safeStorage.setJson("auditx_oos_items", safeArr(state?.oosList));
+  safeStorage.setJson("auditx_inventory_units", state?.inventoryStockMap || {});
+  safeStorage.setJson(
     "auditx_custom_catalog",
-    JSON.stringify(
-      Array.isArray(state.customCatalogItems) ? state.customCatalogItems : []
-    )
+    safeArr(state?.customCatalogItems)
   );
-  localStorage.setItem(
-    "auditx_customer_ratings",
-    JSON.stringify(Array.isArray(state.ratingsToday) ? state.ratingsToday : [])
-  );
-  localStorage.setItem(
-    "auditx_daily_history",
-    JSON.stringify(Array.isArray(state.dailyHistory) ? state.dailyHistory : [])
-  );
+  safeStorage.setJson("auditx_customer_ratings", safeArr(state?.ratingsToday));
+  safeStorage.setJson("auditx_daily_history", safeArr(state?.dailyHistory));
+
   for (const id of ["thrupthi", "sinchana"]) {
-    const entry = state.staffStatus?.[id];
+    const entry = state?.staffStatus?.[id];
     if (entry?.deviceStatus) {
-      localStorage.setItem(`auditx_device_${id}`, entry.deviceStatus);
-      localStorage.setItem(
+      safeStorage.set(`auditx_device_${id}`, entry.deviceStatus);
+      safeStorage.set(
         `auditx_device_${id}_updated_at`,
-        String(Number(entry.statusUpdatedAt || 0))
+        String(safeNum(entry.statusUpdatedAt, 0))
       );
     }
   }
@@ -364,7 +354,7 @@ function shouldRehydrateServer(serverState, mergedState) {
   return false;
 }
 
-export async function fetchCloudHubState({ force = false } = {}) {
+export async function fetchCloudHubState({ force = false, signal = null } = {}) {
   if (typeof window === "undefined") return null;
   if (inFlightPoll && !force) return inFlightPoll;
 
@@ -376,9 +366,14 @@ export async function fetchCloudHubState({ force = false } = {}) {
 
   const task = (async () => {
     try {
-      const res = await fetch(`/api/sync${revQuery}`, { cache: "no-store" });
-      if (!res.ok) return null;
-      const json = await res.json();
+      const res = await apiFetch(`/api/sync${revQuery}`, {
+        timeoutMs: 10000,
+        retries: 2,
+        dedupe: !force,
+        signal,
+      });
+      if (!res.ok || !res.data) return null;
+      const json = res.data;
       if (json?.unchanged) {
         return {
           state: getCachedCloudHubState(),
@@ -386,32 +381,51 @@ export async function fetchCloudHubState({ force = false } = {}) {
           persistenceMode: json.persistenceMode,
         };
       }
-      if (json?.state) {
-        const applied = applyCloudStateToLocalStorage(json.state, {
+      const validated = validateHubStateBoundary(json?.state);
+      if (validated) {
+        // Guard against out-of-order stale response overwriting newer local revision on the same boot
+        const incomingRev = safeNum(validated.revision, 0);
+        if (
+          json.serverBootId &&
+          json.serverBootId === lastSeenServerBootId &&
+          incomingRev > 0 &&
+          incomingRev < lastKnownRevision &&
+          validated.dateKey === lastKnownDateKey &&
+          !force
+        ) {
+          return {
+            state: getCachedCloudHubState(),
+            unchanged: true,
+            persistenceMode: json.persistenceMode,
+          };
+        }
+        if (json.serverBootId) lastSeenServerBootId = json.serverBootId;
+
+        const applied = applyCloudStateToLocalStorage(validated, {
           persistenceMode: json.persistenceMode,
         });
         if (
           json.persistenceMode === "memory" &&
           json.serverBootId &&
           !hydratedServerBoots.has(json.serverBootId) &&
-          shouldRehydrateServer(json.state, applied)
+          shouldRehydrateServer(validated, applied)
         ) {
           if (hydratedServerBoots.size > 30) hydratedServerBoots.clear();
           hydratedServerBoots.add(json.serverBootId);
-          fetch("/api/sync", {
+          apiFetch("/api/sync", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
+            body: {
               action: "SYNC_REHYDRATE_STATE",
               payload: { state: applied },
-            }),
-            cache: "no-store",
+            },
+            timeoutMs: 8000,
+            retries: 1,
           }).catch(() => {});
         }
         return { state: applied, persistenceMode: json.persistenceMode };
       }
       return null;
-    } catch (e) {
+    } catch {
       return null;
     } finally {
       inFlightPoll = null;
@@ -426,16 +440,25 @@ export async function dispatchCloudAction(action, payload = {}) {
   if (typeof window === "undefined") {
     return { ok: false, error: "Client only" };
   }
+  const safePayload = payload && typeof payload === "object" ? payload : {};
+  const idempotencyKey = safePayload.idempotencyKey || createIdempotencyKey(action);
+  const isOrderPlacement = action === "PLACE_ORDER";
+  const queueIfOffline = !["HEARTBEAT", "REGISTER_LOGIN", "PLACE_ORDER"].includes(action);
+  const retries = action === "HEARTBEAT" || isOrderPlacement ? 0 : 2;
+
   try {
-    const res = await fetch("/api/sync", {
+    const res = await apiFetch("/api/sync", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action, payload }),
-      cache: "no-store",
+      body: { action, payload: { ...safePayload, idempotencyKey } },
+      idempotencyKey,
+      timeoutMs: 10000,
+      retries,
+      queueIfOffline,
     });
-    const data = await res.json().catch(() => ({}));
-    if (data?.state) {
-      const applied = applyCloudStateToLocalStorage(data.state, {
+    const data = res.data || {};
+    const validatedState = validateHubStateBoundary(data?.state);
+    if (validatedState) {
+      const applied = applyCloudStateToLocalStorage(validatedState, {
         persistenceMode: data.persistenceMode,
       });
       pushChannelState(applied);
@@ -443,9 +466,36 @@ export async function dispatchCloudAction(action, payload = {}) {
         return { ok: true, status: res.status, state: applied, data };
       }
     }
-    return { ok: res.ok, status: res.status, data, error: data?.error };
+    return {
+      ok: res.ok,
+      status: res.status,
+      timedOut: Boolean(res.timedOut),
+      aborted: Boolean(res.aborted),
+      data,
+      error: res.error || data?.error,
+      offlineQueued: Boolean(res.offlineQueued),
+    };
   } catch (e) {
     return { ok: false, error: e?.message || "Network sync error" };
+  }
+}
+
+export async function verifyPlacedOrderStatus({ idempotencyKey = "", orderId = "" } = {}) {
+  if (typeof window === "undefined") return null;
+  if (!idempotencyKey && !orderId) return null;
+  try {
+    const res = await fetchCloudHubState({ force: true });
+    const orders = safeArr(res?.state?.orders || getCachedCloudHubState()?.orders);
+    return (
+      orders.find(
+        (o) =>
+          o &&
+          ((idempotencyKey && o.idempotencyKey === idempotencyKey) ||
+            (orderId && (o.id === orderId || o.orderId === orderId || o.orderNumber === orderId)))
+      ) || null
+    );
+  } catch {
+    return null;
   }
 }
 
@@ -460,12 +510,40 @@ export function subscribeToCloudHub(callback, intervalMs = 1800) {
 
   let active = true;
   let lastFocusSyncAt = 0;
+  let pollTimer = null;
+  let failStreak = 0;
+  const abortController = new AbortController();
 
-  fetchCloudHubState({ force: false }).then((res) => {
-    if (active && res?.state) {
-      callback(res.state, { persistenceMode: res.persistenceMode });
+  const runSync = async (force = false) => {
+    if (!active || !isOnlineNow()) return false;
+    const res = await fetchCloudHubState({ force, signal: abortController.signal });
+    if (!active) return false;
+    if (res?.state) {
+      failStreak = 0;
+      if (!res.unchanged || force) {
+        callback(res.state, { persistenceMode: res.persistenceMode });
+      }
+      return true;
     }
-  });
+    failStreak = Math.min(4, failStreak + 1);
+    return false;
+  };
+
+  const scheduleNext = () => {
+    if (!active) return;
+    if (pollTimer) clearTimeout(pollTimer);
+    if (document.visibilityState === "hidden") return;
+    const delay =
+      failStreak > 0
+        ? Math.min(12000, intervalMs * Math.pow(2, failStreak))
+        : intervalMs;
+    pollTimer = setTimeout(async () => {
+      await runSync(false);
+      scheduleNext();
+    }, delay);
+  };
+
+  runSync(false).then(() => scheduleNext());
 
   const handleCloudEvt = (e) => {
     if (active && e?.detail) {
@@ -493,43 +571,43 @@ export function subscribeToCloudHub(callback, intervalMs = 1800) {
     }
   };
 
-  const handleFocus = () => {
+  const handleWakeSync = () => {
+    if (!active) return;
     const now = Date.now();
     if (now - lastFocusSyncAt < 650) return;
     lastFocusSyncAt = now;
-    fetchCloudHubState({ force: false }).then((res) => {
-      if (active && res?.state && !res.unchanged) {
-        callback(res.state, { persistenceMode: res.persistenceMode });
-      }
-    });
+    failStreak = 0;
+    runSync(false).then(() => scheduleNext());
   };
 
   const handleVisibility = () => {
-    if (document.visibilityState === "visible") handleFocus();
+    if (document.visibilityState === "visible") {
+      handleWakeSync();
+    } else if (pollTimer) {
+      clearTimeout(pollTimer);
+      pollTimer = null;
+    }
   };
 
   window.addEventListener("auditx_cloud_synced", handleCloudEvt);
   window.addEventListener("storage", handleStorage);
-  window.addEventListener("focus", handleFocus);
+  window.addEventListener("focus", handleWakeSync);
+  window.addEventListener("online", handleWakeSync);
   document.addEventListener("visibilitychange", handleVisibility);
 
   const ch = getSyncChannel();
   if (ch) ch.addEventListener("message", handleChannelMsg);
 
-  const poller = setInterval(() => {
-    fetchCloudHubState().then((res) => {
-      if (active && res?.state && !res.unchanged) {
-        callback(res.state, { persistenceMode: res.persistenceMode });
-      }
-    });
-  }, intervalMs);
-
   return () => {
     active = false;
-    clearInterval(poller);
+    try {
+      abortController.abort("unsubscribed");
+    } catch {}
+    if (pollTimer) clearTimeout(pollTimer);
     window.removeEventListener("auditx_cloud_synced", handleCloudEvt);
     window.removeEventListener("storage", handleStorage);
-    window.removeEventListener("focus", handleFocus);
+    window.removeEventListener("focus", handleWakeSync);
+    window.removeEventListener("online", handleWakeSync);
     document.removeEventListener("visibilitychange", handleVisibility);
     if (ch) ch.removeEventListener("message", handleChannelMsg);
   };
@@ -541,18 +619,18 @@ export function subscribeToCloudHub(callback, intervalMs = 1800) {
 export function getAllLiveComplaints() {
   if (typeof window === "undefined") return [];
   try {
-    const raw = localStorage.getItem("auditx_complaints");
+    const raw = safeStorage.get("auditx_complaints", null);
     if (raw === null) {
-      localStorage.setItem("auditx_complaints", JSON.stringify([]));
+      safeStorage.setJson("auditx_complaints", []);
       return [];
     }
-    const parsed = JSON.parse(raw);
-    const cleaned = sanitizeComplaints(Array.isArray(parsed) ? parsed : []);
+    const parsed = safeJsonParse(raw, []);
+    const cleaned = sanitizeComplaints(safeArr(parsed)).slice(0, MAX_LOCAL_ORDERS);
     if (!Array.isArray(parsed) || cleaned.length !== parsed.length) {
-      localStorage.setItem("auditx_complaints", JSON.stringify(cleaned));
+      safeStorage.setJson("auditx_complaints", cleaned);
     }
     return cleaned;
-  } catch (e) {
+  } catch {
     return [];
   }
 }
@@ -563,19 +641,18 @@ export function getAllLiveComplaints() {
 export function getAllLiveOrders() {
   if (typeof window === "undefined") return [];
   try {
-    const raw = localStorage.getItem(STORAGE_ORDERS_KEY);
+    const raw = safeStorage.get(STORAGE_ORDERS_KEY, null);
     if (raw === null) {
-      localStorage.setItem(STORAGE_ORDERS_KEY, JSON.stringify([]));
+      safeStorage.setJson(STORAGE_ORDERS_KEY, []);
       return [];
     }
-    const parsed = JSON.parse(raw);
-    const cleaned = sanitizeOrders(Array.isArray(parsed) ? parsed : []);
+    const parsed = safeJsonParse(raw, []);
+    const cleaned = sanitizeOrders(safeArr(parsed)).slice(0, MAX_LOCAL_ORDERS);
     if (!Array.isArray(parsed) || cleaned.length !== parsed.length) {
-      localStorage.setItem(STORAGE_ORDERS_KEY, JSON.stringify(cleaned));
+      safeStorage.setJson(STORAGE_ORDERS_KEY, cleaned);
     }
     return cleaned;
-  } catch (e) {
-    console.warn("Error reading live orders:", e);
+  } catch {
     return [];
   }
 }
@@ -586,11 +663,11 @@ export function getAllLiveOrders() {
 export function clearAllLiveOrders(opts = {}) {
   if (typeof window === "undefined") return [];
   try {
-    localStorage.setItem(STORAGE_ORDERS_KEY, JSON.stringify([]));
-    localStorage.setItem("auditx_complaints", JSON.stringify([]));
-    localStorage.removeItem("auditx_customer_last_order");
-    localStorage.setItem("auditx_queue_cleared_at", new Date().toISOString());
-    localStorage.setItem("auditx_queue_cleared", "true");
+    safeStorage.setJson(STORAGE_ORDERS_KEY, []);
+    safeStorage.setJson("auditx_complaints", []);
+    safeStorage.remove("auditx_customer_last_order");
+    safeStorage.set("auditx_queue_cleared_at", new Date().toISOString());
+    safeStorage.set("auditx_queue_cleared", "true");
 
     const cached = getCachedCloudHubState();
     applyCloudStateToLocalStorage({
@@ -611,11 +688,9 @@ export function clearAllLiveOrders(opts = {}) {
     if (ch) {
       try {
         ch.postMessage(eventPayload);
-      } catch (e) {
-        console.warn(e);
-      }
+      } catch {}
     }
-    localStorage.setItem(STORAGE_EVENT_KEY, JSON.stringify(eventPayload));
+    safeStorage.setJson(STORAGE_EVENT_KEY, eventPayload);
     window.dispatchEvent(
       new CustomEvent("auditx_live_sync", { detail: eventPayload })
     );
@@ -625,8 +700,7 @@ export function clearAllLiveOrders(opts = {}) {
     }
 
     return [];
-  } catch (e) {
-    console.error("Error clearing live orders:", e);
+  } catch {
     return [];
   }
 }
@@ -639,7 +713,7 @@ export function saveLiveOrder(newOrder, opts = {}) {
   try {
     const current = getAllLiveOrders();
     const existingIndex = current.findIndex(
-      (o) => o.id === newOrder.id || (o.orderId && o.orderId === newOrder.id)
+      (o) => o.id === newOrder?.id || (o.orderId && o.orderId === newOrder?.id)
     );
 
     const cached = normalizeHubState(getCachedCloudHubState());
@@ -647,7 +721,7 @@ export function saveLiveOrder(newOrder, opts = {}) {
     if (existingIndex === -1) {
       processed = applyOrderInventoryAndStats(cached, {
         ...newOrder,
-        createdAt: newOrder.createdAt || new Date().toISOString(),
+        createdAt: newOrder?.createdAt || new Date().toISOString(),
       });
     }
 
@@ -660,7 +734,7 @@ export function saveLiveOrder(newOrder, opts = {}) {
         updatedAt: new Date().toISOString(),
       };
     } else {
-      updatedList = [processed, ...current];
+      updatedList = [processed, ...current].slice(0, MAX_LOCAL_ORDERS);
     }
 
     applyCloudStateToLocalStorage({
@@ -681,11 +755,9 @@ export function saveLiveOrder(newOrder, opts = {}) {
     if (ch) {
       try {
         ch.postMessage(eventPayload);
-      } catch (e) {
-        console.warn(e);
-      }
+      } catch {}
     }
-    localStorage.setItem(STORAGE_EVENT_KEY, JSON.stringify(eventPayload));
+    safeStorage.setJson(STORAGE_EVENT_KEY, eventPayload);
     window.dispatchEvent(
       new CustomEvent("auditx_live_sync", { detail: eventPayload })
     );
@@ -695,8 +767,7 @@ export function saveLiveOrder(newOrder, opts = {}) {
     }
 
     return processed;
-  } catch (e) {
-    console.error("Error saving live order:", e);
+  } catch {
     return newOrder;
   }
 }
@@ -705,7 +776,7 @@ export function saveLiveOrder(newOrder, opts = {}) {
  * Update an existing order status across tabs & cloud sync
  */
 export function updateLiveOrder(orderId, updates, opts = {}) {
-  if (typeof window === "undefined") return null;
+  if (typeof window === "undefined" || !orderId) return null;
   try {
     const current = getAllLiveOrders();
     let updatedOrder = null;
@@ -736,24 +807,25 @@ export function updateLiveOrder(orderId, updates, opts = {}) {
       updatedList.unshift(updatedOrder);
     }
 
-    localStorage.setItem(STORAGE_ORDERS_KEY, JSON.stringify(updatedList));
+    const cappedList = updatedList.slice(0, MAX_LOCAL_ORDERS);
+    safeStorage.setJson(STORAGE_ORDERS_KEY, cappedList);
     const cached = getCachedCloudHubState();
     applyCloudStateToLocalStorage({
       ...cached,
-      orders: updatedList,
+      orders: cappedList,
       revision: (cached.revision || 1) + 1,
     });
 
     let eventType = "ORDER_UPDATED";
-    if (updates.status === "picking") eventType = "ORDER_PICKING_STARTED";
-    else if (updates.status === "staged") eventType = "ORDER_STAGED";
-    else if (updates.status === "dispatched") eventType = "ORDER_DISPATCHED";
-    else if (updates.status === "delivered") eventType = "ORDER_DELIVERED";
+    if (updates?.status === "picking") eventType = "ORDER_PICKING_STARTED";
+    else if (updates?.status === "staged") eventType = "ORDER_STAGED";
+    else if (updates?.status === "dispatched") eventType = "ORDER_DISPATCHED";
+    else if (updates?.status === "delivered") eventType = "ORDER_DELIVERED";
 
     const eventPayload = {
       type: eventType,
       payload: updatedOrder,
-      allOrders: updatedList,
+      allOrders: cappedList,
       timestamp: Date.now(),
       nonce: Math.random(),
     };
@@ -762,11 +834,9 @@ export function updateLiveOrder(orderId, updates, opts = {}) {
     if (ch) {
       try {
         ch.postMessage(eventPayload);
-      } catch (e) {
-        console.warn(e);
-      }
+      } catch {}
     }
-    localStorage.setItem(STORAGE_EVENT_KEY, JSON.stringify(eventPayload));
+    safeStorage.setJson(STORAGE_EVENT_KEY, eventPayload);
     window.dispatchEvent(
       new CustomEvent("auditx_live_sync", { detail: eventPayload })
     );
@@ -776,8 +846,7 @@ export function updateLiveOrder(orderId, updates, opts = {}) {
     }
 
     return updatedOrder;
-  } catch (e) {
-    console.error("Error updating live order:", e);
+  } catch {
     return null;
   }
 }
@@ -797,13 +866,11 @@ export function broadcastEvent(eventType, payload) {
   if (ch) {
     try {
       ch.postMessage(eventPayload);
-    } catch (e) {
-      console.warn(e);
-    }
+    } catch {}
   }
 
   if (typeof window !== "undefined") {
-    localStorage.setItem(STORAGE_EVENT_KEY, JSON.stringify(eventPayload));
+    safeStorage.setJson(STORAGE_EVENT_KEY, eventPayload);
     window.dispatchEvent(
       new CustomEvent("auditx_live_sync", { detail: eventPayload })
     );
@@ -815,28 +882,34 @@ export function broadcastEvent(eventType, payload) {
  */
 export function subscribeToEvents(callback) {
   if (typeof window === "undefined") return () => {};
+  const recentNonces = new Set();
+
+  const deliver = (evt) => {
+    if (!evt || typeof callback !== "function") return;
+    if (evt.nonce !== undefined) {
+      if (recentNonces.has(evt.nonce)) return;
+      recentNonces.add(evt.nonce);
+      if (recentNonces.size > 100) {
+        const first = recentNonces.values().next().value;
+        recentNonces.delete(first);
+      }
+    }
+    callback(evt);
+  };
 
   const handleMessage = (event) => {
-    if (event.data && callback) {
-      callback(event.data);
-    }
+    if (event?.data) deliver(event.data);
   };
 
   const handleStorage = (e) => {
     if (e.key === STORAGE_EVENT_KEY && e.newValue) {
-      try {
-        const parsed = JSON.parse(e.newValue);
-        if (callback) callback(parsed);
-      } catch (err) {
-        console.error("Storage event parse error:", err);
-      }
+      const parsed = safeJsonParse(e.newValue, null);
+      if (parsed) deliver(parsed);
     }
   };
 
   const handleLocal = (e) => {
-    if (e.detail && callback) {
-      callback(e.detail);
-    }
+    if (e?.detail) deliver(e.detail);
   };
 
   const ch = getSyncChannel();
@@ -871,22 +944,19 @@ export function subscribeToLiveOrders(callback) {
 
   const handleCloud = (e) => {
     if (e?.detail?.orders) {
-      callback(sanitizeOrders(e.detail.orders), null);
+      callback(sanitizeOrders(safeArr(e.detail.orders)), null);
     }
   };
   window.addEventListener("auditx_cloud_synced", handleCloud);
 
-  let lastSeen = JSON.stringify(initial);
+  let lastSeen = safeStorage.get(STORAGE_ORDERS_KEY, "");
   const poller = setInterval(() => {
-    try {
-      const currentRaw = localStorage.getItem(STORAGE_ORDERS_KEY) || "";
-      if (currentRaw && currentRaw !== lastSeen) {
-        lastSeen = currentRaw;
-        const fresh = JSON.parse(currentRaw);
-        callback(Array.isArray(fresh) ? fresh : getAllLiveOrders(), null);
-      }
-    } catch (e) {
-      // Ignore parse glitches
+    if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+    const currentRaw = safeStorage.get(STORAGE_ORDERS_KEY, "");
+    if (currentRaw && currentRaw !== lastSeen) {
+      lastSeen = currentRaw;
+      const fresh = safeJsonParse(currentRaw, null);
+      callback(Array.isArray(fresh) ? sanitizeOrders(fresh) : getAllLiveOrders(), null);
     }
   }, 500);
 

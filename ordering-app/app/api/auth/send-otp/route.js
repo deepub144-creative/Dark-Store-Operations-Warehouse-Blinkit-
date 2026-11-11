@@ -7,14 +7,28 @@ const mockOtps = globalThis._mockOtps || (globalThis._mockOtps = new Map());
 const FAST2SMS_KEY = process.env.FAST2SMS_API_KEY || "mQsfBHSgk250GqvlEuArT9PwzctCZYKoxXDVpROid6jb8n4e1NMewIUEP2JH6q7LtsnFuokVKRdW3pzX";
 
 export async function POST(req) {
-  const { phone } = await req.json();
-  if (!phone || phone.length !== 10) {
+  let body = null;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+  const phone = String(body?.phone || "").replace(/\D/g, "");
+  if (phone.length !== 10) {
     return NextResponse.json({ error: "Enter a valid 10-digit phone number" }, { status: 400 });
+  }
+
+  // Prune expired OTP entries to bound memory growth
+  const now = Date.now();
+  for (const [k, v] of mockOtps.entries()) {
+    if (!v || now > v.expiresAt || mockOtps.size > 500) {
+      mockOtps.delete(k);
+    }
   }
 
   // Generate 6-digit OTP
   const otp = Math.floor(100000 + Math.random() * 900000).toString();
-  const expiresAt = Date.now() + 10 * 60 * 1000; // 10 mins
+  const expiresAt = now + 10 * 60 * 1000; // 10 mins
 
   // Create stateless verification token (base64 encoded phone:otp:expiresAt)
   const otpToken = Buffer.from(`${phone}:${otp}:${expiresAt}`).toString("base64");
@@ -27,8 +41,10 @@ export async function POST(req) {
     } catch (e) {}
   }
 
-  // Send REAL SMS via Fast2SMS API key
+  // Send REAL SMS via Fast2SMS API key (bounded by 5s AbortController timeout)
   let smsSent = false;
+  const smsCtrl = new AbortController();
+  const smsTimer = setTimeout(() => smsCtrl.abort("timeout"), 5000);
   try {
     const smsRes = await fetch("https://www.fast2sms.com/dev/bulkV2", {
       method: "POST",
@@ -43,12 +59,19 @@ export async function POST(req) {
         flash: "0",
         numbers: phone,
       }),
+      signal: smsCtrl.signal,
     });
-    const smsData = await smsRes.json();
-    if (smsData.return === true) {
-      smsSent = true;
+    if (smsRes.ok) {
+      const smsData = await smsRes.json().catch(() => null);
+      if (smsData?.return === true) {
+        smsSent = true;
+      }
     }
-  } catch (e) {}
+  } catch (e) {
+    // Non-blocking SMS provider fallback
+  } finally {
+    clearTimeout(smsTimer);
+  }
 
   const res = NextResponse.json({
     success: true,

@@ -1147,7 +1147,9 @@ button.c {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
+  *:not(.axop-app):not(.axop-app *),
+  *:not(.axop-app):not(.axop-app *)::before,
+  *:not(.axop-app):not(.axop-app *)::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;

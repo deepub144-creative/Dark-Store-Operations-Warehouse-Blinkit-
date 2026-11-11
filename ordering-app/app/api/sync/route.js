@@ -29,6 +29,19 @@ const TMP_STATE_FILE = "/tmp/auditx-tiptur-ka44-hub-state.json";
 const STATE_KEY = "auditx:tiptur_ka44:hub_state_v2";
 const FIRESTORE_COLLECTION = "auditx_state";
 const FIRESTORE_DOC = "tiptur_ka44";
+const processedIdemKeys =
+  globalThis.__auditxProcessedIdemKeys ||
+  (globalThis.__auditxProcessedIdemKeys = new Set());
+
+async function fetchWithTimeout(url, options = {}, timeoutMs = 4500) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort("timeout"), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: ctrl.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 function getRedisCreds() {
   const url =
@@ -86,10 +99,13 @@ async function readRawState() {
   const redis = getRedisCreds();
   if (redis) {
     try {
-      const res = await fetch(`${redis.url}/get/${encodeURIComponent(STATE_KEY)}`, {
-        headers: { Authorization: `Bearer ${redis.token}` },
-        cache: "no-store",
-      });
+      const res = await fetchWithTimeout(
+        `${redis.url}/get/${encodeURIComponent(STATE_KEY)}`,
+        {
+          headers: { Authorization: `Bearer ${redis.token}` },
+          cache: "no-store",
+        }
+      );
       if (res.ok) {
         const json = await res.json();
         if (json?.result) {
@@ -108,7 +124,7 @@ async function readRawState() {
   if (rtdb) {
     try {
       const authQ = rtdb.secret ? `?auth=${encodeURIComponent(rtdb.secret)}` : "";
-      const res = await fetch(
+      const res = await fetchWithTimeout(
         `${rtdb.url}/${FIRESTORE_COLLECTION}/${FIRESTORE_DOC}.json${authQ}`,
         { cache: "no-store" }
       );
@@ -172,7 +188,7 @@ async function writeState(state) {
   const redis = getRedisCreds();
   if (redis) {
     try {
-      await fetch(`${redis.url}/set/${encodeURIComponent(STATE_KEY)}`, {
+      await fetchWithTimeout(`${redis.url}/set/${encodeURIComponent(STATE_KEY)}`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${redis.token}`,
@@ -189,7 +205,7 @@ async function writeState(state) {
   if (rtdb) {
     try {
       const authQ = rtdb.secret ? `?auth=${encodeURIComponent(rtdb.secret)}` : "";
-      await fetch(
+      await fetchWithTimeout(
         `${rtdb.url}/${FIRESTORE_COLLECTION}/${FIRESTORE_DOC}.json${authQ}`,
         {
           method: "PUT",
@@ -253,13 +269,40 @@ export async function GET(req) {
 
 export async function POST(req) {
   try {
-    const body = await req.json();
-    const { action, payload = {} } = body || {};
+    let body = null;
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
+    const action = typeof body?.action === "string" ? body.action.trim() : "";
+    const payload =
+      body?.payload && typeof body.payload === "object" && !Array.isArray(body.payload)
+        ? body.payload
+        : {};
     if (!action) {
       return NextResponse.json({ error: "Missing action" }, { status: 400 });
     }
 
+    const idemKey = String(
+      req.headers.get("x-idempotency-key") || payload.idempotencyKey || ""
+    ).trim();
+
     let state = await loadCurrentStateWithRollover();
+    if (
+      idemKey &&
+      processedIdemKeys.has(`${action}:${idemKey}`) &&
+      ["PLACE_ORDER", "UPDATE_ORDER", "SUBMIT_RATING"].includes(action)
+    ) {
+      return NextResponse.json({
+        success: true,
+        deduped: true,
+        state: normalizeHubState(state),
+        revision: state.revision,
+        persistenceMode: getPersistenceMode(),
+        serverBootId: SERVER_BOOT_ID,
+      });
+    }
     let next = normalizeHubState(state);
     let extraResult = {};
 
@@ -416,26 +459,37 @@ export async function POST(req) {
         }
 
         const oid = incoming.id || incoming.orderId;
+        const reqIdemKey =
+          payload.idempotencyKey ||
+          incoming.idempotencyKey ||
+          req.headers.get("x-idempotency-key") ||
+          "";
         const alreadyExists = (next.orders || []).find(
-          (o) => (o.id || o.orderId) === oid
+          (o) =>
+            (o.id || o.orderId) === oid ||
+            (reqIdemKey && o.idempotencyKey === reqIdemKey)
         );
-        if (!alreadyExists) {
+        if (alreadyExists) {
+          extraResult.order = alreadyExists;
+        } else {
           // Verify stock for all requested items before accepting
           const allItems = mergeCatalogItems(
             getActiveBaseCatalog(),
             next.customCatalogItems
           );
           const oosSet = new Set(next.oosList || []);
-          for (const reqItem of incoming.items || []) {
+          for (const reqItem of Array.isArray(incoming.items) ? incoming.items : []) {
+            if (!reqItem || typeof reqItem !== "object") continue;
             const sku = reqItem.skuId || reqItem.sku;
             if (!sku) continue;
             const catalogEntry = allItems.find((c) => c.sku === sku);
             const fallbackQty = getDefaultItemStock(catalogEntry || reqItem);
             const avail =
-              next.inventoryStockMap?.[sku] !== undefined
+              next.inventoryStockMap?.[sku] !== undefined && Number.isFinite(Number(next.inventoryStockMap[sku]))
                 ? Number(next.inventoryStockMap[sku])
                 : fallbackQty;
-            const needed = Math.max(1, Number(reqItem.qty) || 1);
+            const parsedNeed = Number(reqItem.qty);
+            const needed = Number.isFinite(parsedNeed) && parsedNeed > 0 ? Math.floor(parsedNeed) : 1;
             if (oosSet.has(sku) || avail < needed) {
               return NextResponse.json(
                 {
@@ -454,10 +508,12 @@ export async function POST(req) {
             ...incoming,
             id: oid,
             orderId: oid,
+            idempotencyKey: reqIdemKey || incoming.idempotencyKey || "",
             createdAt: incoming.createdAt || new Date().toISOString(),
             updatedAt: new Date().toISOString(),
           });
           next.orders = [processedOrder, ...(next.orders || [])];
+          extraResult.order = processedOrder;
         }
         break;
       }
@@ -612,9 +668,10 @@ export async function POST(req) {
         }
         const cat = item.category === "Frames" ? "Frames" : "Chocolates";
         const defaultUnits = cat === "Frames" ? 1 : 5;
+        const rawUnits = Number(item.units);
         const units = Math.max(
           0,
-          item.units !== undefined ? Number(item.units) : defaultUnits
+          item.units !== undefined && Number.isFinite(rawUnits) ? Math.floor(rawUnits) : defaultUnits
         );
         const sku =
           item.sku ||
@@ -732,14 +789,17 @@ export async function POST(req) {
         );
         const target = allItems.find((c) => c.sku === sku);
         const fallback = getDefaultItemStock(target);
+        const rawCur = next.inventoryStockMap?.[sku];
         const cur =
-          next.inventoryStockMap?.[sku] !== undefined
-            ? Number(next.inventoryStockMap[sku])
+          rawCur !== undefined && Number.isFinite(Number(rawCur))
+            ? Number(rawCur)
             : fallback;
-        const updated =
-          setUnits !== undefined
-            ? Math.max(0, Number(setUnits))
-            : Math.max(0, cur + Number(delta || 0));
+        let updated = cur;
+        if (setUnits !== undefined && Number.isFinite(Number(setUnits))) {
+          updated = Math.max(0, Math.floor(Number(setUnits)));
+        } else if (delta !== undefined && Number.isFinite(Number(delta))) {
+          updated = Math.max(0, Math.floor(cur + Number(delta)));
+        }
         next.inventoryStockMap = {
           ...(next.inventoryStockMap || {}),
           [sku]: updated,
@@ -761,15 +821,23 @@ export async function POST(req) {
       case "SAVE_INVENTORY": {
         if (
           payload.inventoryStockMap &&
-          typeof payload.inventoryStockMap === "object"
+          typeof payload.inventoryStockMap === "object" &&
+          !Array.isArray(payload.inventoryStockMap)
         ) {
+          const cleanPatch = {};
+          for (const [k, v] of Object.entries(payload.inventoryStockMap)) {
+            const numV = Number(v);
+            if (Number.isFinite(numV)) {
+              cleanPatch[k] = Math.max(0, Math.floor(numV));
+            }
+          }
           next.inventoryStockMap = {
             ...(next.inventoryStockMap || {}),
-            ...payload.inventoryStockMap,
+            ...cleanPatch,
           };
           const oosSet = new Set(next.oosList || []);
           for (const [k, v] of Object.entries(next.inventoryStockMap)) {
-            if (Number(v) <= 0) oosSet.add(k);
+            if (Number.isFinite(Number(v)) && Number(v) <= 0) oosSet.add(k);
             else oosSet.delete(k);
           }
           next.oosList = Array.from(oosSet);
@@ -862,6 +930,13 @@ export async function POST(req) {
     next.updatedAt = new Date().toISOString();
 
     const saved = await writeState(next);
+    if (idemKey) {
+      if (processedIdemKeys.size >= 500) {
+        const firstKey = processedIdemKeys.values().next().value;
+        processedIdemKeys.delete(firstKey);
+      }
+      processedIdemKeys.add(`${action}:${idemKey}`);
+    }
 
     return NextResponse.json({
       success: true,

@@ -7,7 +7,15 @@ const mockOtps = globalThis._mockOtps || (globalThis._mockOtps = new Map());
 
 export async function POST(req) {
   try {
-    const { phone, otp, otpToken: bodyToken } = await req.json();
+    let body = null;
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
+    const phone = String(body?.phone || "").replace(/\D/g, "");
+    const otp = String(body?.otp || "").trim();
+    const bodyToken = typeof body?.otpToken === "string" ? body.otpToken : "";
     if (!phone || !otp) {
       return NextResponse.json({ error: "Phone number and OTP are required" }, { status: 400 });
     }

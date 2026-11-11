@@ -6,19 +6,49 @@ export const dynamic = 'force-dynamic';
 
 export async function POST(req) {
   try {
-    const { customerId, customerName, customerPhone, cart, location } = await req.json();
+    let body = null;
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
+    const { customerId, customerName, customerPhone, cart, location, idempotencyKey: bodyIdemKey } = body || {};
+    const idempotencyKey = String(bodyIdemKey || req.headers.get("x-idempotency-key") || "").trim();
 
-    if (!cart || cart.length === 0) {
+    if (!Array.isArray(cart) || cart.length === 0) {
       return NextResponse.json({ error: "Cart is empty" }, { status: 400 });
+    }
+
+    const safePhone = String(customerPhone || "9000000000").trim() || "9000000000";
+
+    // Idempotency replay check by X-Idempotency-Key
+    if (adminDb && idempotencyKey) {
+      try {
+        const dupSnap = await adminDb
+          .collection("orders")
+          .where("idempotencyKey", "==", idempotencyKey)
+          .limit(1)
+          .get();
+        if (!dupSnap.empty) {
+          const existing = dupSnap.docs[0].data();
+          return NextResponse.json({
+            success: true,
+            deduped: true,
+            orderId: existing.orderId || dupSnap.docs[0].id,
+            order: existing,
+          });
+        }
+      } catch (err) {
+        console.warn("API idempotency lookup note:", err?.message);
+      }
     }
 
     // STRICT CONCURRENT ORDER LOCK: If an order is already actively in transit, prevent ordering another item
     if (adminDb) {
       try {
-        const phone = customerPhone || "9000000000";
         const ongoingSnap = await adminDb
           .collection("orders")
-          .where("customerPhone", "==", phone)
+          .where("customerPhone", "==", safePhone)
           .where("status", "in", ["pending", "placed", "ASSIGNED", "picking", "picked", "staged", "dispatched", "en_route"])
           .limit(1)
           .get();
@@ -38,35 +68,45 @@ export async function POST(req) {
       }
     }
 
-    const items = cart.map(({ sku, qty }) => {
-      const catItem = CATALOG.find((c) => c.sku === sku) || {};
-      return {
-        sku,
-        name: catItem.name || sku,
-        qty,
-        price: catItem.price || 0,
-        mrp: catItem.mrp || 0,
-        weight: catItem.weight || "",
-        zone: catItem.zone || "CR",
-        aisle: catItem.aisle || "Aisle: A01-01-A-1000",
-        barcode: catItem.barcode || sku,
-        image: catItem.image || "",
-        scanned: false,
-      };
-    });
+    const items = cart
+      .filter((entry) => entry && typeof entry === "object" && entry.sku)
+      .map((entry) => {
+        const sku = String(entry.sku);
+        const rawQty = Number(entry.qty);
+        const qty = Number.isFinite(rawQty) && rawQty > 0 ? Math.floor(rawQty) : 1;
+        const catItem = CATALOG.find((c) => c.sku === sku) || {};
+        return {
+          sku,
+          name: catItem.name || sku,
+          qty,
+          price: Number.isFinite(Number(catItem.price)) ? Number(catItem.price) : 0,
+          mrp: Number.isFinite(Number(catItem.mrp)) ? Number(catItem.mrp) : 0,
+          weight: catItem.weight || "",
+          zone: catItem.zone || "CR",
+          aisle: catItem.aisle || "Aisle: A01-01-A-1000",
+          barcode: catItem.barcode || sku,
+          image: catItem.image || "",
+          scanned: false,
+        };
+      });
 
-    const hasFrames = items.some((i) => i.sku?.startsWith("FRAME-") || i.name?.toLowerCase().includes("frame"));
+    if (items.length === 0) {
+      return NextResponse.json({ error: "No valid cart items" }, { status: 400 });
+    }
+
+    const hasFrames = items.some((i) => String(i.sku || "").startsWith("FRAME-") || String(i.name || "").toLowerCase().includes("frame"));
     const handlingFee = hasFrames ? 10 : 0;
     const deliveryFee = 0;
     const itemTotal = items.reduce((s, i) => s + i.price * i.qty, 0);
     const totalAmount = itemTotal + handlingFee + deliveryFee;
-    const orderId = `ORD-${Date.now().toString().slice(-6)}`;
+    const orderId = `ORD-${Date.now().toString().slice(-6)}-${Math.random().toString(36).slice(2, 5).toUpperCase()}`;
 
     const orderData = {
       orderId,
-      customerId: customerId || `cust_${customerPhone}`,
+      idempotencyKey: idempotencyKey || "",
+      customerId: customerId || `cust_${safePhone}`,
       customerName: customerName || "Customer",
-      customerPhone: customerPhone || "9000000000",
+      customerPhone: safePhone,
       items,
       itemTotal,
       handlingFee,
