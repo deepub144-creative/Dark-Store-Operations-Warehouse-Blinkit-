@@ -3,27 +3,42 @@ import { getFirestore } from "firebase-admin/firestore";
 import { getAuth } from "firebase-admin/auth";
 
 function getAdminApp() {
-  if (getApps().length) return getApps()[0];
+  try {
+    if (getApps().length) return getApps()[0];
 
-  const projectId = process.env.FIREBASE_PROJECT_ID;
-  const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
-  let privateKey = process.env.FIREBASE_PRIVATE_KEY || "";
-  if (privateKey.startsWith('"') && privateKey.endsWith('"')) {
-    privateKey = privateKey.slice(1, -1);
-  }
-  privateKey = privateKey.replace(/\\n/g, "\n");
+    const projectId = process.env.FIREBASE_PROJECT_ID;
+    const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
+    let privateKey = process.env.FIREBASE_PRIVATE_KEY || "";
+    if (privateKey.startsWith('"') && privateKey.endsWith('"')) {
+      privateKey = privateKey.slice(1, -1);
+    }
+    privateKey = privateKey.replace(/\\n/g, "\n");
 
-  if (!projectId || !clientEmail || !privateKey) {
+    if (!projectId || !clientEmail || !privateKey) {
+      return null;
+    }
+
+    return initializeApp({
+      credential: cert({ projectId, clientEmail, privateKey }),
+    });
+  } catch (err) {
+    console.warn("[FirebaseAdmin] Initialization warning:", err?.message);
     return null;
   }
-
-  return initializeApp({
-    credential: cert({ projectId, clientEmail, privateKey }),
-  });
 }
 
-const adminApp = getAdminApp();
-export const adminDb = adminApp ? getFirestore(adminApp) : null;
-export const adminAuth = adminApp ? getAuth(adminApp) : null;
+let adminDbInstance = null;
+let adminAuthInstance = null;
 
+try {
+  const adminApp = getAdminApp();
+  if (adminApp) {
+    adminDbInstance = getFirestore(adminApp);
+    adminAuthInstance = getAuth(adminApp);
+  }
+} catch (e) {
+  console.warn("[FirebaseAdmin] Service binding warning:", e?.message);
+}
 
+export const adminDb = adminDbInstance;
+export const adminAuth = adminAuthInstance;

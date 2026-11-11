@@ -200,15 +200,20 @@ export async function createDeliverySlipPdfDoc(order) {
 
 /**
  * Generates delivery slip as a Node.js Buffer for email attachments
- * (Filename: Slip-<orderId>.pdf)
+ * Uses lightweight serverless-ready pdf-lib
  */
 export async function generateDeliverySlipPdfBuffer(order) {
   try {
-    const doc = await createDeliverySlipPdfDoc(order);
-    if (!doc) return null;
-    return Buffer.from(doc.output("arraybuffer"));
+    const { generateDeliverySlipPdfBuffer: genPdfLib } = await import("./pdfLibDeliverySlip.js");
+    return await genPdfLib(order);
   } catch (err) {
-    console.error("[OrderSlipPdf] Server PDF generation failed:", err);
-    return null;
+    try {
+      const doc = await createDeliverySlipPdfDoc(order);
+      if (!doc) return null;
+      return Buffer.from(doc.output("arraybuffer"));
+    } catch (fallbackErr) {
+      console.error("[OrderSlipPdf] Server PDF generation failed:", err || fallbackErr);
+      return null;
+    }
   }
 }

@@ -7,8 +7,8 @@ import {
   normalizeStatus,
   verifyGmailConnection,
   ORDER_STATUS_FLOW,
-} from "@/lib/gmailService";
-import { generateDeliverySlipPdfBuffer } from "@/lib/pdfLibDeliverySlip";
+} from "@/lib/gmailService.js";
+import { generateDeliverySlipPdfBuffer } from "@/lib/pdfLibDeliverySlip.js";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
