@@ -2127,6 +2127,9 @@ export default function WarehouseDashboardPage() {
           {/* ── TOP HORIZONTAL WORKSPACE TABS WITH SCROLL BUTTONS & ARROW LINE ── */}
           <div
             style={{
+              width: "100%",
+              maxWidth: "100%",
+              boxSizing: "border-box",
               background: themeMode === "dark" ? "#161f2e" : "#ffffff",
               border: themeMode === "dark" ? "1px solid #233147" : "1px solid #e2e8f0",
               borderRadius: 16,
@@ -2135,7 +2138,7 @@ export default function WarehouseDashboardPage() {
               boxShadow: "0 4px 18px rgba(0,0,0,0.08)",
             }}
           >
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", minWidth: 0 }}>
               {/* Left Scroll Button */}
               <button
                 type="button"
@@ -2174,7 +2177,9 @@ export default function WarehouseDashboardPage() {
                   padding: "4px 2px",
                   scrollbarWidth: "none",
                   msOverflowStyle: "none",
-                  flex: 1,
+                  flex: "1 1 0%",
+                  minWidth: 0,
+                  width: 0,
                 }}
               >
                 {[
@@ -2306,6 +2311,8 @@ export default function WarehouseDashboardPage() {
           {/* LIVE TERMINAL DEVICE FLEET TRACKER (MOTOROLA & OPPO) */}
           <div
             style={{
+              width: "100%",
+              boxSizing: "border-box",
               background: "linear-gradient(135deg, #1e293b 0%, #0f172a 100%)",
               border: "1.5px solid #334155",
               borderRadius: 14,
@@ -2323,7 +2330,7 @@ export default function WarehouseDashboardPage() {
               </span>
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 14, alignItems: "stretch" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 14, alignItems: "stretch", width: "100%", boxSizing: "border-box" }}>
               {/* Thrupthi K S - MOTOROLA Moto G84 5G */}
               <div
                 style={{
@@ -4411,8 +4418,8 @@ function LiveHeaderClock() {
 }
 
 const S = {
-  wrap: { minHeight: "100vh", width: "100%", background: "#F1F5F9", fontFamily: "system-ui, -apple-system, sans-serif" },
-  header: { position: "sticky", top: 0, zIndex: 60, flexShrink: 0, background: "#0F172A", borderBottom: "1px solid #1E293B", padding: "12px 20px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 },
+  wrap: { minHeight: "100vh", width: "100%", maxWidth: "100vw", overflowX: "hidden", background: "#F1F5F9", fontFamily: "system-ui, -apple-system, sans-serif", boxSizing: "border-box" },
+  header: { position: "sticky", top: 0, zIndex: 60, flexShrink: 0, background: "#0F172A", borderBottom: "1px solid #1E293B", padding: "10px 18px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10, width: "100%", maxWidth: "100vw", boxSizing: "border-box" },
   brandCol: { display: "flex", flexDirection: "column", gap: 6 },
   logoRow: { display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" },
   sidebarToggleBtn: { background: "#1e293b", color: "#f8fafc", border: "1px solid #334155", padding: "6px 12px", borderRadius: 8, fontSize: 12, fontWeight: 800, cursor: "pointer" },
@@ -4420,7 +4427,7 @@ const S = {
   pauseBadge: { fontSize: 11, fontWeight: 900, color: "#FFFFFF", padding: "3px 8px", borderRadius: 6 },
   audioBadgeBtn: { background: "rgba(16, 185, 129, 0.15)", border: "1px solid rgba(16, 185, 129, 0.4)", color: "#10B981", fontSize: 11, fontWeight: 800, padding: "3px 8px", borderRadius: 6, cursor: "pointer" },
   subText: { fontSize: 12, color: "#94A3B8" },
-  headerRight: { display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", justifyContent: "flex-end" },
+  headerRight: { display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", justifyContent: "flex-end", maxWidth: "100%" },
   staffSwitcherBlock: { display: "flex", alignItems: "center", gap: 10, background: "#1E293B", padding: "6px 12px", borderRadius: 12, border: "1px solid #334155" },
   switcherLabel: { fontSize: 11, color: "#94A3B8", fontWeight: 700 },
   activeStaffPill: { display: "flex", alignItems: "center", gap: 8 },
@@ -4432,7 +4439,7 @@ const S = {
   pingAlert: { background: "#0284C7", color: "#FFFFFF", padding: "10px 20px", fontWeight: 800, fontSize: 13, textAlign: "center" },
 
   // Workspace Layout
-  workspaceLayout: { display: "flex", minHeight: "calc(100vh - 72px)" },
+  workspaceLayout: { display: "flex", minHeight: "calc(100vh - 72px)", width: "100%", maxWidth: "100vw", overflowX: "hidden", boxSizing: "border-box" },
   sidebarWrap: { position: "sticky", top: 72, height: "calc(100vh - 72px)", overflowY: "auto", background: "#0F172A", borderRight: "1px solid #1E293B", flexDirection: "column", flexShrink: 0, padding: "16px 14px", boxSizing: "border-box", transition: "all 0.25s ease" },
   sidebarHeader: { borderBottom: "1px solid #1E293B", paddingBottom: 12, marginBottom: 12 },
   sidebarTitleRow: { display: "flex", justifyContent: "space-between", alignItems: "center" },
@@ -4507,10 +4514,10 @@ const S = {
     marginTop: 1,
   },
 
-  mainContent: { flex: 1, padding: "24px 28px", maxWidth: 1400, minHeight: "calc(100vh - 72px)" },
+  mainContent: { flex: "1 1 0%", minWidth: 0, width: "100%", maxWidth: "100%", padding: "18px 20px", minHeight: "calc(100vh - 72px)", boxSizing: "border-box", overflowX: "hidden" },
 
   // Stats Grid - Equal Height & Unified Cards
-  statsGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))", gap: 16, marginBottom: 20, alignItems: "stretch" },
+  statsGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 14, marginBottom: 20, alignItems: "stretch", width: "100%", boxSizing: "border-box" },
   statCard: { background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: 16, padding: "18px 20px", boxShadow: "0 2px 8px rgba(0,0,0,0.03)", display: "flex", flexDirection: "column", justifyContent: "space-between", minHeight: 180, boxSizing: "border-box" },
   statHeader: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 },
   statIcon: { fontSize: 16 },
@@ -4522,7 +4529,7 @@ const S = {
   progressBarFill: { height: "100%", transition: "width 0.4s ease", borderRadius: 3 },
 
   // Controls & Panels - Aligned 38px Standard Heights
-  quickControlBar: { background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: 16, padding: "16px 20px", marginBottom: 20, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 14 },
+  quickControlBar: { background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: 16, padding: "16px 20px", marginBottom: 20, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 14, width: "100%", boxSizing: "border-box" },
   controlTitle: { fontSize: 13, fontWeight: 900, color: "#0F172A", letterSpacing: "0.4px" },
   controlSub: { fontSize: 12, color: "#64748B", marginTop: 2 },
   controlBtns: { display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" },
@@ -4530,7 +4537,7 @@ const S = {
   actionBtn: { color: "#fff", border: "none", padding: "8px 14px", borderRadius: 8, fontWeight: 800, fontSize: 12, cursor: "pointer" },
   actionBtnOutline: { height: 38, background: "#FFFFFF", border: "1px solid #CBD5E1", color: "#1E293B", padding: "0 14px", borderRadius: 8, fontWeight: 700, fontSize: 12, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, boxSizing: "border-box" },
 
-  twoColGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18, alignItems: "stretch", marginBottom: 20 },
+  twoColGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 16, alignItems: "stretch", marginBottom: 20, width: "100%", boxSizing: "border-box" },
   panel: { background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: 16, padding: "18px 20px", boxShadow: "0 2px 8px rgba(0,0,0,0.03)", display: "flex", flexDirection: "column", height: "100%", boxSizing: "border-box" },
   panelHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, minHeight: 28 },
   panelTitle: { fontSize: 14, fontWeight: 900, color: "#0F172A" },
