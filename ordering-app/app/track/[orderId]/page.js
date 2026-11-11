@@ -11,17 +11,22 @@ import {
   getAllLiveOrders,
   updateLiveOrder,
   subscribeToCloudHub,
+  fetchCloudHubState,
   dispatchCloudAction,
 } from "@/lib/realtimeSync";
 import { playSuccessChime, playNotificationChime } from "@/lib/soundSystem";
 import { downloadDeliveredOrderPdfSlip } from "@/lib/orderSlipPdf";
 import AuditxLogo from "@/components/AuditxLogo";
 import DeliveryReceiptModal from "@/components/DeliveryReceiptModal";
+import ErrorBoundary from "@/components/ErrorBoundary";
+import { subscribeNetworkStatus, withIdempotentLock } from "@/lib/apiClient";
+import { safeArr, safeDateMs, safeNum, safeStorage } from "@/lib/safeData";
 import {
   IOSMobileShell,
   IOSNavBar,
   IOSBottomSheet,
   IOSToast,
+  OrderingSkeletonScreen,
 } from "@/components/ios";
 import {
   IconArrowLeft,
@@ -44,39 +49,30 @@ import {
   IconRealLogoUPI,
 } from "@/components/RealIcons";
 
+const STAGE_RANK = {
+  packing: 1,
+  packed_assigning: 2,
+  en_route: 3,
+  almost_doorstep: 4,
+  rider_arrived: 5,
+  delivered: 6,
+};
+
 export default function TrackOrderPage() {
   const { orderId } = useParams();
   const router = useRouter();
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showReceiptModal, setShowReceiptModal] = useState(false);
+  const [isOnline, setIsOnline] = useState(true);
+  const [mapLoadFailed, setMapLoadFailed] = useState(false);
+  const [ratingSubmitting, setRatingSubmitting] = useState(false);
 
-  // Today's live clock
-  const [currentTimeStr, setCurrentTimeStr] = useState("");
   const [orderPlacedTime, setOrderPlacedTime] = useState("");
-
   useEffect(() => {
-    function updateClock() {
-      const now = new Date();
-      setCurrentTimeStr(now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }));
-    }
-    updateClock();
-    const interval = setInterval(updateClock, 1000);
-    return () => clearInterval(interval);
+    setOrderPlacedTime(new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }));
   }, []);
 
-  useEffect(() => {
-    const now = new Date();
-    setOrderPlacedTime(now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }));
-  }, []);
-
-  // Tracking stages:
-  // "packing" (initial 2-min OD Picker phase within 10-min total SLA)
-  // -> "packed_assigning" (immediate notification upon OD Picker handover)
-  // -> "en_route" (8-min Rider Captain live countdown)
-  // -> "almost_doorstep" (final 15-second arrival alert)
-  // -> "rider_arrived" (Rider arrived to location at doorstep)
-  // -> "delivered" ("Rate the Rider & Item")
   const [trackingStage, setTrackingStage] = useState("packing");
   const [arrivingMinutes, setArrivingMinutes] = useState(10);
   const [pickerDelayMins, setPickerDelayMins] = useState(0);
@@ -84,10 +80,8 @@ export default function TrackOrderPage() {
   const [pickerWindowSec, setPickerWindowSec] = useState(120);
   const [riderCountdownSec, setRiderCountdownSec] = useState(480);
   const [doorstepCountdownSec, setDoorstepCountdownSec] = useState(15);
-  const [cancelSecondsLeft, setCancelSecondsLeft] = useState(60);
   const [isCancelled, setIsCancelled] = useState(false);
 
-  // Rider & Item Rating State (shown after doorstep delivery)
   const [riderRating, setRiderRating] = useState(5);
   const [itemRatings, setItemRatings] = useState({});
   const [selectedCompliments, setSelectedCompliments] = useState(["Superfast Delivery", "Polite Rider"]);
@@ -95,22 +89,55 @@ export default function TrackOrderPage() {
   const [ratingSubmitted, setRatingSubmitted] = useState(false);
 
   const trackingStageRef = useRef("packing");
-  useEffect(() => {
-    trackingStageRef.current = trackingStage;
-  }, [trackingStage]);
+  trackingStageRef.current = trackingStage;
+  const pickerElapsedRef = useRef(0);
+  const riderCountdownRef = useRef(480);
+  const doorstepCountdownRef = useRef(15);
+  const toastTimerRef = useRef(null);
+  const assignDelayTimerRef = useRef(null);
+  const scrollRateTimerRef = useRef(null);
+  const seenEventKeysRef = useRef(new Set());
 
-  // Real-time live order subscription, cloud sync & local synchronization
+  function advanceStageMonotonic(nextStage) {
+    const curRank = STAGE_RANK[trackingStageRef.current] || 0;
+    const nextRank = STAGE_RANK[nextStage] || 0;
+    if (nextRank >= curRank) {
+      trackingStageRef.current = nextStage;
+      setTrackingStage(nextStage);
+      return true;
+    }
+    return false;
+  }
+
+  useEffect(() => {
+    let wasOnline = true;
+    const unsub = subscribeNetworkStatus((snap) => {
+      setIsOnline(snap.online);
+      if (!wasOnline && snap.online) {
+        fetchCloudHubState({ force: true }).catch(() => {});
+      }
+      wasOnline = snap.online;
+    });
+    return () => {
+      unsub();
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+      if (assignDelayTimerRef.current) clearTimeout(assignDelayTimerRef.current);
+      if (scrollRateTimerRef.current) clearTimeout(scrollRateTimerRef.current);
+    };
+  }, []);
+
+  // Real-time live order subscription, cloud sync & monotonic progression
   useEffect(() => {
     function processOrderEta(match) {
-      if (!match) return;
+      if (!match || typeof match !== "object") return;
       setOrder(match);
-      if (match.delayMins !== undefined) {
-        setPickerDelayMins(match.delayMins);
+      if (match.delayMins !== undefined && Number.isFinite(Number(match.delayMins))) {
+        setPickerDelayMins(safeNum(match.delayMins, 0));
       }
       if (match.status === "cancelled") {
         setIsCancelled(true);
       } else if (match.status === "delivered") {
-        setTrackingStage("delivered");
+        advanceStageMonotonic("delivered");
         setArrivingMinutes(0);
         setRiderProgress(100);
         if (match.customerRatingSubmitted) {
@@ -123,106 +150,111 @@ export default function TrackOrderPage() {
         match.status === "dispatched" ||
         match.handoverToRiderCompleted
       ) {
-        // After OD Picker task handover to rider -> 8-minute delivery SLA anchored to dispatchedAt/stagedAt
-        const startIso = match.dispatchedAt || match.stagedAt;
-        const wallElapsed = startIso
-          ? Math.max(0, Math.min(480, Math.floor((Date.now() - new Date(startIso).getTime()) / 1000)))
+        const startVal = match.dispatchedAt || match.stagedAt;
+        const wallElapsed = startVal
+          ? Math.max(0, Math.min(480, Math.floor((Date.now() - safeDateMs(startVal, Date.now())) / 1000)))
           : 0;
         const rem = Math.max(0, 480 - wallElapsed);
-        if (trackingStageRef.current === "packing" || trackingStageRef.current === "packed_assigning") {
+        if ((STAGE_RANK[trackingStageRef.current] || 0) < STAGE_RANK.en_route) {
+          riderCountdownRef.current = rem;
           setRiderCountdownSec(rem);
           setArrivingMinutes(Math.max(1, Math.ceil(rem / 60)));
           setRiderProgress(Math.max(25, Math.min(96, Math.round((wallElapsed / 480) * 100))));
-          setTrackingStage(rem <= 0 ? "rider_arrived" : rem <= 15 ? "almost_doorstep" : "en_route");
+          advanceStageMonotonic(rem <= 0 ? "rider_arrived" : rem <= 15 ? "almost_doorstep" : "en_route");
         }
-      } else if (match.dynamicTotalSla) {
-        setArrivingMinutes(match.dynamicTotalSla);
-      } else if (match.remainingMins) {
-        setArrivingMinutes(match.remainingMins);
+      } else if (Number.isFinite(Number(match.dynamicTotalSla))) {
+        setArrivingMinutes(Math.max(1, safeNum(match.dynamicTotalSla, 10)));
+      } else if (Number.isFinite(Number(match.remainingMins))) {
+        setArrivingMinutes(Math.max(1, safeNum(match.remainingMins, 10)));
       } else {
         setArrivingMinutes(10);
       }
       setLoading(false);
     }
 
-    const all = getAllLiveOrders();
-    const found = all.find((o) => o.id === orderId || o.orderId === orderId || o.orderNumber === orderId);
+    const all = safeArr(getAllLiveOrders());
+    const found = all.find((o) => o && (o.id === orderId || o.orderId === orderId || o.orderNumber === orderId));
     if (found) {
       processOrderEta(found);
     } else {
-      try {
-        const last = localStorage.getItem("auditx_customer_last_order");
-        if (last) {
-          const parsed = JSON.parse(last);
-          if (parsed.id === orderId || parsed.orderId === orderId || parsed.orderNumber === orderId) {
-            processOrderEta(parsed);
-          }
-        }
-      } catch (e) {
-        console.warn(e);
+      const parsed = safeStorage.getJson("auditx_customer_last_order", null);
+      if (parsed && (parsed.id === orderId || parsed.orderId === orderId || parsed.orderNumber === orderId)) {
+        processOrderEta(parsed);
+      } else {
+        setLoading(false);
       }
-      setLoading(false);
     }
 
     const unsub = subscribeToLiveOrders((orders) => {
-      const match = orders.find((o) => o.id === orderId || o.orderId === orderId || o.orderNumber === orderId);
-      if (match) {
-        processOrderEta(match);
-      }
+      const match = safeArr(orders).find((o) => o && (o.id === orderId || o.orderId === orderId || o.orderNumber === orderId));
+      if (match) processOrderEta(match);
     });
 
     const unsubCloud = subscribeToCloudHub((cloudState) => {
-      const list = cloudState?.orders || [];
-      const match = list.find((o) => o.id === orderId || o.orderId === orderId || o.orderNumber === orderId);
-      if (match) {
-        processOrderEta(match);
-      }
+      const list = safeArr(cloudState?.orders);
+      const match = list.find((o) => o && (o.id === orderId || o.orderId === orderId || o.orderNumber === orderId));
+      if (match) processOrderEta(match);
     }, 1800);
 
-    const unsubEvents = subscribeToEvents((data) => {
-      const payloadOrderId = data.orderId || data.payload?.orderId || data.payload?.id;
-      if (
-        data.type === "PICKER_DELAY_UPDATED" &&
-        (!payloadOrderId || payloadOrderId === orderId)
-      ) {
-        const p = data.payload || data;
-        const delayM = p.delayMins || (p.delaySec ? Math.ceil(p.delaySec / 60) : 0);
-        setPickerDelayMins(delayM);
-        if (p.pickTimeSec) setPickerElapsedSec(p.pickTimeSec);
-        const dynamicTotal = p.dynamicTotalSla || (10 + delayM);
-        setArrivingMinutes(dynamicTotal);
+    const onWakeSync = () => {
+      if (typeof document !== "undefined" && document.visibilityState === "visible") {
+        fetchCloudHubState({ force: true }).catch(() => {});
       }
-      if (
-        (data.type === "ORDER_STAGED" ||
-          data.type === "PICKER_HANDOVER_COMPLETED") &&
-        (!payloadOrderId || payloadOrderId === orderId)
-      ) {
-        const p = data.payload || data;
-        if (p.delayMins !== undefined) setPickerDelayMins(p.delayMins);
-        setTrackingStage("packed_assigning");
-        triggerToast("📦 Order is packed! We will assign the rider captain soon...");
-        playNotificationChime();
+    };
+    window.addEventListener("focus", onWakeSync);
+    document.addEventListener("visibilitychange", onWakeSync);
 
-        setTimeout(() => {
+    const unsubEvents = subscribeToEvents((data) => {
+      if (!data?.type) return;
+      const payloadOrderId = data.orderId || data.payload?.orderId || data.payload?.id;
+      if (payloadOrderId && payloadOrderId !== orderId) return;
+
+      const dedupeKey = `${data.type}:${payloadOrderId || orderId}:${data.payload?.status || data.payload?.delaySec || ""}`;
+      if (data.type !== "PICKER_DELAY_UPDATED" && seenEventKeysRef.current.has(dedupeKey)) {
+        return;
+      }
+      if (seenEventKeysRef.current.size > 40) seenEventKeysRef.current.clear();
+      seenEventKeysRef.current.add(dedupeKey);
+
+      if (data.type === "PICKER_DELAY_UPDATED") {
+        const p = data.payload || data;
+        const delayM = safeNum(p.delayMins, p.delaySec ? Math.ceil(safeNum(p.delaySec, 0) / 60) : 0);
+        setPickerDelayMins(delayM);
+        if (Number.isFinite(Number(p.pickTimeSec))) {
+          pickerElapsedRef.current = safeNum(p.pickTimeSec, 0);
+          setPickerElapsedSec(safeNum(p.pickTimeSec, 0));
+        }
+        if ((STAGE_RANK[trackingStageRef.current] || 0) <= STAGE_RANK.packed_assigning) {
+          setArrivingMinutes(Math.max(1, safeNum(p.dynamicTotalSla, 10 + delayM)));
+        }
+      } else if (data.type === "ORDER_STAGED" || data.type === "PICKER_HANDOVER_COMPLETED") {
+        const p = data.payload || data;
+        if (p.delayMins !== undefined) setPickerDelayMins(safeNum(p.delayMins, 0));
+        if (advanceStageMonotonic("packed_assigning")) {
+          triggerToast("📦 Order is packed! We will assign the rider captain soon...");
+          playNotificationChime();
+          if (assignDelayTimerRef.current) clearTimeout(assignDelayTimerRef.current);
+          assignDelayTimerRef.current = setTimeout(() => {
+            if (advanceStageMonotonic("en_route")) {
+              riderCountdownRef.current = 480;
+              setArrivingMinutes(8);
+              setRiderCountdownSec(480);
+              setRiderProgress(25);
+              triggerToast("Hi, I'm Sinchana B R, your delivery captain! 🛵 Arriving in 8 mins");
+              playNotificationChime();
+            }
+          }, 2500);
+        }
+      } else if (data.type === "ORDER_PICKED" || data.type === "FAST_DELIVERY_STARTED") {
+        if (advanceStageMonotonic("en_route")) {
+          riderCountdownRef.current = 480;
           setArrivingMinutes(8);
           setRiderCountdownSec(480);
-          setTrackingStage((prev) => (prev === "delivered" ? "delivered" : "en_route"));
           setRiderProgress(25);
-          triggerToast("Hi, I'm Sinchana B R, your delivery captain! 🛵 Arriving in 8 mins");
-          playNotificationChime();
-        }, 2500);
-      } else if (
-        (data.type === "ORDER_PICKED" || data.type === "FAST_DELIVERY_STARTED") &&
-        (!payloadOrderId || payloadOrderId === orderId)
-      ) {
-        setArrivingMinutes(8);
-        setRiderCountdownSec(480);
-        setTrackingStage((prev) => (prev === "delivered" ? "delivered" : "en_route"));
-        setRiderProgress(25);
-      }
-      if (data.type === "ORDER_DELIVERED" && (!payloadOrderId || payloadOrderId === orderId)) {
+        }
+      } else if (data.type === "ORDER_DELIVERED") {
         setOrder((prev) => ({ ...(prev || {}), ...(data.payload || {}), status: "delivered", stage: "Delivered" }));
-        setTrackingStage("delivered");
+        advanceStageMonotonic("delivered");
         setRiderProgress(100);
         playSuccessChime();
         triggerToast("🎉 Order Delivered at Doorstep! Please rate Rider Sinchana B R & your items.");
@@ -233,85 +265,86 @@ export default function TrackOrderPage() {
       unsub();
       unsubCloud();
       unsubEvents();
+      window.removeEventListener("focus", onWakeSync);
+      document.removeEventListener("visibilitychange", onWakeSync);
     };
   }, [orderId]);
 
-  // Live OD Picker window stopwatch & dynamic SLA scaling during "packing" phase
+  // Live OD Picker stopwatch during "packing" phase (side-effect free)
   useEffect(() => {
     if (trackingStage !== "packing") return;
     const timer = setInterval(() => {
-      setPickerElapsedSec((prev) => {
-        const next = prev + 1;
-        if (next > 120) {
-          // OD Picker has taken longer than 2 minutes (120s)
-          const delaySec = next - 120;
-          const delayM = Math.ceil(delaySec / 60);
-          setPickerDelayMins(delayM);
-          setArrivingMinutes(10 + delayM);
-        }
-        return next;
-      });
-      setPickerWindowSec((prev) => (prev > 0 ? prev - 1 : 0));
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+      const next = pickerElapsedRef.current + 1;
+      pickerElapsedRef.current = next;
+      setPickerElapsedSec(next);
+      setPickerWindowSec(Math.max(0, 120 - next));
+      if (next > 120) {
+        const delayM = Math.ceil((next - 120) / 60);
+        setPickerDelayMins(delayM);
+        setArrivingMinutes(10 + delayM);
+      }
     }, 1000);
     return () => clearInterval(timer);
   }, [trackingStage]);
 
-  // 8-Minute Rider countdown timer while en_route
+  // 8-Minute Rider countdown timer while en_route (side-effect free)
   useEffect(() => {
     if (trackingStage !== "en_route") return;
     const timer = setInterval(() => {
-      setRiderCountdownSec((prev) => {
-        if (prev <= 1) {
-          setTrackingStage("rider_arrived");
-          setRiderProgress(100);
-          playSuccessChime();
-          triggerToast("🛵 Rider arrived at your doorstep! Please submit the rating form to complete delivery.");
-          return 0;
-        }
-        const next = prev - 1;
-        setArrivingMinutes(Math.max(1, Math.ceil(next / 60)));
-        if (next === 15) {
-          setDoorstepCountdownSec(15);
-          setTrackingStage("almost_doorstep");
-          setRiderProgress(92);
-          playNotificationChime();
-          triggerToast("⚡ Almost to your doorstep! Sinchana B R is reaching now.");
-        }
-        return next;
-      });
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+      const cur = riderCountdownRef.current;
+      if (cur <= 1) {
+        riderCountdownRef.current = 0;
+        setRiderCountdownSec(0);
+        advanceStageMonotonic("rider_arrived");
+        setRiderProgress(100);
+        playSuccessChime();
+        triggerToast("🛵 Rider arrived at your doorstep! Please submit the rating form to complete delivery.");
+        return;
+      }
+      const next = cur - 1;
+      riderCountdownRef.current = next;
+      setRiderCountdownSec(next);
+      setArrivingMinutes(Math.max(1, Math.ceil(next / 60)));
+      if (next === 15) {
+        doorstepCountdownRef.current = 15;
+        setDoorstepCountdownSec(15);
+        advanceStageMonotonic("almost_doorstep");
+        setRiderProgress(92);
+        playNotificationChime();
+        triggerToast("⚡ Almost to your doorstep! Sinchana B R is reaching now.");
+      }
     }, 1000);
     return () => clearInterval(timer);
   }, [trackingStage]);
 
-  // 15-Second "Almost to your doorstep" countdown -> transitions to "Rider arrived to your location"
+  // 15-Second "Almost to your doorstep" countdown -> transitions to "Rider arrived"
   useEffect(() => {
     if (trackingStage !== "almost_doorstep") return;
     const timer = setInterval(() => {
-      setDoorstepCountdownSec((prev) => {
-        if (prev <= 1) {
-          setTrackingStage("rider_arrived");
-          setRiderProgress(100);
-          playSuccessChime();
-          triggerToast("🛵 Rider arrived at your doorstep! Please submit the rating form to complete delivery.");
-          setTimeout(() => {
-            const el = document.getElementById("rate-rider-items-section");
-            if (el) el.scrollIntoView({ behavior: "smooth" });
-          }, 300);
-          return 0;
-        }
-        return prev - 1;
-      });
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+      const cur = doorstepCountdownRef.current;
+      if (cur <= 1) {
+        doorstepCountdownRef.current = 0;
+        setDoorstepCountdownSec(0);
+        advanceStageMonotonic("rider_arrived");
+        setRiderProgress(100);
+        playSuccessChime();
+        triggerToast("🛵 Rider arrived at your doorstep! Please submit the rating form to complete delivery.");
+        if (scrollRateTimerRef.current) clearTimeout(scrollRateTimerRef.current);
+        scrollRateTimerRef.current = setTimeout(() => {
+          const el = document.getElementById("rate-rider-items-section");
+          if (el) el.scrollIntoView({ behavior: "smooth" });
+        }, 300);
+        return;
+      }
+      const next = cur - 1;
+      doorstepCountdownRef.current = next;
+      setDoorstepCountdownSec(next);
     }, 1000);
     return () => clearInterval(timer);
   }, [trackingStage]);
-
-  // 60-second cancellation window timer
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setCancelSecondsLeft((prev) => (prev > 0 ? prev - 1 : 0));
-    }, 1000);
-    return () => clearInterval(interval);
-  }, []);
 
   // Tipping
   const [selectedTip, setSelectedTip] = useState(null);
@@ -334,7 +367,8 @@ export default function TrackOrderPage() {
 
   function triggerToast(msg) {
     setToastMessage(msg);
-    setTimeout(() => setToastMessage(""), 3500);
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = setTimeout(() => setToastMessage(""), 3500);
   }
 
   function handleSelectTip(amount) {
@@ -359,7 +393,8 @@ export default function TrackOrderPage() {
   }
 
   function handleCancelOrder() {
-    if (cancelSecondsLeft <= 0) {
+    const createdMs = safeDateMs(order?.createdAt, Date.now());
+    if (Date.now() - createdMs > 60000) {
       triggerToast("Cancellation window expired. Order is already being packed!");
       return;
     }
@@ -375,83 +410,84 @@ export default function TrackOrderPage() {
 
   async function submitComplaint(e) {
     e.preventDefault();
-    setSubmittingComplaint(true);
-
-    const cmp = {
-      id: `CMP-KA44-${Math.floor(100 + Math.random() * 900)}`,
-      orderId: orderId,
-      customerName: order?.customerName || "Customer",
-      phone: order?.customerPhone || "9845112233",
-      issue: complaintDesc || `${complaintCategory} reported on Tiptur delivery`,
-      category: complaintCategory,
-      severity: complaintCategory === "Damaged Goods" ? "CRITICAL" : "MEDIUM",
-      slaMins: 4,
-      status: "OPEN",
-      time: "Just now",
-      assignedTo: "Store Manager",
-      amount: order?.totalAmount || 139,
-      createdAt: new Date().toISOString(),
-    };
-
-    dispatchCloudAction("FILE_COMPLAINT", { complaint: cmp });
-
-    if (db) {
+    await withIdempotentLock("track_complaint_submit", async () => {
+      setSubmittingComplaint(true);
       try {
-        await addDoc(collection(db, "complaints"), cmp);
-      } catch (err) {
-        console.warn(err);
-      }
-    }
+        const cmp = {
+          id: `CMP-KA44-${Math.floor(100 + Math.random() * 900)}`,
+          orderId: orderId,
+          customerName: order?.customerName || "Customer",
+          phone: order?.customerPhone || "9845112233",
+          issue: complaintDesc || `${complaintCategory} reported on Tiptur delivery`,
+          category: complaintCategory,
+          severity: complaintCategory === "Damaged Goods" ? "CRITICAL" : "MEDIUM",
+          slaMins: 4,
+          status: "OPEN",
+          time: "Just now",
+          assignedTo: "Store Manager",
+          amount: safeNum(order?.totalAmount, 0),
+          createdAt: new Date().toISOString(),
+        };
 
-    broadcastEvent("COMPLAINT_RAISED", cmp);
-    setSubmittingComplaint(false);
-    setShowComplaintDrawer(false);
-    setComplaintDesc("");
-    triggerToast("Complaint received by Store Manager! Instant review initiated.");
+        await dispatchCloudAction("FILE_COMPLAINT", { complaint: cmp });
+
+        if (db) {
+          try {
+            await addDoc(collection(db, "complaints"), cmp);
+          } catch {}
+        }
+
+        broadcastEvent("COMPLAINT_RAISED", cmp);
+        setShowComplaintDrawer(false);
+        setComplaintDesc("");
+        triggerToast("Complaint received by Store Manager! Instant review initiated.");
+      } finally {
+        setSubmittingComplaint(false);
+      }
+    });
   }
 
-  // Active order fallback
   const activeOrder = order || {
     id: orderId,
     orderId,
     orderNumber: orderId,
-    customerName: "Ramesh Gowda",
+    customerName: "Customer",
     customerPhone: "9845112233",
-    customerAddress: "Near Kalpataru College Road, Namma Tiptur - 572201",
-    totalAmount: 150,
-    itemTotal: 150,
+    customerAddress: "KFGSC , Tiptur 572201",
+    totalAmount: 0,
+    itemTotal: 0,
     deliveryFee: 0,
     handlingFee: 0,
     status: "pending",
     assignedRack: "D5",
-    pickerName: "Dark Store Specialist",
-    captainName: "Delivery Partner",
-    items: [
-      { name: "Fresh Milk 1L", qty: 1, price: 60 },
-      { name: "Brown Bread 400g", qty: 2, price: 45 },
-    ],
+    pickerName: "Thrupthi K S",
+    captainName: "Sinchana B R",
+    items: [],
   };
 
-  const itemsSubtotal = (activeOrder.items || []).reduce(
-    (s, it) => s + (it.price || 0) * (it.qty || 1),
+  const safeOrderItems = safeArr(activeOrder.items);
+  const itemsSubtotal = safeOrderItems.reduce(
+    (s, it) => s + safeNum(it?.price, 0) * Math.max(1, safeNum(it?.qty, 1)),
     0
   );
-  const hasFramesInOrder = (activeOrder.items || []).some(
+  const hasFramesInOrder = safeOrderItems.some(
     (it) =>
-      it.category === "Frames" ||
-      it.sku?.startsWith("FRAME-") ||
-      it.skuId?.startsWith("FRAME-") ||
-      it.name?.toLowerCase().includes("frame")
+      it?.category === "Frames" ||
+      String(it?.sku || "").startsWith("FRAME-") ||
+      String(it?.skuId || "").startsWith("FRAME-") ||
+      String(it?.name || "").toLowerCase().includes("frame")
   );
-  const deliveryFee = activeOrder.deliveryFee ?? 0;
+  const deliveryFee = safeNum(activeOrder.deliveryFee, 0);
   const handlingFee =
     activeOrder.handlingFee !== undefined
-      ? activeOrder.handlingFee
+      ? safeNum(activeOrder.handlingFee, 0)
       : hasFramesInOrder
       ? 10
       : 0;
   const grandTotalAmount =
-    activeOrder.totalAmount || itemsSubtotal + deliveryFee + handlingFee;
+    activeOrder.totalAmount !== undefined && activeOrder.totalAmount !== null
+      ? safeNum(activeOrder.totalAmount, itemsSubtotal + deliveryFee + handlingFee)
+      : itemsSubtotal + deliveryFee + handlingFee;
 
   const isDelivered = activeOrder.status === "delivered" || trackingStage === "delivered";
   const isDispatched = activeOrder.status === "dispatched" || isDelivered || trackingStage === "one_minute" || trackingStage === "almost_doorstep" || trackingStage === "rider_arrived";
@@ -460,74 +496,70 @@ export default function TrackOrderPage() {
   const hasArrivedAtDoorstep = isDelivered || trackingStage === "rider_arrived";
 
   function handleReturnToCatalog() {
-    try {
-      const ordKey = String(activeOrder?.id || activeOrder?.orderId || orderId || "");
-      if (ordKey) {
-        localStorage.setItem("auditx_dismissed_track_order", ordKey);
-      }
-      sessionStorage.removeItem("auditx_play_team_intro_once");
-      localStorage.removeItem("auditx_play_team_intro_once");
-      if (hasArrivedAtDoorstep) {
-        updateLiveOrder(activeOrder?.id || orderId, { trackingDismissed: true });
-      }
-    } catch (e) {
-      console.warn(e);
+    const ordKey = String(activeOrder?.id || activeOrder?.orderId || orderId || "");
+    if (ordKey) {
+      safeStorage.set("auditx_dismissed_track_order", ordKey);
+    }
+    safeStorage.remove("auditx_play_team_intro_once", "session");
+    safeStorage.remove("auditx_play_team_intro_once", "local");
+    if (hasArrivedAtDoorstep) {
+      updateLiveOrder(activeOrder?.id || orderId, { trackingDismissed: true });
     }
     router.replace("/ordering");
   }
 
-  function handleSubmitCustomerRating(e) {
+  async function handleSubmitCustomerRating(e) {
     if (e) e.preventDefault();
-    playSuccessChime();
-    const ratingPayload = {
-      orderId: activeOrder.id || orderId,
-      orderNumber: activeOrder.orderNumber || orderId,
-      customerName: activeOrder.customerName || "Customer",
-      riderName: "Sinchana B R",
-      riderRating,
-      itemRatings,
-      compliments: selectedCompliments,
-      comment: ratingComment.trim(),
-      ratedAt: new Date().toISOString(),
-    };
-    try {
-      const prevRaw = localStorage.getItem("auditx_customer_ratings");
-      const prev = prevRaw ? JSON.parse(prevRaw) : [];
-      localStorage.setItem("auditx_customer_ratings", JSON.stringify([ratingPayload, ...prev]));
-    } catch (err) {
-      console.warn(err);
-    }
+    const ordKey = String(activeOrder?.id || activeOrder?.orderId || orderId || "");
+    await withIdempotentLock(`track_rating_${ordKey}`, async () => {
+      setRatingSubmitting(true);
+      try {
+        playSuccessChime();
+        const ratingPayload = {
+          orderId: activeOrder.id || orderId,
+          orderNumber: activeOrder.orderNumber || orderId,
+          customerName: activeOrder.customerName || "Customer",
+          riderName: "Sinchana B R",
+          riderRating,
+          itemRatings,
+          compliments: selectedCompliments,
+          comment: ratingComment.trim(),
+          ratedAt: new Date().toISOString(),
+        };
+        const prev = safeArr(safeStorage.getJson("auditx_customer_ratings", []));
+        safeStorage.setJson("auditx_customer_ratings", [ratingPayload, ...prev.slice(0, 39)]);
 
-    const deliveredOrder = {
-      ...activeOrder,
-      status: "delivered",
-      stage: "Delivered",
-      deliveredAt: new Date().toISOString(),
-      customerRatingSubmitted: true,
-      riderRating,
-      itemRatings,
-    };
+        const deliveredOrder = {
+          ...activeOrder,
+          status: "delivered",
+          stage: "Delivered",
+          deliveredAt: new Date().toISOString(),
+          customerRatingSubmitted: true,
+          riderRating,
+          itemRatings,
+        };
 
-    setOrder(deliveredOrder);
-    setTrackingStage("delivered");
+        setOrder(deliveredOrder);
+        advanceStageMonotonic("delivered");
 
-    updateLiveOrder(activeOrder.id || orderId, {
-      status: "delivered",
-      stage: "Delivered",
-      deliveredAt: new Date().toISOString(),
-      customerRatingSubmitted: true,
-      riderRating,
-      itemRatings,
+        updateLiveOrder(activeOrder.id || orderId, {
+          status: "delivered",
+          stage: "Delivered",
+          deliveredAt: deliveredOrder.deliveredAt,
+          customerRatingSubmitted: true,
+          riderRating,
+          itemRatings,
+        });
+        await dispatchCloudAction("SUBMIT_RATING", { ratingPayload });
+        if (ordKey) safeStorage.set("auditx_dismissed_track_order", ordKey);
+        broadcastEvent("ORDER_DELIVERED", deliveredOrder);
+        broadcastEvent("ORDER_RATED", ratingPayload);
+        setRatingSubmitted(true);
+        triggerToast("🎉 Order Delivered & Verified! Thank you for rating Sinchana B R.");
+      } finally {
+        setRatingSubmitting(false);
+      }
     });
-    dispatchCloudAction("SUBMIT_RATING", { ratingPayload });
-    try {
-      const ordKey = String(activeOrder.id || activeOrder.orderId || orderId || "");
-      if (ordKey) localStorage.setItem("auditx_dismissed_track_order", ordKey);
-    } catch {}
-    broadcastEvent("ORDER_DELIVERED", deliveredOrder);
-    broadcastEvent("ORDER_RATED", ratingPayload);
-    setRatingSubmitted(true);
-    triggerToast("🎉 Order Delivered & Verified! Thank you for rating Sinchana B R.");
   }
 
   function handleConfirmHandoverFromCustomerQr() {
@@ -736,11 +768,40 @@ export default function TrackOrderPage() {
           </section>
         )}
 
-        {/* ── 2. CUSTOMER LIVE TRACKING MAP (Hidden once arrived at doorstep) ── */}
-        {!hasArrivedAtDoorstep && !isCancelled && (
-          <>
+        {/* ── 2. CUSTOMER LIVE TRACKING MAP & TIMELINE (Hidden once arrived at doorstep) ── */}
+        {loading && !order ? (
+          <OrderingSkeletonScreen />
+        ) : !hasArrivedAtDoorstep && !isCancelled && (
+          <ErrorBoundary
+            label="Live Tracking & Timeline"
+            compact
+            subtitle="Live map hit a pause — status updates continue automatically."
+            onRetry={() => fetchCloudHubState({ force: true })}
+          >
         <section style={S.mapSection}>
           <div style={S.mapViewport}>
+            {mapLoadFailed ? (
+              <div
+                style={{
+                  minHeight: 160,
+                  display: "grid",
+                  placeItems: "center",
+                  padding: 18,
+                  textAlign: "center",
+                  background: "var(--ios-fill-secondary)",
+                  borderRadius: 14,
+                  color: "var(--ios-label)",
+                }}
+              >
+                <div>
+                  <div style={{ fontSize: 22, marginBottom: 4 }}>📍</div>
+                  <div style={{ fontSize: 13, fontWeight: 700 }}>{arrivalTitle}</div>
+                  <div style={{ fontSize: 11.5, color: "var(--ios-label-2)", marginTop: 2 }}>
+                    Map preview unavailable {!isOnline ? "(offline)" : ""} • Live status &amp; ETA active
+                  </div>
+                </div>
+              </div>
+            ) : (
             <svg
               viewBox="230 70 530 250"
               style={S.mapSvg}
@@ -753,6 +814,7 @@ export default function TrackOrderPage() {
                 y="0"
                 width="1024"
                 height="411"
+                onError={() => setMapLoadFailed(true)}
               />
 
               {/* Highway NH 73 Live Delivery Route line from Tiptur Hub to KFGSC */}
@@ -891,7 +953,7 @@ export default function TrackOrderPage() {
             </div>
           </div>
         </section>
-          </>
+          </ErrorBoundary>
         )}
 
         {/* ── 3. PAYMENT / COD CARD ── */}
@@ -968,7 +1030,7 @@ export default function TrackOrderPage() {
               <button
                 type="button"
                 onClick={() => {
-                  alert("Connecting safely to Sinchana B R via privacy relay.");
+                  triggerToast("Connecting safely to Sinchana B R via privacy relay.");
                 }}
                 style={{ ...S.phoneActionBtn, minWidth: 44, minHeight: 44, cursor: "pointer", border: "none" }}
                 title="Call rider"
@@ -1419,6 +1481,7 @@ export default function TrackOrderPage() {
 
                   <button
                     type="submit"
+                    disabled={ratingSubmitting}
                     style={{
                       width: "100%",
                       background: "linear-gradient(135deg, #0c831f 0%, #15803d 100%)",
@@ -1428,11 +1491,12 @@ export default function TrackOrderPage() {
                       padding: "12px 16px",
                       fontSize: 14,
                       fontWeight: 900,
-                      cursor: "pointer",
+                      cursor: ratingSubmitting ? "wait" : "pointer",
+                      opacity: ratingSubmitting ? 0.75 : 1,
                       boxShadow: "0 4px 14px rgba(12, 131, 31, 0.3)",
                     }}
                   >
-                    ⭐ Submit Rating &amp; Complete Delivery
+                    {ratingSubmitting ? "Submitting Rating..." : "⭐ Submit Rating & Complete Delivery"}
                   </button>
                 </form>
               )}

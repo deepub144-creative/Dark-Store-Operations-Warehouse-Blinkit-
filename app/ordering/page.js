@@ -2,7 +2,7 @@
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { CATALOG } from "@/lib/items";
 import { getDefaultItemStock, mergeCatalogItems } from "@/lib/hubState";
 import {
@@ -15,9 +15,19 @@ import {
   getAllLiveComplaints,
   sanitizeComplaints,
   subscribeToCloudHub,
+  fetchCloudHubState,
   dispatchCloudAction,
+  verifyPlacedOrderStatus,
   getOrCreateDeviceUid,
 } from "@/lib/realtimeSync";
+import ErrorBoundary from "@/components/ErrorBoundary";
+import {
+  createIdempotencyKey,
+  isOnlineNow,
+  subscribeNetworkStatus,
+  withIdempotentLock,
+} from "@/lib/apiClient";
+import { safeArr, safeNum, safeStorage, validateCustomerBoundary } from "@/lib/safeData";
 import { playNotificationChime, playSuccessChime } from "@/lib/soundSystem";
 import { getRandomStagingRack } from "@/lib/roles";
 import { downloadDeliveredOrderPdfSlip } from "@/lib/orderSlipPdf";
@@ -39,20 +49,25 @@ import {
   OrderingSkeletonScreen,
 } from "@/components/ios";
 
+const retryImport = (loader) =>
+  loader().catch(
+    () => new Promise((resolve, reject) => setTimeout(() => loader().then(resolve, reject), 450))
+  );
+
 // Route-level / heavy modal code-splitting for 60fps initial mobile paint
-const AuditxMiniAssistant = dynamic(() => import("@/components/AuditxMiniAssistant"), {
+const AuditxMiniAssistant = dynamic(() => retryImport(() => import("@/components/AuditxMiniAssistant")), {
   ssr: false,
   loading: () => null,
 });
-const OrderPlacedSheet = dynamic(() => import("@/components/ui/OrderPlacedSheet"), {
+const OrderPlacedSheet = dynamic(() => retryImport(() => import("@/components/ui/OrderPlacedSheet")), {
   ssr: false,
   loading: () => null,
 });
-const DeliveryReceiptModal = dynamic(() => import("@/components/DeliveryReceiptModal"), {
+const DeliveryReceiptModal = dynamic(() => retryImport(() => import("@/components/DeliveryReceiptModal")), {
   ssr: false,
   loading: () => null,
 });
-const LittlePenguin = dynamic(() => import("@/components/LittlePenguin"), {
+const LittlePenguin = dynamic(() => retryImport(() => import("@/components/LittlePenguin")), {
   ssr: false,
   loading: () => null,
 });
@@ -331,6 +346,92 @@ const TIPTUR_FARMS = [
   },
 ];
 
+const SEARCH_PLACEHOLDER_ITEMS = [
+  "Beatss Milk Chocolate",
+  "Kantara A4 Glass Frame",
+  "Melody Chocolaty Toffee",
+  "Yash KGF Glass Frame",
+  "Kopiko Coffee Candy",
+  "D Boss A4 Glass Frame",
+  "Boomer Bubble Gum",
+  "Mahadev Shiva Glass Frame",
+  "Candyman Choco Double",
+  "Anime Glass Frame",
+  "Eclairs Rich Toffee",
+  "Coding & Tech Glass Frame",
+];
+
+// Isolated typewriter placeholder keeps 28-65ms ticks inside a tiny leaf without re-rendering OrderingAppPage
+const OrderingSearchInput = memo(function OrderingSearchInput({
+  value,
+  onChange,
+  onClear,
+  inputRef = null,
+  sticky = false,
+  S,
+}) {
+  const [placeholder, setPlaceholder] = useState('Search "Beatss Milk Chocolate"...');
+  const [itemIdx, setItemIdx] = useState(0);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [charPos, setCharPos] = useState(0);
+
+  useEffect(() => {
+    if (value) return;
+    const curItem = SEARCH_PLACEHOLDER_ITEMS[itemIdx % SEARCH_PLACEHOLDER_ITEMS.length];
+    const full = `Search "${curItem}"...`;
+    let pauseTimer = null;
+
+    const timer = setTimeout(() => {
+      if (!isDeleting) {
+        if (charPos < full.length) {
+          setCharPos((p) => p + 1);
+          setPlaceholder(full.slice(0, charPos + 1));
+        } else {
+          pauseTimer = setTimeout(() => setIsDeleting(true), 1600);
+        }
+      } else if (charPos > 9) {
+        setCharPos((p) => p - 1);
+        setPlaceholder(full.slice(0, charPos - 1));
+      } else {
+        setIsDeleting(false);
+        setItemIdx((p) => (p + 1) % SEARCH_PLACEHOLDER_ITEMS.length);
+      }
+    }, isDeleting ? 28 : 65);
+
+    return () => {
+      clearTimeout(timer);
+      if (pauseTimer) clearTimeout(pauseTimer);
+    };
+  }, [charPos, isDeleting, itemIdx, value]);
+
+  return (
+    <div style={sticky ? { ...S.searchContainer, position: "sticky", top: 6, zIndex: 20 } : S.searchContainer}>
+      <div data-dfx="search" style={S.searchFieldWrapper}>
+        <IconSearch size={18} color="#8E8E93" />
+        <input
+          ref={inputRef}
+          type="search"
+          aria-label="Search chocolates and wall frames"
+          placeholder={placeholder}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          style={S.searchInput}
+        />
+        {value && (
+          <button
+            type="button"
+            aria-label="Clear search"
+            style={S.searchClearBtn}
+            onClick={onClear}
+          >
+            <IconClose size={16} color="#8E8E93" />
+          </button>
+        )}
+      </div>
+    </div>
+  );
+});
+
 const OrderingProductCard = memo(function OrderingProductCard({
   item,
   idx,
@@ -346,6 +447,10 @@ const OrderingProductCard = memo(function OrderingProductCard({
   onStoreClosedToast,
   S,
 }) {
+  const safePrice = safeNum(item.price, 0);
+  const safeMrp = safeNum(item.mrp, safePrice);
+  const safeImage = item.image || "/auditx-logo.png";
+
   return (
     <div
       data-dfx="card"
@@ -366,19 +471,16 @@ const OrderingProductCard = memo(function OrderingProductCard({
     >
       <div style={S.productImageContainer}>
         <img
-          src={item.image}
-          alt={item.name}
+          src={safeImage}
+          alt={item.name || "Product"}
           width={140}
           height={116}
           loading="lazy"
           decoding="async"
           onError={(e) => {
-            if (item.image && item.image.startsWith("/frames/")) {
-              const fb = `${JSDELIVR_PUBLIC_CDN}${item.image}`;
-              if (e.target.src !== fb) {
-                e.target.src = fb;
-              }
-            }
+            if (e.currentTarget.dataset.fbApplied) return;
+            e.currentTarget.dataset.fbApplied = "1";
+            e.currentTarget.src = "/auditx-logo.png";
           }}
           style={{
             ...S.productImg,
@@ -437,7 +539,7 @@ const OrderingProductCard = memo(function OrderingProductCard({
               borderRadius: 6,
             }}
           >
-            <span>{item.isCustomPutaway ? `₹${item.price} NEW` : `₹${item.price}`}</span>
+            <span>{item.isCustomPutaway ? `₹${safePrice} NEW` : `₹${safePrice}`}</span>
           </div>
         ) : isFrame ? (
           <div
@@ -459,17 +561,17 @@ const OrderingProductCard = memo(function OrderingProductCard({
         ) : null}
         {!isSoldOut && isOos && (
           <div style={S.oosBadgeOverlay}>
-            <span>OUT OF STOCK</span>
+            <span>UNAVAILABLE</span>
           </div>
         )}
       </div>
 
       <div style={S.productDetailsCol}>
-        <h3 style={{ ...S.productName, color: "var(--ios-label)" }}>{item.name}</h3>
+        <h3 style={{ ...S.productName, color: "var(--ios-label)" }}>{item.name || "Catalog Item"}</h3>
         <div style={{ ...S.productWeight, color: "var(--ios-label-2)" }}>
-          {item.weight} •{" "}
+          {item.weight || "1 pack"} •{" "}
           <b style={{ color: availableUnits <= 0 ? "#FF3B30" : "#34C759" }}>
-            {availableUnits} left
+            {availableUnits <= 0 ? "Currently unavailable" : `${availableUnits} left`}
           </b>
         </div>
 
@@ -480,10 +582,10 @@ const OrderingProductCard = memo(function OrderingProductCard({
             ) : (
               <>
                 <span style={{ ...S.productFinalPrice, color: "var(--ios-label)" }}>
-                  ₹{item.price}
+                  ₹{safePrice}
                 </span>
-                {item.mrp > item.price && (
-                  <span style={S.productMrpStrike}>₹{item.mrp}</span>
+                {safeMrp > safePrice && (
+                  <span style={S.productMrpStrike}>₹{safeMrp}</span>
                 )}
               </>
             )}
@@ -507,14 +609,15 @@ const OrderingProductCard = memo(function OrderingProductCard({
               Soon
             </button>
           ) : isSoldOut || isOos ? (
-            <button style={S.productOosBtn} disabled>
-              {isSoldOut ? "Sold out" : "Out"}
+            <button style={S.productOosBtn} disabled title="Currently unavailable">
+              {isSoldOut ? "Sold out" : "Unavailable"}
             </button>
           ) : (
             <IOSStepper
               compact
               value={qty}
               addLabel="ADD"
+              disabled={qty >= availableUnits}
               onIncrement={() => {
                 if (!isStoreOpen) {
                   onStoreClosedToast();
@@ -533,12 +636,14 @@ const OrderingProductCard = memo(function OrderingProductCard({
 
 export default function OrderingAppPage() {
   const router = useRouter();
+  const pathname = usePathname();
 
   // Core Data
   const [authChecked, setAuthChecked] = useState(false);
   const [capacityBlockedMsg, setCapacityBlockedMsg] = useState("");
   const [customer, setCustomer] = useState(null);
   const [cart, setCart] = useState({});
+  const cartRef = useRef({});
   const [selectedCategory, setSelectedCategory] = useState("Chocolates");
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
@@ -546,6 +651,15 @@ export default function OrderingAppPage() {
   const gridLoadMoreRef = useRef(null);
   const searchInputRef = useRef(null);
   const [loading, setLoading] = useState(true);
+  const [isOnline, setIsOnline] = useState(true);
+  const [cartNotice, setCartNotice] = useState("");
+  const [unconfirmedOrderPrompt, setUnconfirmedOrderPrompt] = useState(null);
+  const checkoutStateHydratedRef = useRef(false);
+  const pendingCheckoutIdemRef = useRef("");
+  const cartPriceSnapshotRef = useRef({});
+  const toastTimerRef = useRef(null);
+  const stageDelayTimerRef = useRef(null);
+  const navTimerRef = useRef(null);
 
   // Debounce search inputs by 250ms to prevent frame drops while typing
   useEffect(() => {
@@ -577,7 +691,7 @@ export default function OrderingAppPage() {
   const [appliedCoupon, setAppliedCoupon] = useState(AVAILABLE_COUPONS[0]);
   const [showCouponModal, setShowCouponModal] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState("wallet"); // 'wallet' (Audit'X Demo Wallet) | 'upi' | 'card' | 'cod'
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState("wallet"); // 'wallet' | 'upi' | 'card' | 'cod'
   const [selectedUpiApp, setSelectedUpiApp] = useState("gpay"); // 'gpay' | 'phonepe' | 'paytm' | 'cred'
   const [ganeshaLang, setGaneshaLang] = useState("english"); // 'english' | 'kannada' | 'hindi'
   const [bgVideoIdx, setBgVideoIdx] = useState(0);
@@ -586,11 +700,86 @@ export default function OrderingAppPage() {
   const [dismissDeliveryBar, setDismissDeliveryBar] = useState(false);
   const [pastOrders, setPastOrders] = useState([]);
   useEffect(() => {
-    try {
-      const raw = JSON.parse(localStorage.getItem("auditx_customer_past_orders") || "[]");
-      if (Array.isArray(raw)) setPastOrders(raw);
-    } catch (e) {}
+    setPastOrders(safeArr(safeStorage.getJson("auditx_customer_past_orders", [])));
   }, []);
+
+  // Hydrate persisted cart, address, coupon, instructions, payment method, and checkout step cleanly on load
+  useEffect(() => {
+    const savedCart = safeStorage.getJson("auditx_ordering_cart", null);
+    if (savedCart && typeof savedCart === "object" && !Array.isArray(savedCart)) {
+      const sanitizedCart = {};
+      Object.entries(savedCart).forEach(([k, q]) => {
+        const cleanQty = Math.floor(safeNum(q, 0));
+        if (k && cleanQty > 0) sanitizedCart[k] = cleanQty;
+      });
+      setCart(sanitizedCart);
+      cartRef.current = sanitizedCart;
+    }
+    const savedPriceMap = safeStorage.getJson("auditx_ordering_cart_prices", null);
+    if (savedPriceMap && typeof savedPriceMap === "object" && !Array.isArray(savedPriceMap)) {
+      cartPriceSnapshotRef.current = savedPriceMap;
+    }
+    const savedAddr = safeStorage.getJson("auditx_ordering_address", null);
+    if (savedAddr && typeof savedAddr === "object" && savedAddr.address) {
+      setSelectedAddress(savedAddr);
+    }
+    const savedCoupon = safeStorage.getJson("auditx_ordering_coupon", undefined);
+    if (savedCoupon === null || (savedCoupon && typeof savedCoupon === "object" && savedCoupon.code)) {
+      if (savedCoupon !== undefined) setAppliedCoupon(savedCoupon);
+    }
+    const savedIns = safeStorage.getJson("auditx_ordering_instructions", null);
+    if (Array.isArray(savedIns)) {
+      setSelectedInstructions(savedIns);
+    }
+    const savedPay = safeStorage.get("auditx_ordering_payment_method", "");
+    if (savedPay && ["wallet", "upi", "card", "cod"].includes(savedPay)) {
+      setSelectedPaymentMethod(savedPay);
+    }
+    const savedStep = safeStorage.getJson("auditx_ordering_checkout_step", null);
+    if (savedStep && typeof savedStep === "object") {
+      if (typeof savedStep.isCheckoutView === "boolean") setIsCheckoutView(savedStep.isCheckoutView);
+      if (typeof savedStep.activeBottomTab === "string") setActiveBottomTab(savedStep.activeBottomTab);
+    }
+    if (pathname) {
+      if (pathname.endsWith("/cart") || pathname.endsWith("/checkout")) setIsCheckoutView(true);
+      else if (pathname.endsWith("/categories")) { setIsCheckoutView(false); setActiveBottomTab("categories"); }
+      else if (pathname.endsWith("/search")) { setIsCheckoutView(false); setActiveBottomTab("search"); }
+      else if (pathname.endsWith("/orders")) { setIsCheckoutView(false); setActiveBottomTab("order_again"); }
+    }
+    checkoutStateHydratedRef.current = true;
+  }, [pathname]);
+
+  // Keep cartRef and safeStorage synchronized on every change
+  useEffect(() => {
+    cartRef.current = cart;
+    if (!checkoutStateHydratedRef.current) return;
+    safeStorage.setJson("auditx_ordering_cart", cart);
+  }, [cart]);
+
+  useEffect(() => {
+    if (!checkoutStateHydratedRef.current) return;
+    safeStorage.setJson("auditx_ordering_address", selectedAddress);
+  }, [selectedAddress]);
+
+  useEffect(() => {
+    if (!checkoutStateHydratedRef.current) return;
+    safeStorage.setJson("auditx_ordering_coupon", appliedCoupon);
+  }, [appliedCoupon]);
+
+  useEffect(() => {
+    if (!checkoutStateHydratedRef.current) return;
+    safeStorage.setJson("auditx_ordering_instructions", selectedInstructions);
+  }, [selectedInstructions]);
+
+  useEffect(() => {
+    if (!checkoutStateHydratedRef.current) return;
+    safeStorage.set("auditx_ordering_payment_method", selectedPaymentMethod);
+  }, [selectedPaymentMethod]);
+
+  useEffect(() => {
+    if (!checkoutStateHydratedRef.current) return;
+    safeStorage.setJson("auditx_ordering_checkout_step", { isCheckoutView, activeBottomTab });
+  }, [isCheckoutView, activeBottomTab]);
   const [orderingStage, setOrderingStage] = useState("idle"); // 'idle' | 'picking' | 'packed_assigning' | 'rider_assigned' | 'almost_doorstep' | 'rider_arrived' | 'delivered'
   const [deliveryCountdownSec, setDeliveryCountdownSec] = useState(600); // 10 minutes = 600 seconds total SLA (2m OD Picker + 8m Rider)
   const [pickerDelayMins, setPickerDelayMins] = useState(0); // Dynamic picking delay from OD Picker Thrupthi K S
@@ -622,8 +811,7 @@ export default function OrderingAppPage() {
         if (k2) liveById.set(k2, o);
         if (k3) liveById.set(k3, o);
       });
-      const existingRaw = JSON.parse(localStorage.getItem("auditx_customer_past_orders") || "[]");
-      const existing = Array.isArray(existingRaw) ? existingRaw : [];
+      const existing = safeArr(safeStorage.getJson("auditx_customer_past_orders", []));
       let changed = false;
       const merged = existing.map((po) => {
         const match =
@@ -657,17 +845,16 @@ export default function OrderingAppPage() {
         return po;
       });
       if (changed) {
-        localStorage.setItem("auditx_customer_past_orders", JSON.stringify(merged));
+        safeStorage.setJson("auditx_customer_past_orders", merged);
         setPastOrders(merged);
       }
 
-      const lastRaw = localStorage.getItem("auditx_customer_last_order");
-      if (lastRaw) {
-        const last = JSON.parse(lastRaw);
+      const last = safeStorage.getJson("auditx_customer_last_order", null);
+      if (last && typeof last === "object") {
         const lastKey = String(last.id || last.orderId || last.orderNumber || "");
         const liveLast = liveById.get(lastKey) || last;
         const lastSt = String(liveLast?.status || "").toLowerCase();
-        const dismissedSlip = String(localStorage.getItem("auditx_dismissed_slip_banner") || "");
+        const dismissedSlip = String(safeStorage.get("auditx_dismissed_slip_banner", "") || "");
         if (lastSt === "delivered" && lastKey && dismissedSlip !== lastKey) {
           setLatestDeliveredSlipOrder(liveLast);
         } else if (lastSt && lastSt !== "delivered") {
@@ -711,17 +898,14 @@ export default function OrderingAppPage() {
       activeBottomTab === "home"
   );
 
-  // Festive crackers & Diwali theme active strictly on Ordering App Home page
+  // Festive crackers & Diwali theme active strictly on Ordering App Home page (skipped under saveData / reduced motion)
   useEffect(() => {
-    if (!isOrderingHomeActive) {
+    if (!isOrderingHomeActive || navigator?.connection?.saveData) {
       DiwaliCrackers.unmount();
       DiwaliTheme.unmount();
       return;
     }
-    let alreadySeenSplash = false;
-    try {
-      alreadySeenSplash = !!sessionStorage.getItem("dfx-seen");
-    } catch (e) {}
+    const alreadySeenSplash = !!safeStorage.get("dfx-seen", "", "session");
 
     const timer = setTimeout(() => {
       DiwaliTheme.mount({
@@ -755,10 +939,8 @@ export default function OrderingAppPage() {
   const introFadeTimerRef = useRef(null);
 
   function triggerTeamIntroOnce() {
-    try {
-      sessionStorage.removeItem("auditx_play_team_intro_once");
-      localStorage.removeItem("auditx_play_team_intro_once");
-    } catch {}
+    safeStorage.remove("auditx_play_team_intro_once", "session");
+    safeStorage.remove("auditx_play_team_intro_once", "local");
     if (introFadeTimerRef.current) {
       clearTimeout(introFadeTimerRef.current);
       introFadeTimerRef.current = null;
@@ -847,86 +1029,81 @@ export default function OrderingAppPage() {
   const [loginLoading, setLoginLoading] = useState(false);
   const [loginDemoOtp, setLoginDemoOtp] = useState("442201");
 
-  // Typewriter Search Box Effect (cycles through stored warehouse items)
-  const STORED_SEARCH_ITEMS = useMemo(() => [
-    "Beatss Milk Chocolate",
-    "Kantara A4 Glass Frame",
-    "Melody Chocolaty Toffee",
-    "Yash KGF Glass Frame",
-    "Kopiko Coffee Candy",
-    "D Boss A4 Glass Frame",
-    "Boomer Bubble Gum",
-    "Mahadev Shiva Glass Frame",
-    "Candyman Choco Double",
-    "Anime Glass Frame",
-    "Eclairs Rich Toffee",
-    "Coding & Tech Glass Frame",
-  ], []);
-
-  const [typewriterPlaceholder, setTypewriterPlaceholder] = useState('Search "Beatss Milk Chocolate"...');
-  const [typeItemIdx, setTypeItemIdx] = useState(0);
-  const [isDeletingChar, setIsDeletingChar] = useState(false);
-  const [charPos, setCharPos] = useState(0);
-
+  // Network online/offline tracking + automatic price/stock refetch upon reconnect
   useEffect(() => {
-    const curItem = STORED_SEARCH_ITEMS[typeItemIdx % STORED_SEARCH_ITEMS.length];
-    const fullSearchPrompt = `Search "${curItem}"...`;
-
-    const timer = setTimeout(() => {
-      if (!isDeletingChar) {
-        if (charPos < fullSearchPrompt.length) {
-          setCharPos((prev) => prev + 1);
-          setTypewriterPlaceholder(fullSearchPrompt.slice(0, charPos + 1));
-        } else {
-          setTimeout(() => setIsDeletingChar(true), 1600);
-        }
-      } else {
-        if (charPos > 9) { // keep 'Search "'
-          setCharPos((prev) => prev - 1);
-          setTypewriterPlaceholder(fullSearchPrompt.slice(0, charPos - 1));
-        } else {
-          setIsDeletingChar(false);
-          setTypeItemIdx((prev) => (prev + 1) % STORED_SEARCH_ITEMS.length);
-        }
+    let wasOnline = isOnlineNow();
+    setIsOnline(wasOnline);
+    return subscribeNetworkStatus((snap) => {
+      setIsOnline(snap.online);
+      if (!wasOnline && snap.online) {
+        triggerToast("Back online — refreshing live catalog prices & stock...");
+        fetchCloudHubState({ force: true }).catch(() => {});
       }
-    }, isDeletingChar ? 28 : 65);
+      wasOnline = snap.online;
+    });
+  }, []);
 
-    return () => clearTimeout(timer);
-  }, [charPos, isDeletingChar, typeItemIdx, STORED_SEARCH_ITEMS]);
-
-
-  // Load Customer (Mandatory Login Gate on Fresh Device + Cross-Device Cloud Sync)
+  // Checkout active indicator (prevents SW reload mid-checkout) + unload guard during payment submission
   useEffect(() => {
-    let parsedCustomer = null;
-    try {
-      const raw = localStorage.getItem("auditx_customer") || localStorage.getItem("blinkit_customer");
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (parsed && parsed.name && (parsed.customerId || parsed.email || parsed.phone)) {
-          parsed.location = "KFGSC , Tiptur 572201";
-          parsedCustomer = parsed;
-        }
-      }
-    } catch (e) {
-      console.warn(e);
+    if (typeof document !== "undefined") {
+      document.body.dataset.auditxCheckoutActive = isCheckoutView || showPaymentModal ? "1" : "0";
     }
+    const handleBeforeUnload = (e) => {
+      if (placingOrder) {
+        e.preventDefault();
+        e.returnValue = "";
+      }
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      if (typeof document !== "undefined") {
+        document.body.dataset.auditxCheckoutActive = "0";
+      }
+    };
+  }, [isCheckoutView, showPaymentModal, placingOrder]);
+
+  // Idle route/component prefetch when auth is settled
+  useEffect(() => {
+    if (!authChecked) return;
+    const prefetchHeavy = () => {
+      try {
+        import("@/components/ui/OrderPlacedSheet");
+        import("@/components/DeliveryReceiptModal");
+      } catch {}
+    };
+    if (typeof window !== "undefined" && typeof window.requestIdleCallback === "function") {
+      const id = window.requestIdleCallback(prefetchHeavy, { timeout: 2000 });
+      return () => window.cancelIdleCallback?.(id);
+    }
+    const tid = setTimeout(prefetchHeavy, 1500);
+    return () => clearTimeout(tid);
+  }, [authChecked]);
+
+  // Load Customer (Mandatory Login Gate preserving returnTo path & cart across session expiry)
+  useEffect(() => {
+    const parsedCustomer = validateCustomerBoundary(
+      safeStorage.getJson("auditx_customer", null) ||
+        safeStorage.getJson("blinkit_customer", null)
+    );
 
     if (!parsedCustomer) {
-      router.replace("/ordering/login");
+      const returnPath = typeof window !== "undefined" ? window.location.pathname || "/ordering" : "/ordering";
+      safeStorage.set("auditx_auth_return_to", returnPath, "session");
+      router.replace(`/ordering/login?returnTo=${encodeURIComponent(returnPath)}`);
       return;
     }
 
+    parsedCustomer.location = "KFGSC , Tiptur 572201";
     setCustomer(parsedCustomer);
     setAuthChecked(true);
 
-    try {
-      const pendingIntro =
-        sessionStorage.getItem("auditx_play_team_intro_once") === "1" ||
-        localStorage.getItem("auditx_play_team_intro_once") === "1";
-      if (pendingIntro) {
-        triggerTeamIntroOnce();
-      }
-    } catch {}
+    const pendingIntro =
+      safeStorage.get("auditx_play_team_intro_once", "", "session") === "1" ||
+      safeStorage.get("auditx_play_team_intro_once", "", "local") === "1";
+    if (pendingIntro) {
+      triggerTeamIntroOnce();
+    }
 
     // Check-in returning device into today's 400-device daily cap & live login count
     dispatchCloudAction("REGISTER_LOGIN", {
@@ -943,39 +1120,31 @@ export default function OrderingAppPage() {
       }
     });
 
-    try {
-      const rawOos = localStorage.getItem("auditx_oos_items");
-      if (rawOos) setOosList(JSON.parse(rawOos));
-      const rawInv = localStorage.getItem("auditx_inventory_units");
-      if (rawInv) setInventoryStockMap(JSON.parse(rawInv));
-      const rawCustom = localStorage.getItem("auditx_custom_catalog");
-      if (rawCustom) setCustomCatalogItems(JSON.parse(rawCustom));
-      const rawStoreOpen = localStorage.getItem("auditx_store_open");
-      const openNow = rawStoreOpen !== "false";
-      setIsStoreOpen(openNow);
-      prevStoreOpenRef.current = openNow;
-    } catch (e) {
-      console.warn("Cache init error:", e);
-    }
+    setOosList(safeArr(safeStorage.getJson("auditx_oos_items", [])));
+    const rawInv = safeStorage.getJson("auditx_inventory_units", {});
+    if (rawInv && typeof rawInv === "object" && !Array.isArray(rawInv)) setInventoryStockMap(rawInv);
+    setCustomCatalogItems(safeArr(safeStorage.getJson("auditx_custom_catalog", [])));
+    const openNow = safeStorage.get("auditx_store_open", "true") !== "false";
+    setIsStoreOpen(openNow);
+    prevStoreOpenRef.current = openNow;
 
     function checkActiveDelivery(ordersOverride = null) {
       try {
-        const liveOrders = Array.isArray(ordersOverride) ? ordersOverride : getAllLiveOrders();
-        if (liveOrders && liveOrders.length > 0) {
+        const liveOrders = safeArr(Array.isArray(ordersOverride) ? ordersOverride : getAllLiveOrders());
+        if (liveOrders.length > 0) {
           syncPastOrdersWithLive(liveOrders);
         }
-        if (!liveOrders || liveOrders.length === 0) {
+        if (liveOrders.length === 0) {
           setActiveDeliveryOrder(null);
           return;
         }
-        const lastRaw = localStorage.getItem("auditx_customer_last_order");
+        const last = safeStorage.getJson("auditx_customer_last_order", null);
         let active = null;
-        if (lastRaw) {
-          const last = JSON.parse(lastRaw);
-          const live = liveOrders.find((o) => (o.id || o.orderId) === (last.id || last.orderId));
+        if (last && typeof last === "object") {
+          const live = liveOrders.find((o) => o && (o.id || o.orderId) === (last.id || last.orderId));
           active = live || null;
         }
-        const dismissedOrderId = String(localStorage.getItem("auditx_dismissed_track_order") || "");
+        const dismissedOrderId = String(safeStorage.get("auditx_dismissed_track_order", "") || "");
         const activeId = String(active?.id || active?.orderId || active?.orderNumber || "");
         const activeSt = String(active?.status || "").toLowerCase();
         if (
@@ -987,8 +1156,8 @@ export default function OrderingAppPage() {
           !active.trackingDismissed &&
           (!dismissedOrderId || dismissedOrderId !== activeId)
         ) {
-          if (active.delayMins) {
-            setPickerDelayMins(active.delayMins);
+          if (safeNum(active.delayMins, 0) > 0) {
+            setPickerDelayMins(safeNum(active.delayMins, 0));
           }
           if (
             activeSt === "staged" ||
@@ -1005,9 +1174,6 @@ export default function OrderingAppPage() {
           } else {
             setActiveDeliveryOrder(active);
             setOrderingStage((prev) => (prev === "idle" ? "picking" : prev));
-            if (active.delayMins > 0) {
-              setDeliveryCountdownSec(480 + (active.delaySec || active.delayMins * 60));
-            }
           }
         } else {
           setShowRateOrderModal(false);
@@ -1020,20 +1186,20 @@ export default function OrderingAppPage() {
       }
     }
 
+    const onFocusCheck = () => checkActiveDelivery();
     checkActiveDelivery();
-    window.addEventListener("focus", () => checkActiveDelivery());
+    window.addEventListener("focus", onFocusCheck);
 
     function loadComplaints() {
       try {
-        const cleaned = getAllLiveComplaints();
-        setCustomerComplaints(cleaned);
-      } catch (e) {
+        setCustomerComplaints(safeArr(getAllLiveComplaints()));
+      } catch {
         setCustomerComplaints([]);
       }
     }
     loadComplaints();
 
-    // Cross-device real-time cloud hub subscription (syncs laptop SM/ASM edits -> friends' phones!)
+    // Cross-device real-time cloud hub subscription (syncs SM/ASM edits -> phones)
     const unsubCloud = subscribeToCloudHub((cloudState, meta) => {
       if (!cloudState) return;
       const cloudOpen = cloudState.isStoreOpen !== false;
@@ -1052,7 +1218,7 @@ export default function OrderingAppPage() {
       if (Array.isArray(cloudState.oosList)) {
         setOosList(cloudState.oosList);
       }
-      if (cloudState.inventoryStockMap && typeof cloudState.inventoryStockMap === "object") {
+      if (cloudState.inventoryStockMap && typeof cloudState.inventoryStockMap === "object" && !Array.isArray(cloudState.inventoryStockMap)) {
         setInventoryStockMap(cloudState.inventoryStockMap);
       }
       if (Array.isArray(cloudState.customCatalogItems)) {
@@ -1067,6 +1233,7 @@ export default function OrderingAppPage() {
     }, 1800);
 
     const unsubBus = subscribeToEvents((data) => {
+      if (!data) return;
       if (data.type === "STORE_STATUS_CHANGED" && data.payload) {
         const nextOpen = data.payload.isOpen !== false;
         prevStoreOpenRef.current = nextOpen;
@@ -1090,9 +1257,9 @@ export default function OrderingAppPage() {
       }
       if (data.type === "PICKER_DELAY_UPDATED") {
         const p = data.payload || data;
-        const delayM = p.delayMins || (p.delaySec ? Math.ceil(p.delaySec / 60) : 0);
+        const delayM = safeNum(p.delayMins, p.delaySec ? Math.ceil(safeNum(p.delaySec, 0) / 60) : 0);
         setPickerDelayMins(delayM);
-        const dynamicSec = 480 + (p.delaySec || delayM * 60);
+        const dynamicSec = 480 + (safeNum(p.delaySec, 0) || delayM * 60);
         setDeliveryCountdownSec(dynamicSec);
         setCustomFloatingTitle(`Arriving in ${10 + delayM} mins`);
         setCustomFloatingSub(`Picking is taking slightly longer (+${delayM} min)`);
@@ -1113,7 +1280,7 @@ export default function OrderingAppPage() {
           data.type === "PICKER_HANDOVER_COMPLETED"
         ) {
           const p = data.payload || data;
-          if (p.delayMins !== undefined) setPickerDelayMins(p.delayMins);
+          if (p.delayMins !== undefined) setPickerDelayMins(safeNum(p.delayMins, 0));
           setOrderingStage("packed_assigning");
           setCustomFloatingTitle("Order packed");
           setCustomFloatingSub("Assigning rider");
@@ -1121,7 +1288,8 @@ export default function OrderingAppPage() {
           playNotificationChime();
           triggerToast("Order packed! Assigning rider soon.");
 
-          setTimeout(() => {
+          if (stageDelayTimerRef.current) clearTimeout(stageDelayTimerRef.current);
+          stageDelayTimerRef.current = setTimeout(() => {
             setOrderingStage("rider_assigned");
             setDeliveryCountdownSec(480);
             setCustomFloatingTitle("On the way");
@@ -1138,24 +1306,22 @@ export default function OrderingAppPage() {
           setCustomFloatingBadge("");
         }
         if (data.type === "ORDER_DELIVERED") {
-          try {
-            const ordId = String(
-              data.payload?.id || data.payload?.orderId || data.payload?.orderNumber || ""
-            );
-            if (ordId) localStorage.setItem("auditx_dismissed_track_order", ordId);
-            if (data.payload) {
-              const deliveredObj = {
-                ...data.payload,
-                status: "delivered",
-                deliveredAt: data.payload.deliveredAt || new Date().toISOString(),
-              };
-              syncPastOrdersWithLive([deliveredObj]);
-              const dismissedSlip = String(localStorage.getItem("auditx_dismissed_slip_banner") || "");
-              if (!ordId || dismissedSlip !== ordId) {
-                setLatestDeliveredSlipOrder(deliveredObj);
-              }
+          const ordId = String(
+            data.payload?.id || data.payload?.orderId || data.payload?.orderNumber || ""
+          );
+          if (ordId) safeStorage.set("auditx_dismissed_track_order", ordId);
+          if (data.payload) {
+            const deliveredObj = {
+              ...data.payload,
+              status: "delivered",
+              deliveredAt: data.payload.deliveredAt || new Date().toISOString(),
+            };
+            syncPastOrdersWithLive([deliveredObj]);
+            const dismissedSlip = String(safeStorage.get("auditx_dismissed_slip_banner", "") || "");
+            if (!ordId || dismissedSlip !== ordId) {
+              setLatestDeliveredSlipOrder(deliveredObj);
             }
-          } catch {}
+          }
           setRateCompleted(false);
           setShowRateOrderModal(false);
           setDismissDeliveryBar(true);
@@ -1198,103 +1364,111 @@ export default function OrderingAppPage() {
         loadComplaints();
       }
       if (e.key === "auditx_oos_items" && e.newValue) {
-        try { setOosList(JSON.parse(e.newValue)); } catch (err) {}
+        setOosList(safeArr(safeStorage.getJson("auditx_oos_items", [])));
       }
       if (e.key === "auditx_inventory_units" && e.newValue) {
-        try { setInventoryStockMap(JSON.parse(e.newValue)); } catch (err) {}
+        const parsed = safeStorage.getJson("auditx_inventory_units", {});
+        if (parsed && typeof parsed === "object") setInventoryStockMap(parsed);
       }
       if (e.key === "auditx_custom_catalog" && e.newValue) {
-        try { setCustomCatalogItems(JSON.parse(e.newValue)); } catch (err) {}
+        setCustomCatalogItems(safeArr(safeStorage.getJson("auditx_custom_catalog", [])));
       }
     };
     window.addEventListener("storage", handleStorageEvent);
 
-    const timer = setTimeout(() => setLoading(false), 200);
+    const timer = setTimeout(() => setLoading(false), 160);
     return () => {
       clearTimeout(timer);
+      if (stageDelayTimerRef.current) clearTimeout(stageDelayTimerRef.current);
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+      if (navTimerRef.current) clearTimeout(navTimerRef.current);
       unsubCloud();
       unsubBus();
+      window.removeEventListener("focus", onFocusCheck);
       window.removeEventListener("storage", handleStorageEvent);
     };
   }, [router]);
 
-  // Synchronized SLA Countdown Progression: 8m pick -> 6m rider transit -> 15s doorstep -> Rider arrived
+  // Synchronized SLA Countdown Progression (pure interval, zero side effects inside functional state updater)
+  const countdownSecRef = useRef(deliveryCountdownSec);
+  countdownSecRef.current = deliveryCountdownSec;
+  const activeDeliveryId = activeDeliveryOrder?.id || activeDeliveryOrder?.orderId || null;
+
   useEffect(() => {
-    if (orderingStage === "idle" || orderingStage === "delivered" || !activeDeliveryOrder) return;
+    if (orderingStage === "idle" || orderingStage === "delivered" || !activeDeliveryId) return;
 
     const t = setInterval(() => {
-      setDeliveryCountdownSec((prev) => {
-        if (prev <= 1) {
-          try {
-            const ordId = String(
-              activeDeliveryOrder.id ||
-                activeDeliveryOrder.orderId ||
-                activeDeliveryOrder.orderNumber ||
-                ""
-            );
-            if (ordId) localStorage.setItem("auditx_dismissed_track_order", ordId);
-          } catch {}
-          setActiveDeliveryOrder(null);
-          setOrderingStage("idle");
-          setShowRateOrderModal(false);
-          setDismissDeliveryBar(true);
-          playSuccessChime();
-          triggerToast("🛵 Your order has arrived at your doorstep!");
-          return 0;
-        }
-        const next = prev - 1;
-        if (next === 15 && orderingStage !== "almost_doorstep") {
-          setOrderingStage("almost_doorstep");
-          playNotificationChime();
-          triggerToast("⚡ Almost to your doorstep! Sinchana B R is reaching now.");
-        }
-        return next;
-      });
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+      const cur = countdownSecRef.current;
+      if (cur <= 1) {
+        countdownSecRef.current = 0;
+        setDeliveryCountdownSec(0);
+        const ordId = String(
+          activeDeliveryOrder?.id ||
+            activeDeliveryOrder?.orderId ||
+            activeDeliveryOrder?.orderNumber ||
+            ""
+        );
+        if (ordId) safeStorage.set("auditx_dismissed_track_order", ordId);
+        setActiveDeliveryOrder(null);
+        setOrderingStage("idle");
+        setShowRateOrderModal(false);
+        setDismissDeliveryBar(true);
+        playSuccessChime();
+        triggerToast("🛵 Your order has arrived at your doorstep!");
+        return;
+      }
+      const next = cur - 1;
+      countdownSecRef.current = next;
+      setDeliveryCountdownSec(next);
+      if (next === 15 && orderingStage !== "almost_doorstep") {
+        setOrderingStage("almost_doorstep");
+        playNotificationChime();
+        triggerToast("⚡ Almost to your doorstep! Sinchana B R is reaching now.");
+      }
     }, 1000);
 
     return () => clearInterval(t);
-  }, [orderingStage, activeDeliveryOrder]);
+  }, [orderingStage, activeDeliveryId]);
 
   function handleSubmitOrderingRating(e) {
     if (e) e.preventDefault();
     if (!activeDeliveryOrder) return;
-    playSuccessChime();
     const ordId = activeDeliveryOrder.id || activeDeliveryOrder.orderId || activeDeliveryOrder.orderNumber;
-    const ratingPayload = {
-      orderId: ordId,
-      orderNumber: activeDeliveryOrder.orderNumber || ordId,
-      customerName: customer?.name || activeDeliveryOrder.customerName || "Customer",
-      riderName: "Sinchana B R",
-      riderRating: riderStars,
-      itemRatings: itemStarsMap,
-      comment: rateFeedbackText.trim(),
-      ratedAt: new Date().toISOString(),
-    };
-    try {
-      const prevRaw = localStorage.getItem("auditx_customer_ratings");
-      const prev = prevRaw ? JSON.parse(prevRaw) : [];
-      localStorage.setItem("auditx_customer_ratings", JSON.stringify([ratingPayload, ...prev]));
-    } catch (err) {
-      console.warn(err);
-    }
-    const deliveredOrder = {
-      ...activeDeliveryOrder,
-      status: "delivered",
-      stage: "Delivered",
-      deliveredAt: new Date().toISOString(),
-      customerRatingSubmitted: true,
-      riderRating: riderStars,
-      itemRatings: itemStarsMap,
-    };
-    updateLiveOrder(ordId, deliveredOrder);
-    dispatchCloudAction("SUBMIT_RATING", { ratingPayload });
-    broadcastEvent("ORDER_DELIVERED", deliveredOrder);
-    broadcastEvent("ORDER_RATED", ratingPayload);
-    setRateCompleted(true);
-    setShowRateOrderModal(false);
-    setActiveDeliveryOrder(null);
-    setOrderingStage("idle");
-    triggerToast("🎉 Order Delivered & Verified! Thank you for rating Sinchana B R.");
+    if (!ordId) return;
+    withIdempotentLock(`rating_${ordId}`, async () => {
+      playSuccessChime();
+      const ratingPayload = {
+        orderId: ordId,
+        orderNumber: activeDeliveryOrder.orderNumber || ordId,
+        customerName: customer?.name || activeDeliveryOrder.customerName || "Customer",
+        riderName: "Sinchana B R",
+        riderRating: riderStars,
+        itemRatings: itemStarsMap,
+        comment: rateFeedbackText.trim(),
+        ratedAt: new Date().toISOString(),
+      };
+      const prev = safeArr(safeStorage.getJson("auditx_customer_ratings", []));
+      safeStorage.setJson("auditx_customer_ratings", [ratingPayload, ...prev.slice(0, 39)]);
+      const deliveredOrder = {
+        ...activeDeliveryOrder,
+        status: "delivered",
+        stage: "Delivered",
+        deliveredAt: new Date().toISOString(),
+        customerRatingSubmitted: true,
+        riderRating: riderStars,
+        itemRatings: itemStarsMap,
+      };
+      updateLiveOrder(ordId, deliveredOrder);
+      dispatchCloudAction("SUBMIT_RATING", { ratingPayload });
+      broadcastEvent("ORDER_DELIVERED", deliveredOrder);
+      broadcastEvent("ORDER_RATED", ratingPayload);
+      setRateCompleted(true);
+      setShowRateOrderModal(false);
+      setActiveDeliveryOrder(null);
+      setOrderingStage("idle");
+      triggerToast("🎉 Order Delivered & Verified! Thank you for rating Sinchana B R.");
+    });
   }
 
   function handleClearAllQueue() {
@@ -1304,133 +1478,220 @@ export default function OrderingAppPage() {
     triggerToast("🧹 Cleared Today's Queue across Warehouse, Picker, and Ordering Apps!");
   }
 
-  function handleFileComplaint(e) {
+  async function handleFileComplaint(e) {
     if (e) e.preventDefault();
     if (!complaintText.trim()) {
       triggerToast("Please provide details about the issue with your order.");
       return;
     }
-    setComplaintSubmitting(true);
-    playNotificationChime();
+    await withIdempotentLock("file_complaint", async () => {
+      setComplaintSubmitting(true);
+      try {
+        playNotificationChime();
 
-    const ticketId = `CMP-${Math.floor(1000 + Math.random() * 9000)}`;
-    const effectiveOrderId = complaintOrderId.trim() || activeDeliveryOrder?.id || activeDeliveryOrder?.orderNumber || "ORD-KA44-9042";
+        const ticketId = `CMP-${Math.floor(1000 + Math.random() * 9000)}`;
+        const effectiveOrderId =
+          complaintOrderId.trim() || activeDeliveryOrder?.id || activeDeliveryOrder?.orderNumber || "ORD-KA44-9042";
 
-    const newComplaint = {
-      id: ticketId,
-      orderId: effectiveOrderId,
-      customerName: customer?.name || "Customer (KFGSC Tiptur)",
-      phone: customer?.phone || "9876543210",
-      issue: complaintText.trim(),
-      category: complaintCategory,
-      severity: "HIGH",
-      slaMins: 5,
-      status: "OPEN",
-      time: "Just now",
-      createdAt: new Date().toISOString(),
-      assignedTo: "Bhaskar N S (SM) / Deepu B (ASM)",
-      amount: Number(complaintRefundAmount) || 0,
-      customerAddress: selectedAddress?.address || "KFGSC , Tiptur 572201",
-    };
+        const newComplaint = {
+          id: ticketId,
+          orderId: effectiveOrderId,
+          customerName: customer?.name || "Customer (KFGSC Tiptur)",
+          phone: customer?.phone || "9876543210",
+          issue: complaintText.trim(),
+          category: complaintCategory,
+          severity: "HIGH",
+          slaMins: 5,
+          status: "OPEN",
+          time: "Just now",
+          createdAt: new Date().toISOString(),
+          assignedTo: "Bhaskar N S (SM) / Deepu B (ASM)",
+          amount: safeNum(complaintRefundAmount, 0),
+          customerAddress: selectedAddress?.address || "KFGSC , Tiptur 572201",
+        };
 
-    try {
-      const existingRaw = localStorage.getItem("auditx_complaints");
-      const existing = existingRaw ? JSON.parse(existingRaw) : [];
-      const updated = [newComplaint, ...existing.filter((c) => c.id !== ticketId)];
-      localStorage.setItem("auditx_complaints", JSON.stringify(updated));
-      setCustomerComplaints(updated);
-    } catch (err) {
-      console.warn("Save complaint error:", err);
-    }
+        const existing = safeArr(safeStorage.getJson("auditx_complaints", []));
+        const updated = [newComplaint, ...existing.filter((c) => c.id !== ticketId)].slice(0, 50);
+        safeStorage.setJson("auditx_complaints", updated);
+        setCustomerComplaints(updated);
 
-    dispatchCloudAction("FILE_COMPLAINT", { complaint: newComplaint });
-    broadcastEvent("CUSTOMER_COMPLAINT_FILED", newComplaint);
-    broadcastEvent("COMPLAINT_RAISED", newComplaint);
+        await dispatchCloudAction("FILE_COMPLAINT", { complaint: newComplaint });
+        broadcastEvent("CUSTOMER_COMPLAINT_FILED", newComplaint);
+        broadcastEvent("COMPLAINT_RAISED", newComplaint);
 
-    setComplaintText("");
-    setComplaintRefundAmount("");
-    setComplaintSubmitting(false);
-    setComplaintsTab("tickets");
-    triggerToast(`⚠️ Complaint ticket ${ticketId} lodged! Store Manager Bhaskar N S & ASM Deepu B notified.`);
+        setComplaintText("");
+        setComplaintRefundAmount("");
+        setComplaintsTab("tickets");
+        triggerToast(`⚠️ Complaint ticket ${ticketId} lodged! Store Manager Bhaskar N S & ASM Deepu B notified.`);
+      } finally {
+        setComplaintSubmitting(false);
+      }
+    });
   }
 
   function handleCheckStoreStatus() {
     playNotificationChime();
-    try {
-      const raw = localStorage.getItem("auditx_store_open");
-      const open = raw !== "false";
-      setIsStoreOpen(open);
-      if (open) {
-        triggerToast("🎉 Store is now OPEN! You can browse and place orders.");
-      } else {
-        triggerToast("⏳ Oops! Your Store is now closed , opening soon");
-      }
-    } catch (e) {
-      console.warn(e);
+    const open = safeStorage.get("auditx_store_open", "true") !== "false";
+    setIsStoreOpen(open);
+    if (open) {
+      triggerToast("🎉 Store is now OPEN! You can browse and place orders.");
+    } else {
+      triggerToast("⏳ Oops! Your Store is now closed , opening soon");
     }
   }
 
   function triggerToast(msg) {
     setToastMessage(msg);
-    setTimeout(() => setToastMessage(""), 3500);
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = setTimeout(() => setToastMessage(""), 3500);
   }
 
-  // Merge standard catalog with ASM Putaway newly dumped custom items
+  // Merge standard catalog with ASM Putaway newly dumped custom items & skip any malformed entries without id/sku or numeric price
   const effectiveCatalog = useMemo(() => {
-    return mergeCatalogItems(CATALOG, customCatalogItems);
+    return mergeCatalogItems(CATALOG, customCatalogItems).filter(
+      (item) =>
+        item &&
+        typeof item === "object" &&
+        Boolean(item.sku || item.id) &&
+        Number.isFinite(Number(item.price))
+    );
   }, [customCatalogItems]);
 
-  function getAvailableUnits(item) {
-    if (!item) return 0;
-    if (item.soldOut || item.inStock === false || (item.name && item.name.toLowerCase().includes("pup"))) {
-      return 0;
+  const getAvailableUnits = useCallback(
+    (item) => {
+      if (!item) return 0;
+      const itemName = String(item.name || "").toLowerCase();
+      if (item.soldOut || item.inStock === false || itemName.includes("pup")) {
+        return 0;
+      }
+      if (oosList.includes(item.sku)) return 0;
+      if (inventoryStockMap[item.sku] !== undefined && Number.isFinite(Number(inventoryStockMap[item.sku]))) {
+        return Math.max(0, Math.floor(Number(inventoryStockMap[item.sku])));
+      }
+      if (item.isCustomPutaway && Number.isFinite(Number(item.units))) {
+        return Math.max(0, Math.floor(Number(item.units)));
+      }
+      return getDefaultItemStock(item);
+    },
+    [oosList, inventoryStockMap]
+  );
+
+  // Reconcile persisted cart against live prices & stock whenever catalog/stock updates
+  useEffect(() => {
+    const entries = Object.entries(cartRef.current || {});
+    if (entries.length === 0 || effectiveCatalog.length === 0) return;
+
+    let changed = false;
+    let removedOrClampedNames = [];
+    let priceChangedNames = [];
+    const nextCart = { ...cartRef.current };
+    const nextPriceMap = { ...cartPriceSnapshotRef.current };
+
+    for (const [sku, rawQty] of entries) {
+      const product = effectiveCatalog.find((c) => c.sku === sku);
+      const curQty = Math.floor(safeNum(rawQty, 0));
+      if (!product || curQty <= 0) {
+        delete nextCart[sku];
+        changed = true;
+        continue;
+      }
+      const avail = getAvailableUnits(product);
+      if (avail <= 0 || oosList.includes(sku) || product.comingSoon) {
+        delete nextCart[sku];
+        removedOrClampedNames.push(product.name || sku);
+        changed = true;
+        continue;
+      }
+      if (curQty > avail) {
+        nextCart[sku] = avail;
+        removedOrClampedNames.push(product.name || sku);
+        changed = true;
+      }
+      const prevPrice = nextPriceMap[sku];
+      const latestPrice = safeNum(product.price, 0);
+      if (prevPrice !== undefined && prevPrice !== latestPrice) {
+        priceChangedNames.push(`${product.name} (₹${prevPrice} → ₹${latestPrice})`);
+      }
+      nextPriceMap[sku] = latestPrice;
     }
-    if (oosList.includes(item.sku)) return 0;
-    if (inventoryStockMap[item.sku] !== undefined) {
-      return Math.max(0, Number(inventoryStockMap[item.sku]));
+
+    cartPriceSnapshotRef.current = nextPriceMap;
+    safeStorage.setJson("auditx_ordering_cart_prices", nextPriceMap);
+
+    if (changed) {
+      pendingCheckoutIdemRef.current = "";
+      setCart(nextCart);
     }
-    if (item.isCustomPutaway && item.units !== undefined) {
-      return Math.max(0, Number(item.units));
+
+    if (removedOrClampedNames.length > 0 && priceChangedNames.length > 0) {
+      setCartNotice(`Item unavailable (${removedOrClampedNames[0]}) • Price updated (${priceChangedNames[0]})`);
+      triggerToast("Cart updated: item availability & prices changed.");
+    } else if (removedOrClampedNames.length > 0) {
+      setCartNotice(`Item unavailable: updated stock for ${removedOrClampedNames[0]}`);
+      triggerToast(`Notice: ${removedOrClampedNames[0]} availability changed.`);
+    } else if (priceChangedNames.length > 0) {
+      setCartNotice(`Price updated: ${priceChangedNames[0]}`);
+      triggerToast(`Price updated for ${priceChangedNames[0]}`);
     }
-    return getDefaultItemStock(item);
-  }
+  }, [effectiveCatalog, oosList, inventoryStockMap, getAvailableUnits]);
 
   const updateQty = useCallback((sku, delta) => {
-    if (!isStoreOpen && delta > 0) {
+    const cleanDelta = Math.trunc(safeNum(delta, 0));
+    if (!cleanDelta) return;
+
+    if (!isStoreOpen && cleanDelta > 0) {
       triggerToast("🛑 Store is closed right now, ordering soon!");
       return;
     }
     const item = effectiveCatalog.find((c) => c.sku === sku);
-    if ((item?.soldOut || item?.inStock === false || (item?.name && item.name.toLowerCase().includes("pup"))) && delta > 0) {
-      triggerToast(`⛔ "${item.name}" is Sold Out!`);
+    if (!item && cleanDelta > 0) return;
+
+    const itemName = String(item?.name || "").toLowerCase();
+    if ((item?.soldOut || item?.inStock === false || itemName.includes("pup")) && cleanDelta > 0) {
+      triggerToast(`⛔ "${item?.name || sku}" is currently unavailable!`);
       return;
     }
-    if (item?.comingSoon && delta > 0) {
+    if (item?.comingSoon && cleanDelta > 0) {
       triggerToast(`${item.name} is coming soon to Tiptur Dark Store!`);
       return;
     }
-    const avail = getAvailableUnits(item);
-    if ((oosList.includes(sku) || avail <= 0) && delta > 0) {
-      triggerToast(`⛔ "${item?.name || sku}" is currently Out of Stock!`);
+    const avail = item ? getAvailableUnits(item) : 0;
+    if ((oosList.includes(sku) || avail <= 0) && cleanDelta > 0) {
+      triggerToast(`⛔ "${item?.name || sku}" is currently unavailable!`);
       return;
     }
-    if (delta > 0 && (cart[sku] || 0) + delta > avail) {
+
+    const currentQty = Math.max(0, Math.floor(safeNum(cartRef.current?.[sku], 0)));
+    if (cleanDelta > 0 && currentQty + cleanDelta > avail) {
       triggerToast(`⚠️ Only ${avail} unit(s) left in stock for "${item?.name || sku}"!`);
       return;
     }
 
+    // Any cart modification creates a fresh checkout idempotency key on the next attempt
+    pendingCheckoutIdemRef.current = "";
+    setUnconfirmedOrderPrompt(null);
+    setCartNotice("");
+
     setCart((prev) => {
       const next = { ...prev };
-      const qty = (next[sku] || 0) + delta;
-      if (qty <= 0) delete next[sku];
-      else next[sku] = qty;
+      const cur = Math.max(0, Math.floor(safeNum(next[sku], 0)));
+      const clamped = Math.max(0, Math.min(avail > 0 ? avail : cur, cur + cleanDelta));
+      if (clamped <= 0) delete next[sku];
+      else next[sku] = clamped;
       return next;
     });
 
-    if (delta > 0 && item) {
-      playSuccessChime();
+    if (item) {
+      cartPriceSnapshotRef.current = {
+        ...cartPriceSnapshotRef.current,
+        [sku]: safeNum(item.price, 0),
+      };
+      safeStorage.setJson("auditx_ordering_cart_prices", cartPriceSnapshotRef.current);
+      if (cleanDelta > 0 && !navigator?.connection?.saveData) {
+        playSuccessChime();
+      }
     }
-  }, [isStoreOpen, effectiveCatalog, oosList, inventoryStockMap, cart]);
+  }, [isStoreOpen, effectiveCatalog, oosList, getAvailableUnits]);
 
   function handleReorderAll(pastOrder) {
     if (!isStoreOpen) {
@@ -1476,26 +1737,30 @@ export default function OrderingAppPage() {
     triggerToast("Coupon removed.");
   }
 
-  // Cart Calculations
-  const cartEntries = Object.entries(cart);
-  const totalItems = cartEntries.reduce((s, [, q]) => s + q, 0);
+  // Cart Calculations (memoized so child references never churn needlessly)
+  const cartEntries = useMemo(() => Object.entries(cart || {}), [cart]);
+  const totalItems = useMemo(
+    () => cartEntries.reduce((s, [, q]) => s + Math.max(0, Math.floor(safeNum(q, 0))), 0),
+    [cartEntries]
+  );
 
   const cartItemsList = useMemo(() => {
     return cartEntries
       .map(([sku, qty]) => {
         const product = effectiveCatalog.find((c) => c.sku === sku);
-        if (!product) return null;
-        return { ...product, qty };
+        const cleanQty = Math.max(0, Math.floor(safeNum(qty, 0)));
+        if (!product || cleanQty <= 0) return null;
+        return { ...product, qty: cleanQty };
       })
       .filter(Boolean);
   }, [cartEntries, effectiveCatalog]);
 
   const itemTotalMrp = useMemo(() => {
-    return cartItemsList.reduce((s, item) => s + (item.mrp || item.price) * item.qty, 0);
+    return cartItemsList.reduce((s, item) => s + safeNum(item.mrp, safeNum(item.price, 0)) * item.qty, 0);
   }, [cartItemsList]);
 
   const itemSubtotal = useMemo(() => {
-    return cartItemsList.reduce((s, item) => s + item.price * item.qty, 0);
+    return cartItemsList.reduce((s, item) => s + safeNum(item.price, 0) * item.qty, 0);
   }, [cartItemsList]);
 
   const productDiscount = Math.max(0, itemTotalMrp - itemSubtotal);
@@ -1569,12 +1834,12 @@ export default function OrderingAppPage() {
   const filteredCatalog = useMemo(() => {
     const q = debouncedSearchQuery.trim().toLowerCase();
     return effectiveCatalog.filter((item) => {
+      const nameStr = String(item?.name || "").toLowerCase();
+      const catStr = String(item?.category || "").toLowerCase();
+      const aisleStr = String(item?.aisle || "").toLowerCase();
       const matchesSearch =
-        !q ||
-        item.name.toLowerCase().includes(q) ||
-        item.category.toLowerCase().includes(q) ||
-        (item.aisle && item.aisle.toLowerCase().includes(q));
-      const matchesCategory = activeBottomTab === "search" ? true : item.category === selectedCategory;
+        !q || nameStr.includes(q) || catStr.includes(q) || aisleStr.includes(q);
+      const matchesCategory = activeBottomTab === "search" ? true : item?.category === selectedCategory;
       return matchesSearch && matchesCategory;
     });
   }, [effectiveCatalog, debouncedSearchQuery, activeBottomTab, selectedCategory]);
@@ -1600,197 +1865,270 @@ export default function OrderingAppPage() {
     return () => io.disconnect();
   }, [visibleLimit, filteredCatalog.length]);
 
-  // Final Order Placement
-  async function handleFinalOrderPlacement() {
-    if (hasOngoingOrder) {
-      const ongoingId = ongoingTrackedOrder?.orderNumber || ongoingTrackedOrder?.id || ongoingTrackedOrder?.orderId || "Current Order";
-      triggerToast(`⚠️ Active Order in Progress! Order #${ongoingId} is currently being tracked. New orders cannot be placed until this delivery finishes.`);
-      setPlacingOrder(false);
-      setShowPaymentModal(false);
-      return;
-    }
-    if (!isStoreOpen) {
-      triggerToast("🛑 Store is closed right now, ordering soon!");
-      setPlacingOrder(false);
-      return;
-    }
-    if (cartEntries.length === 0) {
-      triggerToast("Your cart is empty. Add items from the catalog.");
-      return;
-    }
+  function completeConfirmedOrder(confirmedOrder, itemCountSnap, grandTotalSnap) {
+    const confirmedId = confirmedOrder.id || confirmedOrder.orderId || confirmedOrder.orderNumber;
+    pendingCheckoutIdemRef.current = "";
+    setUnconfirmedOrderPrompt(null);
+    setCartNotice("");
 
-    setPlacingOrder(true);
-    setShowPaymentModal(false);
-
-    const orderId = `ORD-KA44-${Math.floor(100000 + Math.random() * 900000)}`;
-    const rack = getRandomStagingRack();
-
-    const createdOrder = {
-      id: orderId,
-      orderId,
-      orderNumber: orderId,
-      customerId: customer?.customerId || "cust_tiptur_demo",
-      customerName: customer?.name || "Ramesh Gowda",
-      customerPhone: customer?.phone || "9845112233",
-      customerAddress: "KFGSC , Tiptur 572201",
-      addressDetails: selectedAddress,
-      deliveryInstructions: selectedInstructions.map(
-        (id) => DELIVERY_INSTRUCTIONS_LIST.find((i) => i.id === id)?.label
-      ),
-      appliedCoupon: appliedCoupon?.code || null,
-      couponSavings,
-      totalAmount: grandTotal,
-      itemTotal: itemSubtotal,
-      deliveryFee,
-      handlingFee,
-      totalSavings,
-      status: "pending",
-      stage: "Awaiting OD Picker",
-      assignedRack: rack.id,
-      rackQr: rack.qr,
-      pickerId: "thrupthi",
-      pickerName: "Thrupthi K S",
-      captainId: "sinchana",
-      captainName: "Sinchana B R",
-      captainPhone: "8088553237",
-      paymentMethod:
-        selectedPaymentMethod === "wallet"
-          ? "Audit'X Demo Wallet"
-          : selectedPaymentMethod === "upi"
-          ? `UPI Direct (${selectedUpiApp.toUpperCase()})`
-          : selectedPaymentMethod === "card"
-          ? "Saved Credit Card"
-          : "Cash on Delivery",
-      storeId: "TIPTUR-DARK-STORE",
-      storeName: "AUDIT'X Dark Store",
-      estimatedDeliveryMins: 10,
-      createdAt: new Date().toISOString(),
-      qrCode: `AUDITX-ORD-${orderId}-CUSTOMER-QR`,
-      items: cartItemsList.map((item) => ({
-        skuId: item.sku,
+    saveLiveOrder(confirmedOrder, { skipCloud: true });
+    safeStorage.setJson("auditx_customer_last_order", confirmedOrder);
+    const prevPast = safeArr(safeStorage.getJson("auditx_customer_past_orders", []));
+    const pastEntry = {
+      id: confirmedId,
+      orderId: confirmedId,
+      orderNumber: confirmedOrder.orderNumber || confirmedId,
+      status: confirmedOrder.status || "pending",
+      placedAt: confirmedOrder.createdAt || new Date().toISOString(),
+      total: safeNum(confirmedOrder.totalAmount, grandTotalSnap),
+      totalAmount: safeNum(confirmedOrder.totalAmount, grandTotalSnap),
+      customerName: confirmedOrder.customerName,
+      customerPhone: confirmedOrder.customerPhone,
+      customerAddress: confirmedOrder.customerAddress,
+      paymentMethod: confirmedOrder.paymentMethod,
+      deliveryFee: confirmedOrder.deliveryFee ?? 0,
+      handlingFee: confirmedOrder.handlingFee ?? 0,
+      pickerName: confirmedOrder.pickerName,
+      captainName: confirmedOrder.captainName,
+      items: safeArr(confirmedOrder.items).map((item) => ({
+        sku: item.skuId || item.sku,
         name: item.name,
-        category: item.category,
-        units: item.category === "Frames" ? 1 : 5,
-        unitSpecification: item.category === "Frames" ? "1 unit single" : "5 units fixed",
-        qty: item.qty,
-        binLocation: item.aisle || "Aisle C1 - S1 - 001",
-        price: item.price,
-        mrp: item.mrp || item.price,
+        qty: safeNum(item.qty, 1),
+        price: safeNum(item.price, 0),
         image: item.image,
-        isCustomPutaway: !!item.isCustomPutaway,
+        category: item.category,
+        unitSpecification: item.category === "Frames" ? "1 unit single" : "5 units fixed",
       })),
     };
+    const nextPast = [
+      pastEntry,
+      ...prevPast.filter((p) => (p?.id || p?.orderId) !== confirmedId),
+    ].slice(0, 20);
+    safeStorage.setJson("auditx_customer_past_orders", nextPast);
+    setPastOrders(nextPast);
 
-    // 1. Validate & Persist atomically on Cloud Hub (/api/sync -> deducts stock & auto-OOS at 0)
-    const cloudRes = await dispatchCloudAction("PLACE_ORDER", { order: createdOrder });
-    if (cloudRes && !cloudRes.ok) {
-      if (cloudRes.data?.storeClosed) {
-        setIsStoreOpen(false);
-        triggerToast("🛑 Store just closed right now, ordering soon!");
-      } else if (cloudRes.data?.outOfStock) {
-        if (cloudRes.state?.inventoryStockMap) setInventoryStockMap(cloudRes.state.inventoryStockMap);
-        if (cloudRes.state?.oosList) setOosList(cloudRes.state.oosList);
-        triggerToast(`⛔ ${cloudRes.error || "Selected item is out of stock!"}`);
-      } else {
-        triggerToast(`⚠️ ${cloudRes.error || "Could not place order right now."}`);
-      }
-      setPlacingOrder(false);
-      return;
-    }
+    safeStorage.remove("auditx_dismissed_track_order");
+    safeStorage.remove("auditx_dismissed_slip_banner");
+    safeStorage.remove("auditx_ordering_cart_prices");
+    safeStorage.remove("auditx_ordering_checkout_step");
+    cartPriceSnapshotRef.current = {};
 
-    if (cloudRes?.state?.inventoryStockMap) setInventoryStockMap(cloudRes.state.inventoryStockMap);
-    if (cloudRes?.state?.oosList) setOosList(cloudRes.state.oosList);
-
-    // 2. Also update local live cache (< 10ms)
-    saveLiveOrder(createdOrder, { skipCloud: true });
-    try {
-      localStorage.setItem("auditx_customer_last_order", JSON.stringify(createdOrder));
-      const prevPast = JSON.parse(localStorage.getItem("auditx_customer_past_orders") || "[]");
-      const pastEntry = {
-        id: createdOrder.id || createdOrder.orderId || orderId,
-        orderId: createdOrder.id || orderId,
-        orderNumber: createdOrder.orderNumber || orderId,
-        status: createdOrder.status || "pending",
-        placedAt: new Date().toISOString(),
-        total: grandTotal,
-        totalAmount: grandTotal,
-        customerName: createdOrder.customerName,
-        customerPhone: createdOrder.customerPhone,
-        customerAddress: createdOrder.customerAddress,
-        paymentMethod: createdOrder.paymentMethod,
-        deliveryFee: createdOrder.deliveryFee,
-        handlingFee: createdOrder.handlingFee,
-        pickerName: createdOrder.pickerName,
-        captainName: createdOrder.captainName,
-        items: cartItemsList.map((item) => ({
-          sku: item.sku,
-          name: item.name,
-          qty: item.qty,
-          price: item.price,
-          image: item.image,
-          category: item.category,
-          unitSpecification: item.category === "Frames" ? "1 unit single" : "5 units fixed",
-        })),
-      };
-      const nextPast = [pastEntry, ...(Array.isArray(prevPast) ? prevPast : [])].slice(0, 20);
-      localStorage.setItem("auditx_customer_past_orders", JSON.stringify(nextPast));
-      setPastOrders(nextPast);
-    } catch (e) {
-      console.warn(e);
-    }
-    try {
-      localStorage.removeItem("auditx_dismissed_track_order");
-      localStorage.removeItem("auditx_dismissed_slip_banner");
-    } catch {}
     setLatestDeliveredSlipOrder(null);
     setDismissDeliveryBar(false);
     playNotificationChime();
 
-    // 3. Update wallet locally
-    if (selectedPaymentMethod === "wallet") {
+    if (selectedPaymentMethod === "wallet" && customer) {
+      const currentBal = safeNum(customer.walletBalance, WALLET_LIMIT);
       const updated = {
         ...customer,
-        walletBalance: (customer?.walletBalance || WALLET_LIMIT) - grandTotal,
+        walletBalance: Math.max(0, currentBal - safeNum(confirmedOrder.totalAmount, grandTotalSnap)),
       };
-      localStorage.setItem("auditx_customer", JSON.stringify(updated));
-      localStorage.setItem("blinkit_customer", JSON.stringify(updated));
+      safeStorage.setJson("auditx_customer", updated);
+      safeStorage.setJson("blinkit_customer", updated);
       setCustomer(updated);
     }
 
-    setActiveDeliveryOrder(createdOrder);
+    setActiveDeliveryOrder(confirmedOrder);
     setOrderingStage("picking");
     setPickerDelayMins(0);
     setDeliveryCountdownSec(600);
     setCustomFloatingTitle("Order placed");
     setCustomFloatingSub("Packing your order");
     setCustomFloatingBadge("");
-    setPlacingOrder(false);
-
-    triggerToast(`Order #${orderId} Placed! Arriving in 10 minutes!`);
-
-    // 4. Clear cart and trigger premium OrderPlacedSheet celebration overlay
-    const currentItemCount = totalItems;
-    const currentTotal = grandTotal;
     setCart({});
 
-    if (!playedOrderPlacedIds.current.has(orderId)) {
-      playedOrderPlacedIds.current.add(orderId);
+    triggerToast(`Order #${confirmedId} Placed! Arriving in 10 minutes!`);
+
+    if (!playedOrderPlacedIds.current.has(confirmedId)) {
+      playedOrderPlacedIds.current.add(confirmedId);
       setPlacedOrderAnimation({
-        orderId,
+        orderId: confirmedId,
         etaMinutes:
-          cloudRes?.order?.etaMinutes ||
-          cloudRes?.etaMinutes ||
-          createdOrder?.estimatedDeliveryMins ||
-          createdOrder?.remainingMins ||
+          confirmedOrder?.etaMinutes ||
+          confirmedOrder?.estimatedDeliveryMins ||
+          confirmedOrder?.remainingMins ||
           10,
-        itemCount: currentItemCount,
-        total: currentTotal,
+        itemCount: itemCountSnap,
+        total: safeNum(confirmedOrder.totalAmount, grandTotalSnap),
       });
     } else {
-      setTimeout(() => {
-        router.push(`/track/${orderId}`);
+      if (navTimerRef.current) clearTimeout(navTimerRef.current);
+      navTimerRef.current = setTimeout(() => {
+        router.push(`/track/${confirmedId}`);
       }, 400);
     }
+  }
+
+  // Final Order Placement (idempotent, never double-charges, verifies on timeout/drop)
+  async function handleFinalOrderPlacement() {
+    await withIdempotentLock("place_order_submit", async () => {
+      if (hasOngoingOrder) {
+        const ongoingId = ongoingTrackedOrder?.orderNumber || ongoingTrackedOrder?.id || ongoingTrackedOrder?.orderId || "Current Order";
+        triggerToast(`⚠️ Active Order in Progress! Order #${ongoingId} is currently being tracked.`);
+        setShowPaymentModal(false);
+        return;
+      }
+      if (!isOnlineNow()) {
+        triggerToast("You're offline — reconnect before placing your order. Your cart is saved.");
+        return;
+      }
+      if (!isStoreOpen) {
+        triggerToast("🛑 Store is closed right now, ordering soon!");
+        return;
+      }
+      if (!selectedAddress?.address) {
+        triggerToast("📍 Please select or enter a delivery address first.");
+        setShowAddressModal(true);
+        return;
+      }
+      if (cartItemsList.length === 0) {
+        triggerToast("Your cart is empty. Add items from the catalog.");
+        return;
+      }
+
+      // Check latest price or stock shift immediately prior to charging
+      let priceShifted = false;
+      for (const item of cartItemsList) {
+        const avail = getAvailableUnits(item);
+        if (oosList.includes(item.sku) || avail < item.qty) {
+          triggerToast(`⛔ "${item.name}" only has ${Math.max(0, avail)} unit(s) available now.`);
+          return;
+        }
+        const snapPrice = cartPriceSnapshotRef.current?.[item.sku];
+        if (snapPrice !== undefined && snapPrice !== safeNum(item.price, 0)) {
+          priceShifted = true;
+          cartPriceSnapshotRef.current[item.sku] = safeNum(item.price, 0);
+        }
+      }
+      if (priceShifted) {
+        safeStorage.setJson("auditx_ordering_cart_prices", cartPriceSnapshotRef.current);
+        setCartNotice("Price updated — please review your updated total before paying.");
+        triggerToast("Price updated in cart — review total and tap Pay again.");
+        setShowPaymentModal(false);
+        return;
+      }
+
+      setPlacingOrder(true);
+      setShowPaymentModal(false);
+      setUnconfirmedOrderPrompt(null);
+
+      try {
+        const idempotencyKey = pendingCheckoutIdemRef.current || createIdempotencyKey("ord");
+        pendingCheckoutIdemRef.current = idempotencyKey;
+
+        const orderId = `ORD-KA44-${Math.floor(100000 + Math.random() * 900000)}`;
+        const rack = getRandomStagingRack();
+
+        const createdOrder = {
+          id: orderId,
+          orderId,
+          orderNumber: orderId,
+          idempotencyKey,
+          customerId: customer?.customerId || "cust_tiptur_demo",
+          customerName: customer?.name || "Customer",
+          customerPhone: customer?.phone || "9845112233",
+          customerAddress: selectedAddress?.address || "KFGSC , Tiptur 572201",
+          addressDetails: selectedAddress,
+          deliveryInstructions: selectedInstructions.map(
+            (id) => DELIVERY_INSTRUCTIONS_LIST.find((i) => i.id === id)?.label
+          ),
+          appliedCoupon: appliedCoupon?.code || null,
+          couponSavings,
+          totalAmount: grandTotal,
+          itemTotal: itemSubtotal,
+          deliveryFee,
+          handlingFee,
+          totalSavings,
+          status: "pending",
+          stage: "Awaiting OD Picker",
+          assignedRack: rack.id,
+          rackQr: rack.qr,
+          pickerId: "thrupthi",
+          pickerName: "Thrupthi K S",
+          captainId: "sinchana",
+          captainName: "Sinchana B R",
+          captainPhone: "8088553237",
+          paymentMethod:
+            selectedPaymentMethod === "wallet"
+              ? "Audit'X Demo Wallet"
+              : selectedPaymentMethod === "upi"
+              ? `UPI Direct (${selectedUpiApp.toUpperCase()})`
+              : selectedPaymentMethod === "card"
+              ? "Saved Credit Card"
+              : "Cash on Delivery",
+          storeId: "TIPTUR-DARK-STORE",
+          storeName: "AUDIT'X Dark Store",
+          estimatedDeliveryMins: 10,
+          createdAt: new Date().toISOString(),
+          qrCode: `AUDITX-ORD-${orderId}-CUSTOMER-QR`,
+          items: cartItemsList.map((item) => ({
+            skuId: item.sku,
+            name: item.name,
+            category: item.category,
+            units: item.category === "Frames" ? 1 : 5,
+            unitSpecification: item.category === "Frames" ? "1 unit single" : "5 units fixed",
+            qty: item.qty,
+            binLocation: item.aisle || "Aisle C1 - S1 - 001",
+            price: safeNum(item.price, 0),
+            mrp: safeNum(item.mrp, item.price),
+            image: item.image,
+            isCustomPutaway: !!item.isCustomPutaway,
+          })),
+        };
+
+        const currentItemCount = totalItems;
+        const currentTotal = grandTotal;
+
+        // Validate & persist atomically without blind retry (retries: 0 inside dispatchCloudAction)
+        const cloudRes = await dispatchCloudAction("PLACE_ORDER", {
+          order: createdOrder,
+          idempotencyKey,
+        });
+
+        if (cloudRes?.state?.inventoryStockMap) setInventoryStockMap(cloudRes.state.inventoryStockMap);
+        if (cloudRes?.state?.oosList) setOosList(cloudRes.state.oosList);
+
+        if (cloudRes && !cloudRes.ok) {
+          // 401 -> token/session check: send to login with cart intact
+          if (cloudRes.status === 401) {
+            safeStorage.set("auditx_auth_return_to", "/ordering/checkout", "session");
+            triggerToast("Session expired — sign in to finish checkout (your cart is saved).");
+            router.replace("/ordering/login?returnTo=/ordering/checkout");
+            return;
+          }
+
+          // Timeout or dropped network right after submit -> check status by idempotencyKey before showing error!
+          if (cloudRes.timedOut || cloudRes.status === 0 || cloudRes.status >= 500) {
+            const matchedOrder = await verifyPlacedOrderStatus({ idempotencyKey, orderId });
+            if (matchedOrder) {
+              completeConfirmedOrder(matchedOrder, currentItemCount, currentTotal);
+              return;
+            }
+            setUnconfirmedOrderPrompt({
+              idempotencyKey,
+              message: "We couldn't confirm your order due to a connection drop. Check My Orders or tap Retry — you will not be charged twice.",
+            });
+            triggerToast("We couldn't confirm your order. Check My Orders or tap Retry.");
+            return;
+          }
+
+          if (cloudRes.data?.storeClosed) {
+            setIsStoreOpen(false);
+            triggerToast("🛑 Store just closed right now, ordering soon!");
+          } else if (cloudRes.data?.outOfStock) {
+            triggerToast(`⛔ ${cloudRes.error || "Selected item went out of stock during checkout."}`);
+          } else {
+            triggerToast(`⚠️ ${cloudRes.error || "Payment / checkout declined. Please retry."}`);
+          }
+          return;
+        }
+
+        const confirmedOrder = cloudRes?.data?.order || createdOrder;
+        completeConfirmedOrder(confirmedOrder, currentItemCount, currentTotal);
+      } finally {
+        setPlacingOrder(false);
+      }
+    });
   }
 
   // Render Address Icon
@@ -1882,7 +2220,13 @@ export default function OrderingAppPage() {
       subtitle="10-Min Hub KA44"
       onBack={
         isCheckoutView
-          ? () => setIsCheckoutView(false)
+          ? () => {
+              if (showPaymentModal) {
+                setShowPaymentModal(false);
+                return;
+              }
+              setIsCheckoutView(false);
+            }
           : activeBottomTab !== "home"
           ? () => setActiveBottomTab("home")
           : undefined
@@ -1899,7 +2243,9 @@ export default function OrderingAppPage() {
               if (customer?.name) {
                 setShowProfileModal(true);
               } else {
-                router.push("/ordering/login");
+                const returnPath = typeof window !== "undefined" ? window.location.pathname || "/ordering" : "/ordering";
+                safeStorage.set("auditx_auth_return_to", returnPath, "session");
+                router.push(`/ordering/login?returnTo=${encodeURIComponent(returnPath)}`);
               }
             }}
             cartCount={totalItems}
@@ -2016,11 +2362,22 @@ export default function OrderingAppPage() {
           ) : null
         }
         onRefresh={() => {
+          fetchCloudHubState({ force: true }).catch(() => {});
           dispatchCloudAction("HEARTBEAT", { deviceUid: getOrCreateDeviceUid() });
         }}
         onSwipeBack={
           isCheckoutView
-            ? () => setIsCheckoutView(false)
+            ? () => {
+                if (showPaymentModal) {
+                  setShowPaymentModal(false);
+                  return;
+                }
+                if (placingOrder) {
+                  triggerToast("Completing order verification — please wait a moment.");
+                  return;
+                }
+                setIsCheckoutView(false);
+              }
             : activeBottomTab !== "home"
             ? () => setActiveBottomTab("home")
             : undefined
@@ -2043,7 +2400,11 @@ export default function OrderingAppPage() {
                     <span style={S.stickyTotalWord}>Total</span>
                   </div>
                   <div style={S.stickySavingsNote}>
-                    {hasOngoingOrder ? (
+                    {!isOnline ? (
+                      <span style={{ color: "#D97706", fontWeight: 700 }}>
+                        Offline — reconnect to checkout
+                      </span>
+                    ) : hasOngoingOrder ? (
                       <span style={{ color: "#FF9500", fontWeight: 700 }}>
                         Active: #{ongoingTrackedOrder.orderNumber || ongoingTrackedOrder.id}
                       </span>
@@ -2065,6 +2426,16 @@ export default function OrderingAppPage() {
                     }}
                   >
                     Track Live →
+                  </IOSButton>
+                ) : !isOnline ? (
+                  <IOSButton
+                    fullWidth={false}
+                    variant="tinted"
+                    minHeight={46}
+                    disabled
+                    onClick={() => triggerToast("You're offline — checkout unlocks automatically when connected.")}
+                  >
+                    Offline
                   </IOSButton>
                 ) : !isStoreOpen ? (
                   <IOSButton
@@ -2160,6 +2531,11 @@ export default function OrderingAppPage() {
           ═══════════════════════════════════════════════════════════ */}
       {isCheckoutView ? (
         /* ── DEDICATED BLINKIT CART & CHECKOUT PAGE (EXACT ASCII WIREFRAME) ── */
+        <ErrorBoundary
+          label="Cart & Checkout"
+          subtitle="Your cart items and address are safely preserved. Tap Try again to resume."
+          onRetry={() => fetchCloudHubState({ force: true })}
+        >
         <main style={S.checkoutMain}>
           <div style={S.checkoutContainer}>
             {/* Navigation back bar */}
@@ -2173,6 +2549,114 @@ export default function OrderingAppPage() {
               </button>
               <span style={S.cartCountHeader}>{totalItems} items in cart</span>
             </div>
+
+            {!isOnline && (
+              <div
+                role="status"
+                style={{
+                  background: "#FFFBEB",
+                  border: "1.5px solid #F59E0B",
+                  borderRadius: 12,
+                  padding: "10px 12px",
+                  marginBottom: 12,
+                  fontSize: 12,
+                  fontWeight: 700,
+                  color: "#92400E",
+                }}
+              >
+                You&apos;re offline — your cart is saved safely. Checkout unlocks as soon as you&apos;re back online.
+              </div>
+            )}
+
+            {cartNotice && (
+              <div
+                role="status"
+                style={{
+                  background: "#EFF6FF",
+                  border: "1.5px solid #93C5FD",
+                  borderRadius: 12,
+                  padding: "10px 12px",
+                  marginBottom: 12,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 8,
+                  fontSize: 12,
+                  fontWeight: 700,
+                  color: "#1E40AF",
+                }}
+              >
+                <span>ℹ️ {cartNotice}</span>
+                <button
+                  type="button"
+                  onClick={() => setCartNotice("")}
+                  style={{ background: "none", border: "none", color: "#1E40AF", fontWeight: 800, cursor: "pointer" }}
+                >
+                  Dismiss
+                </button>
+              </div>
+            )}
+
+            {unconfirmedOrderPrompt && (
+              <div
+                role="alert"
+                style={{
+                  background: "#FEF2F2",
+                  border: "1.5px solid #FCA5A5",
+                  borderRadius: 14,
+                  padding: "12px 14px",
+                  marginBottom: 14,
+                }}
+              >
+                <div style={{ fontSize: 13, fontWeight: 800, color: "#991B1B", marginBottom: 4 }}>
+                  Order confirmation interrupted
+                </div>
+                <div style={{ fontSize: 12, color: "#7F1D1D", lineHeight: 1.45, marginBottom: 10 }}>
+                  {unconfirmedOrderPrompt.message}
+                </div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <button
+                    type="button"
+                    disabled={placingOrder || !isOnline}
+                    onClick={handleFinalOrderPlacement}
+                    style={{
+                      flex: 1,
+                      minHeight: 38,
+                      borderRadius: 10,
+                      border: "none",
+                      background: "#0C831F",
+                      color: "#FFFFFF",
+                      fontSize: 12,
+                      fontWeight: 800,
+                      cursor: "pointer",
+                    }}
+                  >
+                    Retry Order
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsCheckoutView(false);
+                      setActiveBottomTab("order_again");
+                      fetchCloudHubState({ force: true }).catch(() => {});
+                    }}
+                    style={{
+                      flex: 1,
+                      minHeight: 38,
+                      borderRadius: 10,
+                      border: "1px solid #DC2626",
+                      background: "#FFFFFF",
+                      color: "#991B1B",
+                      fontSize: 12,
+                      fontWeight: 800,
+                      cursor: "pointer",
+                    }}
+                  >
+                    Check My Orders
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* ACTIVE ORDER ONGOING TRACKING LOCK BANNER */}
             {hasOngoingOrder && (
@@ -2285,14 +2769,24 @@ export default function OrderingAppPage() {
               ) : (
                 <div style={S.itemsList}>
                   {cartItemsList.map((item) => {
-                    const isOos = oosList.includes(item.sku);
+                    const avail = getAvailableUnits(item);
+                    const isOos = oosList.includes(item.sku) || avail <= 0;
                     return (
                       <div key={item.sku} style={S.itemCardRow}>
                         {/* Product Image */}
                         <div style={S.itemImgWrapper}>
                           <img
-                            src={item.image}
+                            src={item.image || "/auditx-logo.png"}
                             alt={item.name}
+                            width={56}
+                            height={56}
+                            loading="lazy"
+                            decoding="async"
+                            onError={(e) => {
+                              if (e.currentTarget.dataset.fbApplied) return;
+                              e.currentTarget.dataset.fbApplied = "1";
+                              e.currentTarget.src = "/auditx-logo.png";
+                            }}
                             style={S.itemThumbnail}
                           />
                           {isOos && (
@@ -2309,7 +2803,6 @@ export default function OrderingAppPage() {
                             {item.mrp > item.price && (
                               <span style={S.itemMrpStrike}>₹{item.mrp}</span>
                             )}
-
                           </div>
                         </div>
 
@@ -2328,7 +2821,7 @@ export default function OrderingAppPage() {
                             type="button"
                             style={S.stepperPlusBtn}
                             onClick={() => updateQty(item.sku, 1)}
-                            disabled={isOos}
+                            disabled={isOos || item.qty >= avail}
                             title="Increase quantity"
                           >
                             +
@@ -2522,7 +3015,7 @@ export default function OrderingAppPage() {
                       <span style={S.oneClickPill}>1-CLICK INSTANT</span>
                     </div>
                     <div style={S.paymentMethodSelectedSub}>
-                      Paid through demo wallet • Balance: ₹{(customer?.walletBalance || WALLET_LIMIT).toLocaleString("en-IN")}
+                      Paid through demo wallet • Balance: ₹{safeNum(customer?.walletBalance, WALLET_LIMIT).toLocaleString("en-IN")}
                     </div>
                   </div>
                 </div>
@@ -2564,6 +3057,7 @@ export default function OrderingAppPage() {
             <div style={{ height: 20 }} />
           </div>
         </main>
+        </ErrorBoundary>
       ) : (
         /* ── CATALOG BROWSE VIEW (STORE WITH SMART CART BAR) ── */
         <main style={S.catalogMain}>
@@ -2655,9 +3149,7 @@ export default function OrderingAppPage() {
                           latestDeliveredSlipOrder.orderNumber ||
                           ""
                       );
-                      try {
-                        if (ordId) localStorage.setItem("auditx_dismissed_slip_banner", ordId);
-                      } catch {}
+                      if (ordId) safeStorage.set("auditx_dismissed_slip_banner", ordId);
                       setLatestDeliveredSlipOrder(null);
                     }}
                     style={{
@@ -2734,28 +3226,13 @@ export default function OrderingAppPage() {
 
             {activeBottomTab === "home" && (
               <>
-                {/* Search Bar */}
-                <div style={S.searchContainer}>
-              <div data-dfx="search" style={S.searchFieldWrapper}>
-                <IconSearch size={18} color="#64748b" />
-                <input
-                  type="text"
-                  placeholder={typewriterPlaceholder}
+                {/* Isolated Search Bar */}
+                <OrderingSearchInput
                   value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  style={S.searchInput}
+                  onChange={setSearchQuery}
+                  onClear={() => setSearchQuery("")}
+                  S={S}
                 />
-                {searchQuery && (
-                  <button
-                    type="button"
-                    style={S.searchClearBtn}
-                    onClick={() => setSearchQuery("")}
-                  >
-                    <IconClose size={16} color="#64748b" />
-                  </button>
-                )}
-              </div>
-            </div>
 
             {/* Quick Category Tabs: only Chocolates and Frames */}
             <div style={S.categoryTabsRow}>
@@ -2862,12 +3339,45 @@ export default function OrderingAppPage() {
                   </span>
                 </div>
 
-                {/* Product Cards Grid (Memoized + Virtualized Window + Lazy Images) */}
+                {/* Product Cards Grid (Memoized + Virtualized Window + Lazy Images + ErrorBoundary) */}
+                <ErrorBoundary
+                  label="Product Catalog"
+                  compact
+                  onRetry={() => fetchCloudHubState({ force: true })}
+                >
+                  {loading && visibleCatalog.length === 0 ? (
+                    <OrderingSkeletonScreen />
+                  ) : visibleCatalog.length === 0 ? (
+                    <div
+                      className="ios-card"
+                      style={{
+                        padding: "32px 18px",
+                        textAlign: "center",
+                        margin: "10px 0 18px",
+                      }}
+                    >
+                      <div style={{ fontSize: 34, marginBottom: 8 }}>🔍</div>
+                      <h3 style={{ margin: "0 0 6px", fontSize: 16, fontWeight: 800, color: "var(--ios-label)" }}>
+                        No matching items found
+                      </h3>
+                      <p style={{ margin: "0 0 14px", fontSize: 13, color: "var(--ios-label-2)" }}>
+                        Try another keyword or clear your search filter to see all store items.
+                      </p>
+                      <IOSButton
+                        variant="green"
+                        fullWidth={false}
+                        minHeight={42}
+                        onClick={() => setSearchQuery("")}
+                      >
+                        Clear search
+                      </IOSButton>
+                    </div>
+                  ) : (
                 <div style={S.productGrid}>
                   {visibleCatalog.map((item, idx) => {
                     const qty = cart[item.sku] || 0;
                     const availableUnits = getAvailableUnits(item);
-                    const isSoldOut = item.soldOut === true || item.inStock === false || (item.name && item.name.toLowerCase().includes("pup"));
+                    const isSoldOut = item.soldOut === true || item.inStock === false || String(item.name || "").toLowerCase().includes("pup");
                     const isAutoOos = availableUnits <= 0;
                     const isOos = oosList.includes(item.sku) || isSoldOut || isAutoOos;
                     return (
@@ -2890,6 +3400,8 @@ export default function OrderingAppPage() {
                     );
                   })}
                 </div>
+                  )}
+                </ErrorBoundary>
                 {visibleCatalog.length < filteredCatalog.length && (
                   <div ref={gridLoadMoreRef} style={{ padding: "16px 0", textAlign: "center" }}>
                     <IOSButton
@@ -2912,34 +3424,51 @@ export default function OrderingAppPage() {
             ══════════════════════════════════════════ */}
         {activeBottomTab === "search" && (
           <div className="ios-tab-crossfade" style={S.tabViewContainer}>
-            <div style={{ ...S.searchContainer, position: "sticky", top: 6, zIndex: 20 }}>
-              <div data-dfx="search" style={S.searchFieldWrapper}>
-                <IconSearch size={18} color="#8E8E93" />
-                <input
-                  ref={searchInputRef}
-                  type="search"
-                  placeholder={typewriterPlaceholder}
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  style={S.searchInput}
-                />
-                {searchQuery && (
-                  <button
-                    type="button"
-                    style={S.searchClearBtn}
-                    onClick={() => setSearchQuery("")}
-                  >
-                    <IconClose size={16} color="#8E8E93" />
-                  </button>
-                )}
-              </div>
-            </div>
+            <OrderingSearchInput
+              value={searchQuery}
+              onChange={setSearchQuery}
+              onClear={() => setSearchQuery("")}
+              inputRef={searchInputRef}
+              sticky
+              S={S}
+            />
 
+            <ErrorBoundary
+              label="Search Results"
+              compact
+              onRetry={() => fetchCloudHubState({ force: true })}
+            >
+            {visibleCatalog.length === 0 ? (
+              <div
+                className="ios-card"
+                style={{
+                  padding: "36px 20px",
+                  textAlign: "center",
+                  marginTop: 12,
+                }}
+              >
+                <div style={{ fontSize: 36, marginBottom: 8 }}>🔎</div>
+                <h3 style={{ margin: "0 0 6px", fontSize: 16, fontWeight: 800, color: "var(--ios-label)" }}>
+                  No results for &ldquo;{searchQuery.trim()}&rdquo;
+                </h3>
+                <p style={{ margin: "0 0 14px", fontSize: 13, color: "var(--ios-label-2)" }}>
+                  Search chocolates like Beatss, Melody, Kopiko or A4 wall frames.
+                </p>
+                <IOSButton
+                  variant="green"
+                  fullWidth={false}
+                  minHeight={42}
+                  onClick={() => setSearchQuery("")}
+                >
+                  Show all items
+                </IOSButton>
+              </div>
+            ) : (
             <div style={S.productGrid}>
               {visibleCatalog.map((item, idx) => {
                 const qty = cart[item.sku] || 0;
                 const availableUnits = getAvailableUnits(item);
-                const isSoldOut = item.soldOut === true || item.inStock === false || (item.name && item.name.toLowerCase().includes("pup"));
+                const isSoldOut = item.soldOut === true || item.inStock === false || String(item.name || "").toLowerCase().includes("pup");
                 const isAutoOos = availableUnits <= 0;
                 const isOos = oosList.includes(item.sku) || isSoldOut || isAutoOos;
                 return (
@@ -2962,6 +3491,20 @@ export default function OrderingAppPage() {
                 );
               })}
             </div>
+            )}
+            {visibleCatalog.length < filteredCatalog.length && (
+              <div style={{ padding: "16px 0", textAlign: "center" }}>
+                <IOSButton
+                  variant="tinted"
+                  fullWidth={false}
+                  minHeight={40}
+                  onClick={() => setVisibleLimit((v) => Math.min(filteredCatalog.length, v + 30))}
+                >
+                  Show more ({filteredCatalog.length - visibleCatalog.length} remaining)
+                </IOSButton>
+              </div>
+            )}
+            </ErrorBoundary>
           </div>
         )}
 
@@ -2978,7 +3521,7 @@ export default function OrderingAppPage() {
                   </div>
                 }
                 title={customer?.name || "Customer Account"}
-                subtitle={`Demo Wallet: ₹${(customer?.walletBalance || WALLET_LIMIT).toLocaleString("en-IN")}`}
+                subtitle={`Demo Wallet: ₹${safeNum(customer?.walletBalance, WALLET_LIMIT).toLocaleString("en-IN")}`}
                 chevron
                 onClick={() => setShowProfileModal(true)}
               />
@@ -3003,6 +3546,7 @@ export default function OrderingAppPage() {
             </div>
 
             {/* Clean, Elegant Empty State */}
+            <ErrorBoundary label="Past Orders" compact onRetry={() => fetchCloudHubState({ force: true })}>
             {pastOrders.length === 0 ? (
             <div style={{
               background: "#ffffff",
@@ -3281,6 +3825,7 @@ export default function OrderingAppPage() {
                 })}
               </div>
             )}
+            </ErrorBoundary>
           </div>
         )}
 
@@ -3410,18 +3955,11 @@ export default function OrderingAppPage() {
               {/* Merged Background Video Element (Sound OFF permanently) */}
               <video
                 key={bgVideoIdx}
-                ref={(el) => {
-                  if (el) {
-                    el.muted = true;
-                    el.defaultMuted = true;
-                    el.play().catch(() => {});
-                  }
-                }}
                 src={MERGED_BACKGROUND_VIDEOS[bgVideoIdx].src}
                 autoPlay
                 muted
                 playsInline
-                preload="auto"
+                preload="metadata"
                 style={S.mergedBgVideoElement}
                 onError={(e) => {
                   const fb = MERGED_BACKGROUND_VIDEOS[bgVideoIdx]?.fallback;
@@ -4402,6 +4940,7 @@ export default function OrderingAppPage() {
         subtitle={`Amount Payable: ₹${grandTotal}`}
         detent="large"
       >
+            <ErrorBoundary label="Payment Sheet" compact>
             <div style={S.paymentOptionsList}>
               {/* Option 1: Audit'X Demo Wallet (ACTIVE & DEFAULT) */}
               <div
@@ -4425,7 +4964,7 @@ export default function OrderingAppPage() {
                       <span style={S.activeMethodPill}>ACTIVE • DEFAULT</span>
                     </div>
                     <div style={S.paymentMethodSub}>
-                      Paid through demo wallet • Balance: ₹{(customer?.walletBalance || WALLET_LIMIT).toLocaleString("en-IN")}
+                      Paid through demo wallet • Balance: ₹{safeNum(customer?.walletBalance, WALLET_LIMIT).toLocaleString("en-IN")}
                     </div>
                     <div style={{ fontSize: 10, color: "#15803d", fontWeight: 700, marginTop: 2 }}>
                       ⚡ Instant 1-Click Zero Friction Checkout
@@ -4580,10 +5119,12 @@ export default function OrderingAppPage() {
                   type="button"
                   style={S.confirmPayBtn}
                   onClick={handleFinalOrderPlacement}
-                  disabled={placingOrder}
+                  disabled={placingOrder || !isOnline}
                 >
                   <span>
-                    {placingOrder
+                    {!isOnline
+                      ? "Offline — reconnect to pay"
+                      : placingOrder
                       ? "Placing order..."
                       : `Pay ₹${grandTotal} (${selectedPaymentMethod === "wallet" ? "Wallet" : "Cash on Delivery"})`}
                   </span>
@@ -4591,6 +5132,7 @@ export default function OrderingAppPage() {
                 </button>
               )}
             </div>
+            </ErrorBoundary>
       </IOSBottomSheet>
 
       {/* ═══════════════════════════════════════════════════════════
@@ -4646,7 +5188,7 @@ export default function OrderingAppPage() {
             <div style={S.profileStatsRow}>
               <div style={S.profileStatCol}>
                 <span style={S.statLabel}>Wallet</span>
-                <span style={S.statValue}>₹{(customer?.walletBalance || 999850).toLocaleString("en-IN")}</span>
+                <span style={S.statValue}>₹{safeNum(customer?.walletBalance, WALLET_LIMIT).toLocaleString("en-IN")}</span>
               </div>
             </div>
 
@@ -4668,12 +5210,10 @@ export default function OrderingAppPage() {
                 type="button"
                 style={{ ...S.profileLogoutBtn, minHeight: 44 }}
                 onClick={() => {
-                  localStorage.removeItem("auditx_customer");
-                  localStorage.removeItem("blinkit_customer");
-                  try {
-                    sessionStorage.removeItem("auditx_play_team_intro_once");
-                    localStorage.removeItem("auditx_play_team_intro_once");
-                  } catch {}
+                  safeStorage.remove("auditx_customer");
+                  safeStorage.remove("blinkit_customer");
+                  safeStorage.remove("auditx_play_team_intro_once", "session");
+                  safeStorage.remove("auditx_play_team_intro_once", "local");
                   setCustomer(null);
                   setShowProfileModal(false);
                   triggerToast("Logged out successfully.");
@@ -4779,7 +5319,7 @@ export default function OrderingAppPage() {
               })}
             </div>
 
-            {/* Custom Address Input */}
+            {/* Custom Address Input + Safe Geolocation Fallback */}
             <div style={S.customAddressBox}>
               <input
                 type="text"
@@ -4811,6 +5351,51 @@ export default function OrderingAppPage() {
                 Save
               </button>
             </div>
+            <button
+              type="button"
+              onClick={() => {
+                if (typeof navigator === "undefined" || !navigator.geolocation) {
+                  triggerToast("GPS unavailable on this browser — type your address above.");
+                  return;
+                }
+                navigator.geolocation.getCurrentPosition(
+                  (pos) => {
+                    const lat = pos?.coords?.latitude?.toFixed?.(4);
+                    const lng = pos?.coords?.longitude?.toFixed?.(4);
+                    const gpsAddr = {
+                      id: `gps_${Date.now()}`,
+                      type: "Current",
+                      title: "Current GPS Location",
+                      flat: "PIN 572201",
+                      address: lat && lng ? `GPS (${lat}, ${lng}), Tiptur 572201` : "KFGSC , Tiptur 572201",
+                      tag: "GPS",
+                      iconType: "other",
+                    };
+                    setSelectedAddress(gpsAddr);
+                    setShowAddressModal(false);
+                    triggerToast("Delivery location set via GPS.");
+                  },
+                  () => {
+                    triggerToast("Location permission denied — type your street or landmark above.");
+                  },
+                  { timeout: 6000, maximumAge: 60000 }
+                );
+              }}
+              style={{
+                width: "100%",
+                marginTop: 8,
+                padding: "9px 12px",
+                borderRadius: 10,
+                border: "1px solid var(--ios-sep)",
+                background: "var(--ios-fill-secondary)",
+                color: "#0C831F",
+                fontSize: 12.5,
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              📍 Use Current Location (or type above)
+            </button>
       </IOSBottomSheet>
 
       {/* ═══════════════════════════════════════════════════════════
