@@ -12,7 +12,7 @@ const LittlePenguin = memo(function LittlePenguin({
   pos = "left",
   ground = 60,
   scale = 1,
-  awaySeconds = 180,
+  awaySeconds = 12,
 }) {
   const stageRef = useRef(null);
   const pRef = useRef(null);
@@ -35,7 +35,7 @@ const LittlePenguin = memo(function LittlePenguin({
     const edge = ["left", "right", "center"].includes(pos) ? pos : "left";
     const clampedScale = Math.min(Math.max(Number(scale) || 1, 0.4), 2);
     const safeGround = Number.isFinite(Number(ground)) ? Number(ground) : 60;
-    const awayMs = Math.max(Number(awaySeconds) || 180, 1) * 1000;
+    const awayMs = Math.max(Number(awaySeconds) || 12, 1) * 1000;
     const H = 56 * clampedScale;
 
     p.style.height = `${H}px`;

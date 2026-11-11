@@ -167,10 +167,33 @@ export default function GoogleAuthButton({
           provider: "google",
           authTime: new Date().toISOString(),
         };
+
+        const prevCustomer = safeStorage.getJson("auditx_customer", null);
+        const prevEmail = String(prevCustomer?.email || "").toLowerCase().trim();
+        const currentEmail = String(googleProfile.email || "").toLowerCase().trim();
+        const isDifferentAccount = !prevEmail || prevEmail !== currentEmail;
+
+        if (isDifferentAccount) {
+          // Fresh App Wipe: Zero previous orders, zero cart, fresh state for newly logged-in account
+          safeStorage.remove("auditx_customer_last_order");
+          safeStorage.remove("auditx_ordering_cart");
+          safeStorage.remove("auditx_ordering_cart_prices");
+          safeStorage.remove("auditx_ordering_checkout_step");
+          safeStorage.remove("auditx_dismissed_track_order");
+          safeStorage.remove("auditx_dismissed_slip_banner");
+          safeStorage.remove("dfx-seen", "session");
+          safeStorage.remove("dfx-seen", "local");
+          try {
+            sessionStorage.removeItem("dfx-seen");
+            localStorage.removeItem("dfx-seen");
+          } catch {}
+        }
+
         safeStorage.setJson("auditx_google_user", googleProfile);
         safeStorage.setJson("auditx_last_google_account", googleProfile);
         safeStorage.setJson("auditx_customer", customer);
         safeStorage.setJson("blinkit_customer", customer);
+        safeStorage.set("auditx_current_customer_email", currentEmail);
         safeStorage.set("auditx_play_team_intro_once", "1", "session");
         safeStorage.set("auditx_play_team_intro_once", "1", "local");
 

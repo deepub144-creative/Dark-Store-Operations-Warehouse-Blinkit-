@@ -712,7 +712,18 @@ export default function OrderingAppPage() {
   const [dismissDeliveryBar, setDismissDeliveryBar] = useState(false);
   const [pastOrders, setPastOrders] = useState([]);
   useEffect(() => {
-    setPastOrders(safeArr(safeStorage.getJson("auditx_customer_past_orders", [])));
+    const rawSaved = safeStorage.getJson("auditx_customer", null);
+    const email = String(rawSaved?.email || "").toLowerCase().trim();
+    if (email) {
+      const allPast = safeArr(safeStorage.getJson(`auditx_past_orders_${email}`, safeStorage.getJson("auditx_customer_past_orders", [])));
+      const filtered = allPast.filter((o) => {
+        const oEmail = String(o?.customerEmail || o?.email || "").toLowerCase().trim();
+        return !oEmail || oEmail === email;
+      });
+      setPastOrders(filtered);
+    } else {
+      setPastOrders([]);
+    }
   }, []);
 
   // Hydrate persisted cart, address, coupon, instructions, payment method, and checkout step cleanly on load
@@ -824,7 +835,10 @@ export default function OrderingAppPage() {
         if (k2) liveById.set(k2, o);
         if (k3) liveById.set(k3, o);
       });
-      const existing = safeArr(safeStorage.getJson("auditx_customer_past_orders", []));
+      const currentCust = safeStorage.getJson("auditx_customer", null);
+      const email = String(currentCust?.email || "").toLowerCase().trim();
+      const pastOrdersKey = email ? `auditx_past_orders_${email}` : "auditx_customer_past_orders";
+      const existing = safeArr(safeStorage.getJson(pastOrdersKey, safeStorage.getJson("auditx_customer_past_orders", [])));
       let changed = false;
       const merged = existing.map((po) => {
         const match =
@@ -850,6 +864,7 @@ export default function OrderingAppPage() {
             captainName: match.captainName || po.captainName,
             paymentMethod: match.paymentMethod || po.paymentMethod,
             customerName: match.customerName || po.customerName,
+            customerEmail: match.customerEmail || po.customerEmail || email,
             customerPhone: match.customerPhone || po.customerPhone,
             customerAddress: match.customerAddress || po.customerAddress,
             totalAmount: match.totalAmount ?? po.totalAmount ?? po.total,
@@ -858,12 +873,17 @@ export default function OrderingAppPage() {
         return po;
       });
       if (changed) {
+        if (email) safeStorage.setJson(pastOrdersKey, merged);
         safeStorage.setJson("auditx_customer_past_orders", merged);
-        setPastOrders(merged);
+        setPastOrders(merged.filter((p) => {
+          const pEmail = String(p?.customerEmail || p?.email || "").toLowerCase().trim();
+          return !pEmail || !email || pEmail === email;
+        }));
       }
 
       const last = safeStorage.getJson("auditx_customer_last_order", null);
-      if (last && typeof last === "object") {
+      const lastEmail = String(last?.customerEmail || last?.email || "").toLowerCase().trim();
+      if (last && typeof last === "object" && (!lastEmail || !email || lastEmail === email)) {
         const lastKey = String(last.id || last.orderId || last.orderNumber || "");
         const liveLast = liveById.get(lastKey) || last;
         const lastSt = String(liveLast?.status || "").toLowerCase();
@@ -899,14 +919,13 @@ export default function OrderingAppPage() {
     activeBottomTab === "home"
   );
 
-  // Festive crackers & Diwali theme active strictly on Ordering App Home page (skipped under saveData / reduced motion)
+  // Festive crackers & Diwali theme active strictly on Ordering App Home page (plays right after team intro)
   useEffect(() => {
     if (!isOrderingHomeActive || navigator?.connection?.saveData) {
       DiwaliCrackers.unmount();
       DiwaliTheme.unmount();
       return;
     }
-    const alreadySeenSplash = !!safeStorage.get("dfx-seen", "", "session");
 
     const timer = setTimeout(() => {
       DiwaliTheme.mount({
@@ -915,7 +934,7 @@ export default function OrderingAppPage() {
         mode: "light",
         sound: true,
         ambient: false,
-        once: true,
+        once: false,
       });
       DiwaliCrackers.mount({
         root: "#ax-ordering-shell",
@@ -923,9 +942,9 @@ export default function OrderingAppPage() {
         scale: 0.6,
         sound: true,
         loop: true,
-        delayMs: alreadySeenSplash ? 0 : 5400,
+        delayMs: 300,
       });
-    }, 60);
+    }, 80);
     return () => {
       clearTimeout(timer);
       DiwaliCrackers.unmount();
@@ -1098,6 +1117,54 @@ export default function OrderingAppPage() {
     setCustomer(parsedCustomer);
     setAuthChecked(true);
 
+    const customerEmail = String(parsedCustomer.email || "").toLowerCase().trim();
+    const prevEmail = String(safeStorage.get("auditx_current_customer_email", "") || "").toLowerCase().trim();
+    const isDifferentAccount = prevEmail && prevEmail !== customerEmail;
+
+    if (isDifferentAccount) {
+      // Switched to a different Google account: clean wipe previous orders, cart and animation state
+      safeStorage.remove("auditx_customer_last_order");
+      safeStorage.remove("auditx_ordering_cart");
+      safeStorage.remove("auditx_ordering_cart_prices");
+      safeStorage.remove("auditx_ordering_checkout_step");
+      safeStorage.remove("auditx_dismissed_track_order");
+      safeStorage.remove("auditx_dismissed_slip_banner");
+      safeStorage.remove("dfx-seen", "session");
+      safeStorage.remove("dfx-seen", "local");
+      try {
+        sessionStorage.removeItem("dfx-seen");
+        localStorage.removeItem("dfx-seen");
+      } catch {}
+
+      setCart({});
+      cartRef.current = {};
+      cartPriceSnapshotRef.current = {};
+      setActiveDeliveryOrder(null);
+      setLatestDeliveredSlipOrder(null);
+      setIsCheckoutView(false);
+      setActiveBottomTab("home");
+
+      // Load only this customer's past orders
+      const custOrders = safeArr(safeStorage.getJson(`auditx_past_orders_${customerEmail}`, [])).filter((o) => {
+        const oEmail = String(o?.customerEmail || o?.email || "").toLowerCase().trim();
+        return !oEmail || oEmail === customerEmail;
+      });
+      setPastOrders(custOrders);
+
+      // Trigger team intro animation fresh on login
+      triggerTeamIntroOnce();
+    } else {
+      // Load this customer's past orders
+      const custOrders = safeArr(
+        safeStorage.getJson(`auditx_past_orders_${customerEmail}`, safeStorage.getJson("auditx_customer_past_orders", []))
+      ).filter((o) => {
+        const oEmail = String(o?.customerEmail || o?.email || "").toLowerCase().trim();
+        return !oEmail || oEmail === customerEmail;
+      });
+      setPastOrders(custOrders);
+    }
+    safeStorage.set("auditx_current_customer_email", customerEmail);
+
     const pendingIntro =
       safeStorage.get("auditx_play_team_intro_once", "", "session") === "1" ||
       safeStorage.get("auditx_play_team_intro_once", "", "local") === "1";
@@ -1133,8 +1200,9 @@ export default function OrderingAppPage() {
           return;
         }
         const last = safeStorage.getJson("auditx_customer_last_order", null);
+        const lastEmail = String(last?.customerEmail || last?.email || "").toLowerCase().trim();
         let active = null;
-        if (last && typeof last === "object") {
+        if (last && typeof last === "object" && (!lastEmail || lastEmail === customerEmail)) {
           const live = liveOrders.find((o) => o && (o.id || o.orderId) === (last.id || last.orderId));
           active = live || (!["cancelled", "delivered"].includes(String(last.status || "").toLowerCase()) ? last : null);
         }
@@ -1901,7 +1969,7 @@ export default function OrderingAppPage() {
       triggerToast("🛑 Store is closed right now, ordering soon!");
       return;
     }
-    if (cartItemsList.length === 0) {
+    if (cartItemsList.length === 0 || grandTotal <= 0) {
       triggerToast("Your cart is empty. Add items from the catalog.");
       setShowPaymentModal(false);
       setIsCheckoutView(false);
@@ -1959,6 +2027,7 @@ export default function OrderingAppPage() {
 
     saveLiveOrder(confirmedOrder, { skipCloud: true });
     safeStorage.setJson("auditx_customer_last_order", confirmedOrder);
+    const currEmail = String(confirmedOrder.customerEmail || customer?.email || "").toLowerCase().trim();
     const prevPast = safeArr(safeStorage.getJson("auditx_customer_past_orders", []));
     const pastEntry = {
       id: confirmedId,
@@ -1969,6 +2038,7 @@ export default function OrderingAppPage() {
       total: safeNum(confirmedOrder.totalAmount, grandTotalSnap),
       totalAmount: safeNum(confirmedOrder.totalAmount, grandTotalSnap),
       customerName: confirmedOrder.customerName,
+      customerEmail: currEmail,
       customerPhone: confirmedOrder.customerPhone,
       customerAddress: confirmedOrder.customerAddress,
       paymentMethod: confirmedOrder.paymentMethod,
@@ -1986,12 +2056,23 @@ export default function OrderingAppPage() {
         unitSpecification: item.category === "Frames" ? "1 unit single" : "5 units fixed",
       })),
     };
+    if (currEmail) {
+      const prevCustPast = safeArr(safeStorage.getJson(`auditx_past_orders_${currEmail}`, []));
+      const nextCustPast = [
+        pastEntry,
+        ...prevCustPast.filter((p) => (p?.id || p?.orderId) !== confirmedId),
+      ].slice(0, 20);
+      safeStorage.setJson(`auditx_past_orders_${currEmail}`, nextCustPast);
+    }
     const nextPast = [
       pastEntry,
       ...prevPast.filter((p) => (p?.id || p?.orderId) !== confirmedId),
     ].slice(0, 20);
     safeStorage.setJson("auditx_customer_past_orders", nextPast);
-    setPastOrders(nextPast);
+    setPastOrders(currEmail ? [pastEntry, ...prevPast.filter((p) => {
+      const pEmail = String(p?.customerEmail || p?.email || "").toLowerCase().trim();
+      return (p?.id || p?.orderId) !== confirmedId && (!pEmail || pEmail === currEmail);
+    })].slice(0, 20) : nextPast);
 
     safeStorage.remove("auditx_dismissed_track_order");
     safeStorage.remove("auditx_dismissed_slip_banner");
@@ -5273,7 +5354,7 @@ export default function OrderingAppPage() {
                   <span>🛵 TRACK ACTIVE ORDER →</span>
                 </button>
               </div>
-            ) : cartItemsList.length === 0 ? (
+            ) : (cartItemsList.length === 0 || grandTotal <= 0) ? (
               <button
                 type="button"
                 style={{
@@ -5405,8 +5486,28 @@ export default function OrderingAppPage() {
               onClick={() => {
                 safeStorage.remove("auditx_customer");
                 safeStorage.remove("blinkit_customer");
+                safeStorage.remove("auditx_customer_last_order");
+                safeStorage.remove("auditx_ordering_cart");
+                safeStorage.remove("auditx_ordering_cart_prices");
+                safeStorage.remove("auditx_ordering_checkout_step");
+                safeStorage.remove("auditx_dismissed_track_order");
+                safeStorage.remove("auditx_dismissed_slip_banner");
+                safeStorage.remove("auditx_current_customer_email");
                 safeStorage.remove("auditx_play_team_intro_once", "session");
                 safeStorage.remove("auditx_play_team_intro_once", "local");
+                safeStorage.remove("dfx-seen", "session");
+                safeStorage.remove("dfx-seen", "local");
+                try {
+                  sessionStorage.removeItem("dfx-seen");
+                  localStorage.removeItem("dfx-seen");
+                } catch {}
+                setPastOrders([]);
+                setCart({});
+                cartRef.current = {};
+                cartPriceSnapshotRef.current = {};
+                setActiveDeliveryOrder(null);
+                setLatestDeliveredSlipOrder(null);
+                setIsCheckoutView(false);
                 setCustomer(null);
                 setShowProfileModal(false);
                 triggerToast("Logged out successfully.");
@@ -6166,9 +6267,9 @@ export default function OrderingAppPage() {
         <AuditxMiniAssistant isStoreOpen={isStoreOpen} customer={customer} />
       )}
 
-      {/* ── INTERACTIVE LITTLE PENGUIN OVERLAY ── */}
+      {/* ── INTERACTIVE LITTLE PENGUIN OVERLAY (Always active and looping) ── */}
       {authChecked && customer && !capacityBlockedMsg && !showIntroOverlay && (
-        <LittlePenguin rootSelector="#ax-ordering-shell" pos="left" ground={60} scale={1} awaySeconds={180} />
+        <LittlePenguin rootSelector="#ax-ordering-shell" pos="left" ground={60} scale={1} awaySeconds={12} />
       )}
     </>
   );
