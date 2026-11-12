@@ -937,7 +937,7 @@ export default function OrderingAppPage() {
         mode: "light",
         sound: true,
         ambient: false,
-        once: false,
+        once: true,
       });
       DiwaliCrackers.mount({
         root: "#ax-ordering-shell",
@@ -5569,6 +5569,7 @@ export default function OrderingAppPage() {
                   };
                   setCustomer(custObj);
                   setShowLoginModal(false);
+                  DiwaliTheme.triggerGreetingOnceToday();
                   triggerTeamIntroOnce();
                   triggerToast(`Welcome, ${authData.name}! Signed in with Google.`);
                 }

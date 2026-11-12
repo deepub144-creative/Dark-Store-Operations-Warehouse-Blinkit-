@@ -600,14 +600,62 @@ function frame() {
   raf = requestAnimationFrame(frame);
 }
 
-function play() {
+function getDailyGreetingKey() {
+  try {
+    const d = new Date();
+    const yr = d.getFullYear();
+    const mo = String(d.getMonth() + 1).padStart(2, "0");
+    const da = String(d.getDate()).padStart(2, "0");
+    return `auditx_diwali_seen_${yr}-${mo}-${da}`;
+  } catch (e) {
+    return "auditx_diwali_seen_today";
+  }
+}
+
+function hasSeenGreetingToday() {
+  try {
+    if (typeof window === "undefined" || !window.localStorage) return false;
+    const key = getDailyGreetingKey();
+    return window.localStorage.getItem(key) === "1";
+  } catch (e) {
+    return false;
+  }
+}
+
+function markGreetingSeenToday() {
+  try {
+    if (typeof window === "undefined" || !window.localStorage) return;
+    const key = getDailyGreetingKey();
+    window.localStorage.setItem(key, "1");
+    // Prune stale diwali keys older than today
+    for (let i = window.localStorage.length - 1; i >= 0; i--) {
+      const k = window.localStorage.key(i);
+      if (k && k.startsWith("auditx_diwali_seen_") && k !== key) {
+        window.localStorage.removeItem(k);
+      }
+    }
+  } catch (e) {}
+}
+
+function play(withSplash = true) {
   if (!on || !splash) return;
   tm.forEach(clearTimeout);
   tm = [];
-  if (RM) {
+
+  // When splash is disabled (already seen today or returning to home),
+  // hide the "Happy Diwali" text overlay and immediately fire background celebratory animations
+  if (RM || !withSplash) {
     splash.classList.add("off");
+    const at = (ms, fn) => tm.push(setTimeout(fn, ms));
+    at(400, () => light("anar", W * 0.14));
+    at(800, () => light("anar", W * 0.86));
+    at(1300, () => light("chakra", W * 0.5));
+    at(1900, () => light("rocket", W * 0.3));
+    at(2400, () => light("rocket", W * 0.7));
     return;
   }
+
+  // First-time daily visit / after 12:00 AM: show full "Happy Diwali" festive splash
   splash.classList.remove("off", "go");
   void splash.offsetWidth;
   splash.classList.add("go");
@@ -663,21 +711,15 @@ function mount(opts = {}) {
     }, 9000);
   }
   frame();
-  let seen = false;
-  try {
-    seen = !!sessionStorage.getItem("dfx-seen");
-  } catch (e) {
-    /* storage blocked */
-  }
-  if (seen && o.once) {
-    splash.classList.add("off");
+  const seenToday = hasSeenGreetingToday();
+  const showSplash = opts.forceSplash ? true : !seenToday;
+
+  if (showSplash) {
+    play(true);
+    markGreetingSeenToday();
   } else {
-    play();
-    try {
-      sessionStorage.setItem("dfx-seen", "1");
-    } catch (e) {
-      /* ignore */
-    }
+    // Already seen today or returning to home view: keep "Happy Diwali" screen off, play festive animations only
+    play(false);
   }
   return true;
 }
@@ -714,6 +756,22 @@ const DiwaliTheme = {
   mount,
   unmount,
   play,
+  hasSeenToday: hasSeenGreetingToday,
+  triggerGreetingOnceToday: () => {
+    if (!hasSeenGreetingToday()) {
+      play(true);
+      markGreetingSeenToday();
+      return true;
+    }
+    return false;
+  },
+  resetDailyGreeting: () => {
+    try {
+      if (typeof window !== "undefined" && window.localStorage) {
+        window.localStorage.removeItem(getDailyGreetingKey());
+      }
+    } catch (e) {}
+  },
   setMode: (m) => on && setMode(m),
   isActive: () => on,
   burst: (x, y, n = 40) => on && burst(x, y, n),

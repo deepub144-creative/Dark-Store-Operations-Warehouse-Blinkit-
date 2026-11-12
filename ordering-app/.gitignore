@@ -1,13 +1,23 @@
 # dependencies
 node_modules/
 **/node_modules/
+app/web-chat/dist/
 
 # next.js build output
 .next/
 **/.next/
 out/
 
+# python / backend runtime artifacts
+__pycache__/
+**/__pycache__/
+*.pyc
+.pytest_cache/
+backend/generated/
+backend/uploads/
+
 # env files
+.env
 .env*.local
 .env.local
 
@@ -18,3 +28,5 @@ Thumbs.db
 .idea/
 blinkit-customer/
 warehouse-app/
+*.docx
+*.log
