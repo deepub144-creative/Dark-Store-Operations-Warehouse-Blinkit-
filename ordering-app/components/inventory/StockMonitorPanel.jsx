@@ -44,6 +44,9 @@ const StockRowCard = memo(function StockRowCard({
 
   const isOut = availableUnits <= 0 || isOos || item.soldOut === true;
   const isLow = !isOut && threshold > 0 && availableUnits <= threshold;
+  const isPup = isPuppyFrame(item);
+  const isFrame = item?.category === "Frames" || String(item?.sku || "").startsWith("FRAME-");
+  const maxUnits = isPup ? 0 : isFrame ? 1 : 5;
 
   const prevValRef = useRef(`${unitsInStock}:${reservedUnits}:${availableUnits}`);
   const [pulseState, setPulseState] = useState(""); // "" | "down" | "up"
