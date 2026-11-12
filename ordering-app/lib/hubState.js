@@ -30,13 +30,23 @@ export function formatISTDisplayDate(dateKey) {
   });
 }
 
-export function getDefaultItemStock(item) {
+export function getBaseCatalogDefaultUnits(item) {
   if (!item) return 5;
   if (
-    item.soldOut === true ||
-    item.inStock === false ||
-    String(item.name || "").toLowerCase().includes("pup")
+    item.category === "Frames" ||
+    String(item.sku || "").startsWith("FRAME-")
   ) {
+    return 1;
+  }
+  return 5;
+}
+
+export function getDefaultItemStock(item, ignoreFlags = true) {
+  if (!item) return 5;
+  if (String(item.name || "").toLowerCase().includes("pup")) {
+    return 0;
+  }
+  if (!ignoreFlags && (item.soldOut === true || item.inStock === false)) {
     return 0;
   }
   if (

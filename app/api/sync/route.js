@@ -491,23 +491,109 @@ export async function POST(req) {
           const sku = payload.sku;
           if (!sku) return { skipRevisionBump: true };
           const inStock = payload.inStock !== false;
-          const prevRec = next.stockBySku?.[sku];
-          const curUnits = prevRec ? Number(prevRec.unitsInStock || 0) : Number(next.inventoryStockMap?.[sku] || 0);
-          if (inStock && curUnits <= 0) {
+
+          const allItems = mergeCatalogItems(getActiveBaseCatalog(), next.customCatalogItems);
+          const itemMeta = allItems.find((c) => c.sku === sku);
+          const isFrame = itemMeta?.category === "Frames" || String(sku).startsWith("FRAME-");
+          const defaultUnits = isFrame ? 1 : 5;
+
+          if (inStock) {
+            const specifiedUnits = Number(payload.units);
+            const prevUnits = Number(next.stockBySku?.[sku]?.unitsInStock || next.inventoryStockMap?.[sku] || 0);
+            const targetUnits = Math.max(
+              1,
+              Number.isFinite(specifiedUnits) && specifiedUnits > 0
+                ? specifiedUnits
+                : prevUnits > 0
+                ? prevUnits
+                : defaultUnits
+            );
+
+            // Clean up any stale reservations for this SKU so stock is immediately available to order
+            if (Array.isArray(next.activeReservations)) {
+              next.activeReservations = next.activeReservations.filter((r) => {
+                if (!r || r.status !== "active") return false;
+                const hasSku = (r.items || []).some((it) => (it.skuId || it.sku) === sku);
+                return !hasSku;
+              });
+            }
+
             const out = adjustStockUnitInState(next, {
               sku,
-              setUnits: 5,
-              reason: "manual_adjustment",
+              setUnits: targetUnits,
+              reason: "manual_restore",
               actor: actorName,
               actorRole,
               storeId: targetStoreId,
             });
-            return out;
-          } else if (!inStock) {
+
+            // Ensure SKU is removed from oosList and inventoryStockMap is updated
+            const oosSet = new Set(next.oosList || []);
+            oosSet.delete(sku);
+            next.oosList = Array.from(oosSet);
+            if (!next.inventoryStockMap) next.inventoryStockMap = {};
+            next.inventoryStockMap[sku] = targetUnits;
+            next.stockVersion = Number(next.stockVersion || 1) + 1;
+
+            if (adminDb) {
+              try {
+                await adminDb.collection("inventory").doc(sku).set(
+                  {
+                    sku,
+                    unitsInStock: targetUnits,
+                    availableUnits: targetUnits,
+                    reservedUnits: 0,
+                    inStock: true,
+                    updatedAt: new Date().toISOString(),
+                  },
+                  { merge: true }
+                );
+              } catch (e) {
+                console.warn("[TOGGLE_OOS] Firestore inventory write warning:", e?.message);
+              }
+            }
+
+            return {
+              ...out,
+              sseEvent: {
+                type: "STOCK_DELTA",
+                storeId: targetStoreId,
+                changedSkus: [sku],
+                oosList: next.oosList,
+                inventoryStockMapPatch: { [sku]: targetUnits },
+              },
+            };
+          } else {
+            // Mark OOS
             const oosSet = new Set(next.oosList || []);
             oosSet.add(sku);
             next.oosList = Array.from(oosSet);
+            if (!next.inventoryStockMap) next.inventoryStockMap = {};
+            next.inventoryStockMap[sku] = 0;
+            if (next.stockBySku?.[sku]) {
+              next.stockBySku[sku].availableUnits = 0;
+            }
+            if (itemMeta) {
+              itemMeta.inStock = false;
+            }
             next.stockVersion = Number(next.stockVersion || 1) + 1;
+
+            if (adminDb) {
+              try {
+                await adminDb.collection("inventory").doc(sku).set(
+                  {
+                    sku,
+                    availableUnits: 0,
+                    inStock: false,
+                    updatedAt: new Date().toISOString(),
+                  },
+                  { merge: true }
+                );
+              } catch (e) {
+                console.warn("[TOGGLE_OOS] Firestore inventory write warning:", e?.message);
+              }
+            }
+
             return {
               sseEvent: {
                 type: "STOCK_DELTA",
@@ -515,20 +601,6 @@ export async function POST(req) {
                 changedSkus: [sku],
                 oosList: next.oosList,
                 inventoryStockMapPatch: { [sku]: 0 },
-              },
-            };
-          } else {
-            const oosSet = new Set(next.oosList || []);
-            oosSet.delete(sku);
-            next.oosList = Array.from(oosSet);
-            next.stockVersion = Number(next.stockVersion || 1) + 1;
-            return {
-              sseEvent: {
-                type: "STOCK_DELTA",
-                storeId: targetStoreId,
-                changedSkus: [sku],
-                oosList: next.oosList,
-                inventoryStockMapPatch: { [sku]: curUnits },
               },
             };
           }

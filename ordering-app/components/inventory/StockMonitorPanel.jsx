@@ -252,18 +252,20 @@ const StockRowCard = memo(function StockRowCard({
           {typeof onToggleOos === "function" && (
             <button
               type="button"
-              onClick={() => onToggleOos(item.sku, !isOut)}
+              onClick={() => onToggleOos(item.sku, isOut)}
               style={{
                 height: 32,
-                padding: "0 9px",
+                padding: "0 10px",
                 borderRadius: 8,
-                border: "1px solid rgba(148,163,184,0.35)",
+                border: isOut ? "1.5px solid #86EFAC" : "1px solid rgba(148,163,184,0.35)",
                 background: isOut ? "#DCFCE7" : "#FEE2E2",
                 color: isOut ? "#15803D" : "#B91C1C",
-                fontSize: 11,
-                fontWeight: 800,
+                fontSize: 11.5,
+                fontWeight: 900,
                 cursor: "pointer",
+                boxShadow: isOut ? "0 2px 6px rgba(21, 128, 61, 0.15)" : "none",
               }}
+              title={isOut ? "Restore stock so customers can order immediately" : "Mark SKU as Out of Stock"}
             >
               {isOut ? "Restore" : "Mark OOS"}
             </button>

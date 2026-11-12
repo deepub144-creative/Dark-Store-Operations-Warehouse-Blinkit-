@@ -7,6 +7,7 @@ import { doc, onSnapshot } from "firebase/firestore";
 import { db } from "@/lib/firebaseClient";
 import { CATALOG } from "@/lib/items";
 import { getDefaultItemStock, mergeCatalogItems } from "@/lib/hubState";
+import { downloadDeliverySlipPdf } from "@/lib/orderSlipPdf";
 import {
   broadcastEvent,
   subscribeToEvents,
@@ -1311,12 +1312,37 @@ export default function OrderingAppPage() {
         }
       }
       if (data.type === "ITEM_STOCK_TOGGLED" && data.payload) {
-        if (!data.payload.inStock) {
-          setOosList((prev) => [...new Set([...prev, data.payload.sku])]);
-          triggerToast(`Stock Alert: "${data.payload.name}" marked Out of Stock by ASM Deepu B.`);
+        const pSku = data.payload.sku;
+        const pInStock = Boolean(data.payload.inStock);
+        const pUnits = Number.isFinite(Number(data.payload.units))
+          ? Number(data.payload.units)
+          : data.payload.inventoryStockMapPatch?.[pSku] !== undefined
+          ? Number(data.payload.inventoryStockMapPatch[pSku])
+          : pInStock
+          ? (String(pSku).startsWith("FRAME-") ? 1 : 5)
+          : 0;
+
+        if (!pInStock) {
+          setOosList((prev) => [...new Set([...prev, pSku])]);
+          setInventoryStockMap((prev) => ({ ...prev, [pSku]: 0 }));
+          triggerToast(`Stock Alert: "${data.payload.name || pSku}" marked Out of Stock.`);
         } else {
-          setOosList((prev) => prev.filter((s) => s !== data.payload.sku));
-          triggerToast(`"${data.payload.name}" is back in stock`);
+          const restoredUnits = Math.max(1, pUnits);
+          setOosList((prev) => prev.filter((s) => s !== pSku));
+          setInventoryStockMap((prev) => ({ ...prev, [pSku]: restoredUnits }));
+          playSuccessChime();
+          triggerToast(`🟢 "${data.payload.name || pSku}" is restored! (${restoredUnits} unit${restoredUnits > 1 ? "s" : ""} available to order)`);
+        }
+      }
+      if (data.type === "STOCK_DELTA" && data.payload) {
+        if (Array.isArray(data.payload.oosList)) {
+          setOosList(data.payload.oosList);
+        }
+        if (data.payload.inventoryStockMapPatch && typeof data.payload.inventoryStockMapPatch === "object") {
+          setInventoryStockMap((prev) => ({
+            ...prev,
+            ...data.payload.inventoryStockMapPatch,
+          }));
         }
       }
       if (data.type === "PICKER_DELAY_UPDATED") {
@@ -3407,20 +3433,28 @@ export default function OrderingAppPage() {
                     </div>
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-                    <span
+                    <button
+                      type="button"
+                      onClick={() => downloadDeliverySlipPdf(latestDeliveredSlipOrder)}
                       style={{
-                        background: "#dcfce7",
-                        color: "#15803d",
-                        border: "1px solid #86efac",
-                        borderRadius: 6,
-                        padding: "5px 9px",
-                        fontSize: 11,
-                        fontWeight: 700,
+                        background: "#0c831f",
+                        color: "#ffffff",
+                        border: "none",
+                        borderRadius: 8,
+                        padding: "6px 11px",
+                        fontSize: 11.5,
+                        fontWeight: 800,
                         whiteSpace: "nowrap",
+                        cursor: "pointer",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 4,
+                        boxShadow: "0 2px 6px rgba(12, 131, 31, 0.25)",
                       }}
+                      title="Download delivery slip (PDF)"
                     >
-                      📧 Slip emailed to your Google inbox
-                    </span>
+                      📥 Download Slip
+                    </button>
                     <button
                       type="button"
                       aria-label="Dismiss delivered slip banner"
@@ -4013,20 +4047,27 @@ export default function OrderingAppPage() {
                                   🛒 Reorder All
                                 </button>
                                 {isOrderDelivered ? (
-                                  <span
+                                  <button
+                                    type="button"
+                                    onClick={() => downloadDeliverySlipPdf(order)}
                                     style={{
-                                      padding: "8px 12px",
-                                      borderRadius: 10,
-                                      border: "1px solid #bbf7d0",
+                                      padding: "7px 11px",
+                                      borderRadius: 8,
+                                      border: "1px solid #86efac",
                                       background: "#f0fdf4",
                                       color: "#15803d",
-                                      fontWeight: 700,
-                                      fontSize: 12,
+                                      fontWeight: 800,
+                                      fontSize: 11.5,
                                       whiteSpace: "nowrap",
+                                      cursor: "pointer",
+                                      display: "inline-flex",
+                                      alignItems: "center",
+                                      gap: 4,
                                     }}
+                                    title="Download delivery slip (PDF)"
                                   >
-                                    📧 Delivery slip sent to Google email
-                                  </span>
+                                    📥 Download Slip
+                                  </button>
                                 ) : null}
                               </div>
                             </div>
@@ -5107,9 +5148,30 @@ export default function OrderingAppPage() {
               </button>
 
               {(activeDeliveryOrder.status === "delivered" || orderingStage === "delivered") && (
-                <div style={{ marginTop: 10, padding: "10px 14px", borderRadius: 10, border: "1px solid #bbf7d0", background: "#f0fdf4", color: "#15803d", fontWeight: 700, fontSize: 12.5, textAlign: "center" }}>
-                  📧 Delivery slip (PDF) sent to your Google email
-                </div>
+                <button
+                  type="button"
+                  onClick={() => downloadDeliverySlipPdf(activeDeliveryOrder)}
+                  style={{
+                    marginTop: 10,
+                    width: "100%",
+                    padding: "10px 14px",
+                    borderRadius: 10,
+                    border: "1.5px solid #86efac",
+                    background: "#f0fdf4",
+                    color: "#15803d",
+                    fontWeight: 800,
+                    fontSize: 13,
+                    textAlign: "center",
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 6,
+                  }}
+                  title="Download delivery slip (PDF)"
+                >
+                  📥 Download Delivery Slip (PDF)
+                </button>
               )}
             </form>
           </div>

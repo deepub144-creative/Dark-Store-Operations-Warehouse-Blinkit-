@@ -140,36 +140,69 @@ export default function AssistantStoreManagerApp({ embedded = false, sharedCloud
     };
   }, [sharedCloudState]);
 
-  async function handleToggleStockStatus(sku, currentInStock) {
-    const nextStatus = !currentInStock;
+  async function handleToggleStockStatus(sku, targetInStock) {
+    const nextStatus = Boolean(targetInStock);
     const item = catalogItems.find((c) => c.sku === sku);
-    const optimisticUnits =
-      nextStatus && (inventoryStockMap[sku] ?? item?.units ?? 0) <= 0
-        ? getDefaultItemStock(item) || 1
-        : inventoryStockMap[sku] ?? item?.units ?? 0;
+    const isFrame = item?.category === "Frames" || String(sku).startsWith("FRAME-");
+    const defaultUnits = isFrame ? 1 : 5;
+    const curInv = Number(inventoryStockMap[sku] ?? stockBySku?.[sku]?.unitsInStock ?? 0);
+    const targetUnits = nextStatus ? Math.max(1, curInv > 0 ? curInv : defaultUnits) : 0;
+
+    // Optimistically update all local state and local storage immediately
+    setInventoryStockMap((prev) => {
+      const nextMap = { ...prev, [sku]: targetUnits };
+      try {
+        localStorage.setItem("auditx_inventory_units", JSON.stringify(nextMap));
+      } catch (e) {}
+      return nextMap;
+    });
+
+    setStockBySku((prev) => {
+      const prevRec = prev?.[sku];
+      return {
+        ...prev,
+        [sku]: {
+          ...(prevRec || {}),
+          skuId: sku,
+          unitsInStock: targetUnits,
+          reservedUnits: 0,
+          availableUnits: targetUnits,
+        },
+      };
+    });
+
+    setOosList((prev) =>
+      nextStatus ? prev.filter((s) => s !== sku) : [...new Set([...prev, sku])]
+    );
 
     setCatalogItems((prev) =>
       prev.map((it) =>
-        it.sku === sku ? { ...it, inStock: nextStatus, units: optimisticUnits } : it
+        it.sku === sku
+          ? { ...it, inStock: nextStatus, units: targetUnits, soldOut: !nextStatus }
+          : it
       )
     );
 
     const res = await dispatchCloudAction("TOGGLE_OOS", {
       sku,
       inStock: nextStatus,
+      units: targetUnits,
       updatedBy: "Deepu B (ASM)",
     });
 
     if (res?.ok && res.state) {
-      setInventoryStockMap(res.state.inventoryStockMap || {});
-      setOosList(res.state.oosList || []);
+      if (res.state.inventoryStockMap) setInventoryStockMap(res.state.inventoryStockMap);
+      if (res.state.stockBySku) setStockBySku(res.state.stockBySku);
+      if (Array.isArray(res.state.oosList)) setOosList(res.state.oosList);
     }
 
-    // Broadcast locally as well
+    // Broadcast across all open terminals & the Customer Ordering App
     broadcastEvent("ITEM_STOCK_TOGGLED", {
       sku,
-      name: item?.name,
+      name: item?.name || sku,
       inStock: nextStatus,
+      units: targetUnits,
+      inventoryStockMapPatch: { [sku]: targetUnits },
       updatedBy: "Deepu B (ASM)",
       timestamp: new Date().toISOString(),
     });
@@ -182,7 +215,7 @@ export default function AssistantStoreManagerApp({ embedded = false, sharedCloud
     } else {
       playSuccessChime();
       setActionSuccess(
-        `🟢 Marked "${item?.name}" as IN STOCK (${optimisticUnits} units). Customers can order again.`
+        `🟢 Marked "${item?.name}" as IN STOCK (${targetUnits} units). Customers can order immediately!`
       );
     }
     setTimeout(() => setActionSuccess(""), 3500);
@@ -190,40 +223,71 @@ export default function AssistantStoreManagerApp({ embedded = false, sharedCloud
 
   async function handleRestockUnit(sku, delta = 1) {
     playNotificationChime();
+    const item = catalogItems.find((c) => c.sku === sku);
+    const isFrame = item?.category === "Frames" || String(sku).startsWith("FRAME-");
+    const defaultUnits = isFrame ? 1 : 5;
+    const curStock = Number(stockBySku?.[sku]?.unitsInStock ?? inventoryStockMap[sku] ?? defaultUnits);
+    const updatedUnits = Math.max(0, curStock + delta);
+    const prevReserved = Number(stockBySku?.[sku]?.reservedUnits || 0);
+    // When restocking an item that was 0 or low, clear any phantom reservations
+    const reserved = updatedUnits > 0 && curStock <= 0 ? 0 : Math.min(updatedUnits, prevReserved);
+    const avail = Math.max(0, updatedUnits - reserved);
+
     setInventoryStockMap((prev) => {
-      const current = prev[sku] !== undefined ? Number(prev[sku]) : 5;
-      const updated = Math.max(0, current + delta);
-      const nextMap = { ...prev, [sku]: updated };
+      const nextMap = { ...prev, [sku]: avail };
       try {
         localStorage.setItem("auditx_inventory_units", JSON.stringify(nextMap));
       } catch (e) {}
       return nextMap;
     });
+
     setStockBySku((prev) => {
       const prevRec = prev?.[sku];
-      const curUnits = prevRec && Number.isFinite(Number(prevRec.unitsInStock)) ? Number(prevRec.unitsInStock) : 5;
-      const updated = Math.max(0, curUnits + delta);
-      const reserved = prevRec?.reservedUnits || 0;
       return {
         ...prev,
         [sku]: {
           ...(prevRec || {}),
           skuId: sku,
-          unitsInStock: updated,
-          availableUnits: Math.max(0, updated - reserved),
+          unitsInStock: updatedUnits,
+          reservedUnits: reserved,
+          availableUnits: avail,
         },
       };
     });
+
+    if (avail > 0) {
+      setOosList((prev) => prev.filter((s) => s !== sku));
+      setCatalogItems((prev) =>
+        prev.map((it) => (it.sku === sku ? { ...it, inStock: true, soldOut: false, units: avail } : it))
+      );
+    } else if (updatedUnits <= 0) {
+      setOosList((prev) => [...new Set([...prev, sku])]);
+      setCatalogItems((prev) =>
+        prev.map((it) => (it.sku === sku ? { ...it, inStock: false, soldOut: true, units: 0 } : it))
+      );
+    }
+
     const res = await dispatchCloudAction("UPDATE_STOCK_UNIT", { sku, delta });
     if (res?.ok && res.state) {
-      setInventoryStockMap(res.state.inventoryStockMap || {});
+      if (res.state.inventoryStockMap) setInventoryStockMap(res.state.inventoryStockMap);
       if (res.state.stockBySku) setStockBySku(res.state.stockBySku);
-      setOosList(res.state.oosList || []);
-      const newQty = res.state.inventoryStockMap?.[sku] ?? 0;
+      if (Array.isArray(res.state.oosList)) setOosList(res.state.oosList);
+      const newQty = res.state.inventoryStockMap?.[sku] ?? avail;
       playScanSuccess();
       setActionSuccess(`📦 Stock for SKU ${sku} updated to ${newQty} units!`);
       setTimeout(() => setActionSuccess(""), 3000);
     }
+
+    // Broadcast live stock update immediately to Customer Ordering App
+    broadcastEvent("ITEM_STOCK_TOGGLED", {
+      sku,
+      name: item?.name || sku,
+      inStock: avail > 0,
+      units: avail,
+      inventoryStockMapPatch: { [sku]: avail },
+      updatedBy: "Deepu B (ASM)",
+      timestamp: new Date().toISOString(),
+    });
   }
 
   function handlePutawayImageUpload(e) {

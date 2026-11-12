@@ -382,22 +382,8 @@ export async function sendOrderEmail({
   const text = buildPlainTextEmail({ name, orderId, items, total, status });
 
   let finalAttachments = Array.isArray(attachments) ? [...attachments] : [];
-
-  // Automatically generate and attach the crisp Delivery Slip PDF for delivered orders
-  if (normKey === "delivered" && finalAttachments.length === 0 && order) {
-    try {
-      const { generateDeliverySlipPdfBuffer } = await import("./pdfLibDeliverySlip.js");
-      const pdfBuffer = await generateDeliverySlipPdfBuffer(order);
-      if (pdfBuffer) {
-        finalAttachments.push({
-          filename: `Order-${orderId}-Slip.pdf`,
-          content: pdfBuffer.toString("base64"),
-        });
-      }
-    } catch (e) {
-      console.warn(`[EmailService] Failed to generate slip PDF for #${orderId}:`, e?.message || e);
-    }
-  }
+  // Delivery slip PDF is downloaded directly inside the Ordering App, not sent via Gmail
+  // (per user requirement: slip is downloaded inside the app only)
 
   try {
     const emailPayload = {

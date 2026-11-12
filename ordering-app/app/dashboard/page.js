@@ -564,45 +564,138 @@ export default function WarehouseDashboardPage() {
     setTimeout(() => setActionSuccess(""), 3500);
   }
 
-  // Update Stock Unit helper (auto-marks OOS at 0 units)
-  async function handleUpdateStockUnit(skuId, delta) {
-    playNotificationChime();
+  // Toggle Stock Status (Restore or Mark OOS) in SM Dashboard
+  async function handleToggleStockStatus(skuId, targetInStock) {
+    const nextStatus = Boolean(targetInStock);
+    const targetItem = mergeCatalogItems(STORE_MANAGER_CATALOG, customCatalogItems).find(
+      (c) => c.sku === skuId
+    );
+    const isFrame = targetItem?.category === "Frames" || String(skuId).startsWith("FRAME-");
+    const defaultUnits = isFrame ? 1 : 5;
+    const curInv = Number(inventoryStockMap[skuId] ?? stockBySku?.[skuId]?.unitsInStock ?? 0);
+    const targetUnits = nextStatus ? Math.max(1, curInv > 0 ? curInv : defaultUnits) : 0;
+
     setInventoryStockMap((prev) => {
-      const targetItem = mergeCatalogItems(STORE_MANAGER_CATALOG, customCatalogItems).find(
-        (c) => c.sku === skuId
-      );
-      const defaultUnit = getDefaultItemStock(targetItem);
-      const current = prev[skuId] !== undefined ? Number(prev[skuId]) : defaultUnit;
-      const updated = Math.max(0, current + delta);
-      const nextMap = { ...prev, [skuId]: updated };
+      const nextMap = { ...prev, [skuId]: targetUnits };
       try {
         localStorage.setItem("auditx_inventory_units", JSON.stringify(nextMap));
       } catch (e) {}
       return nextMap;
     });
+
     setStockBySku((prev) => {
       const prevRec = prev?.[skuId];
-      const curUnits = prevRec && Number.isFinite(Number(prevRec.unitsInStock)) ? Number(prevRec.unitsInStock) : 5;
-      const updated = Math.max(0, curUnits + delta);
-      const reserved = prevRec?.reservedUnits || 0;
       return {
         ...prev,
         [skuId]: {
           ...(prevRec || {}),
           skuId,
-          unitsInStock: updated,
-          availableUnits: Math.max(0, updated - reserved),
+          unitsInStock: targetUnits,
+          reservedUnits: 0,
+          availableUnits: targetUnits,
         },
       };
     });
+
+    setOosList((prev) =>
+      nextStatus ? prev.filter((s) => s !== skuId) : [...new Set([...prev, skuId])]
+    );
+
+    const res = await dispatchCloudAction("TOGGLE_OOS", {
+      sku: skuId,
+      inStock: nextStatus,
+      units: targetUnits,
+      updatedBy: staff?.name || "Bhaskar N S (SM)",
+    });
+
+    if (res?.ok && res.state) {
+      if (res.state.inventoryStockMap) setInventoryStockMap(res.state.inventoryStockMap);
+      if (res.state.stockBySku) setStockBySku(res.state.stockBySku);
+      if (Array.isArray(res.state.oosList)) setOosList(res.state.oosList);
+      if (Array.isArray(res.state.inventoryMovements)) setInventoryMovements(res.state.inventoryMovements);
+    }
+
+    broadcastEvent("ITEM_STOCK_TOGGLED", {
+      sku: skuId,
+      name: targetItem?.name || skuId,
+      inStock: nextStatus,
+      units: targetUnits,
+      inventoryStockMapPatch: { [skuId]: targetUnits },
+      updatedBy: staff?.name || "Bhaskar N S (SM)",
+      timestamp: new Date().toISOString(),
+    });
+
+    if (nextStatus) {
+      playSuccessChime();
+      setActionSuccess(`🟢 Marked "${targetItem?.name || skuId}" as IN STOCK (${targetUnits} units)!`);
+    } else {
+      playNotificationChime();
+      setActionSuccess(`🚨 Marked "${targetItem?.name || skuId}" as OUT OF STOCK.`);
+    }
+    setTimeout(() => setActionSuccess(""), 3000);
+  }
+
+  // Update Stock Unit helper (auto-marks OOS at 0 units)
+  async function handleUpdateStockUnit(skuId, delta) {
+    playNotificationChime();
+    const targetItem = mergeCatalogItems(STORE_MANAGER_CATALOG, customCatalogItems).find(
+      (c) => c.sku === skuId
+    );
+    const isFrame = targetItem?.category === "Frames" || String(skuId).startsWith("FRAME-");
+    const defaultUnits = isFrame ? 1 : 5;
+    const curStock = Number(stockBySku?.[skuId]?.unitsInStock ?? inventoryStockMap[skuId] ?? defaultUnits);
+    const updatedUnits = Math.max(0, curStock + delta);
+    const prevReserved = Number(stockBySku?.[skuId]?.reservedUnits || 0);
+    const reserved = updatedUnits > 0 && curStock <= 0 ? 0 : Math.min(updatedUnits, prevReserved);
+    const avail = Math.max(0, updatedUnits - reserved);
+
+    setInventoryStockMap((prev) => {
+      const nextMap = { ...prev, [skuId]: avail };
+      try {
+        localStorage.setItem("auditx_inventory_units", JSON.stringify(nextMap));
+      } catch (e) {}
+      return nextMap;
+    });
+
+    setStockBySku((prev) => {
+      const prevRec = prev?.[skuId];
+      return {
+        ...prev,
+        [skuId]: {
+          ...(prevRec || {}),
+          skuId,
+          unitsInStock: updatedUnits,
+          reservedUnits: reserved,
+          availableUnits: avail,
+        },
+      };
+    });
+
+    if (avail > 0) {
+      setOosList((prev) => prev.filter((s) => s !== skuId));
+    } else if (updatedUnits <= 0) {
+      setOosList((prev) => [...new Set([...prev, skuId])]);
+    }
+
     const res = await dispatchCloudAction("UPDATE_STOCK_UNIT", { sku: skuId, delta });
     if (res?.ok && res.state) {
-      setInventoryStockMap(res.state.inventoryStockMap || {});
+      if (res.state.inventoryStockMap) setInventoryStockMap(res.state.inventoryStockMap);
       if (res.state.stockBySku) setStockBySku(res.state.stockBySku);
       if (Array.isArray(res.state.inventoryMovements)) setInventoryMovements(res.state.inventoryMovements);
-      setOosList(res.state.oosList || []);
+      if (Array.isArray(res.state.oosList)) setOosList(res.state.oosList);
     }
-    setActionSuccess(`📦 Stock for SKU ${skuId} synced live!`);
+
+    broadcastEvent("ITEM_STOCK_TOGGLED", {
+      sku: skuId,
+      name: targetItem?.name || skuId,
+      inStock: avail > 0,
+      units: avail,
+      inventoryStockMapPatch: { [skuId]: avail },
+      updatedBy: staff?.name || "Bhaskar N S (SM)",
+      timestamp: new Date().toISOString(),
+    });
+
+    setActionSuccess(`📦 Stock for SKU ${skuId} updated to ${avail} available units!`);
     setTimeout(() => setActionSuccess(""), 2000);
   }
 
@@ -3807,6 +3900,7 @@ export default function WarehouseDashboardPage() {
                 onStockFilterChange={setSkuStockFilter}
                 onAdjustStock={handleUpdateStockUnit}
                 onGrnInward={handleGrnInward}
+                onToggleOos={handleToggleStockStatus}
                 onRunReconciliation={handleRunReconciliation}
               />
             </div>

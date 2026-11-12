@@ -83,16 +83,10 @@ export async function GET(req) {
         deliveredAt: new Date().toISOString(),
       };
 
-      const pdfBuf =
-        normalizeStatus(testStatus) === "delivered"
-          ? await generateDeliverySlipPdfBuffer(sampleOrder)
-          : null;
-
       const emailResult = await sendOrderStatusGmail({
         order: sampleOrder,
         newStatus: testStatus,
         recipientEmail: testEmail,
-        pdfBuffer: pdfBuf,
       });
 
       return NextResponse.json({
@@ -101,8 +95,6 @@ export async function GET(req) {
         orderId: sampleOrder.orderId,
         sentTo: testEmail,
         status: testStatus,
-        hasPdfAttachment: Boolean(pdfBuf),
-        pdfBytes: pdfBuf ? pdfBuf.length : 0,
         result: emailResult,
       });
     }
@@ -161,16 +153,10 @@ export async function POST(req) {
         deliveredAt: new Date().toISOString(),
       };
 
-      const pdfBuf =
-        normalizeStatus(testStatus) === "delivered"
-          ? await generateDeliverySlipPdfBuffer(sampleOrder)
-          : null;
-
       const emailResult = await sendOrderStatusGmail({
         order: sampleOrder,
         newStatus: testStatus,
         recipientEmail: targetEmail,
-        pdfBuffer: pdfBuf,
       });
 
       return NextResponse.json({
@@ -254,16 +240,7 @@ export async function POST(req) {
       });
     }
 
-    // Prepare Delivery Slip PDF if status is delivered
-    let pdfBuf = null;
-    if (normStatus === "delivered") {
-      try {
-        pdfBuf = await generateDeliverySlipPdfBuffer(order);
-      } catch (pdfErr) {
-        console.warn(`[NotifyAPI] Failed to generate slip PDF for #${orderId}:`, pdfErr?.message);
-      }
-    }
-
+    // Delivery slip PDF is downloaded directly inside the Ordering App, not attached to Gmail
     // Send email via Gmail SMTP
     const recipientEmail =
       order.customerEmail ||
@@ -280,7 +257,6 @@ export async function POST(req) {
         order,
         newStatus: normStatus,
         recipientEmail,
-        pdfBuffer: pdfBuf,
       });
       emailSent = Boolean(mailResult.ok);
       emailError = mailResult.error || null;

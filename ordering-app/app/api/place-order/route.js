@@ -91,73 +91,73 @@ export async function POST(req) {
     try {
       const incomingOrder = {
         id: bodyOrderId || "",
-      orderId: bodyOrderId || "",
-      idempotencyKey,
-      customerId: resolvedUserId,
-      customerName: resolvedName,
-      customerEmail: resolvedEmail,
-      customerPhone: safePhone,
-      customerAddress:
-        location?.address ||
-        (typeof location === "string" ? location : "KFGSC , Tiptur 572201"),
-      location:
-        typeof location === "object" && location
-          ? location
-          : { address: "KFGSC , Tiptur 572201" },
-      items: requestedItems,
-      appliedCoupon: appliedCoupon || null,
-      storeId: storeId || "TIPTUR-HUB-KA44",
-      paymentMethod: body?.paymentMethod || "Blinkit Wallet",
-      stage: "Awaiting OD Picker",
-      status: "placed",
-      lastEmailedStatus: "placed",
-      assignedStaffId: "thrupthi",
-      deliveryCaptainId: "sinchana",
-      estimatedDeliveryMins: 10,
-      createdAt: new Date().toISOString(),
-    };
-
-    const mutRes = await mutateHubStateAtomically((next) =>
-      executeAtomicPlaceOrderInState(next, {
-        incomingOrder,
+        orderId: bodyOrderId || "",
         idempotencyKey,
-        reservationId: String(reservationId || "").trim(),
-        actorId: resolvedUserId,
-        actorRole: session?.roleCode || "CUSTOMER",
-      })
-    );
+        customerId: resolvedUserId,
+        customerName: resolvedName,
+        customerEmail: resolvedEmail,
+        customerPhone: safePhone,
+        customerAddress:
+          location?.address ||
+          (typeof location === "string" ? location : "KFGSC , Tiptur 572201"),
+        location:
+          typeof location === "object" && location
+            ? location
+            : { address: "KFGSC , Tiptur 572201" },
+        items: requestedItems,
+        appliedCoupon: appliedCoupon || null,
+        storeId: storeId || "TIPTUR-HUB-KA44",
+        paymentMethod: body?.paymentMethod || "Blinkit Wallet",
+        stage: "Awaiting OD Picker",
+        status: "placed",
+        lastEmailedStatus: "placed",
+        assignedStaffId: "thrupthi",
+        deliveryCaptainId: "sinchana",
+        estimatedDeliveryMins: 10,
+        createdAt: new Date().toISOString(),
+      };
 
-    if (!mutRes.ok) {
-      return NextResponse.json(mutRes.body, { status: mutRes.status || 409 });
-    }
+      const mutRes = await mutateHubStateAtomically((next) =>
+        executeAtomicPlaceOrderInState(next, {
+          incomingOrder,
+          idempotencyKey,
+          reservationId: String(reservationId || "").trim(),
+          actorId: resolvedUserId,
+          actorRole: session?.roleCode || "CUSTOMER",
+        })
+      );
 
-    const order = mutRes.result.order;
+      if (!mutRes.ok) {
+        return NextResponse.json(mutRes.body, { status: mutRes.status || 409 });
+      }
 
-    // Send EMAIL 1: ORDER PLACED asynchronously in background (never blocks order response)
-    if (order && !mutRes.result.deduped && resolvedEmail) {
-      enqueueBackgroundTask("send_order_placed_email", async () => {
-        await sendOrderEmail({
-          name: resolvedName,
-          email: resolvedEmail,
-          orderId: order.orderId || order.id,
-          items: order.items || [],
-          total: order.totalAmount,
-          status: "placed",
-          order,
+      const order = mutRes.result.order;
+
+      // Send EMAIL 1: ORDER PLACED asynchronously in background (never blocks order response)
+      if (order && !mutRes.result.deduped && resolvedEmail) {
+        enqueueBackgroundTask("send_order_placed_email", async () => {
+          await sendOrderEmail({
+            name: resolvedName,
+            email: resolvedEmail,
+            orderId: order.orderId || order.id,
+            items: order.items || [],
+            total: order.totalAmount,
+            status: "placed",
+            order,
+          });
         });
-      });
-    }
+      }
 
-    return NextResponse.json({
-      success: true,
-      deduped: Boolean(mutRes.result.deduped),
-      orderId: order.orderId,
-      order,
-      state: buildScopedStateSnapshot(mutRes.state, {
-        scope: "customer",
-        userId: resolvedUserId,
-      }),
-    });
+      return NextResponse.json({
+        success: true,
+        deduped: Boolean(mutRes.result.deduped),
+        orderId: order.orderId,
+        order,
+        state: buildScopedStateSnapshot(mutRes.state, {
+          scope: "customer",
+          userId: resolvedUserId,
+        }),
+      });
     } finally {
       releaseOrderFlightLock(resolvedUserId);
     }
