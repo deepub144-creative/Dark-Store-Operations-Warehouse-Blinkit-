@@ -1,7 +1,7 @@
 "use client";
 
 import { memo, useEffect, useMemo, useRef, useState } from "react";
-import { getDefaultItemStock, getLowStockThreshold } from "@/lib/hubState";
+import { getDefaultItemStock, getLowStockThreshold, isPuppyFrame } from "@/lib/hubState";
 
 const REASON_LABELS = {
   order: "Order Placed",
@@ -210,7 +210,7 @@ const StockRowCard = memo(function StockRowCard({
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <button
             type="button"
-            disabled={unitsInStock <= reservedUnits}
+            disabled={unitsInStock <= reservedUnits || unitsInStock <= 0}
             onClick={() => onAdjust(item.sku, -1)}
             style={{
               width: 34,
@@ -220,7 +220,8 @@ const StockRowCard = memo(function StockRowCard({
               background: dark ? "#1E293B" : "#F1F5F9",
               color: labelCol,
               fontWeight: 900,
-              cursor: unitsInStock <= reservedUnits ? "not-allowed" : "pointer",
+              cursor: unitsInStock <= reservedUnits || unitsInStock <= 0 ? "not-allowed" : "pointer",
+              opacity: unitsInStock <= reservedUnits || unitsInStock <= 0 ? 0.45 : 1,
             }}
             title="Decrease physical stock by 1"
           >
@@ -231,6 +232,7 @@ const StockRowCard = memo(function StockRowCard({
           </span>
           <button
             type="button"
+            disabled={isPup || unitsInStock >= maxUnits}
             onClick={() => onAdjust(item.sku, 1)}
             style={{
               width: 34,
@@ -240,9 +242,16 @@ const StockRowCard = memo(function StockRowCard({
               background: dark ? "#1E293B" : "#F1F5F9",
               color: labelCol,
               fontWeight: 900,
-              cursor: "pointer",
+              cursor: isPup || unitsInStock >= maxUnits ? "not-allowed" : "pointer",
+              opacity: isPup || unitsInStock >= maxUnits ? 0.45 : 1,
             }}
-            title="Increase physical stock by 1"
+            title={
+              isPup
+                ? "Puppy frame is permanently sold out"
+                : isFrame
+                ? `Raise frame stock (+1 max for frames, currently ${unitsInStock}/${maxUnits})`
+                : `Increase chocolate stock (max 5 units for chocolates, currently ${unitsInStock}/${maxUnits})`
+            }
           >
             +
           </button>
@@ -252,41 +261,57 @@ const StockRowCard = memo(function StockRowCard({
           {typeof onToggleOos === "function" && (
             <button
               type="button"
-              onClick={() => onToggleOos(item.sku, isOut)}
+              disabled={isPup}
+              onClick={() => !isPup && onToggleOos(item.sku, isOut)}
               style={{
                 height: 32,
                 padding: "0 10px",
                 borderRadius: 8,
-                border: isOut ? "1.5px solid #86EFAC" : "1px solid rgba(148,163,184,0.35)",
-                background: isOut ? "#DCFCE7" : "#FEE2E2",
-                color: isOut ? "#15803D" : "#B91C1C",
+                border: isPup ? "1px solid rgba(148,163,184,0.35)" : isOut ? "1.5px solid #86EFAC" : "1px solid rgba(148,163,184,0.35)",
+                background: isPup ? (dark ? "#1E293B" : "#F1F5F9") : isOut ? "#DCFCE7" : "#FEE2E2",
+                color: isPup ? "#94A3B8" : isOut ? "#15803D" : "#B91C1C",
                 fontSize: 11.5,
                 fontWeight: 900,
-                cursor: "pointer",
-                boxShadow: isOut ? "0 2px 6px rgba(21, 128, 61, 0.15)" : "none",
+                cursor: isPup ? "not-allowed" : "pointer",
+                boxShadow: isOut && !isPup ? "0 2px 6px rgba(21, 128, 61, 0.15)" : "none",
+                opacity: isPup ? 0.6 : 1,
               }}
-              title={isOut ? "Restore stock so customers can order immediately" : "Mark SKU as Out of Stock"}
+              title={
+                isPup
+                  ? "Puppy frame is locked as permanently sold out"
+                  : isOut
+                  ? "Restore stock so customers can order immediately"
+                  : "Mark SKU as Out of Stock"
+              }
             >
-              {isOut ? "Restore" : "Mark OOS"}
+              {isPup ? "Locked OOS" : isOut ? "Restore" : "Mark OOS"}
             </button>
           )}
           <button
             type="button"
-            onClick={() => onGrn(item.sku, 5)}
+            disabled={isPup || unitsInStock >= maxUnits}
+            onClick={() => onAdjust(item.sku, 1)}
             style={{
               height: 32,
               padding: "0 10px",
               borderRadius: 8,
               border: "none",
-              background: "#0C831F",
+              background: isPup || unitsInStock >= maxUnits ? "#94a3b8" : "#0C831F",
               color: "#FFFFFF",
               fontSize: 11.5,
               fontWeight: 800,
-              cursor: "pointer",
+              cursor: isPup || unitsInStock >= maxUnits ? "not-allowed" : "pointer",
+              opacity: isPup || unitsInStock >= maxUnits ? 0.5 : 1,
             }}
-            title="Receive GRN inward batch (+5 units)"
+            title={
+              isPup
+                ? "Puppy frame is permanently sold out"
+                : isFrame
+                ? `Raise frame stock (+1 max for frames, currently ${unitsInStock}/${maxUnits})`
+                : `Receive inward batch (+1 unit, currently ${unitsInStock}/${maxUnits})`
+            }
           >
-            +5 GRN
+            {isFrame ? "+1 GRN" : "+1 GRN"}
           </button>
         </div>
       </div>

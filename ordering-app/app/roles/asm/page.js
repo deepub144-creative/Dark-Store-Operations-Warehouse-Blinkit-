@@ -143,6 +143,17 @@ export default function AssistantStoreManagerApp({ embedded = false, sharedCloud
   async function handleToggleStockStatus(sku, targetInStock) {
     const nextStatus = Boolean(targetInStock);
     const item = catalogItems.find((c) => c.sku === sku);
+    const isPup =
+      String(sku || "").toUpperCase() === "FRAME-10" ||
+      String(sku || "").toUpperCase() === "FRAME-28" ||
+      String(sku || "").toUpperCase() === "FRAME-29" ||
+      String(item?.name || "").toLowerCase().includes("pup");
+
+    if (isPup && nextStatus) {
+      alert("Puppy frames are locked as permanently out of stock.");
+      return;
+    }
+
     const isFrame = item?.category === "Frames" || String(sku).startsWith("FRAME-");
     const defaultUnits = isFrame ? 1 : 5;
     const curInv = Number(inventoryStockMap[sku] ?? stockBySku?.[sku]?.unitsInStock ?? 0);
@@ -243,6 +254,8 @@ export default function AssistantStoreManagerApp({ embedded = false, sharedCloud
         if (isPup) {
           newMap[item.sku] = 0;
           oos.push(item.sku);
+        } else if (item.category === "Frames" || String(item.sku || "").startsWith("FRAME-")) {
+          newMap[item.sku] = 1;
         } else {
           newMap[item.sku] = 5;
         }
@@ -253,17 +266,34 @@ export default function AssistantStoreManagerApp({ embedded = false, sharedCloud
         localStorage.setItem("auditx_inventory_units", JSON.stringify(newMap));
       } catch (e) {}
     }
-    setActionSuccess("🛡️ ASM Restocked all Chocolates & Frames to full inventory! (Puppy frame remains sold out)");
+    setActionSuccess("🛡️ ASM Restocked Chocolates (5 units) & Frames (1 unit)! Puppy frames remain sold out.");
     setTimeout(() => setActionSuccess(""), 4500);
   }
 
   async function handleRestockUnit(sku, delta = 1) {
     playNotificationChime();
     const item = catalogItems.find((c) => c.sku === sku);
+    const isPup =
+      String(sku || "").toUpperCase() === "FRAME-10" ||
+      String(sku || "").toUpperCase() === "FRAME-28" ||
+      String(sku || "").toUpperCase() === "FRAME-29" ||
+      String(item?.name || "").toLowerCase().includes("pup");
+
+    if (isPup && delta > 0) {
+      alert("Puppy frames are locked as permanently sold out.");
+      return;
+    }
+
     const isFrame = item?.category === "Frames" || String(sku).startsWith("FRAME-");
+    const maxUnits = isPup ? 0 : isFrame ? 1 : 5;
     const defaultUnits = isFrame ? 1 : 5;
     const curStock = Number(stockBySku?.[sku]?.unitsInStock ?? inventoryStockMap[sku] ?? defaultUnits);
-    const updatedUnits = Math.max(0, curStock + delta);
+
+    if (delta > 0 && curStock >= maxUnits) {
+      return;
+    }
+
+    const updatedUnits = Math.min(maxUnits, Math.max(0, curStock + delta));
     const prevReserved = Number(stockBySku?.[sku]?.reservedUnits || 0);
     // When restocking an item that was 0 or low, clear any phantom reservations
     const reserved = updatedUnits > 0 && curStock <= 0 ? 0 : Math.min(updatedUnits, prevReserved);

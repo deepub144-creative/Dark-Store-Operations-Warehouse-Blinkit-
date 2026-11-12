@@ -566,7 +566,7 @@ export default function WarehouseDashboardPage() {
       localStorage.setItem("auditx_inventory_units", JSON.stringify(defaultMap));
       setInventoryStockMap(defaultMap);
     }
-    setActionSuccess("🛡️ ASM Restocked all Chocolates & Frames! Only puppy frame remains sold out.");
+    setActionSuccess("🛡️ ASM Restocked Chocolates (5 units) & Frames (1 unit)! Puppy frames remain sold out.");
     setTimeout(() => setActionSuccess(""), 4500);
   }
 

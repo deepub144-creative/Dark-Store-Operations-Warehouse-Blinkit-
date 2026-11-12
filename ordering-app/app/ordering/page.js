@@ -925,7 +925,7 @@ export default function OrderingAppPage() {
 
   // Festive crackers & Diwali theme active strictly on Ordering App Home page (plays right after team intro)
   useEffect(() => {
-    if (!isOrderingHomeActive || navigator?.connection?.saveData) {
+    if (!isOrderingHomeActive) {
       DiwaliCrackers.unmount();
       DiwaliTheme.unmount();
       return;
