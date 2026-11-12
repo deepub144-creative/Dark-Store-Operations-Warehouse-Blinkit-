@@ -1071,6 +1071,7 @@ const AuditxMiniAssistant = memo(function AuditxMiniAssistant({ isStoreOpen = tr
   // ============================================================================
   function handleNormalQuestion(rawQuery, meta = {}) {
     const norm = normalizeQuery(rawQuery);
+    const cleanNorm = norm.replace(/[?]/g, "").trim();
     const firstName = detectedUser ? detectedUser.trim().split(" ")[0] : "";
 
     // 0a. User Identity & Google Account Name Queries
@@ -1613,63 +1614,352 @@ const AuditxMiniAssistant = memo(function AuditxMiniAssistant({ isStoreOpen = tr
       return;
     }
 
-    // 9. Simple Greeting & Polite Pleasantries
-    if (
-      norm === "hi" ||
-      norm === "hello" ||
-      norm === "hey" ||
-      norm === "namaskara" ||
-      norm === "namaste" ||
-      norm === "hola" ||
-      norm.startsWith("hi ") ||
-      norm.startsWith("hello ") ||
-      norm.startsWith("hey ") ||
-      norm.includes("good morning") ||
-      norm.includes("good evening") ||
-      norm.includes("good afternoon")
-    ) {
+    // 9. Conversational Chatbot Banter, Pleasantries & Command Handlers
+    // --------------------------------------------------------------------------
+    // 9a. Casual "What's up bro" / "Sup bro" / "Yo bro"
+    const isWhatsUpBro =
+      cleanNorm === "what s up bro" ||
+      cleanNorm === "whats up bro" ||
+      cleanNorm === "wassup bro" ||
+      cleanNorm === "sup bro" ||
+      cleanNorm === "yo bro" ||
+      cleanNorm === "hey bro" ||
+      cleanNorm === "hi bro" ||
+      cleanNorm.includes("what s up bro") ||
+      cleanNorm.includes("whats up bro") ||
+      cleanNorm.includes("wassup bro") ||
+      cleanNorm.includes("sup bro") ||
+      cleanNorm.includes("yo bro") ||
+      cleanNorm.includes("whats up bhai") ||
+      cleanNorm.includes("sup dude") ||
+      cleanNorm.includes("hey dude") ||
+      cleanNorm.includes("what s up man") ||
+      cleanNorm.includes("whats up man") ||
+      cleanNorm.includes("sup man");
+
+    if (isWhatsUpBro) {
       revealBotResponse(
-        `Hello${firstName ? ` ${firstName}` : ""}! I am AUDIT'X Mini. How can I assist you today? You can ask me anything about our dark store project, our team, order tracking, 10-minute SLA, or catalog items!`,
+        `Hey bro! 😎 Everything is running fast and smooth here at Namma Tiptur Dark Store KA-44! Staging bays B7–T4 are clear, our 10-minute SLA timer is green, and the warehouse team is active. What's up with you? Looking to order something sweet, track a delivery, or explore our warehouse operations?`,
+        {},
+        { lastTopic: "banter", lastUserQuestion: rawQuery }
+      );
+      return;
+    }
+
+    // 9b. General "What's up" / "Sup" / "Wassup" / "Yo"
+    const isWhatsUpGeneral =
+      cleanNorm === "what s up" ||
+      cleanNorm === "whats up" ||
+      cleanNorm === "wassup" ||
+      cleanNorm === "sup" ||
+      cleanNorm === "yo" ||
+      cleanNorm === "wazzup" ||
+      cleanNorm === "sup all" ||
+      cleanNorm.startsWith("what s up ") ||
+      cleanNorm.startsWith("whats up ") ||
+      cleanNorm.startsWith("wassup ") ||
+      cleanNorm.startsWith("yo ");
+
+    if (isWhatsUpGeneral) {
+      revealBotResponse(
+        `What's up! 👋 All systems are blazing fast at Tiptur KA-44 Dark Store. Inventory is synced across all 59 SKUs, picker route times are under 2 minutes, and deliveries are rolling. What's on your mind today?`,
+        {},
+        { lastTopic: "banter", lastUserQuestion: rawQuery }
+      );
+      return;
+    }
+
+    // 9c. "What are you doing" / "What are you up to" / "What's going on"
+    const isWhatAreYouDoing =
+      cleanNorm.includes("what are you doing") ||
+      cleanNorm.includes("what r u doing") ||
+      cleanNorm.includes("what are u doing") ||
+      cleanNorm.includes("what you doing") ||
+      cleanNorm.includes("what are you up to") ||
+      cleanNorm.includes("what is going on") ||
+      cleanNorm.includes("what s going on") ||
+      cleanNorm.includes("whats going on") ||
+      cleanNorm.includes("what s happening") ||
+      cleanNorm.includes("whats happening");
+
+    if (isWhatAreYouDoing) {
+      revealBotResponse(
+        `Right now, I'm monitoring live dark store operations at Namma Tiptur Hub KA-44! 🏬\n\nI'm tracking warehouse inventory across 9 staging bays (B7 to T4), keeping tabs on our 10-minute delivery countdowns, and ready to answer any questions or help you place an order. What can I do for you right now?`,
+        {},
+        { lastTopic: "status", lastUserQuestion: rawQuery }
+      );
+      return;
+    }
+
+    // 9d. Creator / Developer Queries
+    const isWhoMadeYou =
+      cleanNorm.includes("who made you") ||
+      cleanNorm.includes("who created you") ||
+      cleanNorm.includes("who built you") ||
+      cleanNorm.includes("who is your developer") ||
+      cleanNorm.includes("who developed you") ||
+      cleanNorm.includes("who coded you") ||
+      cleanNorm.includes("who programmed you") ||
+      cleanNorm.includes("who is your creator") ||
+      cleanNorm.includes("who is your owner");
+
+    if (isWhoMadeYou) {
+      revealBotResponse(
+        `I was developed by Deepu B (Assistant Store Manager & Software Architect) along with the BCA (Data Science, 2024-27) student project team at Kalpataru First Grade Science College (KFGSC), Tiptur: Bhaskar N S (SM), A B Harshitha (MD), Thrupthi K S (OD Picker), and Sinchana B R (Order Captain) for the AUDIT'X Quick-Commerce platform!`,
+        {},
+        { lastTopic: "bot_creator", lastUserQuestion: rawQuery }
+      );
+      return;
+    }
+
+    // 9e. "Tell me a joke" / Humor
+    const isJoke =
+      cleanNorm === "joke" ||
+      cleanNorm === "jokes" ||
+      cleanNorm.includes("tell me a joke") ||
+      cleanNorm.includes("tell a joke") ||
+      cleanNorm.includes("another joke") ||
+      cleanNorm.includes("make me laugh") ||
+      cleanNorm.includes("funny") ||
+      cleanNorm.includes("tell me something funny");
+
+    if (isJoke) {
+      const jokes = [
+        "Why did the dark store picker run through Bay B7 in under 2 minutes? Because the 10-minute SLA clock was ticking and the customer needed their Cadbury Silk right now! 🍫⚡",
+        "Why do quick-commerce programmers prefer dark stores? Because even in the dark, their code delivers in under 10 minutes! 🚀💻",
+        "What did the barcode scanner say to the Dairy Milk bar? 'I've got my laser eyes on you, you're cleared for Staging Bay T4!' 📦✨",
+        "Why did the delivery rider bring a ladder to Tiptur KA-44? Because they heard our customer satisfaction ratings were through the roof! ⭐🛵",
+        "Why did the database administrator visit the dark store? To make sure all the tables had enough staging space and no deadlocks in Bay D5! 📊🏬",
+      ];
+      const randomJoke = jokes[Math.floor(Math.random() * jokes.length)];
+      revealBotResponse(
+        randomJoke,
+        {},
+        { lastTopic: "joke", lastUserQuestion: rawQuery }
+      );
+      return;
+    }
+
+    // 9f. Affirmations: "cool", "nice", "awesome", "great", "sweet"
+    const isAffirmation =
+      cleanNorm === "cool" ||
+      cleanNorm === "nice" ||
+      cleanNorm === "awesome" ||
+      cleanNorm === "great" ||
+      cleanNorm === "super" ||
+      cleanNorm === "amazing" ||
+      cleanNorm === "sweet" ||
+      cleanNorm === "wow" ||
+      cleanNorm === "dope" ||
+      cleanNorm === "lit";
+
+    if (isAffirmation) {
+      revealBotResponse(
+        `Glad you like it! 🔥 Let me know if you'd like to check out our catalog, test order tracking, explore our 9 staging bays, or see our 10-minute SLA in action!`,
+        {},
+        { lastTopic: "affirmation", lastUserQuestion: rawQuery }
+      );
+      return;
+    }
+
+    // 9g. Acknowledgments: "ok", "okay", "got it", "alright", "fine"
+    const isAcknowledgment =
+      cleanNorm === "ok" ||
+      cleanNorm === "okay" ||
+      cleanNorm === "k" ||
+      cleanNorm === "got it" ||
+      cleanNorm === "alright" ||
+      cleanNorm === "fine" ||
+      cleanNorm === "understood" ||
+      cleanNorm === "sure";
+
+    if (isAcknowledgment) {
+      revealBotResponse(
+        `Got it! 👍 Feel free to ask anytime whenever you're ready for the next question or want to explore another part of AUDIT'X.`,
+        {},
+        { lastTopic: "acknowledgment", lastUserQuestion: rawQuery }
+      );
+      return;
+    }
+
+    // 9h. Help & Command Guide
+    const isHelpOrCommands =
+      cleanNorm === "help" ||
+      cleanNorm === "commands" ||
+      cleanNorm === "command" ||
+      cleanNorm === "menu" ||
+      cleanNorm.includes("what can i ask") ||
+      cleanNorm.includes("guide me") ||
+      cleanNorm.includes("how to use") ||
+      cleanNorm === "options";
+
+    if (isHelpOrCommands) {
+      revealBotResponse(
+        [
+          "Here is what you can ask me anytime:",
+          "• 🛍️ **Catalog & Products:** Ask *'What products can I buy?'* or *'Show catalog'*",
+          "• 🏷️ **Pricing:** Ask *'How much are wall frames?'* or *'Prices'*",
+          "• 📦 **Live Orders:** Ask *'Where is my order?'* or *'Track delivery'*",
+          "• ⚡ **10-Min SLA:** Ask *'How does the 10-minute SLA work?'*",
+          "• 👥 **Team Roles:** Ask *'Who are the 5 team members?'*",
+          "• 🏬 **Warehouse Model:** Ask *'Explain staging bays B7 to T4'*",
+          "• 💻 **Tech Stack:** Ask *'What technologies are used?'*",
+          "• 📄 **PDF Export:** Type **/pdf** to download transcripts or viva questions!",
+        ].join("\n"),
+        {},
+        { lastTopic: "help", lastUserQuestion: rawQuery }
+      );
+      return;
+    }
+
+    // 9i. Pricing & Rates Queries
+    const isPricing =
+      cleanNorm === "price" ||
+      cleanNorm === "prices" ||
+      cleanNorm === "pricing" ||
+      cleanNorm === "cost" ||
+      cleanNorm === "rate" ||
+      cleanNorm.includes("how much") ||
+      cleanNorm.includes("price list") ||
+      cleanNorm.includes("frame price") ||
+      cleanNorm.includes("chocolate price") ||
+      cleanNorm.includes("item price");
+
+    if (isPricing) {
+      revealBotResponse(
+        [
+          "AUDIT'X Pricing Breakdown:",
+          "• 🖼️ **Wall Frames:** Promotional test price of **₹1 per frame** (original MRP ₹199–₹349) with 1 unit limit per order!",
+          "• 🍫 **Chocolates:** Authentic retail MRP from **₹40 to ₹299** (Cadbury Silk, Ferrero Rocher, Amul Dark Chocolate, KitKat, Snickers).",
+          "• 🚚 **Delivery Fee:** **₹0 (FREE)** under our 10-minute hyper-local delivery guarantee across Tiptur KA-44!",
+        ].join("\n"),
+        {},
+        { lastTopic: "pricing", lastUserQuestion: rawQuery }
+      );
+      return;
+    }
+
+    // 9j. How to order Walkthrough
+    const isHowToOrder =
+      cleanNorm.includes("how to order") ||
+      cleanNorm.includes("how do i order") ||
+      cleanNorm.includes("how can i order") ||
+      cleanNorm.includes("order process") ||
+      cleanNorm.includes("how do i place an order") ||
+      cleanNorm.includes("how to place order");
+
+    if (isHowToOrder) {
+      revealBotResponse(
+        [
+          "Ordering on AUDIT'X is super fast:",
+          "1. **Select Items:** Add Wall Frames (₹1 promo) or Chocolates to your cart on the Ordering page.",
+          "2. **Google Sign-In:** Sign in with Google at the top of the store so your account is linked.",
+          "3. **Address:** Enter your delivery address in Tiptur (PIN 572201).",
+          "4. **Place Order:** Click 'Place Order' — picker Thrupthi scans SKUs in Bays B7–T4 in < 2 mins, and Sinchana delivers it to your doorstep in < 8 mins!",
+        ].join("\n"),
+        {},
+        { lastTopic: "ordering_howto", lastUserQuestion: rawQuery }
+      );
+      return;
+    }
+
+    // 9k. Time-based greetings (Morning / Afternoon / Evening / Night)
+    if (cleanNorm.includes("good morning")) {
+      revealBotResponse(
+        `Good morning${firstName ? ` ${firstName}` : ""}! ☀️ Wishing you a wonderful and productive day from Namma Tiptur Hub KA-44! Ready to fulfill orders under our 10-minute SLA. How can I help you today?`,
+        {},
+        { lastTopic: "greeting", lastUserQuestion: rawQuery }
+      );
+      return;
+    }
+    if (cleanNorm.includes("good afternoon")) {
+      revealBotResponse(
+        `Good afternoon${firstName ? ` ${firstName}` : ""}! ☀️ Need an afternoon chocolate break or quick wall frame delivery? We're open and dispatching under 10 minutes at Tiptur KA-44!`,
+        {},
+        { lastTopic: "greeting", lastUserQuestion: rawQuery }
+      );
+      return;
+    }
+    if (cleanNorm.includes("good evening")) {
+      revealBotResponse(
+        `Good evening${firstName ? ` ${firstName}` : ""}! 🌆 Hope your day went well. What can I do for you at AUDIT'X Tiptur Hub KA-44 tonight?`,
+        {},
+        { lastTopic: "greeting", lastUserQuestion: rawQuery }
+      );
+      return;
+    }
+    if (cleanNorm.includes("good night")) {
+      revealBotResponse(
+        `Good night${firstName ? ` ${firstName}` : ""}! 🌙 Have a restful night. AUDIT'X Dark Store is always ready for fast deliveries whenever you need us!`,
         {},
         { lastTopic: "greeting", lastUserQuestion: rawQuery }
       );
       return;
     }
 
+    // 9l. Standard Greeting
     if (
-      norm.includes("how are you") ||
-      norm.includes("how r u") ||
-      norm.includes("how are u") ||
-      norm === "hru"
+      cleanNorm === "hi" ||
+      cleanNorm === "hello" ||
+      cleanNorm === "hey" ||
+      cleanNorm === "namaskara" ||
+      cleanNorm === "namaste" ||
+      cleanNorm === "hola" ||
+      cleanNorm.startsWith("hi ") ||
+      cleanNorm.startsWith("hello ") ||
+      cleanNorm.startsWith("hey ")
     ) {
       revealBotResponse(
-        `I am doing great${firstName ? `, ${firstName}` : ""}, thank you for asking! Ready to help you with anything about AUDIT'X dark store operations at Namma Tiptur Hub KA-44. What would you like to explore?`,
+        `Hello${firstName ? ` ${firstName}` : ""}! 👋 I am AUDIT'X Mini. How can I assist you today? You can ask me to track an order, check catalog items, view our 10-minute SLA workflow, or explore warehouse staging bays!`,
+        {},
+        { lastTopic: "greeting", lastUserQuestion: rawQuery }
+      );
+      return;
+    }
+
+    // 9m. How are you / Status pleasantries
+    if (
+      cleanNorm.includes("how are you") ||
+      cleanNorm.includes("how r u") ||
+      cleanNorm.includes("how are u") ||
+      cleanNorm === "hru" ||
+      cleanNorm.includes("how s it going") ||
+      cleanNorm.includes("how is it going") ||
+      cleanNorm.includes("hows it going") ||
+      cleanNorm.includes("how are things") ||
+      cleanNorm.includes("how you doing") ||
+      cleanNorm.includes("how is everything")
+    ) {
+      revealBotResponse(
+        `I am doing great${firstName ? `, ${firstName}` : ""}! ⚡ All 9 staging bays (B7–T4) are online, real-time stock sync is green, and our 10-minute delivery SLA is running smoothly. How are you doing today? Ready to explore or place an order?`,
         {},
         { lastTopic: "pleasantry", lastUserQuestion: rawQuery }
       );
       return;
     }
 
+    // 9n. Gratitude
     if (
-      norm.includes("thank") ||
-      norm.includes("thanks") ||
-      norm.includes("thx") ||
-      norm.includes("dhanyavada")
+      cleanNorm.includes("thank") ||
+      cleanNorm.includes("thanks") ||
+      cleanNorm.includes("thx") ||
+      cleanNorm.includes("dhanyavada")
     ) {
       revealBotResponse(
-        `You're very welcome${firstName ? `, ${firstName}` : ""}! Feel free to ask anytime if you need more information about AUDIT'X dark store operations.`,
+        `You're very welcome${firstName ? `, ${firstName}` : ""}! Feel free to ask anytime if you need more information about AUDIT'X dark store operations or your orders.`,
         {},
         { lastTopic: "pleasantry", lastUserQuestion: rawQuery }
       );
       return;
     }
 
+    // 9o. Farewell
     if (
-      norm === "bye" ||
-      norm === "goodbye" ||
-      norm === "cya" ||
-      norm.includes("see you") ||
-      norm.includes("bye bye")
+      cleanNorm === "bye" ||
+      cleanNorm === "goodbye" ||
+      cleanNorm === "cya" ||
+      cleanNorm.includes("see you") ||
+      cleanNorm.includes("bye bye")
     ) {
       revealBotResponse(
         `Goodbye${firstName ? `, ${firstName}` : ""}! Have a wonderful day and enjoy fast quick-commerce delivery from AUDIT'X Tiptur Hub KA-44!`,
@@ -1679,17 +1969,91 @@ const AuditxMiniAssistant = memo(function AuditxMiniAssistant({ isStoreOpen = tr
       return;
     }
 
-    // 10. Default Project Overview Answer
+    // ==========================================================================
+    // 10. INTELLIGENT CHATBOT FALLBACK FOR OPEN-ENDED COMMANDS & QUESTIONS
+    // ==========================================================================
+    if (cleanNorm.startsWith("why")) {
+      if (cleanNorm.includes("10 min") || cleanNorm.includes("ten min") || cleanNorm.includes("fast")) {
+        revealBotResponse(
+          "We enforce a strict 10-minute SLA because AUDIT'X operates as an ultra-dense dark store at Namma Tiptur Hub KA-44. By keeping picking under 2 minutes in Staging Bays B7–T4 and limiting our delivery radius to 2.5 km across Tiptur, rider transit takes just 6 to 8 minutes to reach customer doorsteps!",
+          {},
+          { lastTopic: "sla_why", lastUserQuestion: rawQuery }
+        );
+        return;
+      }
+      if (cleanNorm.includes("dark store") || cleanNorm.includes("darkstore")) {
+        revealBotResponse(
+          "A dark store is a micro-fulfillment warehouse that does not allow walk-in retail shoppers. Instead, it is optimized purely for high-speed picking, packing, and dispatch by warehouse staff (like Thrupthi K S) to fulfill online quick-commerce orders in minutes!",
+          {},
+          { lastTopic: "dark_store_why", lastUserQuestion: rawQuery }
+        );
+        return;
+      }
+      if (cleanNorm.includes("auditx") || cleanNorm.includes("audit x") || cleanNorm.includes("name")) {
+        revealBotResponse(
+          "The name AUDIT'X represents continuous automated auditing of dark store operations — auditing warehouse picking speed, staging bay accuracy, inventory shrinkage (DAD: Damaged/Allocated/Dump), and rider SLA compliance in real time!",
+          {},
+          { lastTopic: "auditx_name_why", lastUserQuestion: rawQuery }
+        );
+        return;
+      }
+    }
+
+    if (cleanNorm.startsWith("how")) {
+      if (cleanNorm.includes("scan") || cleanNorm.includes("barcode") || cleanNorm.includes("qr")) {
+        revealBotResponse(
+          "Warehouse picker Thrupthi K S uses our integrated HTML5 Barcode/QR Scanner to scan items in Staging Bays B7 to T4. Once the barcode matches the SKU, the system validates the pick, triggers a success sound, and moves the order to the packing & staging area!",
+          {},
+          { lastTopic: "scanner_how", lastUserQuestion: rawQuery }
+        );
+        return;
+      }
+      if (cleanNorm.includes("fast") || cleanNorm.includes("work") || cleanNorm.includes("system")) {
+        revealBotResponse(
+          "Here is how the AUDIT'X system works end-to-end:\n1. Customer places an order via the Ordering App.\n2. In-store picker (Thrupthi K S) receives the pick list and scans SKUs in Bays B7–T4 within 2 minutes.\n3. The packed order is staged at Bay T4.\n4. Delivery captain (Sinchana B R) collects the package and delivers it to the customer's Tiptur address in 6–8 minutes.\n5. Store Manager (Bhaskar N S) and ASM (Deepu B) monitor the live SLA timer and inventory.",
+          {},
+          { lastTopic: "workflow_how", lastUserQuestion: rawQuery }
+        );
+        return;
+      }
+    }
+
+    if (cleanNorm.startsWith("can you") || cleanNorm.startsWith("could you") || cleanNorm.startsWith("will you")) {
+      revealBotResponse(
+        `I can definitely help with that${firstName ? `, ${firstName}` : ""}! As the AUDIT'X Dark Store AI chatbot, I can track your active orders, check warehouse stock for frames and chocolates, guide you through placing an order, explain our 10-minute SLA, or detail our physical warehouse model. What specific details would you like to see?`,
+        {},
+        { lastTopic: "bot_capability", lastUserQuestion: rawQuery }
+      );
+      return;
+    }
+
+    if (cleanNorm.includes("tiptur") || cleanNorm.includes("kalpataru") || cleanNorm.includes("kfgsc")) {
+      revealBotResponse(
+        "AUDIT'X Namma Tiptur Hub KA-44 is proudly designed and operated in Tiptur, Karnataka (572201) by students of Kalpataru First Grade Science College (KFGSC). Our hyper-local delivery grid covers college campuses, residential areas, and local markets within 2.5 km in under 10 minutes!",
+        {},
+        { lastTopic: "tiptur_info", lastUserQuestion: rawQuery }
+      );
+      return;
+    }
+
+    // Dynamic, conversational contextual fallback for any other query or command
+    const queryExcerpt = rawQuery.length > 55 ? `${rawQuery.slice(0, 52)}...` : rawQuery;
     revealBotResponse(
       [
-        "AUDIT'X is an AI-driven Quick-Commerce Dark Store and Warehouse Operations platform built for Namma Tiptur Hub KA-44 (572201) by five BCA (Data Science) students at Kalpataru First Grade Science College (KFGSC), Tiptur: Deepu B (ASM), Bhaskar N S (SM), A B Harshitha (MD), Thrupthi K S (OD Picker), and Sinchana B R (Order Captain).",
+        `I hear you${firstName ? `, ${firstName}` : ""}! Regarding "${queryExcerpt}":`,
         "",
-        "It coordinates 59 warehouse SKUs across 9 staging bays (B7 to T4) under a 10-minute fulfillment SLA (2 minutes for in-store barcode picking + 6-to-8 minutes for last-mile delivery), backed by 8 relational database tables, 4 API routes, and real-time cross-tab synchronization.",
+        "As your AUDIT'X Dark Store AI chatbot for Namma Tiptur Hub KA-44, here is what I can do for you right now:",
+        "• 📦 **Check Orders:** Ask *'Where is my order?'* to see live dispatch status",
+        "• 🛍️ **Browse Items:** Ask *'What products can I buy?'* for Chocolates & ₹1 Wall Frames",
+        "• ⚡ **10-Min Delivery:** Ask *'How does the 10-minute SLA work?'*",
+        "• 👥 **Meet the Team:** Ask *'Who built AUDIT'X?'* to see our 5 developers",
+        "• 🏬 **Warehouse Bays:** Ask *'Show staging bays B7 to T4'*",
+        "• 📄 **PDF Downloads:** Type **/pdf** to export chat transcripts or project reports!",
         "",
-        "Would you like me to explain the 5 team roles, the 10-minute SLA countdown flow, or our full project plan?",
+        "Feel free to ask or give any command!",
       ].join("\n"),
       {},
-      { lastTopic: "overview", lastUserQuestion: rawQuery }
+      { lastTopic: "chatbot_fallback", lastUserQuestion: rawQuery }
     );
   }
 
