@@ -240,7 +240,17 @@ export async function POST(req) {
       });
     }
 
-    // Delivery slip PDF is downloaded directly inside the Ordering App, not attached to Gmail
+    // Delivery slip PDF is downloaded directly inside the Ordering App, not sent to Gmail
+    if (normStatus === "delivered") {
+      return NextResponse.json({
+        success: true,
+        skipped: true,
+        reason: "Delivery slip email to Gmail is disabled. Slip is downloaded inside the Ordering App only.",
+        orderId,
+        status: normStatus,
+      });
+    }
+
     // Send email via Gmail SMTP
     const recipientEmail =
       order.customerEmail ||

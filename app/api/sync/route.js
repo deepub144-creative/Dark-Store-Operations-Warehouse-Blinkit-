@@ -360,45 +360,9 @@ export async function POST(req) {
 
           if (!updatedOrder.statusEmailsSent) updatedOrder.statusEmailsSent = {};
 
-          if (custEmail && normNewStatus === "delivered" && !updatedOrder.delivered_email_sent && !updatedOrder.statusEmailsSent["delivered"]) {
-            updatedOrder.delivered_email_sent = true;
-            updatedOrder.lastEmailedStatus = "delivered";
-            updatedOrder.statusEmailsSent["delivered"] = new Date().toISOString();
-            const orderSnapshot = { ...updatedOrder };
-            enqueueBackgroundTask("send_delivery_email_with_slip", async () => {
-              let attempts = 0;
-              let success = false;
-              let lastErr = null;
-              while (attempts < 3 && !success) {
-                attempts++;
-                try {
-                  const res = await sendOrderEmail({
-                    name: orderSnapshot.customerName || "Customer",
-                    email: custEmail,
-                    orderId: orderSnapshot.orderId || orderSnapshot.id,
-                    items: orderSnapshot.items || [],
-                    total: orderSnapshot.totalAmount,
-                    status: "delivered",
-                    order: orderSnapshot,
-                  });
-                  if (res.ok) {
-                    success = true;
-                    console.log(`[DeliveryEmail] Slip successfully sent to ${custEmail} for #${orderSnapshot.orderId}`);
-                  } else {
-                    lastErr = res.error || res.reason;
-                    console.warn(`[DeliveryEmail] Attempt ${attempts}/3 failed for #${orderSnapshot.orderId}:`, lastErr);
-                    if (attempts < 3) await new Promise((r) => setTimeout(r, 1200 * attempts));
-                  }
-                } catch (e) {
-                  lastErr = e?.message || e;
-                  console.warn(`[DeliveryEmail] Attempt ${attempts}/3 error for #${orderSnapshot.orderId}:`, lastErr);
-                  if (attempts < 3) await new Promise((r) => setTimeout(r, 1200 * attempts));
-                }
-              }
-              if (!success) {
-                console.error(`[DeliveryEmail] All 3 attempts failed to send delivery slip for #${orderSnapshot.orderId}:`, lastErr);
-              }
-            });
+          if (normNewStatus === "delivered") {
+            // Per user explicit requirement: Delivery slip is downloaded ONLY inside the ordering app, NEVER sent to Gmail.
+            if (!updatedOrder.deliveredAt) updatedOrder.deliveredAt = new Date().toISOString();
           } else if (
             custEmail &&
             normNewStatus !== "placed" &&
