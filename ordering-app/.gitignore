@@ -30,3 +30,5 @@ blinkit-customer/
 warehouse-app/
 *.docx
 *.log
+scratch/
+*.tsbuildinfo

@@ -108,3 +108,4 @@ export const PersonIllustration = memo(function PersonIllustration({
 });
 
 export default PersonIllustration;
+

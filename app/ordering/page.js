@@ -6,7 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { doc, onSnapshot } from "firebase/firestore";
 import { db } from "@/lib/firebaseClient";
 import { CATALOG } from "@/lib/items";
-import { getDefaultItemStock, mergeCatalogItems } from "@/lib/hubState";
+import { getDefaultItemStock, mergeCatalogItems, isPuppyFrame } from "@/lib/hubState";
 import { downloadDeliverySlipPdf } from "@/lib/orderSlipPdf";
 import {
   broadcastEvent,
@@ -584,7 +584,7 @@ const OrderingProductCard = memo(function OrderingProductCard({
         <div style={{ ...S.productWeight, color: "var(--ios-label-2)" }}>
           {item.weight || "1 pack"} •{" "}
           <b style={{ color: availableUnits <= 0 ? "#FF3B30" : "#34C759" }}>
-            {availableUnits <= 0 ? "Currently unavailable" : `${availableUnits} left`}
+            {availableUnits <= 0 ? "Sold out" : `${availableUnits} left`}
           </b>
         </div>
 
@@ -1335,16 +1335,45 @@ export default function OrderingAppPage() {
           triggerToast(`🟢 "${data.payload.name || pSku}" is restored! (${restoredUnits} unit${restoredUnits > 1 ? "s" : ""} available to order)`);
         }
       }
-      if (data.type === "STOCK_DELTA" && data.payload) {
-        if (Array.isArray(data.payload.oosList)) {
-          setOosList(data.payload.oosList);
+      if (
+        (data.type === "STOCK_DELTA" ||
+          data.type === "ORDER_PLACED_STOCK_DELTA" ||
+          data.type === "STOCK_RESET" ||
+          data.type === "STOCK_UPDATE") &&
+        (data.payload || data)
+      ) {
+        const payload = data.payload || data;
+        if (Array.isArray(payload.oosList)) {
+          setOosList(payload.oosList);
         }
-        if (data.payload.inventoryStockMapPatch && typeof data.payload.inventoryStockMapPatch === "object") {
+        if (payload.inventoryStockMapPatch && typeof payload.inventoryStockMapPatch === "object") {
           setInventoryStockMap((prev) => ({
             ...prev,
-            ...data.payload.inventoryStockMapPatch,
+            ...payload.inventoryStockMapPatch,
           }));
         }
+        if (payload.inventoryStockMap && typeof payload.inventoryStockMap === "object") {
+          setInventoryStockMap(payload.inventoryStockMap);
+        }
+      }
+      if (data.type === "ORDER_CREATED" && data.payload?.items) {
+        setInventoryStockMap((prev) => {
+          const updated = { ...prev };
+          const newlyOos = [];
+          for (const it of data.payload.items) {
+            const sku = it.sku || it.skuId;
+            if (sku) {
+              const cur = Number(updated[sku] ?? getDefaultItemStock(it));
+              const rem = Math.max(0, cur - Number(it.qty || it.quantity || 1));
+              updated[sku] = rem;
+              if (rem <= 0) newlyOos.push(sku);
+            }
+          }
+          if (newlyOos.length > 0) {
+            setOosList((prevOos) => Array.from(new Set([...prevOos, ...newlyOos])));
+          }
+          return updated;
+        });
       }
       if (data.type === "PICKER_DELAY_UPDATED") {
         const p = data.payload || data;
@@ -1688,7 +1717,7 @@ export default function OrderingAppPage() {
     (item) => {
       if (!item) return 0;
       const itemName = String(item.name || "").toLowerCase();
-      if (item.soldOut || item.inStock === false || itemName.includes("pup")) {
+      if (item.soldOut || item.inStock === false || itemName.includes("pup") || isPuppyFrame(item)) {
         return 0;
       }
       if (oosList.includes(item.sku)) return 0;
@@ -2168,6 +2197,28 @@ export default function OrderingAppPage() {
     setCustomFloatingSub("Packing your order");
     setCustomFloatingBadge("");
     setCart({});
+
+    // Deduct stock units immediately on ordering device & broadcast in fraction of second
+    if (Array.isArray(confirmedOrder.items)) {
+      setInventoryStockMap((prev) => {
+        const nextMap = { ...prev };
+        const newlyOos = [];
+        for (const item of confirmedOrder.items) {
+          const sku = item.sku || item.skuId;
+          if (sku) {
+            const cur = Number(nextMap[sku] ?? getDefaultItemStock(item));
+            const rem = Math.max(0, cur - Number(item.qty || 1));
+            nextMap[sku] = rem;
+            if (rem <= 0) newlyOos.push(sku);
+          }
+        }
+        if (newlyOos.length > 0) {
+          setOosList((prevOos) => Array.from(new Set([...prevOos, ...newlyOos])));
+        }
+        return nextMap;
+      });
+    }
+    broadcastEvent("ORDER_CREATED", confirmedOrder);
 
     triggerToast(`Order #${confirmedId} Placed! Arriving in 10 minutes!`);
 
@@ -3695,7 +3746,7 @@ export default function OrderingAppPage() {
                             {visibleCatalog.map((item, idx) => {
                               const qty = cart[item.sku] || 0;
                               const availableUnits = getAvailableUnits(item);
-                              const isSoldOut = item.soldOut === true || item.inStock === false || String(item.name || "").toLowerCase().includes("pup");
+                              const isSoldOut = item.soldOut === true || item.inStock === false || isPuppyFrame(item) || availableUnits <= 0;
                               const isAutoOos = availableUnits <= 0;
                               const isOos = oosList.includes(item.sku) || isSoldOut || isAutoOos;
                               return (
@@ -3786,7 +3837,7 @@ export default function OrderingAppPage() {
                         {visibleCatalog.map((item, idx) => {
                           const qty = cart[item.sku] || 0;
                           const availableUnits = getAvailableUnits(item);
-                          const isSoldOut = item.soldOut === true || item.inStock === false || String(item.name || "").toLowerCase().includes("pup");
+                          const isSoldOut = item.soldOut === true || item.inStock === false || isPuppyFrame(item) || availableUnits <= 0;
                           const isAutoOos = availableUnits <= 0;
                           const isOos = oosList.includes(item.sku) || isSoldOut || isAutoOos;
                           return (

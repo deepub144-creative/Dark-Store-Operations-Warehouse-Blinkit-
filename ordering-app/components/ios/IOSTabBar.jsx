@@ -199,3 +199,4 @@ export default function IOSTabBar({ tabs = [], activeId, onChange }) {
     </nav>
   );
 }
+

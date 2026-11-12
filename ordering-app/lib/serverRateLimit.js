@@ -273,3 +273,4 @@ export async function checkAuthRateLimit({ scope = "otp", key, limit = 8, window
       : `Too many verification attempts. Please wait ${res.retryAfterSec}s and try again.`,
   };
 }
+

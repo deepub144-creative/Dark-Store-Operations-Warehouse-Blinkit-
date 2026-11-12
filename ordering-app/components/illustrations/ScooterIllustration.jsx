@@ -162,3 +162,4 @@ export const ScooterIllustration = memo(function ScooterIllustration({
 });
 
 export default ScooterIllustration;
+

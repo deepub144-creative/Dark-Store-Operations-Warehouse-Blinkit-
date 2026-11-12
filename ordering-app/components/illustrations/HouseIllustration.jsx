@@ -117,3 +117,4 @@ export const HouseIllustration = memo(function HouseIllustration({
 });
 
 export default HouseIllustration;
+
