@@ -171,7 +171,7 @@ export async function POST(req) {
 
     let extraResult = {};
 
-    const mutRes = await mutateHubStateAtomically((next) => {
+    const mutRes = await mutateHubStateAtomically(async (next) => {
       switch (action) {
         case "REGISTER_LOGIN": {
           const rawEmail = String(payload.email || "").trim().toLowerCase();
@@ -499,26 +499,30 @@ export async function POST(req) {
             next.inventoryStockMap[sku] = targetUnits;
             next.stockVersion = Number(next.stockVersion || 1) + 1;
 
+            const extraWrites = [];
             if (adminDb) {
-              try {
-                await adminDb.collection("inventory").doc(sku).set(
-                  {
-                    sku,
-                    unitsInStock: targetUnits,
-                    availableUnits: targetUnits,
-                    reservedUnits: 0,
-                    inStock: true,
-                    updatedAt: new Date().toISOString(),
-                  },
-                  { merge: true }
-                );
-              } catch (e) {
-                console.warn("[TOGGLE_OOS] Firestore inventory write warning:", e?.message);
-              }
+              extraWrites.push(async () => {
+                try {
+                  await adminDb.collection("inventory").doc(sku).set(
+                    {
+                      sku,
+                      unitsInStock: targetUnits,
+                      availableUnits: targetUnits,
+                      reservedUnits: 0,
+                      inStock: true,
+                      updatedAt: new Date().toISOString(),
+                    },
+                    { merge: true }
+                  );
+                } catch (e) {
+                  console.warn("[TOGGLE_OOS] Firestore inventory write warning:", e?.message);
+                }
+              });
             }
 
             return {
               ...out,
+              extraWrites,
               sseEvent: {
                 type: "STOCK_DELTA",
                 storeId: targetStoreId,
@@ -542,23 +546,27 @@ export async function POST(req) {
             }
             next.stockVersion = Number(next.stockVersion || 1) + 1;
 
+            const extraWrites = [];
             if (adminDb) {
-              try {
-                await adminDb.collection("inventory").doc(sku).set(
-                  {
-                    sku,
-                    availableUnits: 0,
-                    inStock: false,
-                    updatedAt: new Date().toISOString(),
-                  },
-                  { merge: true }
-                );
-              } catch (e) {
-                console.warn("[TOGGLE_OOS] Firestore inventory write warning:", e?.message);
-              }
+              extraWrites.push(async () => {
+                try {
+                  await adminDb.collection("inventory").doc(sku).set(
+                    {
+                      sku,
+                      availableUnits: 0,
+                      inStock: false,
+                      updatedAt: new Date().toISOString(),
+                    },
+                    { merge: true }
+                  );
+                } catch (e) {
+                  console.warn("[TOGGLE_OOS] Firestore inventory write warning:", e?.message);
+                }
+              });
             }
 
             return {
+              extraWrites,
               sseEvent: {
                 type: "STOCK_DELTA",
                 storeId: targetStoreId,

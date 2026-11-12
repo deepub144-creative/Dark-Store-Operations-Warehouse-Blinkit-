@@ -379,6 +379,7 @@ const OrderingSearchInput = memo(function OrderingSearchInput({
 
   useEffect(() => {
     if (value) return;
+    if (typeof document !== "undefined" && document.hidden) return;
     const curItem = SEARCH_PLACEHOLDER_ITEMS[itemIdx % SEARCH_PLACEHOLDER_ITEMS.length];
     const full = `Search "${curItem}"...`;
     let pauseTimer = null;
@@ -389,7 +390,7 @@ const OrderingSearchInput = memo(function OrderingSearchInput({
           setCharPos((p) => p + 1);
           setPlaceholder(full.slice(0, charPos + 1));
         } else {
-          pauseTimer = setTimeout(() => setIsDeleting(true), 1600);
+          pauseTimer = setTimeout(() => setIsDeleting(true), 2000);
         }
       } else if (charPos > 9) {
         setCharPos((p) => p - 1);
@@ -398,7 +399,7 @@ const OrderingSearchInput = memo(function OrderingSearchInput({
         setIsDeleting(false);
         setItemIdx((p) => (p + 1) % SEARCH_PLACEHOLDER_ITEMS.length);
       }
-    }, isDeleting ? 28 : 65);
+    }, isDeleting ? 65 : 120);
 
     return () => {
       clearTimeout(timer);

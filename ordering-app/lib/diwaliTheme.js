@@ -558,6 +558,10 @@ function drawCrackers() {
 
 function frame() {
   if (!on || !cx) return;
+  if (typeof document !== "undefined" && document.hidden) {
+    raf = requestAnimationFrame(frame);
+    return;
+  }
   cx.clearRect(0, 0, W, H);
   t += 0.016;
   for (const p of petals) {
@@ -698,7 +702,9 @@ function mount(opts = {}) {
   root = document.querySelector(o.root) || document.body;
   applyTheme();
   buildLayers();
-  petals = RM ? [] : Array.from({ length: o.petals }, () => petal(false));
+  const isMobile = typeof window !== "undefined" && (window.innerWidth <= 768 || (typeof navigator !== "undefined" && (navigator.maxTouchPoints > 0 || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent))));
+  const petalCount = RM ? 0 : isMobile ? Math.min(o.petals, 8) : o.petals;
+  petals = Array.from({ length: petalCount }, () => petal(false));
   layout();
   addEventListener("resize", layout);
   addEventListener("scroll", positionLightsOnly, { passive: true });
