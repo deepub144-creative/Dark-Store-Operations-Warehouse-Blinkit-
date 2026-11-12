@@ -44,6 +44,7 @@ const INVENTORY_MANAGEMENT_ACTIONS = new Set([
   "TOGGLE_OOS",
   "UPDATE_STOCK_UNIT",
   "RESET_DEFAULT_UNITS",
+  "ASM_RESTOCK_ALL",
   "SAVE_INVENTORY",
   "GRN_INWARD",
   "AUDIT_ADJUSTMENT",
@@ -616,6 +617,7 @@ export async function POST(req) {
           return { skipRevisionBump: true };
         }
 
+        case "ASM_RESTOCK_ALL":
         case "RESET_DEFAULT_UNITS": {
           const defInv = buildDefaultInventoryMap(next.customCatalogItems);
           const defStock = buildDefaultStockBySku(next.customCatalogItems, defInv, null);
@@ -630,10 +632,28 @@ export async function POST(req) {
               { openingUnits: rec.unitsInStock, netUnitsDelta: 0, movementCount: 0 },
             ])
           );
+          if (adminDb) {
+            try {
+              const batch = adminDb.batch();
+              for (const [sku, qty] of Object.entries(defInv)) {
+                const docRef = adminDb.collection("inventory").doc(sku);
+                batch.set(docRef, { units: qty, updatedAt: new Date().toISOString() }, { merge: true });
+              }
+              enqueueBackgroundTask("restock-firestore-persist", () => batch.commit());
+            } catch (e) {
+              console.warn("[ASM_RESTOCK_ALL] Firestore batch write error:", e?.message);
+            }
+          }
           return {
             sseEvent: {
               type: "STOCK_RESET",
               storeId: targetStoreId,
+              oosList: next.oosList,
+            },
+            result: {
+              success: true,
+              restockedCount: Object.keys(defInv).length - next.oosList.length,
+              soldOutCount: next.oosList.length,
               oosList: next.oosList,
             },
           };

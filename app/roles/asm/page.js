@@ -221,6 +221,42 @@ export default function AssistantStoreManagerApp({ embedded = false, sharedCloud
     setTimeout(() => setActionSuccess(""), 3500);
   }
 
+  async function handleAsmRestockAll() {
+    playSuccessChime();
+    const res = await dispatchCloudAction("ASM_RESTOCK_ALL", {
+      actor: "Deepu B (ASM)",
+      actorRole: "ASM",
+      storeId: "TIPTUR-HUB-KA44",
+    });
+    if (res?.ok && res.state) {
+      setInventoryStockMap(res.state.inventoryStockMap || {});
+      setOosList(res.state.oosList || []);
+    } else {
+      const newMap = {};
+      const oos = [];
+      catalogItems.forEach((item) => {
+        const isPup =
+          String(item.sku || "").toUpperCase() === "FRAME-10" ||
+          String(item.sku || "").toUpperCase() === "FRAME-28" ||
+          String(item.sku || "").toUpperCase() === "FRAME-29" ||
+          String(item.name || "").toLowerCase().includes("pup");
+        if (isPup) {
+          newMap[item.sku] = 0;
+          oos.push(item.sku);
+        } else {
+          newMap[item.sku] = 5;
+        }
+      });
+      setInventoryStockMap(newMap);
+      setOosList(oos);
+      try {
+        localStorage.setItem("auditx_inventory_units", JSON.stringify(newMap));
+      } catch (e) {}
+    }
+    setActionSuccess("🛡️ ASM Restocked all Chocolates & Frames to full inventory! (Puppy frame remains sold out)");
+    setTimeout(() => setActionSuccess(""), 4500);
+  }
+
   async function handleRestockUnit(sku, delta = 1) {
     playNotificationChime();
     const item = catalogItems.find((c) => c.sku === sku);
@@ -816,13 +852,36 @@ export default function AssistantStoreManagerApp({ embedded = false, sharedCloud
         {/* MODULE 1: LIVE ASM AREA INVENTORY CONTROLLER & AVAILABILITY */}
         {activeTab === "itemHelp" && (
           <div>
-            <div style={S.panelHeader}>
+            <div style={{ ...S.panelHeader, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
               <div>
                 <h2 style={S.panelTitle}>ASM Area Live Inventory &amp; Availability Controller</h2>
                 <p style={S.panelSub}>
                   Real-time SKU stock, 5-min checkout holds, low-stock alerts &amp; movement ledger across your assigned area. Updates live within &lt;1s on every order.
                 </p>
               </div>
+              <button
+                type="button"
+                onClick={handleAsmRestockAll}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 8,
+                  background: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
+                  color: "#ffffff",
+                  border: "none",
+                  borderRadius: 12,
+                  padding: "10px 18px",
+                  fontSize: 13,
+                  fontWeight: 800,
+                  cursor: "pointer",
+                  boxShadow: "0 4px 14px rgba(16, 185, 129, 0.4)",
+                  transition: "all 0.2s ease",
+                  whiteSpace: "nowrap",
+                }}
+                title="ASM Quick Restock: Restock all Chocolates & Frames to 5 units (Puppy frame remains sold out)"
+              >
+                🛡️ ASM Restock All (Chocolates &amp; Frames)
+              </button>
             </div>
 
             <StockMonitorPanel

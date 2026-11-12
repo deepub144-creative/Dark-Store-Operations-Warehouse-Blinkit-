@@ -41,20 +41,30 @@ export function getBaseCatalogDefaultUnits(item) {
   return 5;
 }
 
+export function isPuppyFrame(item) {
+  if (!item) return false;
+  const sku = String(item.sku || "").toUpperCase();
+  const name = String(item.name || "").toLowerCase();
+  const img = String(item.image || "").toLowerCase();
+  return (
+    sku === "FRAME-10" ||
+    sku === "FRAME-28" ||
+    sku === "FRAME-29" ||
+    name.includes("puppy") ||
+    name.includes("pup") ||
+    img.includes("pup")
+  );
+}
+
 export function getDefaultItemStock(item, ignoreFlags = true) {
   if (!item) return 5;
-  if (String(item.name || "").toLowerCase().includes("pup")) {
+  if (isPuppyFrame(item)) {
     return 0;
   }
   if (!ignoreFlags && (item.soldOut === true || item.inStock === false)) {
     return 0;
   }
-  if (
-    item.category === "Frames" ||
-    String(item.sku || "").startsWith("FRAME-")
-  ) {
-    return 1;
-  }
+  // All Frames and Chocolates restocked to 5 units
   return 5;
 }
 
@@ -104,6 +114,7 @@ export function buildDefaultOosList(inventoryMap = {}, customItems = []) {
   for (const item of all) {
     const qty = inventoryMap[item.sku];
     if (
+      isPuppyFrame(item) ||
       item.soldOut === true ||
       item.inStock === false ||
       (qty !== undefined && Number(qty) <= 0)
@@ -111,7 +122,7 @@ export function buildDefaultOosList(inventoryMap = {}, customItems = []) {
       oos.push(item.sku);
     }
   }
-  return oos;
+  return Array.from(new Set(oos));
 }
 
 export function getLowStockThreshold(item) {

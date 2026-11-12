@@ -547,6 +547,29 @@ export default function WarehouseDashboardPage() {
     setTimeout(() => setActionSuccess(""), 3500);
   }
 
+  // ASM Restock All: Restock all 59 items in Frames & Chocolates to 5 units (Puppy frame remains sold out)
+  async function handleAsmRestockAll() {
+    playSuccessChime();
+    const res = await dispatchCloudAction("ASM_RESTOCK_ALL", {
+      actor: staff?.name || "Deepu B (ASM)",
+      actorRole: staff?.roleCode || "ASM",
+      storeId: "TIPTUR-HUB-KA44",
+    });
+    if (res?.ok && res.state) {
+      setInventoryStockMap(res.state.inventoryStockMap || {});
+      setOosList(res.state.oosList || []);
+    } else {
+      const defaultMap = {};
+      mergeCatalogItems(STORE_MANAGER_CATALOG, customCatalogItems).forEach((item) => {
+        defaultMap[item.sku] = getDefaultItemStock(item);
+      });
+      localStorage.setItem("auditx_inventory_units", JSON.stringify(defaultMap));
+      setInventoryStockMap(defaultMap);
+    }
+    setActionSuccess("🛡️ ASM Restocked all Chocolates & Frames! Only puppy frame remains sold out.");
+    setTimeout(() => setActionSuccess(""), 4500);
+  }
+
   // Save all warehouse inventory items (Frames & Chocolates + Putaway items)
   async function handleSaveAllInventory() {
     playSuccessChime();
@@ -3860,6 +3883,19 @@ export default function WarehouseDashboardPage() {
                   title="Reset all items to 1 unit single for Frames and 5 units fixed for Chocolates"
                 >
                   ↺ Reset Fixed Units (1 &amp; 5)
+                </button>
+
+                <button
+                  type="button"
+                  style={{
+                    ...S.saveInventoryBtn,
+                    background: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
+                    boxShadow: "0 4px 14px rgba(16, 185, 129, 0.35)",
+                  }}
+                  onClick={handleAsmRestockAll}
+                  title="ASM Quick Restock: Restock all 59 Chocolates & Frames to 5 units (Puppy frame remains sold out)"
+                >
+                  🛡️ ASM Restock All (Frames &amp; Chocs)
                 </button>
 
                 <button
