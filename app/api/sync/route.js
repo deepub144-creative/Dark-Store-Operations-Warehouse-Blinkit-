@@ -720,7 +720,21 @@ export async function POST(req) {
             ...(next.capLogs || []).slice(0, 29),
           ];
           extraResult.addedItem = newItem;
-          return adj;
+          extraResult.customCatalogItems = next.customCatalogItems;
+          return {
+            ...adj,
+            sseEvent: {
+              ...(adj?.sseEvent || {}),
+              type: "PUTAWAY_ITEM_ADDED",
+              storeId: targetStoreId,
+              changedSkus: [sku],
+              addedItem: newItem,
+              customCatalogItems: next.customCatalogItems,
+              inventoryStockMapPatch: { [sku]: units },
+              stockBySkuPatch: { [sku]: next.stockBySku[sku] },
+              oosList: next.oosList,
+            },
+          };
         }
 
         case "PUTAWAY_REMOVE_ITEM": {
@@ -739,11 +753,15 @@ export async function POST(req) {
           }
           next.oosList = (next.oosList || []).filter((s) => s !== sku);
           next.stockVersion = Number(next.stockVersion || 1) + 1;
+          extraResult.customCatalogItems = next.customCatalogItems;
+          extraResult.removedSku = sku;
           return {
             sseEvent: {
-              type: "STOCK_DELTA",
+              type: "PUTAWAY_ITEM_REMOVED",
               storeId: targetStoreId,
+              removedSku: sku,
               changedSkus: [sku],
+              customCatalogItems: next.customCatalogItems,
               oosList: next.oosList,
             },
           };

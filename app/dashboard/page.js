@@ -818,6 +818,35 @@ export default function WarehouseDashboardPage() {
           try { localStorage.setItem("auditx_complaints", JSON.stringify(updated)); } catch (e) { }
           return updated;
         });
+      } else if (data.type === "PUTAWAY_ITEM_ADDED" && data.payload) {
+        const newItem = data.payload.item;
+        if (Array.isArray(data.payload.customCatalogItems)) {
+          setCustomCatalogItems(data.payload.customCatalogItems);
+        } else if (newItem) {
+          setCustomCatalogItems((prev) => [newItem, ...(prev || []).filter((c) => c.sku !== newItem.sku)]);
+        }
+        if (newItem?.sku && Number.isFinite(Number(data.payload.units || newItem.units))) {
+          const u = Number(data.payload.units || newItem.units);
+          setInventoryStockMap((prev) => ({ ...prev, [newItem.sku]: u }));
+          setStockBySku((prev) => ({
+            ...prev,
+            [newItem.sku]: {
+              skuId: newItem.sku,
+              storeId: "TIPTUR-HUB-KA44",
+              unitsInStock: u,
+              availableUnits: u,
+              reservedUnits: 0,
+              soldToday: 0,
+            },
+          }));
+        }
+        setActionSuccess(`📥 Putaway Update: "${newItem?.name || "New Item"}" dumped live by ASM Deepu B!`);
+        setTimeout(() => setActionSuccess(""), 4000);
+      } else if (data.type === "PUTAWAY_ITEM_REMOVED" && data.payload?.sku) {
+        setCustomCatalogItems((prev) => (prev || []).filter((c) => c.sku !== data.payload.sku));
+      } else if (data.type === "ASM_AUDIT_SUBMITTED" && data.payload) {
+        setActionSuccess(`🛡️ ASM Solo Audit: ${data.payload.sku} verified by Deepu B (${data.payload.status})`);
+        setTimeout(() => setActionSuccess(""), 4000);
       } else if (data.type === "ORDER_CREATED" && data.payload) {
         setOrders((prev) => sanitizeOrders([data.payload, ...prev.filter((o) => o.id !== data.payload.id)]));
       } else if (data.type === "ORDER_STAGED" || data.type === "ORDER_DISPATCHED" || data.type === "ORDER_DELIVERED") {
@@ -2279,7 +2308,7 @@ export default function WarehouseDashboardPage() {
                     <WarehouseGlyph name="shield" size={26} />
                   </span>
                   <span style={{ ...S.launcherName, color: activeTab === "asmDesk" ? "#ffffff" : "#cbd5e1" }}>
-                    ASM Putaway
+                    ASM Solo Audit &amp; Putaway
                   </span>
                 </button>
               </div>
@@ -2366,7 +2395,7 @@ export default function WarehouseDashboardPage() {
                   { id: "orderCap", label: "Order Cap & Surge", icon: "🎯" },
                   { id: "erdDfd", label: "ERD & DFD Architecture", icon: "🏗️" },
                   { id: "history", label: "Daily History", icon: "📜" },
-                  { id: "asmDesk", label: "ASM Putaway Desk", icon: "🛡️" },
+                  { id: "asmDesk", label: "🛡️ ASM Solo Audit & Putaway", icon: "🛡️" },
                 ].map((tab) => {
                   const isActive = activeTab === tab.id;
                   return (

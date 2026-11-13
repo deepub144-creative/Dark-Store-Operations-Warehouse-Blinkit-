@@ -1335,6 +1335,36 @@ export default function OrderingAppPage() {
           triggerToast(`🟢 "${data.payload.name || pSku}" is restored! (${restoredUnits} unit${restoredUnits > 1 ? "s" : ""} available to order)`);
         }
       }
+      if (data.type === "PUTAWAY_ITEM_ADDED" && data.payload) {
+        const newItem = data.payload.item;
+        const allCustoms = Array.isArray(data.payload.customCatalogItems)
+          ? data.payload.customCatalogItems
+          : newItem
+          ? [newItem, ...customCatalogItems.filter((c) => c.sku !== newItem.sku)]
+          : null;
+        if (allCustoms) {
+          setCustomCatalogItems(allCustoms);
+          try {
+            localStorage.setItem("auditx_custom_catalog", JSON.stringify(allCustoms));
+          } catch {}
+        }
+        if (newItem?.sku && Number.isFinite(Number(data.payload.units || newItem.units))) {
+          const u = Number(data.payload.units || newItem.units);
+          setInventoryStockMap((prev) => ({ ...prev, [newItem.sku]: u }));
+          setOosList((prev) => prev.filter((s) => s !== newItem.sku));
+        }
+        playSuccessChime();
+        triggerToast(`✨ Fresh Arrival! "${newItem?.name || "New Item"}" was just added and is live to order!`);
+      }
+      if (data.type === "PUTAWAY_ITEM_REMOVED" && data.payload?.sku) {
+        setCustomCatalogItems((prev) => {
+          const nextArr = prev.filter((c) => c.sku !== data.payload.sku);
+          try {
+            localStorage.setItem("auditx_custom_catalog", JSON.stringify(nextArr));
+          } catch {}
+          return nextArr;
+        });
+      }
       if (
         (data.type === "STOCK_DELTA" ||
           data.type === "ORDER_PLACED_STOCK_DELTA" ||

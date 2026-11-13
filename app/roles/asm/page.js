@@ -14,6 +14,8 @@ import {
 import { mergeCatalogItems, getDefaultItemStock } from "@/lib/hubState";
 import LiveOrderPipeline from "@/components/LiveOrderPipeline";
 import StockMonitorPanel from "@/components/inventory/StockMonitorPanel";
+import SharedScanner from "@/components/SharedScanner";
+import ErrorBoundary from "@/components/ErrorBoundary";
 
 // Official Dark Store Catalog for ASM: Strictly matching Ordering App & SM Dashboard (Frames = 1 unit, Chocolates = 5 units)
 const ASM_OFFICIAL_CATALOG = CATALOG.filter(
@@ -64,6 +66,7 @@ export default function AssistantStoreManagerApp({ embedded = false, sharedCloud
   const [auditSku, setAuditSku] = useState(ASM_OFFICIAL_CATALOG[0]);
   const [physicalCountInput, setPhysicalCountInput] = useState(5);
   const [auditNotes, setAuditNotes] = useState("");
+  const [auditReason, setAuditReason] = useState("ROUTINE_ACCURATE");
   const [submittedAudits, setSubmittedAudits] = useState([
     {
       id: "AUD-KA44-901",
@@ -75,8 +78,25 @@ export default function AssistantStoreManagerApp({ embedded = false, sharedCloud
       status: "VERIFIED_ACCURATE",
       date: "Today, 14:00",
       auditor: "Deepu B (ASM)",
+      reason: "ROUTINE_ACCURATE",
+      notes: "Routine 100% physical count verification. Accurate.",
     },
   ]);
+
+  // Load persistent solo audits from localStorage on mount
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const saved = localStorage.getItem("auditx_asm_solo_audits");
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setSubmittedAudits(parsed);
+          }
+        }
+      } catch {}
+    }
+  }, []);
 
   // Sync live catalog, stock units, Putaway items, movements & alerts via shared parent or <1s SSE stream
   useEffect(() => {
@@ -109,28 +129,56 @@ export default function AssistantStoreManagerApp({ embedded = false, sharedCloud
 
     if (sharedCloudState) {
       applyCloudSnapshot(sharedCloudState);
-      return;
+    } else {
+      const cached = getCachedCloudHubState();
+      if (cached) {
+        applyCloudSnapshot(cached);
+      }
     }
 
-    const cached = getCachedCloudHubState();
-    if (cached) {
-      applyCloudSnapshot(cached);
-    }
-
-    const unsubCloud = subscribeToCloudHub(
-      (cloudState) => {
-        applyCloudSnapshot(cloudState);
-      },
-      1800,
-      { scope: "asm", storeId: "TIPTUR-HUB-KA44", batchWindowMs: 250 }
-    );
+    const unsubCloud = !sharedCloudState
+      ? subscribeToCloudHub(
+          (cloudState) => {
+            applyCloudSnapshot(cloudState);
+          },
+          1800,
+          { scope: "asm", storeId: "TIPTUR-HUB-KA44", batchWindowMs: 250 }
+        )
+      : () => {};
 
     const unsubBus = subscribeToEvents((data) => {
+      if (!data) return;
       if (data.type === "ITEM_STOCK_TOGGLED" && data.payload) {
         const { sku, inStock } = data.payload;
         setCatalogItems((prev) =>
           prev.map((it) => (it.sku === sku ? { ...it, inStock } : it))
         );
+      }
+      if (data.type === "PUTAWAY_ITEM_ADDED" && data.payload) {
+        const newItem = data.payload.item;
+        if (Array.isArray(data.payload.customCatalogItems)) {
+          setCustomCatalogItems(data.payload.customCatalogItems);
+        } else if (newItem) {
+          setCustomCatalogItems((prev) => [newItem, ...(prev || []).filter((c) => c.sku !== newItem.sku)]);
+        }
+        if (newItem?.sku && Number.isFinite(Number(data.payload.units || newItem.units))) {
+          const u = Number(data.payload.units || newItem.units);
+          setInventoryStockMap((prev) => ({ ...prev, [newItem.sku]: u }));
+          setStockBySku((prev) => ({
+            ...prev,
+            [newItem.sku]: {
+              skuId: newItem.sku,
+              storeId: "TIPTUR-HUB-KA44",
+              unitsInStock: u,
+              availableUnits: u,
+              reservedUnits: 0,
+              soldToday: 0,
+            },
+          }));
+        }
+      }
+      if (data.type === "PUTAWAY_ITEM_REMOVED" && data.payload?.sku) {
+        setCustomCatalogItems((prev) => (prev || []).filter((c) => c.sku !== data.payload.sku));
       }
     });
 
@@ -395,24 +443,64 @@ export default function AssistantStoreManagerApp({ embedded = false, sharedCloud
     const parsedUnits = Math.max(1, parseInt(putawayUnits, 10) || (putawayCategory === "Frames" ? 1 : 5));
     const parsedPrice = Math.max(1, Number(putawayPrice));
     const parsedMrp = Math.max(parsedPrice, Number(putawayMrp) || parsedPrice);
+    const generatedSku = `PUTAWAY-${putawayCategory === "Frames" ? "FRM" : "CHC"}-${Date.now().toString().slice(-6)}`;
+    const aisleVal = putawayAisle.trim() || (putawayCategory === "Frames" ? "F1 - NEW - 001" : "C1 - NEW - 001");
+
+    const itemPayload = {
+      sku: generatedSku,
+      name: putawayName.trim(),
+      category: putawayCategory,
+      price: parsedPrice,
+      mrp: parsedMrp,
+      units: parsedUnits,
+      aisle: aisleVal,
+      image: putawayImage || (putawayCategory === "Frames" ? "/frames/programming-stickers.jpg" : "/choclates/beatss.jpg"),
+      addedBy: "Deepu B (ASM)",
+    };
 
     const res = await dispatchCloudAction("PUTAWAY_ADD_ITEM", {
-      item: {
-        name: putawayName.trim(),
-        category: putawayCategory,
-        price: parsedPrice,
-        mrp: parsedMrp,
-        units: parsedUnits,
-        aisle:
-          putawayAisle.trim() ||
-          (putawayCategory === "Frames" ? "F1 - NEW - 001" : "C1 - NEW - 001"),
-        image: putawayImage,
-        addedBy: "Deepu B (ASM)",
-      },
+      item: itemPayload,
     });
     setPutawayUploading(false);
 
     if (res?.ok) {
+      const addedItem = res.data?.addedItem || {
+        ...itemPayload,
+        inStock: parsedUnits > 0,
+        createdAt: new Date().toISOString(),
+      };
+
+      // 1. Immediately update ASM local states
+      const nextCustoms = [addedItem, ...customCatalogItems.filter((c) => c.sku !== addedItem.sku)];
+      setCustomCatalogItems(nextCustoms);
+      setInventoryStockMap((prev) => ({ ...prev, [addedItem.sku]: parsedUnits }));
+      setStockBySku((prev) => ({
+        ...prev,
+        [addedItem.sku]: {
+          skuId: addedItem.sku,
+          storeId: "TIPTUR-HUB-KA44",
+          unitsInStock: parsedUnits,
+          availableUnits: parsedUnits,
+          reservedUnits: 0,
+          soldToday: 0,
+        },
+      }));
+
+      // 2. Persist locally
+      if (typeof window !== "undefined") {
+        try {
+          localStorage.setItem("auditx_custom_catalog", JSON.stringify(nextCustoms));
+        } catch {}
+      }
+
+      // 3. Broadcast immediately to all tabs (Ordering App, SM Dashboard, Picker, Rider)
+      broadcastEvent("PUTAWAY_ITEM_ADDED", {
+        item: addedItem,
+        customCatalogItems: nextCustoms,
+        sku: addedItem.sku,
+        units: parsedUnits,
+      });
+
       playSuccessChime();
       setActionSuccess(
         `📥 Putaway Complete! "${putawayName.trim()}" (${parsedUnits} units @ ₹${parsedPrice}) dumped live to Ordering App & Dashboards!`
@@ -431,6 +519,14 @@ export default function AssistantStoreManagerApp({ embedded = false, sharedCloud
   async function handleRemovePutawayItem(sku, name) {
     const res = await dispatchCloudAction("PUTAWAY_REMOVE_ITEM", { sku });
     if (res?.ok) {
+      const filtered = customCatalogItems.filter((c) => c.sku !== sku);
+      setCustomCatalogItems(filtered);
+      if (typeof window !== "undefined") {
+        try {
+          localStorage.setItem("auditx_custom_catalog", JSON.stringify(filtered));
+        } catch {}
+      }
+      broadcastEvent("PUTAWAY_ITEM_REMOVED", { sku, customCatalogItems: filtered });
       playNotificationChime();
       setActionSuccess(`🗑️ Removed custom Putaway item "${name}".`);
       setTimeout(() => setActionSuccess(""), 3000);
@@ -486,48 +582,81 @@ export default function AssistantStoreManagerApp({ embedded = false, sharedCloud
 
   async function handleSubmitSoloAudit(e) {
     e.preventDefault();
+    const targetItem = auditSku || catalogItems[0] || ASM_OFFICIAL_CATALOG[0] || {};
     const systemQty =
-      stockBySku[auditSku.sku]?.unitsInStock !== undefined
-        ? Number(stockBySku[auditSku.sku].unitsInStock)
-        : inventoryStockMap[auditSku.sku] !== undefined
-        ? Number(inventoryStockMap[auditSku.sku])
-        : getDefaultItemStock(auditSku);
+      stockBySku[targetItem.sku]?.unitsInStock !== undefined
+        ? Number(stockBySku[targetItem.sku].unitsInStock)
+        : inventoryStockMap[targetItem.sku] !== undefined
+        ? Number(inventoryStockMap[targetItem.sku])
+        : getDefaultItemStock(targetItem);
     const physicalQty = Math.max(0, parseInt(physicalCountInput, 10) || 0);
     const variance = physicalQty - systemQty;
 
     if (variance !== 0) {
       await dispatchCloudAction("AUDIT_ADJUSTMENT", {
-        sku: auditSku.sku,
+        sku: targetItem.sku,
         setUnits: physicalQty,
         updatedBy: "Deepu B (ASM)",
+        reason: auditReason,
+        notes: auditNotes,
       });
+
+      // Update local state immediately
+      setInventoryStockMap((prev) => ({ ...prev, [targetItem.sku]: physicalQty }));
+      setStockBySku((prev) => ({
+        ...prev,
+        [targetItem.sku]: {
+          ...(prev[targetItem.sku] || {}),
+          skuId: targetItem.sku,
+          unitsInStock: physicalQty,
+          availableUnits: physicalQty,
+        },
+      }));
     }
 
     const newAudit = {
       id: `AUD-KA44-${Math.floor(100 + Math.random() * 900)}`,
-      sku: auditSku.name,
-      aisle: auditSku.aisle,
+      sku: targetItem.name,
+      skuCode: targetItem.sku,
+      category: targetItem.category,
+      aisle: targetItem.aisle,
       systemQty,
       physicalQty,
       variance,
       status: variance === 0 ? "VERIFIED_ACCURATE" : "DISCREPANCY_ADJUSTED",
+      reason: auditReason,
+      notes:
+        auditNotes ||
+        (variance === 0
+          ? "Physical shelf count matches live system ledger (0 variance)."
+          : `Variance of ${variance} units adjusted in live ledger by ASM Deepu B & flagged to SM Bhaskar N S.`),
       date: `Today, ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`,
       auditor: "Deepu B (ASM)",
       conductedBy: "Deepu B (ASM)",
-      zone: `Aisle ${auditSku.aisle} (${auditSku.category})`,
+      zone: `Aisle ${targetItem.aisle} (${targetItem.category})`,
       systemCount: systemQty,
       physicalCount: physicalQty,
-      notes: auditNotes || (variance === 0 ? "Physical count matches system ledger." : `Variance of ${variance} units adjusted in live ledger & reported to SM Bhaskar N S.`),
       smApproved: false,
     };
 
-    setSubmittedAudits((prev) => [newAudit, ...prev]);
+    const nextAudits = [newAudit, ...submittedAudits.slice(0, 49)];
+    setSubmittedAudits(nextAudits);
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.setItem("auditx_asm_solo_audits", JSON.stringify(nextAudits));
+      } catch {}
+    }
     broadcastEvent("ASM_AUDIT_SUBMITTED", newAudit);
+    broadcastEvent("STOCK_DELTA", {
+      sku: targetItem.sku,
+      units: physicalQty,
+      inventoryStockMapPatch: { [targetItem.sku]: physicalQty },
+    });
 
     playSuccessChime();
     setAuditNotes("");
-    setActionSuccess(`🛡️ Solo Inventory Audit for "${auditSku.name}" signed & synced to live ledger!`);
-    setTimeout(() => setActionSuccess(""), 4000);
+    setActionSuccess(`🛡️ Solo Inventory Audit for "${targetItem.name}" signed & synced to live ledger!`);
+    setTimeout(() => setActionSuccess(""), 4500);
   }
 
   const filteredItems = catalogItems.filter(
@@ -940,192 +1069,346 @@ export default function AssistantStoreManagerApp({ embedded = false, sharedCloud
         )}
 
         {/* MODULE 2: INVENTORY AUDIT (MUST BE DONE ALONE BY ASM) */}
-        {activeTab === "soloAudit" && (
-          <div>
-            <div style={S.panelHeader}>
-              <div>
-                <h2 style={S.panelTitle}>Exclusive ASM Inventory Physical Audit</h2>
-                <p style={S.panelSub}>
-                  Per warehouse operating rules, inventory stock verification must be conducted <b>alone by ASM Deepu B</b>.
-                </p>
-              </div>
-              <div style={S.auditorBadge}>
-                👤 Authorized Auditor: <b>Deepu B (ASM)</b>
-              </div>
-            </div>
+        {activeTab === "soloAudit" && (() => {
+          const activeAuditItem = auditSku || catalogItems[0] || ASM_OFFICIAL_CATALOG[0] || {};
+          const currentSystemQty =
+            stockBySku[activeAuditItem.sku]?.unitsInStock !== undefined
+              ? Number(stockBySku[activeAuditItem.sku].unitsInStock)
+              : inventoryStockMap[activeAuditItem.sku] !== undefined
+              ? Number(inventoryStockMap[activeAuditItem.sku])
+              : getDefaultItemStock(activeAuditItem);
+          const currentVariance = (parseInt(physicalCountInput, 10) || 0) - currentSystemQty;
 
-            <div style={S.auditFormCard}>
-              <div style={S.auditFormHeader}>
-                📷 Step 1: Scan Barcode at Shelf or Select Item:
-              </div>
-
-              <div style={{ marginBottom: 16 }}>
-                <SharedScanner
-                  title="Scan Shelf Barcode (ASM Alone)"
-                  onScan={handleScanForAudit}
-                  expectedCode={auditSku.barcode || auditSku.sku}
-                />
+          return (
+            <div>
+              <div style={S.panelHeader}>
+                <div>
+                  <h2 style={S.panelTitle}>Exclusive ASM Inventory Physical Audit</h2>
+                  <p style={S.panelSub}>
+                    Per warehouse operating rules, inventory stock verification must be conducted <b>alone by ASM Deepu B</b>.
+                  </p>
+                </div>
+                <div style={S.auditorBadge}>
+                  👤 Authorized Auditor: <b>Deepu B (ASM)</b>
+                </div>
               </div>
 
-              <form onSubmit={handleSubmitSoloAudit}>
-                {/* Visual SKU Card Preview with Real Image */}
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 14,
-                    background: "#F8FAFC",
-                    border: "1px solid #E2E8F0",
-                    borderRadius: 10,
-                    padding: "10px 14px",
-                    marginBottom: 16,
-                  }}
-                >
-                  <img
-                    src={auditSku.image || (auditSku.category === "Frames" ? "/frames/programming-stickers.jpg" : "/choclates/beatss.jpg")}
-                    alt={auditSku.name}
-                    style={{
-                      width: 68,
-                      height: 68,
-                      objectFit: "contain",
-                      borderRadius: 8,
-                      background: "#ffffff",
-                      border: "1px solid #cbd5e1",
-                      padding: 4,
-                    }}
-                    onError={(e) => {
-                      e.target.onerror = null;
-                      e.target.src = auditSku.category === "Frames" ? "/frames/programming-stickers.jpg" : "/choclates/beatss.jpg";
-                    }}
-                  />
-                  <div>
-                    <div style={{ fontSize: 14, fontWeight: 800, color: "#0F172A" }}>{auditSku.name}</div>
-                    <div style={{ fontSize: 12, color: "#64748B", marginTop: 2 }}>
-                      {auditSku.category} • ₹{auditSku.price} • 📍 Aisle: <b style={{ color: "#0369a1" }}>{auditSku.aisle}</b> • SKU: {auditSku.sku}
+              {/* KPI Summary Cards */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10, marginBottom: 18 }}>
+                <div style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: 10, padding: "10px 14px" }}>
+                  <div style={{ fontSize: 11, color: "#64748b", fontWeight: 700 }}>SKUs Audited Today</div>
+                  <div style={{ fontSize: 20, fontWeight: 900, color: "#0f172a" }}>{submittedAudits.length}</div>
+                </div>
+                <div style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: 10, padding: "10px 14px" }}>
+                  <div style={{ fontSize: 11, color: "#64748b", fontWeight: 700 }}>Verification Accuracy</div>
+                  <div style={{ fontSize: 20, fontWeight: 900, color: "#166534" }}>
+                    {submittedAudits.length > 0
+                      ? `${Math.round((submittedAudits.filter((a) => a.variance === 0).length / submittedAudits.length) * 100)}%`
+                      : "100%"}
+                  </div>
+                </div>
+                <div style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: 10, padding: "10px 14px" }}>
+                  <div style={{ fontSize: 11, color: "#64748b", fontWeight: 700 }}>Variances Resolved</div>
+                  <div style={{ fontSize: 20, fontWeight: 900, color: "#d97706" }}>
+                    {submittedAudits.filter((a) => a.variance !== 0).length}
+                  </div>
+                </div>
+                <div style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: 10, padding: "10px 14px" }}>
+                  <div style={{ fontSize: 11, color: "#64748b", fontWeight: 700 }}>Authorized Auditor</div>
+                  <div style={{ fontSize: 14, fontWeight: 900, color: "#0284c7", marginTop: 4 }}>Deepu B (ASM)</div>
+                </div>
+              </div>
+
+              <div style={S.auditFormCard}>
+                <div style={S.auditFormHeader}>
+                  📷 Step 1: Scan Barcode at Shelf or Select Item:
+                </div>
+
+                <div style={{ marginBottom: 14 }}>
+                  <ErrorBoundary fallback={
+                    <div style={{ padding: 12, background: "#fef3c7", borderRadius: 10, color: "#92400e", fontSize: 13, border: "1px solid #fde68a" }}>
+                      📷 Camera barcode scanner not supported on this browser. Select any SKU below or tap Quick Shelf chips!
                     </div>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: auditSku.category === "Frames" ? "#2563eb" : "#0c831f", marginTop: 3 }}>
-                      {auditSku.category === "Frames" ? "🖼️ 1 Unit Single Verification" : "🍫 5 Units Fixed Verification"}
-                    </div>
+                  }>
+                    <SharedScanner
+                      title="Scan Shelf Barcode (ASM Alone)"
+                      onScan={handleScanForAudit}
+                      expectedCode={activeAuditItem.barcode || activeAuditItem.sku}
+                    />
+                  </ErrorBoundary>
+                </div>
+
+                {/* Quick Shelf Tap Chips */}
+                <div style={{ marginBottom: 16 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", marginBottom: 6 }}>
+                    ⚡ Tap Quick Shelf Sample (Fast Audit Walk):
+                  </div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                    {catalogItems.slice(0, 8).map((it) => (
+                      <button
+                        key={it.sku}
+                        type="button"
+                        onClick={() => handleScanForAudit(it.sku)}
+                        style={{
+                          padding: "5px 10px",
+                          fontSize: 11,
+                          fontWeight: 700,
+                          borderRadius: 999,
+                          border: activeAuditItem.sku === it.sku ? "2px solid #0284c7" : "1px solid #cbd5e1",
+                          background: activeAuditItem.sku === it.sku ? "#e0f2fe" : "#ffffff",
+                          color: activeAuditItem.sku === it.sku ? "#0369a1" : "#334155",
+                          cursor: "pointer",
+                        }}
+                      >
+                        {it.category === "Frames" ? "🖼️" : "🍫"} {it.name.split(" ").slice(0, 3).join(" ")} ({it.aisle})
+                      </button>
+                    ))}
                   </div>
                 </div>
 
-                <div style={S.formGrid}>
-                  <div>
-                    <label style={S.label}>Selected SKU for Physical Count:</label>
-                    <select
-                      value={auditSku.sku}
-                      onChange={(e) => {
-                        const it = catalogItems.find((c) => c.sku === e.target.value);
-                        if (it) {
-                          setAuditSku(it);
-                          const liveQty =
-                            inventoryStockMap[it.sku] !== undefined
-                              ? Number(inventoryStockMap[it.sku])
-                              : getDefaultItemStock(it);
-                          setPhysicalCountInput(liveQty);
-                        }
+                <form onSubmit={handleSubmitSoloAudit}>
+                  {/* Visual SKU Card Preview with Real Image */}
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 14,
+                      background: "#F8FAFC",
+                      border: "1px solid #E2E8F0",
+                      borderRadius: 10,
+                      padding: "10px 14px",
+                      marginBottom: 16,
+                    }}
+                  >
+                    <img
+                      src={activeAuditItem.image || (activeAuditItem.category === "Frames" ? "/frames/programming-stickers.jpg" : "/choclates/beatss.jpg")}
+                      alt={activeAuditItem.name}
+                      style={{
+                        width: 68,
+                        height: 68,
+                        objectFit: "contain",
+                        borderRadius: 8,
+                        background: "#ffffff",
+                        border: "1px solid #cbd5e1",
+                        padding: 4,
                       }}
+                      onError={(e) => {
+                        e.target.onerror = null;
+                        e.target.src = activeAuditItem.category === "Frames" ? "/frames/programming-stickers.jpg" : "/choclates/beatss.jpg";
+                      }}
+                    />
+                    <div>
+                      <div style={{ fontSize: 14, fontWeight: 800, color: "#0F172A" }}>{activeAuditItem.name}</div>
+                      <div style={{ fontSize: 12, color: "#64748B", marginTop: 2 }}>
+                        {activeAuditItem.category} • ₹{activeAuditItem.price} • 📍 Aisle: <b style={{ color: "#0369a1" }}>{activeAuditItem.aisle}</b> • SKU: {activeAuditItem.sku}
+                      </div>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: activeAuditItem.category === "Frames" ? "#2563eb" : "#0c831f", marginTop: 3 }}>
+                        {activeAuditItem.category === "Frames" ? "🖼️ 1 Unit Single Verification (Max 1)" : "🍫 5 Units Fixed Verification (Max 5)"}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={S.formGrid}>
+                    <div>
+                      <label style={S.label}>Selected SKU for Physical Count:</label>
+                      <select
+                        value={activeAuditItem.sku}
+                        onChange={(e) => {
+                          const it = catalogItems.find((c) => c.sku === e.target.value);
+                          if (it) {
+                            setAuditSku(it);
+                            const liveQty =
+                              stockBySku[it.sku]?.unitsInStock !== undefined
+                                ? Number(stockBySku[it.sku].unitsInStock)
+                                : inventoryStockMap[it.sku] !== undefined
+                                ? Number(inventoryStockMap[it.sku])
+                                : getDefaultItemStock(it);
+                            setPhysicalCountInput(liveQty);
+                          }
+                        }}
+                        style={S.select}
+                      >
+                        {catalogItems.map((it) => (
+                          <option key={it.sku} value={it.sku}>
+                            {it.name} ({it.aisle})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label style={S.label}>Aisle Location:</label>
+                      <input type="text" value={activeAuditItem.aisle} disabled style={S.inputDisabled} />
+                    </div>
+
+                    <div>
+                      <label style={S.label}>System Ledger Quantity:</label>
+                      <input
+                        type="text"
+                        value={`${currentSystemQty} unit(s) (Live System Ledger)`}
+                        disabled
+                        style={S.inputDisabled}
+                      />
+                    </div>
+
+                    <div>
+                      <label style={S.label}>ASM Physical Count on Shelf (Actual):</label>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
+                        <button
+                          type="button"
+                          onClick={() => setPhysicalCountInput((prev) => Math.max(0, (parseInt(prev, 10) || 0) - 1))}
+                          style={{
+                            width: 38,
+                            height: 38,
+                            borderRadius: 8,
+                            border: "1px solid #cbd5e1",
+                            background: "#f1f5f9",
+                            color: "#0f172a",
+                            fontSize: 18,
+                            fontWeight: 900,
+                            cursor: "pointer",
+                          }}
+                          title="Decrease count"
+                        >
+                          –
+                        </button>
+                        <input
+                          type="number"
+                          min="0"
+                          max={activeAuditItem.category === "Frames" ? 1 : 5}
+                          value={physicalCountInput}
+                          onChange={(e) => setPhysicalCountInput(e.target.value)}
+                          style={{ ...S.input, textAlign: "center", fontWeight: 800, fontSize: 16, width: 75 }}
+                          required
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const maxU = activeAuditItem.category === "Frames" ? 1 : 5;
+                            setPhysicalCountInput((prev) => Math.min(maxU, (parseInt(prev, 10) || 0) + 1));
+                          }}
+                          style={{
+                            width: 38,
+                            height: 38,
+                            borderRadius: 8,
+                            border: "1px solid #cbd5e1",
+                            background: "#f1f5f9",
+                            color: "#0f172a",
+                            fontSize: 18,
+                            fontWeight: 900,
+                            cursor: "pointer",
+                          }}
+                          title="Increase count"
+                        >
+                          +
+                        </button>
+                        <div
+                          style={{
+                            padding: "8px 12px",
+                            borderRadius: 8,
+                            fontSize: 12,
+                            fontWeight: 800,
+                            whiteSpace: "nowrap",
+                            background:
+                              currentVariance === 0
+                                ? "#dcfce7"
+                                : currentVariance < 0
+                                ? "#fee2e2"
+                                : "#dbeafe",
+                            color:
+                              currentVariance === 0
+                                ? "#166534"
+                                : currentVariance < 0
+                                ? "#991b1b"
+                                : "#1e40af",
+                          }}
+                        >
+                          {currentVariance === 0
+                            ? "🟢 0 Variance (Exact Match)"
+                            : currentVariance < 0
+                            ? `🔴 Shortage: ${currentVariance} unit(s)`
+                            : `🔵 Surplus: +${currentVariance} unit(s)`}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ marginTop: 12 }}>
+                    <label style={S.label}>Audit Discrepancy Root Cause:</label>
+                    <select
+                      value={auditReason}
+                      onChange={(e) => setAuditReason(e.target.value)}
                       style={S.select}
                     >
-                      {catalogItems.map((it) => (
-                        <option key={it.sku} value={it.sku}>
-                          {it.name} ({it.aisle})
-                        </option>
-                      ))}
+                      <option value="ROUTINE_ACCURATE">✅ Routine Physical Shelf Walk (Verified Accurate)</option>
+                      <option value="DAMAGED_SHELF">💥 Damaged / Packaging Broken on Shelf</option>
+                      <option value="MISPICKED_RETURN">🔄 Mispicked or Returned Item Not Restocked</option>
+                      <option value="SHRINKAGE_THEFT">⚠️ Unaccounted Shortage / Shrinkage</option>
+                      <option value="PUTAWAY_OVERCOUNT">📥 Putaway Inward Overcount / Undercount</option>
                     </select>
                   </div>
 
-                  <div>
-                    <label style={S.label}>Aisle Location:</label>
-                    <input type="text" value={auditSku.aisle} disabled style={S.inputDisabled} />
-                  </div>
-
-                  <div>
-                    <label style={S.label}>System Ledger Quantity:</label>
+                  <div style={{ marginTop: 12 }}>
+                    <label style={S.label}>Audit Notes & Action Taken:</label>
                     <input
                       type="text"
-                      value={`${
-                        inventoryStockMap[auditSku.sku] !== undefined
-                          ? Number(inventoryStockMap[auditSku.sku])
-                          : getDefaultItemStock(auditSku)
-                      } unit(s) (Live System Ledger)`}
-                      disabled
-                      style={S.inputDisabled}
-                    />
-                  </div>
-
-                  <div>
-                    <label style={S.label}>ASM Physical Count on Shelf (Actual):</label>
-                    <input
-                      type="number"
-                      value={physicalCountInput}
-                      onChange={(e) => setPhysicalCountInput(e.target.value)}
+                      placeholder="e.g. 100% count verified; or 1 unit damaged by morning handling..."
+                      value={auditNotes}
+                      onChange={(e) => setAuditNotes(e.target.value)}
                       style={S.input}
-                      required
                     />
                   </div>
-                </div>
 
-                <div style={{ marginTop: 12 }}>
-                  <label style={S.label}>Audit Discrepancy Notes & Root Cause:</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. 100% count verified; or 1 unit damaged by morning handling..."
-                    value={auditNotes}
-                    onChange={(e) => setAuditNotes(e.target.value)}
-                    style={S.input}
-                  />
-                </div>
+                  <button type="submit" style={S.submitAuditBtn}>
+                    🛡️ Sign &amp; Submit Audit Report as ASM Deepu B →
+                  </button>
+                </form>
+              </div>
 
-                <button type="submit" style={S.submitAuditBtn}>
-                  🛡️ Sign & Submit Audit Report as ASM Deepu B →
-                </button>
-              </form>
-            </div>
-
-            {/* Past Audits Conducted Alone by ASM Deepu B */}
-            <div style={{ marginTop: 24 }}>
-              <h3 style={S.recentAuditsTitle}>Recent Audits Conducted Alone by Deepu B:</h3>
-              <div style={S.auditsList}>
-                {submittedAudits.map((aud) => (
-                  <div key={aud.id} style={S.auditSummaryCard}>
-                    <div style={S.auditSummaryTop}>
-                      <div>
-                        <span style={S.audId}>{aud.id}</span>
-                        <span style={S.audSku}>• <b>{aud.sku}</b></span>
+              {/* Past Audits Conducted Alone by ASM Deepu B */}
+              <div style={{ marginTop: 24 }}>
+                <h3 style={S.recentAuditsTitle}>Recent Audits Conducted Alone by Deepu B:</h3>
+                <div style={S.auditsList}>
+                  {submittedAudits.map((aud) => (
+                    <div key={aud.id} style={S.auditSummaryCard}>
+                      <div style={S.auditSummaryTop}>
+                        <div>
+                          <span style={S.audId}>{aud.id}</span>
+                          <span style={S.audSku}>• <b>{aud.sku}</b></span>
+                        </div>
+                        <span
+                          style={{
+                            ...S.audStatusBadge,
+                            background: aud.variance === 0 ? "#065f46" : "#854d0e",
+                          }}
+                        >
+                          {aud.status}
+                        </span>
                       </div>
-                      <span
-                        style={{
-                          ...S.audStatusBadge,
-                          background: aud.variance === 0 ? "#065f46" : "#854d0e",
-                        }}
-                      >
-                        {aud.status}
-                      </span>
-                    </div>
 
-                    <div style={S.auditSummaryStats}>
-                      <span>Aisle: <b>{aud.aisle}</b></span>
-                      <span>System: <b>{aud.systemQty}</b></span>
-                      <span>Physical: <b>{aud.physicalQty}</b></span>
-                      <span>
-                        Variance:{" "}
-                        <b style={{ color: aud.variance < 0 ? "#ef4444" : "#10b981" }}>
-                          {aud.variance}
-                        </b>
-                      </span>
-                    </div>
+                      <div style={S.auditSummaryStats}>
+                        <span>Aisle: <b>{aud.aisle}</b></span>
+                        <span>System: <b>{aud.systemQty}</b></span>
+                        <span>Physical: <b>{aud.physicalQty}</b></span>
+                        <span>
+                          Variance:{" "}
+                          <b style={{ color: aud.variance < 0 ? "#ef4444" : "#10b981" }}>
+                            {aud.variance}
+                          </b>
+                        </span>
+                      </div>
 
-                    <div style={S.auditSummaryFooter}>
-                      <span style={{ fontSize: 11, color: "#94a3b8" }}>{aud.date}</span>
-                      <span style={{ fontSize: 11, color: "#38bdf8" }}>Auditor: {aud.auditor}</span>
+                      <div style={S.auditSummaryFooter}>
+                        <span style={{ fontSize: 11, color: "#94a3b8" }}>{aud.date}</span>
+                        <span style={{ fontSize: 11, color: "#38bdf8" }}>Auditor: {aud.auditor}</span>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
       </main>
     </div>
   );

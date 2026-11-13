@@ -98,6 +98,9 @@ export async function GET(req) {
             stockBySkuPatch: evt.stockBySkuPatch,
             oosList: evt.oosList,
             isStoreOpen: evt.isStoreOpen,
+            customCatalogItems: evt.customCatalogItems,
+            addedItem: evt.addedItem,
+            removedSku: evt.removedSku,
           };
           if (
             evt.order &&

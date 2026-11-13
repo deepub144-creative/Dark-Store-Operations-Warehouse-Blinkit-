@@ -671,6 +671,14 @@ function applyStreamDeltaToLocalState(delta) {
   if (Array.isArray(delta.alerts)) {
     next.lowStockAlerts = delta.alerts;
   }
+  if (Array.isArray(delta.customCatalogItems)) {
+    next.customCatalogItems = delta.customCatalogItems;
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.setItem("auditx_custom_catalog", JSON.stringify(delta.customCatalogItems));
+      } catch {}
+    }
+  }
 
   return applyCloudStateToLocalStorage(next, { directWrite: true });
 }

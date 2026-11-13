@@ -35,6 +35,9 @@ export function publishRealtimeEvent(event) {
     movements: Array.isArray(event.movements) ? event.movements : null,
     alerts: Array.isArray(event.alerts) ? event.alerts : null,
     isStoreOpen: event.isStoreOpen,
+    customCatalogItems: Array.isArray(event.customCatalogItems) ? event.customCatalogItems : undefined,
+    addedItem: event.addedItem || null,
+    removedSku: event.removedSku || null,
   };
 
   for (const sub of subscriberSet) {
