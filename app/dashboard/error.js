@@ -135,3 +135,4 @@ export default function DashboardError({ error, reset }) {
     </div>
   );
 }
+

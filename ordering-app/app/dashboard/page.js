@@ -21,6 +21,7 @@ import {
   getCachedCloudHubState,
   recordLocalStoreStatus,
 } from "@/lib/realtimeSync";
+import { safeArr, safeNum, safeStorage } from "@/lib/safeData";
 import { STAFF, STAGE_SEQUENCE, getRandomStagingRack } from "@/lib/roles";
 import { CATALOG } from "@/lib/items";
 import {
@@ -792,7 +793,13 @@ export default function WarehouseDashboardPage() {
         if (cloudState.reconciliationReport) setReconciliationReport(cloudState.reconciliationReport);
         if (Array.isArray(cloudState.oosList)) setOosList(cloudState.oosList);
         if (Array.isArray(cloudState.customCatalogItems)) {
-          const local = safeArr(safeStorage.getJson("auditx_custom_catalog", []));
+          let local = [];
+          try {
+            local = safeArr(safeStorage?.getJson("auditx_custom_catalog", []));
+          } catch {
+            try { local = JSON.parse(localStorage.getItem("auditx_custom_catalog") || "[]"); } catch {}
+          }
+          if (!Array.isArray(local)) local = [];
           const combined = Array.from(
             new Map(
               [...local, ...(cloudState.customCatalogItems || [])].map((item) => [item.sku, item])
