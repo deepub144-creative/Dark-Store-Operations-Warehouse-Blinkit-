@@ -707,29 +707,30 @@ export async function POST(req) {
         }
 
         case "PUTAWAY_ADD_ITEM": {
-          const item = payload.item;
-          if (!item || !item.name || !Number(item.price)) {
-            return { abort: { status: 400, body: { error: "Item name and price are required" } } };
-          }
+          const item = payload.item || {};
           const cat = item.category === "Frames" ? "Frames" : "Chocolates";
+          const itemName = String(item.name || "").trim() || (cat === "Frames" ? "Bengaluru Edition Glass Frame" : "Special Reserve Dark Chocolate");
           const defaultUnits = cat === "Frames" ? 1 : 5;
           const rawUnits = Number(item.units);
           const units = Math.max(
             0,
             item.units !== undefined && Number.isFinite(rawUnits) ? Math.floor(rawUnits) : defaultUnits
           );
+          const defaultPrice = cat === "Frames" ? 249 : 99;
+          const parsedPrice = Number(item.price) > 0 ? Number(item.price) : defaultPrice;
+          const parsedMrp = Math.max(parsedPrice, Number(item.mrp) || (parsedPrice + (cat === "Frames" ? 50 : 20)));
           const sku =
             item.sku ||
             `PUTAWAY-${cat === "Frames" ? "FRM" : "CHC"}-${Date.now().toString().slice(-6)}`;
           const newItem = {
             sku,
-            name: String(item.name).trim(),
+            name: itemName,
             category: cat,
-            price: Math.max(1, Number(item.price)),
-            mrp: Math.max(Number(item.price), Number(item.mrp) || Number(item.price)),
+            price: parsedPrice,
+            mrp: parsedMrp,
             weight: item.weight || (cat === "Frames" ? "1 unit" : `${units || 5} units`),
             zone: cat === "Frames" ? "Zone F1 (Custom Frames)" : "Zone C1 (Chocolates Bay)",
-            aisle: item.aisle || (cat === "Frames" ? "F1 - NEW - 001" : "C1 - NEW - 001"),
+            aisle: item.aisle || (cat === "Frames" ? "F1 - A01 - 001" : "C1 - NEW - 001"),
             barcode: item.barcode || `89044${Date.now().toString().slice(-6)}`,
             qrCode: `QR-${sku}`,
             image:

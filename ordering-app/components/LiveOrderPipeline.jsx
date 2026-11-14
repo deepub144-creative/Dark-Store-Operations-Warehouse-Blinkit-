@@ -1,7 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { subscribeToLiveOrders, clearAllLiveOrders } from "@/lib/realtimeSync";
+import {
+  subscribeToLiveOrders,
+  clearAllLiveOrders,
+  updateLiveOrder,
+  broadcastEvent,
+  dispatchCloudAction,
+} from "@/lib/realtimeSync";
 
 const STAGES = [
   { key: "pending", label: "New Order", who: "Awaiting OD Picker", color: "#f59e0b" },
@@ -13,7 +19,7 @@ const STAGES = [
 
 function stageOf(order) {
   const st = String(order?.status || "").toLowerCase();
-  if (st === "pending" || st === "assigned") return "pending";
+  if (st === "pending" || st === "assigned" || st === "placed") return "pending";
   if (st === "picking") return "picking";
   if (st === "staged") return "staged";
   if (st === "dispatched" || st === "en_route" || st === "out_for_delivery") return "dispatched";
@@ -54,6 +60,59 @@ export default function LiveOrderPipeline({ title = "Live Order Tracking", dark 
     setOrders([]);
     setCleared(true);
     setTimeout(() => setCleared(false), 2500);
+  }
+
+  function handleAdvanceStage(order, targetStatus) {
+    const oid = order.id || order.orderId;
+    const stageMap = {
+      picking: {
+        status: "picking",
+        stage: "Picking (Thrupthi K S)",
+        pickerName: "Thrupthi K S",
+        pickerId: "thrupthi",
+        assignedStaffId: "thrupthi",
+      },
+      staged: {
+        status: "staged",
+        stage: "Staged at Bay - Ready for Rider",
+        assignedRack: order.assignedRack || "RACK-KA44-A01",
+      },
+      dispatched: {
+        status: "dispatched",
+        stage: "Out for Delivery (Sinchana B R)",
+        captainName: "Sinchana B R",
+        captainId: "sinchana",
+        deliveryCaptainId: "sinchana",
+        dispatchedAt: new Date().toISOString(),
+      },
+      delivered: {
+        status: "delivered",
+        stage: "Delivered",
+        deliveredAt: new Date().toISOString(),
+      },
+    };
+    const patch = stageMap[targetStatus];
+    if (!patch) return;
+    updateLiveOrder(oid, patch);
+    setOrders((prev) =>
+      prev.map((ord) => (ord.id === oid || ord.orderId === oid ? { ...ord, ...patch } : ord))
+    );
+    broadcastEvent(
+      targetStatus === "picking"
+        ? "ORDER_PICKED"
+        : targetStatus === "staged"
+        ? "ORDER_STAGED"
+        : targetStatus === "dispatched"
+        ? "ORDER_DISPATCHED"
+        : "ORDER_DELIVERED",
+      { orderId: oid, orderNumber: order.orderNumber || oid, ...patch }
+    );
+    try {
+      dispatchCloudAction("UPDATE_ORDER", {
+        orderId: oid,
+        updates: patch,
+      });
+    } catch {}
   }
 
   const counts = STAGES.reduce((acc, s) => ({ ...acc, [s.key]: 0 }), {});
@@ -186,6 +245,87 @@ export default function LiveOrderPipeline({ title = "Live Order Tracking", dark 
                       }}
                     />
                   ))}
+                </div>
+
+                {/* Instant Task Flow Actions */}
+                <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap", alignItems: "center" }}>
+                  {sk === "pending" && (
+                    <button
+                      type="button"
+                      onClick={() => handleAdvanceStage(o, "picking")}
+                      style={{
+                        background: "#7c3aed",
+                        color: "#ffffff",
+                        border: "none",
+                        borderRadius: 6,
+                        padding: "5px 10px",
+                        fontSize: 11,
+                        fontWeight: 800,
+                        cursor: "pointer",
+                      }}
+                    >
+                      ⚡ Assign &amp; Pick (Thrupthi K S)
+                    </button>
+                  )}
+                  {sk === "picking" && (
+                    <button
+                      type="button"
+                      onClick={() => handleAdvanceStage(o, "staged")}
+                      style={{
+                        background: "#0284c7",
+                        color: "#ffffff",
+                        border: "none",
+                        borderRadius: 6,
+                        padding: "5px 10px",
+                        fontSize: 11,
+                        fontWeight: 800,
+                        cursor: "pointer",
+                      }}
+                    >
+                      📦 Stage at Rack Bay
+                    </button>
+                  )}
+                  {sk === "staged" && (
+                    <button
+                      type="button"
+                      onClick={() => handleAdvanceStage(o, "dispatched")}
+                      style={{
+                        background: "#0c831f",
+                        color: "#ffffff",
+                        border: "none",
+                        borderRadius: 6,
+                        padding: "5px 10px",
+                        fontSize: 11,
+                        fontWeight: 800,
+                        cursor: "pointer",
+                      }}
+                    >
+                      🏍️ Handover to Rider (Sinchana B R)
+                    </button>
+                  )}
+                  {sk === "dispatched" && (
+                    <button
+                      type="button"
+                      onClick={() => handleAdvanceStage(o, "delivered")}
+                      style={{
+                        background: "#065f46",
+                        color: "#ffffff",
+                        border: "none",
+                        borderRadius: 6,
+                        padding: "5px 10px",
+                        fontSize: 11,
+                        fontWeight: 800,
+                        cursor: "pointer",
+                      }}
+                    >
+                      🏁 Confirm Doorstep Delivery
+                    </button>
+                  )}
+                  {sk === "delivered" && (
+                    <span style={{ fontSize: 11, fontWeight: 700, color: "#065f46" }}>
+                      ✅ Delivered to Customer
+                    </span>
+                  )}
                 </div>
               </div>
             );

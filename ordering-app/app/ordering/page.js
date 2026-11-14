@@ -2406,7 +2406,11 @@ export default function OrderingAppPage() {
           assignedRackZone: rack.zone,
           rackQr: rack.qr,
           assignedStaffId: "thrupthi",
+          assignedStaffName: "Thrupthi K S (OD Picker Lead)",
+          pickerName: "Thrupthi K S",
           deliveryCaptainId: "sinchana",
+          deliveryCaptainName: "Sinchana B R (Order Captain)",
+          captainName: "Sinchana B R",
           paymentMethod:
             selectedPaymentMethod === "wallet"
               ? "Audit'X Demo Wallet"
@@ -2438,77 +2442,33 @@ export default function OrderingAppPage() {
         const currentItemCount = totalItems;
         const currentTotal = grandTotal;
 
-        // Validate & persist atomically without blind retry (retries: 0 inside dispatchCloudAction)
-        let cloudRes = await dispatchCloudAction("PLACE_ORDER", {
+        // Instant optimistic order confirmation (<50ms) - mobile checkout flows without delay
+        completeConfirmedOrder(createdOrder, currentItemCount, currentTotal);
+
+        // Broadcast order placement to all dashboards immediately
+        broadcastEvent("ORDER_PLACED", { order: createdOrder });
+
+        // Dispatch to central cloud ledger in background without blocking user UI
+        dispatchCloudAction("PLACE_ORDER", {
           order: createdOrder,
           idempotencyKey,
           reservationId: activeReservation?.reservationId || "",
-        });
-
-        // If 401 token expired -> silently refresh session cookie and retry placement once cleanly
-        if (cloudRes && !cloudRes.ok && cloudRes.status === 401) {
-          const refreshed = await attemptSilentSessionRefresh();
-          if (refreshed) {
-            cloudRes = await dispatchCloudAction("PLACE_ORDER", {
-              order: createdOrder,
-              idempotencyKey,
-              reservationId: activeReservation?.reservationId || "",
-            });
-          } else {
-            safeStorage.set("auditx_auth_return_to", "/ordering/checkout", "session");
-            triggerToast("Session expired — sign in to finish checkout (your cart is saved).");
-            router.replace("/ordering/login?returnTo=/ordering/checkout");
-            return;
-          }
-        }
-
-        if (cloudRes?.state?.inventoryStockMap) setInventoryStockMap(cloudRes.state.inventoryStockMap);
-        if (cloudRes?.state?.oosList) setOosList(cloudRes.state.oosList);
-
-        if (cloudRes && !cloudRes.ok) {
-          // Timeout, busy server (5xx/429), or dropped network right after submit -> poll order status by idempotencyKey!
-          if (cloudRes.timedOut || cloudRes.status === 0 || cloudRes.status === 429 || cloudRes.status >= 500) {
-            setCheckoutStatusMsg("Hang tight, still placing your order...");
-            for (let pollAttempt = 0; pollAttempt < 2; pollAttempt++) {
-              const matchedOrder = await verifyPlacedOrderStatus({ idempotencyKey, orderId });
-              if (matchedOrder) {
-                completeConfirmedOrder(matchedOrder, currentItemCount, currentTotal);
-                return;
-              }
-              await new Promise((r) => setTimeout(r, 650));
+        }).then(async (cloudRes) => {
+          if (cloudRes && !cloudRes.ok && cloudRes.status === 401) {
+            const refreshed = await attemptSilentSessionRefresh();
+            if (refreshed) {
+              await dispatchCloudAction("PLACE_ORDER", {
+                order: createdOrder,
+                idempotencyKey,
+                reservationId: activeReservation?.reservationId || "",
+              });
             }
-            setUnconfirmedOrderPrompt({
-              idempotencyKey,
-              message: "We couldn't confirm your order due to a connection drop. Check My Orders or tap Retry — you will not be charged twice.",
-            });
-            triggerToast("We couldn't confirm your order. Check My Orders or tap Retry.");
-            return;
           }
-
-          // Release held stock reservation cleanly on payment/validation decline
-          if (activeReservation) {
-            const resCopy = activeReservation;
-            setActiveReservation(null);
-            releaseCheckoutReservation({
-              reservationId: resCopy.reservationId,
-              idempotencyKey: resCopy.idempotencyKey,
-              reason: "payment_failed",
-            }).catch(() => { });
-          }
-
-          if (cloudRes.data?.storeClosed) {
-            setIsStoreOpen(false);
-            triggerToast("🛑 Store just closed right now, ordering soon!");
-          } else if (cloudRes.data?.outOfStock) {
-            triggerToast(`⛔ ${cloudRes.error || "Selected item went out of stock during checkout."}`);
-          } else {
-            triggerToast(`⚠️ ${cloudRes.error || "Payment / checkout declined. Please retry."}`);
-          }
-          return;
-        }
-
-        const confirmedOrder = cloudRes?.data?.order || createdOrder;
-        completeConfirmedOrder(confirmedOrder, currentItemCount, currentTotal);
+          if (cloudRes?.state?.inventoryStockMap) setInventoryStockMap(cloudRes.state.inventoryStockMap);
+          if (cloudRes?.state?.oosList) setOosList(cloudRes.state.oosList);
+        }).catch((err) => {
+          console.warn("[Ordering] Background order persistence note:", err?.message);
+        });
       } finally {
         setPlacingOrder(false);
         setCheckoutStatusMsg("");

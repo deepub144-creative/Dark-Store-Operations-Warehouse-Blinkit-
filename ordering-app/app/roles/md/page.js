@@ -18,13 +18,6 @@ import LiveOrderPipeline from "@/components/LiveOrderPipeline";
 export default function ManagingDirectorApp({ embedded = false }) {
   const router = useRouter();
 
-  // Dump standalone /roles/md link into /dashboard?role=md
-  useEffect(() => {
-    if (!embedded && typeof window !== "undefined") {
-      router.replace("/dashboard?role=md");
-    }
-  }, [embedded, router]);
-
   const [complaints, setComplaints] = useState([]);
   const [activeTab, setActiveTab] = useState("scaleMargin"); // scaleMargin | hubSla | capexGrowth
   const [actionSuccess, setActionSuccess] = useState("");
@@ -145,58 +138,70 @@ export default function ManagingDirectorApp({ embedded = false }) {
       {actionSuccess && <div style={S.toast}>{actionSuccess}</div>}
 
       {/* Header (Standalone or Embedded Mode) */}
-      {embedded ? (
-        <div
-          style={{
-            padding: "16px 20px 8px",
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            flexWrap: "wrap",
-            gap: 12,
-            borderBottom: "1px solid #e2e8f0",
-            background: "#ffffff",
-            marginBottom: 8,
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <img
-              src="/md-logo.png"
-              alt="A B Harshitha - H Logo"
-              style={{
-                width: 44,
-                height: 44,
-                borderRadius: "50%",
-                objectFit: "cover",
-                border: "2px solid #38bdf8",
-                boxShadow: "0 2px 8px rgba(56, 189, 248, 0.35)",
-              }}
-            />
-            <div>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                <span style={{ fontSize: 17, fontWeight: 900, color: "#0f172a" }}>
-                  A B Harshitha (Managing Director)
-                </span>
-                <span style={S.execBadge}>EXECUTIVE BOARD</span>
-                <span style={S.hubBadge}>TIPTUR HUB - KA44</span>
-              </div>
-              <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>
-                Strategic Command Tower • Scale, Margin &amp; Zero-Complaint Governance (Live Synchronized)
-              </div>
+      <div
+        style={{
+          padding: "16px 20px 8px",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          flexWrap: "wrap",
+          gap: 12,
+          borderBottom: "1px solid #e2e8f0",
+          background: "#ffffff",
+          marginBottom: 8,
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <img
+            src="/md-logo.png"
+            alt="A B Harshitha - H Logo"
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: "50%",
+              objectFit: "cover",
+              border: "2px solid #38bdf8",
+              boxShadow: "0 2px 8px rgba(56, 189, 248, 0.35)",
+            }}
+          />
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <span style={{ fontSize: 17, fontWeight: 900, color: "#0f172a" }}>
+                A B Harshitha (Managing Director)
+              </span>
+              <span style={S.execBadge}>EXECUTIVE BOARD</span>
+              <span style={S.hubBadge}>TIPTUR HUB - KA44</span>
+            </div>
+            <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>
+              Strategic Command Tower • Scale, Margin &amp; Zero-Complaint Governance (Live Synchronized)
             </div>
           </div>
+        </div>
 
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <span style={{ ...S.quickLinkPill, background: "#f0fdf4", color: "#166534", border: "1px solid #bbf7d0", fontWeight: 700 }}>
-              🛡️ MD Executive Workspace (Live)
-            </span>
-          </div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <span style={{ ...S.quickLinkPill, background: "#f0fdf4", color: "#166534", border: "1px solid #bbf7d0", fontWeight: 700 }}>
+            🛡️ MD Executive Workspace (Live)
+          </span>
+          {!embedded && (
+            <button
+              type="button"
+              onClick={() => router.push("/dashboard")}
+              style={{
+                background: "#1E293B",
+                color: "#FFFFFF",
+                border: "1px solid #334155",
+                borderRadius: 8,
+                padding: "6px 12px",
+                fontSize: 12,
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              📊 Command Tower
+            </button>
+          )}
         </div>
-      ) : (
-        <div style={{ padding: 40, textAlign: "center", color: "#64748b" }}>
-          Redirecting to Dashboard MD Workspace...
-        </div>
-      )}
+      </div>
 
       <div style={{ padding: "0 16px" }}>
         <LiveOrderPipeline title="MD Live Order Tracking" />

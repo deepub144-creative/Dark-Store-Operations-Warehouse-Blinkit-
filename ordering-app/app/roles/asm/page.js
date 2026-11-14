@@ -30,13 +30,6 @@ const ASM_OFFICIAL_CATALOG = CATALOG.filter(
 export default function AssistantStoreManagerApp({ embedded = false, sharedCloudState = null, onCatalogUpdated = null }) {
   const router = useRouter();
 
-  // Dump standalone /roles/asm link into /dashboard?role=asm
-  useEffect(() => {
-    if (!embedded && typeof window !== "undefined") {
-      router.replace("/dashboard?role=asm");
-    }
-  }, [embedded, router]);
-
   const [activeTab, setActiveTab] = useState("itemHelp"); // itemHelp | soloAudit | putawayBay
   const [catalogItems, setCatalogItems] = useState(ASM_OFFICIAL_CATALOG);
   const [inventoryStockMap, setInventoryStockMap] = useState({});
@@ -53,13 +46,14 @@ export default function AssistantStoreManagerApp({ embedded = false, sharedCloud
   const [actionSuccess, setActionSuccess] = useState("");
 
   // Putaway (Dump New Item) Form State
-  const [putawayName, setPutawayName] = useState("");
-  const [putawayCategory, setPutawayCategory] = useState("Chocolates");
-  const [putawayPrice, setPutawayPrice] = useState("");
-  const [putawayMrp, setPutawayMrp] = useState("");
-  const [putawayUnits, setPutawayUnits] = useState("5");
-  const [putawayAisle, setPutawayAisle] = useState("C1 - NEW - 001");
+  const [putawayName, setPutawayName] = useState("Bengaluru Edition Glass Wall Frame");
+  const [putawayCategory, setPutawayCategory] = useState("Frames");
+  const [putawayPrice, setPutawayPrice] = useState("249");
+  const [putawayMrp, setPutawayMrp] = useState("299");
+  const [putawayUnits, setPutawayUnits] = useState("1");
+  const [putawayAisle, setPutawayAisle] = useState("F1 - A01 - 001");
   const [putawayImage, setPutawayImage] = useState("");
+  const [putawayImageFileName, setPutawayImageFileName] = useState("");
   const [putawayUploading, setPutawayUploading] = useState(false);
 
   // Solo Inventory Audit states (Dedicated alone to ASM Deepu B)
@@ -413,9 +407,10 @@ export default function AssistantStoreManagerApp({ embedded = false, sharedCloud
   function handlePutawayImageUpload(e) {
     const file = e.target.files?.[0];
     if (!file) return;
+    setPutawayImageFileName(file.name || "");
 
-    // Auto-extract item title from file name if input is empty
-    if (!putawayName.trim() && file.name) {
+    // Auto-extract item title from file name
+    if (file.name) {
       const clean = file.name
         .replace(/\.[^/.]+$/, "") // strip extension
         .replace(/\([^)]*\)/g, "") // strip parenthesized tags e.g. (Case Sensitive)
@@ -432,7 +427,10 @@ export default function AssistantStoreManagerApp({ embedded = false, sharedCloud
     }
     // Auto-suggest price if empty
     if (!putawayPrice) {
-      setPutawayPrice(putawayCategory === "Frames" ? "199" : "5");
+      setPutawayPrice(putawayCategory === "Frames" ? "249" : "99");
+    }
+    if (!putawayMrp) {
+      setPutawayMrp(putawayCategory === "Frames" ? "299" : "120");
     }
 
     const reader = new FileReader();
@@ -462,16 +460,19 @@ export default function AssistantStoreManagerApp({ embedded = false, sharedCloud
   }
 
   async function handlePutawaySubmit(e) {
-    e.preventDefault();
-    const finalName = putawayName.trim() || (putawayCategory === "Frames" ? "Bengaluru Edition Glass Frame" : "Special Reserve Chocolate");
+    if (e && e.preventDefault) e.preventDefault();
+    const cleanFromFilename = putawayImageFileName
+      ? putawayImageFileName.replace(/\.[^/.]+$/, "").replace(/\([^)]*\)/g, "").replace(/[_\-+]+/g, " ").trim()
+      : "";
+    const finalName = putawayName.trim() || cleanFromFilename || (putawayCategory === "Frames" ? "Bengaluru Edition Glass Wall Frame" : "Special Reserve Dark Chocolate 100g");
     const rawPrice = Number(putawayPrice);
-    const finalPrice = rawPrice > 0 ? rawPrice : (putawayCategory === "Frames" ? 199 : 5);
+    const finalPrice = rawPrice > 0 ? rawPrice : (putawayCategory === "Frames" ? 249 : 99);
     setPutawayUploading(true);
     const parsedUnits = Math.max(1, parseInt(putawayUnits, 10) || (putawayCategory === "Frames" ? 1 : 5));
     const parsedPrice = finalPrice;
-    const parsedMrp = Math.max(parsedPrice, Number(putawayMrp) || parsedPrice);
+    const parsedMrp = Math.max(parsedPrice, Number(putawayMrp) || (parsedPrice + (putawayCategory === "Frames" ? 50 : 20)));
     const generatedSku = `PUTAWAY-${putawayCategory === "Frames" ? "FRM" : "CHC"}-${Date.now().toString().slice(-6)}`;
-    const aisleVal = putawayAisle.trim() || (putawayCategory === "Frames" ? "F1 - NEW - 001" : "C1 - NEW - 001");
+    const aisleVal = putawayAisle.trim() || (putawayCategory === "Frames" ? "F1 - A01 - 001" : "C1 - NEW - 001");
 
     const normCategory = putawayCategory === "Frames" ? "Frames" : "Chocolates";
     const itemPayload = {
@@ -539,11 +540,13 @@ export default function AssistantStoreManagerApp({ embedded = false, sharedCloud
     setActionSuccess(
       `📥 Putaway Complete! "${finalName}" (${parsedUnits} units @ ₹${parsedPrice}) dumped live to Ordering App & Dashboards!`
     );
-    setPutawayName("");
-    setPutawayPrice("");
-    setPutawayMrp("");
+    setPutawayName(normCategory === "Frames" ? "Bengaluru Moments Wall Frame" : "Special Reserve Dark Chocolate 100g");
+    setPutawayPrice(normCategory === "Frames" ? "249" : "99");
+    setPutawayMrp(normCategory === "Frames" ? "299" : "120");
     setPutawayUnits(normCategory === "Frames" ? "1" : "5");
+    setPutawayAisle(normCategory === "Frames" ? "F1 - A01 - 001" : "C1 - NEW - 001");
     setPutawayImage("");
+    setPutawayImageFileName("");
     setTimeout(() => setActionSuccess(""), 4500);
 
     // 4. Dispatch atomic mutation to central cloud ledger
@@ -728,9 +731,8 @@ export default function AssistantStoreManagerApp({ embedded = false, sharedCloud
       {actionSuccess && <div style={S.toast}>{actionSuccess}</div>}
 
       {/* ASM Header (Standalone or Embedded Mode) */}
-      {embedded ? (
-        <div
-          style={{
+      <div
+        style={{
             padding: "16px 20px 8px",
             display: "flex",
             justifyContent: "space-between",
@@ -768,17 +770,30 @@ export default function AssistantStoreManagerApp({ embedded = false, sharedCloud
             </div>
           </div>
 
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             <span style={{ ...S.quickLinkPill, background: "#ecfdf5", color: "#065f46", border: "1px solid #a7f3d0", fontWeight: 700 }}>
-              ⚡ ASM Floor & Audit Workspace (Live)
+              ⚡ ASM Floor &amp; Audit Workspace (Live)
             </span>
+            {!embedded && (
+              <button
+                type="button"
+                onClick={() => router.push("/dashboard")}
+                style={{
+                  background: "#1E293B",
+                  color: "#FFFFFF",
+                  border: "1px solid #334155",
+                  borderRadius: 8,
+                  padding: "6px 12px",
+                  fontSize: 12,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                📊 Command Tower
+              </button>
+            )}
           </div>
         </div>
-      ) : (
-        <div style={{ padding: 40, textAlign: "center", color: "#64748b" }}>
-          Redirecting to Dashboard ASM Workspace...
-        </div>
-      )}
 
       <div style={{ padding: "0 16px" }}>
         <LiveOrderPipeline title="SM Live Order Tracking" />
@@ -826,11 +841,10 @@ export default function AssistantStoreManagerApp({ embedded = false, sharedCloud
               <form onSubmit={handlePutawaySubmit}>
                 <div style={S.formGrid}>
                   <div>
-                    <label style={S.label}>Item Name *</label>
+                    <label style={S.label}>Item Name</label>
                     <input
                       type="text"
-                      required
-                      placeholder="e.g. Lindt Excellence Dark Chocolate 100g"
+                      placeholder="e.g. Bengaluru Edition Glass Wall Frame"
                       value={putawayName}
                       onChange={(e) => setPutawayName(e.target.value)}
                       style={S.input}
@@ -838,28 +852,38 @@ export default function AssistantStoreManagerApp({ embedded = false, sharedCloud
                   </div>
 
                   <div>
-                    <label style={S.label}>Category *</label>
+                    <label style={S.label}>Category</label>
                     <select
                       value={putawayCategory}
                       onChange={(e) => {
                         const cat = e.target.value;
                         setPutawayCategory(cat);
-                        setPutawayUnits(cat === "Frames" ? "1" : "5");
-                        setPutawayAisle(cat === "Frames" ? "F1 - NEW - 001" : "C1 - NEW - 001");
+                        if (cat === "Frames") {
+                          setPutawayUnits("1");
+                          setPutawayAisle("F1 - A01 - 001");
+                          if (!putawayName || putawayName.includes("Chocolate")) setPutawayName("Bengaluru Edition Glass Wall Frame");
+                          if (!putawayPrice || putawayPrice === "99" || putawayPrice === "5") setPutawayPrice("249");
+                          if (!putawayMrp || putawayMrp === "120") setPutawayMrp("299");
+                        } else {
+                          setPutawayUnits("5");
+                          setPutawayAisle("C1 - NEW - 001");
+                          if (!putawayName || putawayName.includes("Frame")) setPutawayName("Special Reserve Dark Chocolate 100g");
+                          if (!putawayPrice || putawayPrice === "249" || putawayPrice === "199") setPutawayPrice("99");
+                          if (!putawayMrp || putawayMrp === "299") setPutawayMrp("120");
+                        }
                       }}
                       style={S.select}
                     >
-                      <option value="Chocolates">🍫 Chocolates</option>
                       <option value="Frames">🖼️ Frames</option>
+                      <option value="Chocolates">🍫 Chocolates</option>
                     </select>
                   </div>
 
                   <div>
-                    <label style={S.label}>Selling Price (₹) *</label>
+                    <label style={S.label}>Selling Price (₹)</label>
                     <input
                       type="number"
                       min="1"
-                      required
                       placeholder="e.g. 249"
                       value={putawayPrice}
                       onChange={(e) => setPutawayPrice(e.target.value)}
@@ -880,12 +904,11 @@ export default function AssistantStoreManagerApp({ embedded = false, sharedCloud
                   </div>
 
                   <div>
-                    <label style={S.label}>Putaway Stock Units *</label>
+                    <label style={S.label}>Putaway Stock Units</label>
                     <input
                       type="number"
                       min="1"
                       max="200"
-                      required
                       value={putawayUnits}
                       onChange={(e) => setPutawayUnits(e.target.value)}
                       style={S.input}
@@ -955,11 +978,6 @@ export default function AssistantStoreManagerApp({ embedded = false, sharedCloud
                   </div>
                 </div>
 
-                {(!putawayName.trim() || !putawayPrice) && (
-                  <div style={{ padding: "8px 12px", background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 8, color: "#DC2626", fontSize: 12, fontWeight: 600, marginBottom: 12 }}>
-                    ℹ️ Enter Item Name &amp; Selling Price above to dump this item live to Ordering App &amp; Dashboards.
-                  </div>
-                )}
                 <button
                   type="submit"
                   disabled={putawayUploading}

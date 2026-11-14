@@ -109,17 +109,17 @@ export default function OrderPlacedSheet({
         rafId = requestAnimationFrame(tick);
       };
       rafId = requestAnimationFrame(tick);
-    }, 280);
+    }, 120);
 
     const phaseTimer = setTimeout(() => {
       finishedRef.current = true;
       setPhaseDone(true);
-    }, 1200);
+    }, 500);
 
-    // Auto-advance to live tracking after brief celebration if user doesn't tap
+    // Auto-advance to live tracking within fraction of a second if user doesn't tap
     const autoNavTimer = setTimeout(() => {
       handleTrackOrder();
-    }, 3600);
+    }, 1200);
 
     return () => {
       clearTimeout(burstTimer);
@@ -130,12 +130,7 @@ export default function OrderPlacedSheet({
   }, [orderId]);
 
   function finishEarly() {
-    if (finishedRef.current) {
-      handleTrackOrder();
-      return;
-    }
-    finishedRef.current = true;
-    setPhaseDone(true);
+    handleTrackOrder();
   }
 
   function handleTrackOrder() {
