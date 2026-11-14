@@ -340,6 +340,9 @@ function shouldRehydrateServer(serverState, mergedState) {
   if (Number(serverState.storeStatusUpdatedAt || 0) < Number(mergedState.storeStatusUpdatedAt || 0)) {
     return true;
   }
+  if ((serverState.customCatalogItems?.length || 0) < (mergedState.customCatalogItems?.length || 0)) {
+    return true;
+  }
   for (const id of ["thrupthi", "sinchana"]) {
     if (
       Number(serverState.staffStatus?.[id]?.statusUpdatedAt || 0) <
