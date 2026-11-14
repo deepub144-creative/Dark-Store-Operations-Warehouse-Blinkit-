@@ -27,7 +27,7 @@ const ASM_OFFICIAL_CATALOG = CATALOG.filter(
   weight: item.category === "Frames" ? "1 unit" : "5 units",
 }));
 
-export default function AssistantStoreManagerApp({ embedded = false, sharedCloudState = null }) {
+export default function AssistantStoreManagerApp({ embedded = false, sharedCloudState = null, onCatalogUpdated = null }) {
   const router = useRouter();
 
   // Dump standalone /roles/asm link into /dashboard?role=asm
@@ -413,11 +413,33 @@ export default function AssistantStoreManagerApp({ embedded = false, sharedCloud
   function handlePutawayImageUpload(e) {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    // Auto-extract item title from file name if input is empty
+    if (!putawayName.trim() && file.name) {
+      const clean = file.name
+        .replace(/\.[^/.]+$/, "") // strip extension
+        .replace(/\([^)]*\)/g, "") // strip parenthesized tags e.g. (Case Sensitive)
+        .replace(/[_\-+]+/g, " ") // replace underscores & hyphens
+        .replace(/\s+/g, " ")
+        .trim();
+      if (clean) {
+        const formatted = clean
+          .split(" ")
+          .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+          .join(" ");
+        setPutawayName(formatted);
+      }
+    }
+    // Auto-suggest price if empty
+    if (!putawayPrice) {
+      setPutawayPrice(putawayCategory === "Frames" ? "199" : "5");
+    }
+
     const reader = new FileReader();
     reader.onload = () => {
       const img = new Image();
       img.onload = () => {
-        const maxSide = 420;
+        const maxSide = 360;
         let { width, height } = img;
         if (width > height && width > maxSide) {
           height = Math.round((height * maxSide) / width);
@@ -431,7 +453,7 @@ export default function AssistantStoreManagerApp({ embedded = false, sharedCloud
         canvas.height = Math.max(1, height);
         const ctx = canvas.getContext("2d");
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        const dataUrl = canvas.toDataURL("image/jpeg", 0.74);
+        const dataUrl = canvas.toDataURL("image/jpeg", 0.68);
         setPutawayImage(dataUrl);
       };
       img.src = String(reader.result || "");
@@ -441,13 +463,12 @@ export default function AssistantStoreManagerApp({ embedded = false, sharedCloud
 
   async function handlePutawaySubmit(e) {
     e.preventDefault();
-    if (!putawayName.trim() || !Number(putawayPrice)) {
-      alert("Please enter valid Item Name and Selling Price.");
-      return;
-    }
+    const finalName = putawayName.trim() || (putawayCategory === "Frames" ? "Bengaluru Edition Glass Frame" : "Special Reserve Chocolate");
+    const rawPrice = Number(putawayPrice);
+    const finalPrice = rawPrice > 0 ? rawPrice : (putawayCategory === "Frames" ? 199 : 5);
     setPutawayUploading(true);
     const parsedUnits = Math.max(1, parseInt(putawayUnits, 10) || (putawayCategory === "Frames" ? 1 : 5));
-    const parsedPrice = Math.max(1, Number(putawayPrice));
+    const parsedPrice = finalPrice;
     const parsedMrp = Math.max(parsedPrice, Number(putawayMrp) || parsedPrice);
     const generatedSku = `PUTAWAY-${putawayCategory === "Frames" ? "FRM" : "CHC"}-${Date.now().toString().slice(-6)}`;
     const aisleVal = putawayAisle.trim() || (putawayCategory === "Frames" ? "F1 - NEW - 001" : "C1 - NEW - 001");
@@ -455,7 +476,7 @@ export default function AssistantStoreManagerApp({ embedded = false, sharedCloud
     const normCategory = putawayCategory === "Frames" ? "Frames" : "Chocolates";
     const itemPayload = {
       sku: generatedSku,
-      name: putawayName.trim(),
+      name: finalName,
       category: normCategory,
       price: parsedPrice,
       mrp: parsedMrp,
@@ -489,6 +510,13 @@ export default function AssistantStoreManagerApp({ embedded = false, sharedCloud
       },
     }));
 
+    // Notify embedded parent if available
+    if (typeof onCatalogUpdated === "function") {
+      try {
+        onCatalogUpdated(nextCustoms);
+      } catch {}
+    }
+
     // 2. Persist locally immediately
     if (typeof window !== "undefined") {
       try {
@@ -509,7 +537,7 @@ export default function AssistantStoreManagerApp({ embedded = false, sharedCloud
 
     playSuccessChime();
     setActionSuccess(
-      `📥 Putaway Complete! "${putawayName.trim()}" (${parsedUnits} units @ ₹${parsedPrice}) dumped live to Ordering App & Dashboards!`
+      `📥 Putaway Complete! "${finalName}" (${parsedUnits} units @ ₹${parsedPrice}) dumped live to Ordering App & Dashboards!`
     );
     setPutawayName("");
     setPutawayPrice("");
@@ -1194,7 +1222,7 @@ export default function AssistantStoreManagerApp({ embedded = false, sharedCloud
                           cursor: "pointer",
                         }}
                       >
-                        {it.category === "Frames" ? "🖼️" : "🍫"} {it.name.split(" ").slice(0, 3).join(" ")} ({it.aisle})
+                        {it?.category === "Frames" ? "🖼️" : "🍫"} {String(it?.name || it?.sku || "Item").split(" ").slice(0, 3).join(" ")} ({it?.aisle || "Aisle"})
                       </button>
                     ))}
                   </div>
@@ -1215,8 +1243,8 @@ export default function AssistantStoreManagerApp({ embedded = false, sharedCloud
                     }}
                   >
                     <img
-                      src={activeAuditItem.image || (activeAuditItem.category === "Frames" ? "/frames/programming-stickers.jpg" : "/choclates/beatss.jpg")}
-                      alt={activeAuditItem.name}
+                      src={activeAuditItem?.image || (activeAuditItem?.category === "Frames" ? "/frames/programming-stickers.jpg" : "/choclates/beatss.jpg")}
+                      alt={activeAuditItem?.name || "Item"}
                       style={{
                         width: 68,
                         height: 68,
@@ -1228,16 +1256,16 @@ export default function AssistantStoreManagerApp({ embedded = false, sharedCloud
                       }}
                       onError={(e) => {
                         e.target.onerror = null;
-                        e.target.src = activeAuditItem.category === "Frames" ? "/frames/programming-stickers.jpg" : "/choclates/beatss.jpg";
+                        e.target.src = activeAuditItem?.category === "Frames" ? "/frames/programming-stickers.jpg" : "/choclates/beatss.jpg";
                       }}
                     />
                     <div>
-                      <div style={{ fontSize: 14, fontWeight: 800, color: "#0F172A" }}>{activeAuditItem.name}</div>
+                      <div style={{ fontSize: 14, fontWeight: 800, color: "#0F172A" }}>{activeAuditItem?.name || "Select SKU"}</div>
                       <div style={{ fontSize: 12, color: "#64748B", marginTop: 2 }}>
-                        {activeAuditItem.category} • ₹{activeAuditItem.price} • 📍 Aisle: <b style={{ color: "#0369a1" }}>{activeAuditItem.aisle}</b> • SKU: {activeAuditItem.sku}
+                        {activeAuditItem?.category || "Category"} • ₹{activeAuditItem?.price ?? 0} • 📍 Aisle: <b style={{ color: "#0369a1" }}>{activeAuditItem?.aisle || "Aisle"}</b> • SKU: {activeAuditItem?.sku || "SKU"}
                       </div>
-                      <div style={{ fontSize: 11, fontWeight: 700, color: activeAuditItem.category === "Frames" ? "#2563eb" : "#0c831f", marginTop: 3 }}>
-                        {activeAuditItem.category === "Frames" ? "🖼️ 1 Unit Single Verification (Max 1)" : "🍫 5 Units Fixed Verification (Max 5)"}
+                      <div style={{ fontSize: 11, fontWeight: 700, color: activeAuditItem?.category === "Frames" ? "#2563eb" : "#0c831f", marginTop: 3 }}>
+                        {activeAuditItem?.category === "Frames" ? "🖼️ 1 Unit Single Verification (Max 1)" : "🍫 5 Units Fixed Verification (Max 5)"}
                       </div>
                     </div>
                   </div>

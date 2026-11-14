@@ -56,6 +56,7 @@ import ManagingDirectorApp from "@/app/roles/md/page";
 import AssistantStoreManagerApp from "@/app/roles/asm/page";
 import WarehouseLoginGate from "@/components/WarehouseLoginGate";
 import DeliveryReceiptModal from "@/components/DeliveryReceiptModal";
+import ErrorBoundary from "@/components/ErrorBoundary";
 import {
   IconRealisticScooter,
   IconRealisticPickerTrolley,
@@ -118,12 +119,13 @@ const STAFF_OPERATIONS = [
 ];
 
 const getInitials = (name) =>
-  name
+  String(name || "")
     .split(" ")
     .filter(Boolean)
     .map((w) => w[0])
     .slice(0, 2)
-    .join("");
+    .join("")
+    .toUpperCase() || "WH";
 
 export default function WarehouseDashboardPage() {
   const [authChecked, setAuthChecked] = useState(false);
@@ -411,11 +413,16 @@ export default function WarehouseDashboardPage() {
     try {
       const p = new URLSearchParams(window.location.search || "");
       const t = p.get("tab");
+      const roleParam = p.get("role");
       const q = p.get("q");
       const cat = p.get("cat");
       const flt = p.get("filter");
       const qf = p.get("qfilter");
-      if (t) setActiveTab(t);
+      if (t) {
+        setActiveTab(t);
+      } else if (roleParam && roleParam.toLowerCase() === "asm") {
+        setActiveTab("asmDesk");
+      }
       if (q !== null) setSkuSearch(q);
       if (cat && ["all", "Chocolates", "Frames"].includes(cat)) setSkuCategoryFilter(cat);
       if (flt && ["all", "low", "oos"].includes(flt)) setSkuStockFilter(flt);
@@ -994,7 +1001,32 @@ export default function WarehouseDashboardPage() {
       console.error("Firestore snapshot error:", e);
     }
 
+    const handleCloudSynced = (e) => {
+      const state = e?.detail;
+      if (Array.isArray(state?.customCatalogItems)) {
+        setCustomCatalogItems(state.customCatalogItems);
+      }
+      if (state?.inventoryStockMap) {
+        setInventoryStockMap(state.inventoryStockMap);
+      }
+      if (state?.stockBySku) {
+        setStockBySku(state.stockBySku);
+      }
+    };
+    const handleStorageEvent = (e) => {
+      if (e.key === "auditx_custom_catalog" && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          if (Array.isArray(parsed)) setCustomCatalogItems(parsed);
+        } catch {}
+      }
+    };
+    window.addEventListener("auditx_cloud_synced", handleCloudSynced);
+    window.addEventListener("storage", handleStorageEvent);
+
     return () => {
+      window.removeEventListener("auditx_cloud_synced", handleCloudSynced);
+      window.removeEventListener("storage", handleStorageEvent);
       unsubCloud();
       unsubOrders();
       unsubBus();
@@ -1664,14 +1696,14 @@ export default function WarehouseDashboardPage() {
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginLeft: "auto", flexWrap: "wrap" }}>
             <div style={S.staffSwitcherBlock}>
               <div style={S.activeStaffPill}>
-                {staff.logo ? (
+                {staff?.logo ? (
                   <img src={staff.logo} alt="" style={{ width: 22, height: 22, borderRadius: "50%", objectFit: "cover" }} />
                 ) : (
-                  <span>{staff.avatar}</span>
+                  <span>{staff?.avatar || "👤"}</span>
                 )}
                 <div>
-                  <div style={S.activeStaffName}>{staff.name}</div>
-                  <div style={S.activeStaffRole}>{staff.designation}</div>
+                  <div style={S.activeStaffName}>{staff?.name || "Staff Member"}</div>
+                  <div style={S.activeStaffRole}>{staff?.designation || "Store Staff"}</div>
                 </div>
               </div>
 
@@ -4346,18 +4378,26 @@ export default function WarehouseDashboardPage() {
           {/* TAB 10: ASM PUTAWAY & SOLO AUDIT DESK (Accessible to ASM & SM) */}
           {activeTab === "asmDesk" && (
             <div style={S.sectionWrap}>
-              <AssistantStoreManagerApp
-                embedded={true}
-                sharedCloudState={{
-                  inventoryStockMap,
-                  stockBySku,
-                  oosList,
-                  customCatalogItems,
-                  inventoryMovements,
-                  lowStockAlerts,
-                  reconciliationReport,
-                }}
-              />
+              <ErrorBoundary label="ASM Solo Audit & Putaway Desk">
+                <AssistantStoreManagerApp
+                  embedded={true}
+                  onCatalogUpdated={(newCustoms) => {
+                    setCustomCatalogItems(newCustoms);
+                    try {
+                      localStorage.setItem("auditx_custom_catalog", JSON.stringify(newCustoms));
+                    } catch {}
+                  }}
+                  sharedCloudState={{
+                    inventoryStockMap,
+                    stockBySku,
+                    oosList,
+                    customCatalogItems,
+                    inventoryMovements,
+                    lowStockAlerts,
+                    reconciliationReport,
+                  }}
+                />
+              </ErrorBoundary>
             </div>
           )}
 

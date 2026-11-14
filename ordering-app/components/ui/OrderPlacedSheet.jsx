@@ -88,7 +88,7 @@ export default function OrderPlacedSheet({
         if (t0 === null) t0 = now;
         const elapsed = now - t0;
         ctx.clearRect(0, 0, cv.width, cv.height);
-        if (elapsed > 1600 || finishedRef.current) return;
+        if (elapsed > 1200 || finishedRef.current) return;
 
         for (let i = 0; i < pieces.length; i++) {
           const b = pieces[i];
@@ -101,7 +101,7 @@ export default function OrderPlacedSheet({
           ctx.save();
           ctx.translate(b.x, b.y);
           ctx.rotate(b.r);
-          ctx.globalAlpha = Math.max(0, 1 - elapsed / 1600);
+          ctx.globalAlpha = Math.max(0, 1 - elapsed / 1200);
           ctx.fillStyle = b.c;
           ctx.fillRect(-b.w / 2, -b.h / 2, b.w, b.h);
           ctx.restore();
@@ -109,27 +109,33 @@ export default function OrderPlacedSheet({
         rafId = requestAnimationFrame(tick);
       };
       rafId = requestAnimationFrame(tick);
-    }, 900);
+    }, 280);
 
     const phaseTimer = setTimeout(() => {
       finishedRef.current = true;
       setPhaseDone(true);
-    }, 3400);
+    }, 1200);
+
+    // Auto-advance to live tracking after brief celebration if user doesn't tap
+    const autoNavTimer = setTimeout(() => {
+      handleTrackOrder();
+    }, 3600);
 
     return () => {
       clearTimeout(burstTimer);
       clearTimeout(phaseTimer);
+      clearTimeout(autoNavTimer);
       if (rafId) cancelAnimationFrame(rafId);
     };
   }, [orderId]);
 
   function finishEarly() {
-    if (finishedRef.current) return;
-    const now = typeof performance !== "undefined" ? performance.now() : Date.now();
-    if (now - startedAtRef.current > 2000) {
-      finishedRef.current = true;
-      setPhaseDone(true);
+    if (finishedRef.current) {
+      handleTrackOrder();
+      return;
     }
+    finishedRef.current = true;
+    setPhaseDone(true);
   }
 
   function handleTrackOrder() {

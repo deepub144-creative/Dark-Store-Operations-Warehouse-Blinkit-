@@ -944,9 +944,9 @@ export default function OrderingAppPage() {
       DiwaliCrackers.mount({
         root: "#ax-ordering-shell",
         ground: 68,
-        scale: 0.6,
+        scale: 0.55,
         sound: true,
-        loop: true,
+        loop: false,
         delayMs: 300,
       });
     }, 80);
@@ -1363,6 +1363,11 @@ export default function OrderingAppPage() {
         }
         playSuccessChime();
         triggerToast(`✨ Fresh Arrival! "${newItem?.name || "New Item"}" was just added and is live to order!`);
+        if (newItem?.category === "Frames") {
+          setSelectedCategory("Frames");
+        } else if (newItem?.category === "Chocolates") {
+          setSelectedCategory("Chocolates");
+        }
       }
       if (data.type === "PUTAWAY_ITEM_REMOVED" && data.payload?.sku) {
         setCustomCatalogItems((prev) => {
@@ -1534,7 +1539,21 @@ export default function OrderingAppPage() {
         setCustomCatalogItems(safeArr(safeStorage.getJson("auditx_custom_catalog", [])));
       }
     };
+
+    const handleCloudSynced = (e) => {
+      const state = e?.detail;
+      if (Array.isArray(state?.customCatalogItems)) {
+        setCustomCatalogItems(state.customCatalogItems);
+      }
+      if (state?.inventoryStockMap) {
+        setInventoryStockMap(state.inventoryStockMap);
+      }
+      if (Array.isArray(state?.oosList)) {
+        setOosList(state.oosList);
+      }
+    };
     window.addEventListener("storage", handleStorageEvent);
+    window.addEventListener("auditx_cloud_synced", handleCloudSynced);
 
     const timer = setTimeout(() => setLoading(false), 160);
     return () => {
@@ -1546,6 +1565,7 @@ export default function OrderingAppPage() {
       unsubBus();
       window.removeEventListener("focus", onFocusCheck);
       window.removeEventListener("storage", handleStorageEvent);
+      window.removeEventListener("auditx_cloud_synced", handleCloudSynced);
     };
   }, [router]);
 
@@ -1757,6 +1777,11 @@ export default function OrderingAppPage() {
           ...item,
           category: cat === "frames" ? "Frames" : "Chocolates",
         };
+      })
+      .sort((a, b) => {
+        if (a.isCustomPutaway && !b.isCustomPutaway) return -1;
+        if (!a.isCustomPutaway && b.isCustomPutaway) return 1;
+        return 0;
       });
   }, [customCatalogItems]);
 
@@ -2704,6 +2729,15 @@ export default function OrderingAppPage() {
 
   return (
     <>
+      <style>{`
+        #ax-ordering-shell button,
+        #ax-ordering-shell a,
+        #ax-ordering-shell input,
+        #ax-ordering-shell select {
+          touch-action: manipulation;
+          -webkit-tap-highlight-color: transparent;
+        }
+      `}</style>
       <IOSToast message={toastMessage} />
 
       <IOSMobileShell
