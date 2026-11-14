@@ -73,9 +73,19 @@ export async function createDeliverySlipPdfDoc(order) {
     order.deliveredAt
   );
 
+  const customerPhone = String(
+    order.customerPhone || order.phone || "9845112233"
+  );
+  const pickerName = String(order.pickerName || "Thrupthi K S");
+  const pickSla = order.pickTimeSec ? `${order.pickTimeSec}s` : "15s";
+  const captainName = String(order.captainName || "Sinchana B R");
+  const deliverySla = order.estimatedDeliveryMins
+    ? `${order.estimatedDeliveryMins}:00 mins`
+    : "8:00 mins";
+
   const { jsPDF } = await import("jspdf");
 
-  const preDoc = new jsPDF({ orientation: "portrait", unit: "mm", format: [80, 220] });
+  const preDoc = new jsPDF({ orientation: "portrait", unit: "mm", format: [80, 240] });
   preDoc.setFont("courier", "normal");
   preDoc.setFontSize(8);
 
@@ -85,16 +95,20 @@ export async function createDeliverySlipPdfDoc(order) {
     const lineTotal = (qty * unitPrice).toFixed(2);
     const title = `${qty}x ${cleanItemName(it.name || "Item")}`;
     const lines = preDoc.splitTextToSize(title, 44);
-    return { lines, lineTotal };
+    const isFrame = String(it.category || it.cat || it.sku || it.name || "")
+      .toUpperCase()
+      .includes("FRAME");
+    const unitsLine = isFrame ? "(1 unit fixed | DELIVERED)" : "(5 units fixed | DELIVERED)";
+    return { lines, lineTotal, unitsLine };
   });
 
   const customerNameLines = preDoc.splitTextToSize(`Customer: ${customerName}`, 68);
   const addressLines = preDoc.splitTextToSize(`Deliver to: ${deliveryAddress}`, 68);
-  const totalItemRows = wrappedItemBlocks.reduce((acc, blk) => acc + blk.lines.length, 0);
+  const totalItemRows = wrappedItemBlocks.reduce((acc, blk) => acc + blk.lines.length + 1, 0);
 
   const estimatedHeight = Math.max(
-    140,
-    95 + customerNameLines.length * 4 + addressLines.length * 4 + totalItemRows * 4.5 + 25
+    165,
+    115 + customerNameLines.length * 4 + addressLines.length * 4 + totalItemRows * 4.5 + 40
   );
 
   const doc = new jsPDF({
@@ -138,6 +152,9 @@ export async function createDeliverySlipPdfDoc(order) {
     curY += 4;
   });
 
+  doc.text(`Phone: ${customerPhone}`, 6, curY);
+  curY += 4;
+
   addressLines.forEach((line) => {
     doc.text(line, 6, curY);
     curY += 4;
@@ -161,9 +178,11 @@ export async function createDeliverySlipPdfDoc(order) {
       doc.text(blk.lines[i], 6, curY);
       curY += 4.2;
     }
+    doc.text(blk.unitsLine, 6, curY);
+    curY += 4.2;
   });
 
-  curY += 2;
+  curY += 1;
   doc.text(divider, 40, curY, { align: "center" });
   curY += 5;
 
@@ -185,6 +204,18 @@ export async function createDeliverySlipPdfDoc(order) {
   doc.text(`Payment: ${paymentMethod.slice(0, 26)}`, 6, curY);
   curY += 4;
   doc.text(`Ref: #${refCode}`, 6, curY);
+
+  curY += 5;
+  doc.text(divider, 40, curY, { align: "center" });
+  curY += 5;
+
+  doc.text(`Packed by: ${pickerName}`, 6, curY);
+  curY += 4;
+  doc.text(`Pack time: ${pickSla}`, 6, curY);
+  curY += 4;
+  doc.text(`Rider: ${captainName}`, 6, curY);
+  curY += 4;
+  doc.text(`Delivery time: ${deliverySla}`, 6, curY);
 
   curY += 5;
   doc.text(divider, 40, curY, { align: "center" });

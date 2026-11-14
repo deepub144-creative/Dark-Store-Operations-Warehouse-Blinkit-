@@ -8,6 +8,7 @@ import { db } from "@/lib/firebaseClient";
 import { CATALOG } from "@/lib/items";
 import { getDefaultItemStock, mergeCatalogItems, isPuppyFrame } from "@/lib/hubState";
 import { downloadDeliverySlipPdf } from "@/lib/orderSlipPdf";
+import DeliveryReceiptModal from "@/components/DeliveryReceiptModal";
 import {
   broadcastEvent,
   subscribeToEvents,
@@ -1471,6 +1472,8 @@ export default function OrderingAppPage() {
             if (!ordId || dismissedSlip !== ordId) {
               setLatestDeliveredSlipOrder(deliveredObj);
             }
+            setReceiptOrder(deliveredObj);
+            setShowReceiptModal(true);
           }
           setRateCompleted(false);
           setShowRateOrderModal(false);
@@ -3517,6 +3520,31 @@ export default function OrderingAppPage() {
                   <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
                     <button
                       type="button"
+                      onClick={() => {
+                        setReceiptOrder(latestDeliveredSlipOrder);
+                        setShowReceiptModal(true);
+                      }}
+                      style={{
+                        background: "#ffffff",
+                        color: "#0c831f",
+                        border: "1px solid #86efac",
+                        borderRadius: 8,
+                        padding: "6px 11px",
+                        fontSize: 11.5,
+                        fontWeight: 800,
+                        whiteSpace: "nowrap",
+                        cursor: "pointer",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 4,
+                        boxShadow: "0 1px 4px rgba(12, 131, 31, 0.15)",
+                      }}
+                      title="View official thermal delivery slip on screen"
+                    >
+                      🧾 View Slip
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => downloadDeliverySlipPdf(latestDeliveredSlipOrder)}
                       style={{
                         background: "#0c831f",
@@ -4129,27 +4157,54 @@ export default function OrderingAppPage() {
                                   🛒 Reorder All
                                 </button>
                                 {isOrderDelivered ? (
-                                  <button
-                                    type="button"
-                                    onClick={() => downloadDeliverySlipPdf(order)}
-                                    style={{
-                                      padding: "7px 11px",
-                                      borderRadius: 8,
-                                      border: "1px solid #86efac",
-                                      background: "#f0fdf4",
-                                      color: "#15803d",
-                                      fontWeight: 800,
-                                      fontSize: 11.5,
-                                      whiteSpace: "nowrap",
-                                      cursor: "pointer",
-                                      display: "inline-flex",
-                                      alignItems: "center",
-                                      gap: 4,
-                                    }}
-                                    title="Download delivery slip (PDF)"
-                                  >
-                                    📥 Download Slip
-                                  </button>
+                                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setReceiptOrder(order);
+                                        setShowReceiptModal(true);
+                                      }}
+                                      style={{
+                                        padding: "7px 11px",
+                                        borderRadius: 8,
+                                        border: "none",
+                                        background: "#0c831f",
+                                        color: "#ffffff",
+                                        fontWeight: 800,
+                                        fontSize: 11.5,
+                                        whiteSpace: "nowrap",
+                                        cursor: "pointer",
+                                        display: "inline-flex",
+                                        alignItems: "center",
+                                        gap: 4,
+                                        boxShadow: "0 2px 6px rgba(12, 131, 31, 0.25)",
+                                      }}
+                                      title="View thermal delivery slip on screen"
+                                    >
+                                      🧾 View Slip
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => downloadDeliverySlipPdf(order)}
+                                      style={{
+                                        padding: "7px 11px",
+                                        borderRadius: 8,
+                                        border: "1px solid #86efac",
+                                        background: "#f0fdf4",
+                                        color: "#15803d",
+                                        fontWeight: 800,
+                                        fontSize: 11.5,
+                                        whiteSpace: "nowrap",
+                                        cursor: "pointer",
+                                        display: "inline-flex",
+                                        alignItems: "center",
+                                        gap: 4,
+                                      }}
+                                      title="Download delivery slip (PDF)"
+                                    >
+                                      📥 Download Slip
+                                    </button>
+                                  </div>
                                 ) : null}
                               </div>
                             </div>
@@ -5230,30 +5285,58 @@ export default function OrderingAppPage() {
               </button>
 
               {(activeDeliveryOrder.status === "delivered" || orderingStage === "delivered") && (
-                <button
-                  type="button"
-                  onClick={() => downloadDeliverySlipPdf(activeDeliveryOrder)}
-                  style={{
-                    marginTop: 10,
-                    width: "100%",
-                    padding: "10px 14px",
-                    borderRadius: 10,
-                    border: "1.5px solid #86efac",
-                    background: "#f0fdf4",
-                    color: "#15803d",
-                    fontWeight: 800,
-                    fontSize: 13,
-                    textAlign: "center",
-                    cursor: "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: 6,
-                  }}
-                  title="Download delivery slip (PDF)"
-                >
-                  📥 Download Delivery Slip (PDF)
-                </button>
+                <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setReceiptOrder(activeDeliveryOrder);
+                      setShowReceiptModal(true);
+                    }}
+                    style={{
+                      flex: 1,
+                      minWidth: 140,
+                      padding: "10px 14px",
+                      borderRadius: 10,
+                      border: "none",
+                      background: "#0c831f",
+                      color: "#ffffff",
+                      fontWeight: 800,
+                      fontSize: 13,
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 6,
+                      boxShadow: "0 2px 8px rgba(12, 131, 31, 0.25)",
+                    }}
+                    title="View thermal delivery slip on screen"
+                  >
+                    🧾 View Slip
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => downloadDeliverySlipPdf(activeDeliveryOrder)}
+                    style={{
+                      flex: 1,
+                      minWidth: 140,
+                      padding: "10px 14px",
+                      borderRadius: 10,
+                      border: "1.5px solid #86efac",
+                      background: "#f0fdf4",
+                      color: "#15803d",
+                      fontWeight: 800,
+                      fontSize: 13,
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 6,
+                    }}
+                    title="Download delivery slip (PDF)"
+                  >
+                    📥 Download (PDF)
+                  </button>
+                </div>
               )}
             </form>
           </div>
@@ -6364,6 +6447,13 @@ export default function OrderingAppPage() {
       {authChecked && customer && !capacityBlockedMsg && !showIntroOverlay && (
         <LittlePenguin rootSelector="#ax-ordering-shell" pos="left" ground={60} scale={1} awaySeconds={12} />
       )}
+
+      {/* ── THERMAL DELIVERY RECEIPT SLIP MODAL (APPEARS ON DELIVERY) ── */}
+      <DeliveryReceiptModal
+        order={receiptOrder || latestDeliveredSlipOrder || activeDeliveryOrder}
+        isOpen={showReceiptModal}
+        onClose={() => setShowReceiptModal(false)}
+      />
     </>
   );
 }

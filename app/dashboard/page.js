@@ -55,6 +55,7 @@ import DailyOperationsExportButton from "@/components/DailyOperationsExportButto
 import ManagingDirectorApp from "@/app/roles/md/page";
 import AssistantStoreManagerApp from "@/app/roles/asm/page";
 import WarehouseLoginGate from "@/components/WarehouseLoginGate";
+import DeliveryReceiptModal from "@/components/DeliveryReceiptModal";
 import {
   IconRealisticScooter,
   IconRealisticPickerTrolley,
@@ -135,6 +136,8 @@ export default function WarehouseDashboardPage() {
   const [activeTab, setActiveTab] = useState("overview"); // 'overview' | 'queue' | 'margin' | 'ratings' | 'complaints' | 'inventory' | 'devices' | 'orderCap' | 'erdDfd' | 'history' | 'asmDesk'
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [headerHeight, setHeaderHeight] = useState(88);
+  const [selectedSlipOrder, setSelectedSlipOrder] = useState(null);
+  const [showSlipModal, setShowSlipModal] = useState(false);
   const headerRef = useRef(null);
 
   useEffect(() => {
@@ -3504,9 +3507,35 @@ export default function WarehouseDashboardPage() {
                             )}
 
                             {isDelivered && (
-                              <span style={S.deliveredStampPill}>
-                                ✓ DELIVERED IN {(ord.pickTimeSec || 45) + (ord.deliveryDurationSec || 180)}s
-                              </span>
+                              <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedSlipOrder(ord);
+                                    setShowSlipModal(true);
+                                  }}
+                                  style={{
+                                    background: "#0c831f",
+                                    color: "#ffffff",
+                                    border: "none",
+                                    borderRadius: 6,
+                                    padding: "4px 8px",
+                                    fontSize: 11,
+                                    fontWeight: 800,
+                                    cursor: "pointer",
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: 4,
+                                    boxShadow: "0 1px 4px rgba(12, 131, 31, 0.25)",
+                                  }}
+                                  title="View official thermal delivery slip on screen"
+                                >
+                                  🧾 Slip
+                                </button>
+                                <span style={S.deliveredStampPill}>
+                                  ✓ DELIVERED IN {(ord.pickTimeSec || 45) + (ord.deliveryDurationSec || 180)}s
+                                </span>
+                              </div>
                             )}
                           </div>
                         </div>
@@ -4345,6 +4374,13 @@ export default function WarehouseDashboardPage() {
       >
         {dashboardScrolled ? "▲" : "▼"}
       </button>
+
+      {/* ── THERMAL DELIVERY RECEIPT SLIP MODAL (APPEARS ON DELIVERY) ── */}
+      <DeliveryReceiptModal
+        order={selectedSlipOrder}
+        isOpen={showSlipModal}
+        onClose={() => setShowSlipModal(false)}
+      />
     </div>
   );
 }

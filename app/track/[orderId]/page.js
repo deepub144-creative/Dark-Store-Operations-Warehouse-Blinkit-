@@ -16,6 +16,7 @@ import {
 } from "@/lib/realtimeSync";
 import { playSuccessChime, playNotificationChime } from "@/lib/soundSystem";
 import { downloadDeliverySlipPdf } from "@/lib/orderSlipPdf";
+import DeliveryReceiptModal from "@/components/DeliveryReceiptModal";
 import AuditxLogo from "@/components/AuditxLogo";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { subscribeNetworkStatus, withIdempotentLock } from "@/lib/apiClient";
@@ -278,7 +279,8 @@ export default function TrackOrderPage() {
         advanceStageMonotonic("delivered");
         setRiderProgress(100);
         playSuccessChime();
-        triggerToast("🎉 Order Delivered at Doorstep! Please rate your delivery & items.");
+        setShowReceiptModal(true);
+        triggerToast("🎉 Order Delivered at Doorstep! Here is your delivery slip.");
       }
     });
 
@@ -515,6 +517,14 @@ export default function TrackOrderPage() {
   const isPicking = activeOrder.status === "picking" || isStaged;
   const hasArrivedAtDoorstep = isDelivered || trackingStage === "rider_arrived";
 
+  const autoOpenedReceiptRef = useRef(false);
+  useEffect(() => {
+    if (isDelivered && !autoOpenedReceiptRef.current) {
+      autoOpenedReceiptRef.current = true;
+      setShowReceiptModal(true);
+    }
+  }, [isDelivered]);
+
   function handleReturnToCatalog() {
     const ordKey = String(activeOrder?.id || activeOrder?.orderId || orderId || "");
     if (ordKey) {
@@ -741,32 +751,60 @@ export default function TrackOrderPage() {
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 {isDelivered && (
-                  <button
-                    type="button"
-                    onClick={() => downloadDeliverySlipPdf(activeOrder)}
-                    style={{
-                      flex: 1,
-                      minWidth: 140,
-                      minHeight: 46,
-                      background: "#F0FDF4",
-                      color: "#15803D",
-                      border: "1.5px solid #86EFAC",
-                      borderRadius: 12,
-                      fontSize: 13,
-                      fontWeight: 800,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      gap: 6,
-                      padding: "8px 12px",
-                      textAlign: "center",
-                      cursor: "pointer",
-                      boxShadow: "0 2px 8px rgba(21, 128, 61, 0.15)",
-                    }}
-                    title="Download delivery slip (PDF)"
-                  >
-                    📥 Download Delivery Slip (PDF)
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setShowReceiptModal(true)}
+                      style={{
+                        flex: 1,
+                        minWidth: 140,
+                        minHeight: 46,
+                        background: "#0C831F",
+                        color: "#FFFFFF",
+                        border: "none",
+                        borderRadius: 12,
+                        fontSize: 13.5,
+                        fontWeight: 800,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: 6,
+                        padding: "8px 12px",
+                        textAlign: "center",
+                        cursor: "pointer",
+                        boxShadow: "0 2px 8px rgba(12, 131, 31, 0.25)",
+                      }}
+                      title="View delivery slip on screen"
+                    >
+                      🧾 View Delivery Slip
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => downloadDeliverySlipPdf(activeOrder)}
+                      style={{
+                        flex: 1,
+                        minWidth: 140,
+                        minHeight: 46,
+                        background: "#F0FDF4",
+                        color: "#15803D",
+                        border: "1.5px solid #86EFAC",
+                        borderRadius: 12,
+                        fontSize: 13,
+                        fontWeight: 800,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: 6,
+                        padding: "8px 12px",
+                        textAlign: "center",
+                        cursor: "pointer",
+                        boxShadow: "0 2px 8px rgba(21, 128, 61, 0.15)",
+                      }}
+                      title="Download delivery slip (PDF)"
+                    >
+                      📥 Download Delivery Slip (PDF)
+                    </button>
+                  </>
                 )}
                 <button
                   type="button"
@@ -1229,30 +1267,56 @@ export default function TrackOrderPage() {
 
               {/* Delivery Receipt Action Button (Only shown after delivery) */}
               {isDelivered && (
-                <button
-                  type="button"
-                  onClick={() => downloadDeliverySlipPdf(activeOrder)}
-                  style={{
-                    marginTop: 14,
-                    width: "100%",
-                    padding: "11px 16px",
-                    borderRadius: 12,
-                    border: "1.5px solid #86efac",
-                    background: "#f0fdf4",
-                    color: "#15803d",
-                    fontWeight: 800,
-                    fontSize: 13.5,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: 8,
-                    cursor: "pointer",
-                    boxShadow: "0 2px 8px rgba(21, 128, 61, 0.12)",
-                  }}
-                  title="Download delivery slip (PDF)"
-                >
-                  📥 Download Delivery Slip (PDF)
-                </button>
+                <div style={{ display: "flex", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
+                  <button
+                    type="button"
+                    onClick={() => setShowReceiptModal(true)}
+                    style={{
+                      flex: 1,
+                      minWidth: 140,
+                      padding: "11px 16px",
+                      borderRadius: 12,
+                      border: "none",
+                      background: "#0c831f",
+                      color: "#ffffff",
+                      fontWeight: 800,
+                      fontSize: 13.5,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 8,
+                      cursor: "pointer",
+                      boxShadow: "0 2px 8px rgba(12, 131, 31, 0.25)",
+                    }}
+                    title="View official thermal delivery slip"
+                  >
+                    🧾 View Delivery Slip
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => downloadDeliverySlipPdf(activeOrder)}
+                    style={{
+                      flex: 1,
+                      minWidth: 140,
+                      padding: "11px 16px",
+                      borderRadius: 12,
+                      border: "1.5px solid #86efac",
+                      background: "#f0fdf4",
+                      color: "#15803d",
+                      fontWeight: 800,
+                      fontSize: 13.5,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 8,
+                      cursor: "pointer",
+                      boxShadow: "0 2px 8px rgba(21, 128, 61, 0.12)",
+                    }}
+                    title="Download delivery slip (PDF)"
+                  >
+                    📥 Download (PDF)
+                  </button>
+                </div>
               )}
             </div>
           </div>
@@ -1744,6 +1808,12 @@ export default function TrackOrderPage() {
             </form>
       </IOSBottomSheet>
 
+      {/* ── THERMAL DELIVERY RECEIPT SLIP MODAL (APPEARS ON DELIVERY) ── */}
+      <DeliveryReceiptModal
+        order={activeOrder}
+        isOpen={showReceiptModal}
+        onClose={() => setShowReceiptModal(false)}
+      />
     </>
   );
 }
