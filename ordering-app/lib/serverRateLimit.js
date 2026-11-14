@@ -218,13 +218,13 @@ export async function checkOrderRateLimit({ userId, clientIp }) {
     };
   }
 
-  // 1. Per-User rate limit (default 3/min)
+  // 1. Per-User rate limit (default 60/min for rapid ordering flow)
   if (uid) {
-    const userLimit = Number(process.env.AUDITX_ORDER_RATE_PER_USER || 3);
+    const userLimit = Number(process.env.AUDITX_ORDER_RATE_PER_USER || 60);
     const userRes = await checkRateLimit({
       namespace: "order_user",
       key: uid,
-      limit: userLimit > 0 ? userLimit : 3,
+      limit: userLimit > 0 ? userLimit : 60,
       windowMs: 60_000,
     });
     if (!userRes.allowed) {
@@ -238,12 +238,12 @@ export async function checkOrderRateLimit({ userId, clientIp }) {
     }
   }
 
-  // 2. Per-IP rate limit (default 20/min)
-  const ipLimit = Number(process.env.AUDITX_ORDER_RATE_PER_IP || 20);
+  // 2. Per-IP rate limit (high-capacity default 600/min so 60+ concurrent classroom/test users never jam)
+  const ipLimit = Number(process.env.AUDITX_ORDER_RATE_PER_IP || 600);
   const ipRes = await checkRateLimit({
     namespace: "order_ip",
     key: ip,
-    limit: ipLimit > 0 ? ipLimit : 20,
+    limit: ipLimit > 0 ? ipLimit : 600,
     windowMs: 60_000,
   });
   if (!ipRes.allowed) {
@@ -252,7 +252,7 @@ export async function checkOrderRateLimit({ userId, clientIp }) {
       allowed: false,
       scope: "ip",
       retryAfterSec: ipRes.retryAfterSec,
-      message: `Please wait a moment. High order traffic detected from your network. Retry in ${ipRes.retryAfterSec}s.`,
+      message: `High order volume on current connection. Retry in ${ipRes.retryAfterSec}s.`,
     };
   }
 
