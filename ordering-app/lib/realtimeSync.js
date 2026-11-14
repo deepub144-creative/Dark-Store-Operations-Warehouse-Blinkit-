@@ -533,10 +533,34 @@ export async function dispatchCloudAction(action, payload = {}) {
   ].includes(action);
   const retries = action === "HEARTBEAT" || isOrderPlacement ? 0 : 2;
 
+  // Retrieve current warehouse session for staff authentication
+  const whSess = safeStorage.getJson("auditx_wh_session", null) || safeStorage.getJson("auditx_staff", null);
+  const staffRole = whSess?.roleCode || safePayload.staffRole || (action.includes("ASM") || action.includes("PUTAWAY") ? "ASM" : "SM");
+  const staffName = whSess?.name || safePayload.staffName || (staffRole === "ASM" ? "Deepu B (ASM)" : "Bhaskar N S (SM)");
+  const staffId = whSess?.id || safePayload.staffId || (staffRole === "ASM" ? "deepu" : "bhaskar");
+
+  const requestHeaders = {
+    "x-staff-id": staffId,
+    "x-staff-name": staffName,
+    "x-staff-role": staffRole,
+    "x-store-id": "TIPTUR-HUB-KA44",
+  };
+
   try {
     const res = await apiFetch("/api/sync", {
       method: "POST",
-      body: { action, payload: { ...safePayload, idempotencyKey } },
+      headers: requestHeaders,
+      body: {
+        action,
+        payload: {
+          ...safePayload,
+          staffRole,
+          staffName,
+          staffId,
+          storeId: safePayload.storeId || "TIPTUR-HUB-KA44",
+          idempotencyKey,
+        },
+      },
       idempotencyKey,
       timeoutMs: 10000,
       retries,

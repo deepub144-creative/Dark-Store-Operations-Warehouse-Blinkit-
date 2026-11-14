@@ -1736,14 +1736,21 @@ export default function OrderingAppPage() {
 
   // Merge standard catalog with ASM Putaway items: ONLY Chocolates & Frames in Ordering App
   const effectiveCatalog = useMemo(() => {
-    return mergeCatalogItems(CATALOG, customCatalogItems).filter(
-      (item) =>
-        item &&
-        typeof item === "object" &&
-        Boolean(item.sku || item.id) &&
-        Number.isFinite(Number(item.price)) &&
-        (item.category === "Chocolates" || item.category === "Frames")
-    );
+    return mergeCatalogItems(CATALOG, customCatalogItems)
+      .filter((item) => {
+        if (!item || typeof item !== "object") return false;
+        if (!item.sku && !item.id) return false;
+        if (!Number.isFinite(Number(item.price))) return false;
+        const cat = String(item.category || "").trim().toLowerCase();
+        return cat === "chocolates" || cat === "frames";
+      })
+      .map((item) => {
+        const cat = String(item.category || "").trim().toLowerCase();
+        return {
+          ...item,
+          category: cat === "frames" ? "Frames" : "Chocolates",
+        };
+      });
   }, [customCatalogItems]);
 
   const getAvailableUnits = useCallback(

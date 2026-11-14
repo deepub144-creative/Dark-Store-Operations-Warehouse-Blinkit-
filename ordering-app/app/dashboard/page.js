@@ -516,7 +516,16 @@ export default function WarehouseDashboardPage() {
 
       if (cached) {
         if (Array.isArray(cached.oosList)) setOosList(cached.oosList);
-        if (Array.isArray(cached.customCatalogItems)) setCustomCatalogItems(cached.customCatalogItems);
+        if (Array.isArray(cached.customCatalogItems) && cached.customCatalogItems.length > 0) {
+          setCustomCatalogItems(cached.customCatalogItems);
+        } else {
+          try {
+            const localCustoms = JSON.parse(localStorage.getItem("auditx_custom_catalog") || "[]");
+            if (Array.isArray(localCustoms) && localCustoms.length > 0) {
+              setCustomCatalogItems(localCustoms);
+            }
+          } catch {}
+        }
         if (cached.loginDevicesToday) setLoginDevicesToday(cached.loginDevicesToday);
         if (cached.newSignupsToday) setNewSignupsToday(cached.newSignupsToday);
         if (cached.allCustomerDevices) setAllCustomerDevices(cached.allCustomerDevices);
@@ -825,8 +834,13 @@ export default function WarehouseDashboardPage() {
         const newItem = data.payload.item;
         if (Array.isArray(data.payload.customCatalogItems)) {
           setCustomCatalogItems(data.payload.customCatalogItems);
+          try { localStorage.setItem("auditx_custom_catalog", JSON.stringify(data.payload.customCatalogItems)); } catch {}
         } else if (newItem) {
-          setCustomCatalogItems((prev) => [newItem, ...(prev || []).filter((c) => c.sku !== newItem.sku)]);
+          setCustomCatalogItems((prev) => {
+            const next = [newItem, ...(prev || []).filter((c) => c.sku !== newItem.sku)];
+            try { localStorage.setItem("auditx_custom_catalog", JSON.stringify(next)); } catch {}
+            return next;
+          });
         }
         if (newItem?.sku && Number.isFinite(Number(data.payload.units || newItem.units))) {
           const u = Number(data.payload.units || newItem.units);

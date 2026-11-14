@@ -446,91 +446,113 @@ export default function AssistantStoreManagerApp({ embedded = false, sharedCloud
     const generatedSku = `PUTAWAY-${putawayCategory === "Frames" ? "FRM" : "CHC"}-${Date.now().toString().slice(-6)}`;
     const aisleVal = putawayAisle.trim() || (putawayCategory === "Frames" ? "F1 - NEW - 001" : "C1 - NEW - 001");
 
+    const normCategory = putawayCategory === "Frames" ? "Frames" : "Chocolates";
     const itemPayload = {
       sku: generatedSku,
       name: putawayName.trim(),
-      category: putawayCategory,
+      category: normCategory,
       price: parsedPrice,
       mrp: parsedMrp,
       units: parsedUnits,
       aisle: aisleVal,
-      image: putawayImage || (putawayCategory === "Frames" ? "/frames/programming-stickers.jpg" : "/choclates/beatss.jpg"),
+      image: putawayImage || (normCategory === "Frames" ? "/frames/programming-stickers.jpg" : "/choclates/beatss.jpg"),
       addedBy: "Deepu B (ASM)",
     };
 
-    const res = await dispatchCloudAction("PUTAWAY_ADD_ITEM", {
-      item: itemPayload,
+    const addedItem = {
+      ...itemPayload,
+      inStock: parsedUnits > 0,
+      isCustomPutaway: true,
+      createdAt: new Date().toISOString(),
+    };
+
+    // 1. Immediately update ASM local states optimistically
+    const nextCustoms = [addedItem, ...customCatalogItems.filter((c) => c.sku !== addedItem.sku)];
+    setCustomCatalogItems(nextCustoms);
+    setInventoryStockMap((prev) => ({ ...prev, [addedItem.sku]: parsedUnits }));
+    setStockBySku((prev) => ({
+      ...prev,
+      [addedItem.sku]: {
+        skuId: addedItem.sku,
+        storeId: "TIPTUR-HUB-KA44",
+        unitsInStock: parsedUnits,
+        availableUnits: parsedUnits,
+        reservedUnits: 0,
+        soldToday: 0,
+      },
+    }));
+
+    // 2. Persist locally immediately
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.setItem("auditx_custom_catalog", JSON.stringify(nextCustoms));
+        const invMap = JSON.parse(localStorage.getItem("auditx_inventory_units") || "{}");
+        invMap[addedItem.sku] = parsedUnits;
+        localStorage.setItem("auditx_inventory_units", JSON.stringify(invMap));
+      } catch {}
+    }
+
+    // 3. Broadcast immediately to all tabs (Ordering App, SM Dashboard, Picker, Rider)
+    broadcastEvent("PUTAWAY_ITEM_ADDED", {
+      item: addedItem,
+      customCatalogItems: nextCustoms,
+      sku: addedItem.sku,
+      units: parsedUnits,
     });
-    setPutawayUploading(false);
 
-    if (res?.ok) {
-      const addedItem = res.data?.addedItem || {
-        ...itemPayload,
-        inStock: parsedUnits > 0,
-        createdAt: new Date().toISOString(),
-      };
+    playSuccessChime();
+    setActionSuccess(
+      `📥 Putaway Complete! "${putawayName.trim()}" (${parsedUnits} units @ ₹${parsedPrice}) dumped live to Ordering App & Dashboards!`
+    );
+    setPutawayName("");
+    setPutawayPrice("");
+    setPutawayMrp("");
+    setPutawayUnits(normCategory === "Frames" ? "1" : "5");
+    setPutawayImage("");
+    setTimeout(() => setActionSuccess(""), 4500);
 
-      // 1. Immediately update ASM local states
-      const nextCustoms = [addedItem, ...customCatalogItems.filter((c) => c.sku !== addedItem.sku)];
-      setCustomCatalogItems(nextCustoms);
-      setInventoryStockMap((prev) => ({ ...prev, [addedItem.sku]: parsedUnits }));
-      setStockBySku((prev) => ({
-        ...prev,
-        [addedItem.sku]: {
-          skuId: addedItem.sku,
-          storeId: "TIPTUR-HUB-KA44",
-          unitsInStock: parsedUnits,
-          availableUnits: parsedUnits,
-          reservedUnits: 0,
-          soldToday: 0,
-        },
-      }));
-
-      // 2. Persist locally
-      if (typeof window !== "undefined") {
-        try {
-          localStorage.setItem("auditx_custom_catalog", JSON.stringify(nextCustoms));
-        } catch {}
-      }
-
-      // 3. Broadcast immediately to all tabs (Ordering App, SM Dashboard, Picker, Rider)
-      broadcastEvent("PUTAWAY_ITEM_ADDED", {
-        item: addedItem,
-        customCatalogItems: nextCustoms,
-        sku: addedItem.sku,
-        units: parsedUnits,
+    // 4. Dispatch atomic mutation to central cloud ledger
+    try {
+      const res = await dispatchCloudAction("PUTAWAY_ADD_ITEM", {
+        item: itemPayload,
+        staffRole: "ASM",
+        staffName: "Deepu B (ASM)",
       });
-
-      playSuccessChime();
-      setActionSuccess(
-        `📥 Putaway Complete! "${putawayName.trim()}" (${parsedUnits} units @ ₹${parsedPrice}) dumped live to Ordering App & Dashboards!`
-      );
-      setPutawayName("");
-      setPutawayPrice("");
-      setPutawayMrp("");
-      setPutawayUnits(putawayCategory === "Frames" ? "1" : "5");
-      setPutawayImage("");
-      setTimeout(() => setActionSuccess(""), 4500);
-    } else {
-      alert(res?.error || "Failed to dump item. Please try again.");
+      if (res?.ok && Array.isArray(res.data?.customCatalogItems)) {
+        setCustomCatalogItems(res.data.customCatalogItems);
+        if (typeof window !== "undefined") {
+          try {
+            localStorage.setItem("auditx_custom_catalog", JSON.stringify(res.data.customCatalogItems));
+          } catch {}
+        }
+      }
+    } catch (syncErr) {
+      console.warn("[ASM Putaway] Background cloud sync warning:", syncErr?.message);
+    } finally {
+      setPutawayUploading(false);
     }
   }
 
   async function handleRemovePutawayItem(sku, name) {
-    const res = await dispatchCloudAction("PUTAWAY_REMOVE_ITEM", { sku });
-    if (res?.ok) {
-      const filtered = customCatalogItems.filter((c) => c.sku !== sku);
-      setCustomCatalogItems(filtered);
-      if (typeof window !== "undefined") {
-        try {
-          localStorage.setItem("auditx_custom_catalog", JSON.stringify(filtered));
-        } catch {}
-      }
-      broadcastEvent("PUTAWAY_ITEM_REMOVED", { sku, customCatalogItems: filtered });
-      playNotificationChime();
-      setActionSuccess(`🗑️ Removed custom Putaway item "${name}".`);
-      setTimeout(() => setActionSuccess(""), 3000);
+    const filtered = customCatalogItems.filter((c) => c.sku !== sku);
+    setCustomCatalogItems(filtered);
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.setItem("auditx_custom_catalog", JSON.stringify(filtered));
+      } catch {}
     }
+    broadcastEvent("PUTAWAY_ITEM_REMOVED", { sku, customCatalogItems: filtered });
+    playNotificationChime();
+    setActionSuccess(`🗑️ Removed custom Putaway item "${name}".`);
+    setTimeout(() => setActionSuccess(""), 3000);
+
+    try {
+      await dispatchCloudAction("PUTAWAY_REMOVE_ITEM", {
+        sku,
+        staffRole: "ASM",
+        staffName: "Deepu B (ASM)",
+      });
+    } catch {}
   }
 
   function handleScanForAudit(code) {
