@@ -1289,7 +1289,14 @@ export default function OrderingAppPage() {
         setInventoryStockMap(cloudState.inventoryStockMap);
       }
       if (Array.isArray(cloudState.customCatalogItems)) {
-        setCustomCatalogItems(cloudState.customCatalogItems);
+        const local = safeArr(safeStorage.getJson("auditx_custom_catalog", []));
+        const combined = Array.from(
+          new Map(
+            [...local, ...(cloudState.customCatalogItems || [])].map((item) => [item.sku, item])
+          ).values()
+        );
+        setCustomCatalogItems(combined);
+        try { localStorage.setItem("auditx_custom_catalog", JSON.stringify(combined)); } catch {}
       }
       if (Array.isArray(cloudState.complaints)) {
         setCustomerComplaints(sanitizeComplaints(cloudState.complaints));
@@ -1338,17 +1345,17 @@ export default function OrderingAppPage() {
       }
       if (data.type === "PUTAWAY_ITEM_ADDED" && data.payload) {
         const newItem = data.payload.item;
-        const allCustoms = Array.isArray(data.payload.customCatalogItems)
-          ? data.payload.customCatalogItems
-          : newItem
-          ? [newItem, ...customCatalogItems.filter((c) => c.sku !== newItem.sku)]
-          : null;
-        if (allCustoms) {
-          setCustomCatalogItems(allCustoms);
+        setCustomCatalogItems((prev) => {
+          const combined = Array.isArray(data.payload.customCatalogItems)
+            ? data.payload.customCatalogItems
+            : newItem
+            ? [newItem, ...(prev || []).filter((c) => c.sku !== newItem.sku)]
+            : prev;
           try {
-            localStorage.setItem("auditx_custom_catalog", JSON.stringify(allCustoms));
+            localStorage.setItem("auditx_custom_catalog", JSON.stringify(combined));
           } catch {}
-        }
+          return combined;
+        });
         if (newItem?.sku && Number.isFinite(Number(data.payload.units || newItem.units))) {
           const u = Number(data.payload.units || newItem.units);
           setInventoryStockMap((prev) => ({ ...prev, [newItem.sku]: u }));
@@ -2043,7 +2050,7 @@ export default function OrderingAppPage() {
       const aisleStr = String(item?.aisle || "").toLowerCase();
       const matchesSearch =
         !q || nameStr.includes(q) || catStr.includes(q) || aisleStr.includes(q);
-      const matchesCategory = activeBottomTab === "search" ? true : item?.category === selectedCategory;
+      const matchesCategory = (activeBottomTab === "search" || q.length > 0) ? true : item?.category === selectedCategory;
       return matchesSearch && matchesCategory;
     });
   }, [effectiveCatalog, debouncedSearchQuery, activeBottomTab, selectedCategory]);

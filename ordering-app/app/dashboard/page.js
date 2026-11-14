@@ -784,7 +784,16 @@ export default function WarehouseDashboardPage() {
         if (Array.isArray(cloudState.lowStockAlerts)) setLowStockAlerts(cloudState.lowStockAlerts);
         if (cloudState.reconciliationReport) setReconciliationReport(cloudState.reconciliationReport);
         if (Array.isArray(cloudState.oosList)) setOosList(cloudState.oosList);
-        if (Array.isArray(cloudState.customCatalogItems)) setCustomCatalogItems(cloudState.customCatalogItems);
+        if (Array.isArray(cloudState.customCatalogItems)) {
+          const local = safeArr(safeStorage.getJson("auditx_custom_catalog", []));
+          const combined = Array.from(
+            new Map(
+              [...local, ...(cloudState.customCatalogItems || [])].map((item) => [item.sku, item])
+            ).values()
+          );
+          setCustomCatalogItems(combined);
+          try { localStorage.setItem("auditx_custom_catalog", JSON.stringify(combined)); } catch {}
+        }
         if (cloudState.loginDevicesToday) setLoginDevicesToday(cloudState.loginDevicesToday);
         if (cloudState.newSignupsToday) setNewSignupsToday(cloudState.newSignupsToday);
         if (cloudState.allCustomerDevices) setAllCustomerDevices(cloudState.allCustomerDevices);
@@ -832,16 +841,15 @@ export default function WarehouseDashboardPage() {
         });
       } else if (data.type === "PUTAWAY_ITEM_ADDED" && data.payload) {
         const newItem = data.payload.item;
-        if (Array.isArray(data.payload.customCatalogItems)) {
-          setCustomCatalogItems(data.payload.customCatalogItems);
-          try { localStorage.setItem("auditx_custom_catalog", JSON.stringify(data.payload.customCatalogItems)); } catch {}
-        } else if (newItem) {
-          setCustomCatalogItems((prev) => {
-            const next = [newItem, ...(prev || []).filter((c) => c.sku !== newItem.sku)];
-            try { localStorage.setItem("auditx_custom_catalog", JSON.stringify(next)); } catch {}
-            return next;
-          });
-        }
+        setCustomCatalogItems((prev) => {
+          const combined = Array.isArray(data.payload.customCatalogItems)
+            ? data.payload.customCatalogItems
+            : newItem
+            ? [newItem, ...(prev || []).filter((c) => c.sku !== newItem.sku)]
+            : prev;
+          try { localStorage.setItem("auditx_custom_catalog", JSON.stringify(combined)); } catch {}
+          return combined;
+        });
         if (newItem?.sku && Number.isFinite(Number(data.payload.units || newItem.units))) {
           const u = Number(data.payload.units || newItem.units);
           setInventoryStockMap((prev) => ({ ...prev, [newItem.sku]: u }));

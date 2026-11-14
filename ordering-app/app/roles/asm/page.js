@@ -104,7 +104,13 @@ export default function AssistantStoreManagerApp({ embedded = false, sharedCloud
       if (!cloudState) return;
       const invMap = cloudState.inventoryStockMap || {};
       const oosArr = cloudState.oosList || [];
-      const customArr = cloudState.customCatalogItems || [];
+      let local = [];
+      try { local = JSON.parse(localStorage.getItem("auditx_custom_catalog") || "[]"); } catch {}
+      const customArr = Array.from(
+        new Map(
+          [...local, ...(cloudState.customCatalogItems || [])].map((item) => [item.sku, item])
+        ).values()
+      );
       setInventoryStockMap(invMap);
       setOosList(oosArr);
       setCustomCatalogItems(customArr);
@@ -469,6 +475,7 @@ export default function AssistantStoreManagerApp({ embedded = false, sharedCloud
     // 1. Immediately update ASM local states optimistically
     const nextCustoms = [addedItem, ...customCatalogItems.filter((c) => c.sku !== addedItem.sku)];
     setCustomCatalogItems(nextCustoms);
+    setCatalogItems((prev) => [addedItem, ...(prev || []).filter((c) => c.sku !== addedItem.sku)]);
     setInventoryStockMap((prev) => ({ ...prev, [addedItem.sku]: parsedUnits }));
     setStockBySku((prev) => ({
       ...prev,
@@ -920,6 +927,11 @@ export default function AssistantStoreManagerApp({ embedded = false, sharedCloud
                   </div>
                 </div>
 
+                {(!putawayName.trim() || !putawayPrice) && (
+                  <div style={{ padding: "8px 12px", background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 8, color: "#DC2626", fontSize: 12, fontWeight: 600, marginBottom: 12 }}>
+                    ℹ️ Enter Item Name &amp; Selling Price above to dump this item live to Ordering App &amp; Dashboards.
+                  </div>
+                )}
                 <button
                   type="submit"
                   disabled={putawayUploading}

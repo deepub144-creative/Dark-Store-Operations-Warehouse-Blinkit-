@@ -793,6 +793,35 @@ export function mergeHubStates(
   }
   merged.complaints = Array.from(complaintMap.values()).slice(0, 200);
 
+  // ── Custom Putaway Catalog Reconciliation (preserve dumped items across cold boots & tab syncs) ──
+  const customMap = new Map();
+  for (const it of cur.customCatalogItems || []) {
+    if (it && it.sku) customMap.set(String(it.sku), it);
+  }
+  for (const it of inc.customCatalogItems || []) {
+    if (it && it.sku) {
+      const existing = customMap.get(String(it.sku));
+      if (!existing) {
+        customMap.set(String(it.sku), it);
+      } else {
+        const iTs = Date.parse(it.updatedAt || it.createdAt || "") || 0;
+        const eTs = Date.parse(existing.updatedAt || existing.createdAt || "") || 0;
+        customMap.set(String(it.sku), iTs >= eTs ? { ...existing, ...it } : { ...it, ...existing });
+      }
+    }
+  }
+  if (customMap.size === 0 && typeof window !== "undefined") {
+    try {
+      const stored = JSON.parse(window.localStorage.getItem("auditx_custom_catalog") || "[]");
+      if (Array.isArray(stored)) {
+        for (const it of stored) {
+          if (it && it.sku) customMap.set(String(it.sku), it);
+        }
+      }
+    } catch {}
+  }
+  merged.customCatalogItems = Array.from(customMap.values());
+
   // 2. Staff Duty status slices (thrupthi & sinchana independently monotonic)
   const nextStaffStatus = { ...(merged.staffStatus || {}) };
   for (const id of ["thrupthi", "sinchana"]) {
@@ -890,6 +919,27 @@ export function mergeHubStates(
       else oosSet.delete(sku);
     }
   }
+  for (const cItem of merged.customCatalogItems || []) {
+    if (!cItem?.sku) continue;
+    const cUnits = Math.max(0, Number(cItem.units) || (cItem.category === "Frames" ? 1 : 5));
+    if (mergedInvMap[cItem.sku] === undefined) {
+      mergedInvMap[cItem.sku] = cUnits;
+    }
+    if (!mergedStock[cItem.sku]) {
+      mergedStock[cItem.sku] = {
+        skuId: cItem.sku,
+        storeId: "TIPTUR-HUB-KA44",
+        unitsInStock: cUnits,
+        availableUnits: cUnits,
+        reservedUnits: 0,
+        soldToday: 0,
+      };
+    }
+    if (mergedInvMap[cItem.sku] > 0) {
+      oosSet.delete(cItem.sku);
+    }
+  }
+
   if (allSkus.size > 0) {
     merged.stockBySku = mergedStock;
     merged.inventoryStockMap = mergedInvMap;
